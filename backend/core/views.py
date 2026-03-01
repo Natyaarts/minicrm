@@ -1,15 +1,20 @@
 
 from rest_framework import viewsets, permissions, status, filters
+from rest_framework.filters import SearchFilter
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from django.db.models import Q
+from django.db.models import Q, Sum, Count, F
+from django.http import HttpResponse
+from django.contrib.auth import get_user_model
+import pandas as pd
+
 from .models import Program, SubProgram, Course, Batch, Student, Transaction, Document
 from .serializers import (
     ProgramSerializer, SubProgramSerializer, CourseSerializer, 
-    BatchSerializer, StudentSerializer, TransactionSerializer, DocumentSerializer
+    BatchSerializer, StudentSerializer, TransactionSerializer, DocumentSerializer,
+    ProgramHierarchySerializer
 )
 from rest_framework.views import APIView
-from django.db.models import Sum, Count
 from .permissions import DynamicRolePermission, IsMentorOwner
 
 class IsAdminOrReadOnly(permissions.BasePermission):
@@ -24,6 +29,14 @@ class ProgramViewSet(viewsets.ModelViewSet):
     permission_classes = [DynamicRolePermission]
     module_name = 'ACADEMIC'
     pagination_class = None
+    filter_backends = [SearchFilter]
+    search_fields = ['name', 'description']
+
+    @action(detail=False, methods=['get'])
+    def hierarchy(self, request):
+        programs = self.get_queryset()
+        serializer = ProgramHierarchySerializer(programs, many=True)
+        return Response(serializer.data)
 
 class SubProgramViewSet(viewsets.ModelViewSet):
     queryset = SubProgram.objects.all()
@@ -31,6 +44,8 @@ class SubProgramViewSet(viewsets.ModelViewSet):
     permission_classes = [DynamicRolePermission]
     module_name = 'ACADEMIC'
     pagination_class = None
+    filter_backends = [SearchFilter]
+    search_fields = ['name']
 
 class CourseViewSet(viewsets.ModelViewSet):
     queryset = Course.objects.all()
@@ -38,16 +53,19 @@ class CourseViewSet(viewsets.ModelViewSet):
     permission_classes = [DynamicRolePermission]
     module_name = 'ACADEMIC'
     pagination_class = None
+    filter_backends = [SearchFilter]
+    search_fields = ['name']
 
 class BatchViewSet(viewsets.ModelViewSet):
     serializer_class = BatchSerializer
     queryset = Batch.objects.all()
+    filter_backends = [SearchFilter]
+    search_fields = ['name', 'primary_mentor__first_name', 'primary_mentor__last_name', 'course__name']
     permission_classes = [DynamicRolePermission, IsMentorOwner]
     module_name = 'MENTOR'
 
     def get_queryset(self):
         user = self.request.user
-        from django.db.models import Count
         qs = Batch.objects.select_related('primary_mentor', 'course').prefetch_related('secondary_mentors')
         qs = qs.annotate(student_count_annotated=Count('students'))
         
@@ -56,18 +74,12 @@ class BatchViewSet(viewsets.ModelViewSet):
         elif user.role == 'MENTOR':
             qs = qs.filter(Q(primary_mentor=user) | Q(secondary_mentors=user)).distinct()
         elif user.role == 'STUDENT':
-            # Students usually see their own batch via Student profile, but if they need to list:
             qs = qs.filter(students__user=user).distinct()
         else:
             return Batch.objects.none()
             
         return qs
 
-    def perform_create(self, serializer):
-        # If mentor creates, default them as primary if not set?
-        # But serializer might expect ID.
-        serializer.save()
-        
     @action(detail=True, methods=['post'])
     def add_student(self, request, pk=None):
         try:
@@ -78,10 +90,19 @@ class BatchViewSet(viewsets.ModelViewSet):
         student_id = request.data.get('student_id')
         try:
             student = Student.objects.get(id=student_id)
-            # Only allow adding if student is unassigned or re-assigning?
-            # BRD doesn't strict re-assignment policies but generally mentors claim unassigned.
             student.batch = batch
             student.save()
+            
+            from notifications.models import Notification
+            if batch.primary_mentor:
+                Notification.objects.create(
+                    user=batch.primary_mentor,
+                    title="New Student Assigned",
+                    message=f"Student {student.first_name} has been added to your batch {batch.name}.",
+                    notification_type='BATCH',
+                    target_url=f"/mentor"
+                )
+            
             return Response({'status': 'student added'})
         except Student.DoesNotExist:
             return Response({'error': 'Student not found'}, status=status.HTTP_404_NOT_FOUND)
@@ -115,6 +136,20 @@ class StudentViewSet(viewsets.ModelViewSet):
             return [permissions.AllowAny()]
         return super().get_permissions()
 
+    def perform_create(self, serializer):
+        student = serializer.save()
+        from notifications.models import Notification
+        User = get_user_model()
+        staff_users = User.objects.filter(role__in=['ADMIN', 'SUPER_ADMIN', 'SALES'])
+        for user in staff_users:
+            Notification.objects.create(
+                user=user,
+                title="New Application Received",
+                message=f"Student {student.first_name} {student.last_name} has applied for {student.program_type.name}.",
+                notification_type='APPLICATION',
+                target_url=f"/sales?student={student.id}"
+            )
+
     def get_queryset(self):
         user = self.request.user
         qs = Student.objects.select_related(
@@ -125,10 +160,8 @@ class StudentViewSet(viewsets.ModelViewSet):
             return Student.objects.none()
             
         if user.role in ['ADMIN', 'SUPER_ADMIN', 'ACADEMIC', 'SALES']:
-            # Base QS is already all() but let's re-ensure select_related
             pass 
         elif user.role == 'MENTOR':
-            # See students in their batches OR unassigned students
             qs = qs.filter(
                 Q(batch__primary_mentor=user) | 
                 Q(batch__secondary_mentors=user) |
@@ -156,9 +189,45 @@ class StudentViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_destroy(self, instance):
-        # Soft delete
         instance.is_active = False
         instance.save()
+
+    @action(detail=False, methods=['get'])
+    def export_csv(self, request):
+        qs = self.get_queryset()
+        data = []
+        for s in qs:
+            total_paid = s.transactions.aggregate(total=Sum('amount'))['total'] or 0
+            data.append({
+                'ID': s.crm_student_id,
+                'First Name': s.first_name,
+                'Last Name': s.last_name,
+                'Mobile': s.mobile,
+                'Email': s.email,
+                'Program': s.program_type.name,
+                'Course': s.course.name if s.course else 'N/A',
+                'Batch': s.batch.name if s.batch else 'N/A',
+                'Status': 'Active' if s.is_active else 'Inactive',
+                'Total Paid': total_paid,
+            })
+        
+        df = pd.DataFrame(data)
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="students.csv"'
+        df.to_csv(path_or_buf=response, index=False)
+        return response
+
+    @action(detail=False, methods=['get'])
+    def due_students(self, request):
+        students = self.get_queryset().filter(course__isnull=False)
+        due_list = []
+        for s in students:
+            total_paid = s.transactions.aggregate(total=Sum('amount'))['total'] or 0
+            fee = s.course.fee_amount
+            if total_paid < fee:
+                due_list.append(s)
+        serializer = self.get_serializer(due_list, many=True)
+        return Response(serializer.data)
 
     @action(detail=True, methods=['post'])
     def restore(self, request, pk=None):
@@ -177,20 +246,16 @@ class StudentViewSet(viewsets.ModelViewSet):
         if not username or not password:
             return Response({'error': 'Username and password are required'}, status=status.HTTP_400_BAD_REQUEST)
         
-        # Security check: If requester is MENTOR, ensure they own the batch
         if request.user.role == 'MENTOR':
             if not student.batch or (student.batch.primary_mentor != request.user and not student.batch.secondary_mentors.filter(id=request.user.id).exists()):
                  return Response({'error': 'Permission denied: You do not mentor this student'}, status=status.HTTP_403_FORBIDDEN)
 
-        # Check if username is already taken by another user
-        from django.contrib.auth import get_user_model
         User = get_user_model()
         if User.objects.filter(username=username).exclude(id=user.id).exists():
             return Response({'error': 'Username already taken'}, status=status.HTTP_400_BAD_REQUEST)
             
         user.username = username
         user.set_password(password)
-        # Ensure role is STUDENT and user is active
         user.role = 'STUDENT'
         user.is_active = True
         user.save()
@@ -214,13 +279,11 @@ class DocumentViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
 class DashboardStatsView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [DynamicRolePermission]
+    module_name = 'ANALYTICS'
 
     def get(self, request):
         user = request.user
-        from django.db import models
-        
-        # Base Querysets
         student_qs = Student.objects.filter(is_active=True)
         batch_qs = Batch.objects.all()
         trans_qs = Transaction.objects.all()
@@ -234,6 +297,34 @@ class DashboardStatsView(APIView):
             "students": student_qs.count(),
             "batches": batch_qs.count(),
             "revenue": trans_qs.aggregate(total=Sum('amount'))['total'] or 0,
-            "distribution": list(student_qs.values(name=models.F('program_type__name')).annotate(value=Count('id')))
+            "distribution": list(student_qs.values(name=F('program_type__name')).annotate(value=Count('id')))
         }
         return Response(stats)
+
+class AnalyticsDetailView(APIView):
+    permission_classes = [DynamicRolePermission]
+    module_name = 'ANALYTICS'
+
+    def get(self, request):
+        User = get_user_model()
+        teachers = User.objects.filter(role='MENTOR').count()
+        
+        batches = Batch.objects.annotate(student_count=Count('students'))
+        batch_stats = batches.values('id', 'name', 'course__name', 'student_count')
+        
+        total_potential = Student.objects.filter(is_active=True).aggregate(sum=Sum('course__fee_amount'))['sum'] or 0
+        total_collected = Transaction.objects.all().aggregate(sum=Sum('amount'))['sum'] or 0
+        total_due = total_potential - total_collected
+
+        return Response({
+            'teachers_count': teachers,
+            'students_count': Student.objects.count(),
+            'batches_count': Batch.objects.count(),
+            'batch_details': batch_stats,
+            'revenue_metrics': {
+                'potential': total_potential,
+                'collected': total_collected,
+                'due': total_due
+            }
+        })
+

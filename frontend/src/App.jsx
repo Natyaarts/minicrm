@@ -8,6 +8,9 @@ import StudentPortal from './pages/StudentPortal';
 import AcademicModule from './pages/AcademicModule';
 import CoursesModule from './pages/CoursesModule';
 import AdminModule from './pages/AdminModule';
+import PublicApplicationForm from './pages/PublicApplicationForm';
+import UsersModule from './pages/UsersModule';
+import AnalyticsModule from './pages/AnalyticsModule';
 import Login from './pages/Login';
 
 function App() {
@@ -16,7 +19,7 @@ function App() {
       <Routes>
         {/* Public Routes */}
         <Route path="/login" element={<Login />} />
-        <Route path="/apply" element={<SalesModule />} /> {/* Public Student Registration Form */}
+        <Route path="/apply/:programSlug" element={<PublicApplicationForm />} />
 
         {/* Protected Routes */}
         <Route element={
@@ -31,6 +34,8 @@ function App() {
           <Route path="/academic" element={<AcademicModule />} />
           <Route path="/courses" element={<CoursesModule />} />
           <Route path="/admin" element={<AdminModule />} />
+          <Route path="/users" element={<UsersModule />} />
+          <Route path="/analytics" element={<AnalyticsModule />} />
         </Route>
       </Routes>
     </Router>

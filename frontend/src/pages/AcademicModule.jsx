@@ -11,6 +11,8 @@ const AcademicModule = () => {
     const [activeTab, setActiveTab] = useState('overview');
     const [loading, setLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
+    const [studentPage, setStudentPage] = useState(1);
+    const [studentPagination, setStudentPagination] = useState({ count: 0, next: null, previous: null });
 
     // Fee Data Modal State
     const [selectedStudent, setSelectedStudent] = useState(null);
@@ -21,28 +23,39 @@ const AcademicModule = () => {
         fetchInitialData();
     }, []);
 
+    useEffect(() => {
+        fetchStudents();
+    }, [studentPage]);
+
+    useEffect(() => {
+        // Reset to page 1 when searching
+        if (searchTerm) {
+            setStudentPage(1);
+        }
+    }, [searchTerm]);
+
     const fetchInitialData = async () => {
         setLoading(true);
         try {
-            const [batchRes, mentorRes, studentRes] = await Promise.all([
+            const [batchRes, mentorRes] = await Promise.all([
                 api.get('batches/'),
-                api.get('auth/mentors/'),
-                api.get('students/')
+                api.get('auth/mentors/')
             ]);
 
             const bData = batchRes.data.results || batchRes.data;
             const mData = mentorRes.data.results || mentorRes.data;
-            const sData = studentRes.data.results || studentRes.data;
 
             setBatches(bData);
             setMentors(mData);
-            setStudents(sData);
 
-            setStats({
+            // Fetch students separately or update stats from studentRes later
+            await fetchStudents();
+
+            setStats(prev => ({
+                ...prev,
                 totalBatches: batchRes.data.count || bData.length,
-                totalMentors: mentorRes.data.count || mData.length,
-                totalStudents: studentRes.data.count || sData.length
-            });
+                totalMentors: mentorRes.data.count || mData.length
+            }));
 
         } catch (err) {
             console.error(err);
@@ -51,11 +64,37 @@ const AcademicModule = () => {
         }
     };
 
-    const filteredStudents = students.filter(s =>
-        (s.first_name?.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (s.last_name?.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (s.crm_student_id?.toLowerCase().includes(searchTerm.toLowerCase()))
-    );
+    const fetchStudents = async () => {
+        try {
+            const res = await api.get(`students/?page=${studentPage}&search=${searchTerm}`);
+            const data = res.data;
+            if (data.results) {
+                setStudents(data.results);
+                setStudentPagination({
+                    count: data.count,
+                    next: data.next,
+                    previous: data.previous
+                });
+                setStats(prev => ({ ...prev, totalStudents: data.count }));
+            } else {
+                setStudents(Array.isArray(data) ? data : []);
+                setStudentPagination({ count: data.length, next: null, previous: null });
+                setStats(prev => ({ ...prev, totalStudents: data.length }));
+            }
+        } catch (err) {
+            console.error("Failed to fetch students", err);
+        }
+    };
+
+    // Filtered students is now just 'students' because the API handles search
+    const displayStudents = students;
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            fetchStudents();
+        }, 500);
+        return () => clearTimeout(timer);
+    }, [searchTerm]);
 
     const handleViewFees = async (student) => {
         setSelectedStudent(student);
@@ -165,8 +204,8 @@ const AcademicModule = () => {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 bg-white">
-                        {filteredStudents.length > 0 ? (
-                            filteredStudents.map(student => (
+                        {displayStudents.length > 0 ? (
+                            displayStudents.map(student => (
                                 <tr key={student.id} className="hover:bg-slate-50 transition-colors">
                                     <td className="p-4 font-mono text-xs font-bold text-indigo-600 bg-indigo-50/50 w-24 text-center rounded-r-lg my-1">{student.crm_student_id}</td>
                                     <td className="p-4 font-bold text-slate-800">{student.first_name} {student.last_name}</td>
@@ -188,6 +227,29 @@ const AcademicModule = () => {
                         )}
                     </tbody>
                 </table>
+            </div>
+
+            {/* Pagination UI */}
+            <div className="flex items-center justify-between bg-white p-4 rounded-xl border border-slate-200 shadow-sm mt-4">
+                <span className="text-sm text-slate-500">
+                    Showing <span className="font-bold text-slate-900">{displayStudents.length}</span> of <span className="font-bold text-slate-900">{studentPagination.count}</span> students
+                </span>
+                <div className="flex gap-2">
+                    <button
+                        onClick={() => setStudentPage(p => Math.max(1, p - 1))}
+                        disabled={!studentPagination.previous || loading}
+                        className="px-4 py-2 rounded-lg bg-slate-50 border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-100 disabled:opacity-50 transition-all"
+                    >
+                        Previous
+                    </button>
+                    <button
+                        onClick={() => setStudentPage(p => p + 1)}
+                        disabled={!studentPagination.next || loading}
+                        className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 disabled:opacity-50 transition-all shadow-sm"
+                    >
+                        Next
+                    </button>
+                </div>
             </div>
         </div>
     );

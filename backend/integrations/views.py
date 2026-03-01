@@ -35,6 +35,9 @@ class LMSProxyView(views.APIView):
         # If we have an LMS ID, try to fetch real data
         if student.lms_student_id and wise.api_key:
             real_data = wise.get_student_details(student.lms_student_id)
+            reports = wise.get_student_reports(student.lms_student_id)
+            registration = wise.get_registration_data(student.lms_student_id)
+            
             if real_data and 'summary' in real_data:
                 # Map Wise data to our CRM response format
                 summary_list = real_data.get('summary', [])
@@ -50,12 +53,6 @@ class LMSProxyView(views.APIView):
                 paid_fee = summary.get('totalPaid', {}).get('value', 0) / 100
                 due_fee = summary.get('totalDue', {}).get('value', 0) / 100
                 
-                # Logic for Total Fee:
-                # 'totalRemaining' behavior is inconsistent (sometimes 0 even if paid).
-                # 'totalPaid' is reliable for collected amount.
-                # 'totalDue' is reliable for pending dues.
-                # We'll treat Total Fee as Paid + Due to ensure it reflects at least the invoiced amount.
-                # If totalRemaining > Paid + Due, we might consider it, but for now Paid + Due is safer.
                 total_fee = paid_fee + due_fee
                 if total_remaining > total_fee:
                      total_fee = total_remaining
@@ -64,13 +61,39 @@ class LMSProxyView(views.APIView):
                 if not next_due_date:
                     next_due_date = 'N/A'
                 
-                # Attendance: using joinedRequest as a proxy for sessions joined for now
                 attendance_val = class_summary.get('joinedRequest', 0)
+
+                # Fetch all enrolled courses from classWiseStudentSummary
+                enrolled_courses = []
+                for cs in class_summary_list:
+                    enrolled_courses.append({
+                        "id": cs.get('classId'),
+                        "name": cs.get('className'),
+                        "status": cs.get('status', 'Active'),
+                        "attendance": cs.get('joinedRequest', 0),
+                        "due_date": cs.get('earliestDueDate', 'N/A')
+                    })
+
+                # Progress from reports if available
+                progress = 0
+                if reports and isinstance(reports, dict) and 'data' in reports:
+                    progress = reports.get('data', {}).get('overallProgress', 0)
+                
+                # Activities from registration or summary
+                activities = []
+                if registration and 'activities' in registration:
+                    activities = registration.get('activities', [])
+                elif class_summary.get('lastJoinedAt'):
+                    activities.append({
+                        "activity": "Joined Live Session",
+                        "date": class_summary.get('lastJoinedAt')
+                    })
                 
                 return response.Response({
                     "lms_student_id": student.lms_student_id,
-                    "course_progress": 0, # Placeholder
+                    "course_progress": progress,
                     "attendance": attendance_val, 
+                    "enrolled_courses": enrolled_courses,
                     "fee_details": {
                         "total_fee": total_fee,
                         "paid_fee": paid_fee,
@@ -78,7 +101,8 @@ class LMSProxyView(views.APIView):
                         "currency": currency,
                         "next_due_date": next_due_date
                     },
-                    "recent_activities": [], # Placeholder until detailed fees fetching
+                    "recent_activities": activities,
+                    "registration_data": registration,
                     "error_message": None
                 })
         
@@ -281,3 +305,59 @@ class SyncWiseStudentsView(views.APIView):
         except Exception as e:
             print(f"Sync Error: {e}")
             return response.Response({"error": str(e)}, status=500)
+
+class WiseCourseListView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        if request.user.role not in ['ADMIN', 'SUPER_ADMIN', 'ACADEMIC']:
+            return response.Response({"error": "Permission denied"}, status=403)
+            
+        class_type = request.query_params.get('type', 'LIVE')
+        wise = WiseService()
+        courses = wise.get_all_courses(class_type=class_type)
+        
+        return response.Response(courses)
+
+class ConsumeWiseCreditsView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        # Mentors or Admins can consume credits
+        if request.user.role not in ['ADMIN', 'SUPER_ADMIN', 'MENTOR']:
+            return response.Response({"error": "Permission denied"}, status=403)
+            
+        student_id = request.data.get('student_id')
+        class_id = request.data.get('class_id')
+        credit = request.data.get('credit', 1)
+        note = request.data.get('note', 'Consuming Credits')
+        
+        try:
+            student = Student.objects.get(id=student_id)
+            if not student.lms_student_id:
+                return response.Response({"error": "Student not linked to Wise LMS"}, status=400)
+                
+            wise = WiseService()
+            result = wise.consume_credits(
+                student.lms_student_id, 
+                class_id, 
+                credit, 
+                note
+            )
+            
+            if result and result.get('status') == 200:
+                return response.Response({
+                    "success": True,
+                    "message": "Credits consumed successfully",
+                    "data": result.get('data')
+                })
+            else:
+                return response.Response({
+                    "success": False,
+                    "error": result.get('message', 'Failed to consume credits') if result else "API call failed"
+                }, status=400)
+                
+        except Student.DoesNotExist:
+             return response.Response({"error": "Student not found"}, status=404)
+        except Exception as e:
+             return response.Response({"error": str(e)}, status=500)

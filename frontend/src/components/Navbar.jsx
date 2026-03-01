@@ -1,10 +1,48 @@
-import { Bell, Search, UserCircle, HelpCircle, Settings, Menu } from 'lucide-react';
+import { Bell, Search, UserCircle, HelpCircle, Menu, GraduationCap, Users } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import NotificationCenter from './NotificationCenter';
+import api from '../api/axios';
 
 function Navbar({ onMenuClick }) {
     const { user } = useAuth();
+    const navigate = useNavigate();
+    const [searchQuery, setSearchQuery] = useState('');
+    const [searchResults, setSearchResults] = useState({ students: [], batches: [], courses: [] });
+    const [showResults, setShowResults] = useState(false);
+
     const displayName = user ? (user.first_name ? `${user.first_name} ${user.last_name}` : user.username) : 'Guest';
     const role = user?.role || 'User';
+
+    useEffect(() => {
+        const handleSearch = async () => {
+            if (searchQuery.length < 2) {
+                setSearchResults({ students: [], batches: [], courses: [] });
+                return;
+            }
+
+            try {
+                const [sRes, bRes, cRes] = await Promise.all([
+                    api.get(`students/?search=${searchQuery}`),
+                    api.get(`batches/?search=${searchQuery}`),
+                    api.get(`courses/?search=${searchQuery}`)
+                ]);
+
+                setSearchResults({
+                    students: sRes.data.results || sRes.data,
+                    batches: bRes.data.results || bRes.data,
+                    courses: cRes.data.results || cRes.data
+                });
+                setShowResults(true);
+            } catch (err) {
+                console.error("Search failed", err);
+            }
+        };
+
+        const timer = setTimeout(handleSearch, 300);
+        return () => clearTimeout(timer);
+    }, [searchQuery]);
 
     return (
         <header className="h-16 md:h-20 bg-white/90 backdrop-blur-xl border-b border-slate-100 flex items-center justify-between px-4 md:px-8 z-10 sticky top-0 transition-all">
@@ -23,10 +61,66 @@ function Navbar({ onMenuClick }) {
                         type="text"
                         placeholder="Search students, batches, or courses..."
                         className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-transparent rounded-2xl text-slate-700 placeholder-slate-400 focus:bg-white focus:border-indigo-100 focus:shadow-lg focus:shadow-indigo-100/50 focus:outline-none focus:ring-0 transition-all font-medium"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        onFocus={() => setShowResults(true)}
                     />
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                        <span className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-[10px] font-bold text-slate-400 shadow-sm">⌘ K</span>
-                    </div>
+
+                    {showResults && searchQuery.length >= 2 && (
+                        <div className="absolute top-full left-0 w-full mt-2 bg-white border border-slate-100 rounded-3xl shadow-2xl p-4 z-50 animate-fadeIn overflow-hidden">
+                            <div className="max-h-[70vh] overflow-y-auto custom-scrollbar space-y-4">
+                                {searchResults.students.length > 0 && (
+                                    <div>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3 ml-2 flex items-center gap-2">
+                                            <Users size={12} /> Students
+                                        </p>
+                                        <div className="space-y-1">
+                                            {searchResults.students.slice(0, 5).map(s => (
+                                                <button
+                                                    key={s.id}
+                                                    onClick={() => { navigate(`/sales?id=${s.id}`); setShowResults(false); setSearchQuery(''); }}
+                                                    className="w-full text-left p-3 hover:bg-slate-50 rounded-2xl flex items-center justify-between group transition-colors"
+                                                >
+                                                    <div>
+                                                        <p className="font-bold text-slate-700">{s.first_name} {s.last_name}</p>
+                                                        <p className="text-xs text-slate-400">{s.crm_student_id}</p>
+                                                    </div>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {searchResults.batches.length > 0 && (
+                                    <div>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3 ml-2 flex items-center gap-2">
+                                            <GraduationCap size={12} /> Batches
+                                        </p>
+                                        <div className="space-y-1">
+                                            {searchResults.batches.slice(0, 3).map(b => (
+                                                <button
+                                                    key={b.id}
+                                                    onClick={() => { navigate(`/mentor`); setShowResults(false); setSearchQuery(''); }}
+                                                    className="w-full text-left p-3 hover:bg-slate-50 rounded-2xl flex items-center justify-between group transition-colors"
+                                                >
+                                                    <div>
+                                                        <p className="font-bold text-slate-700">{b.name}</p>
+                                                        <p className="text-xs text-slate-400">{b.course_name}</p>
+                                                    </div>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {searchResults.students.length === 0 && searchResults.batches.length === 0 && (
+                                    <div className="p-8 text-center">
+                                        <p className="text-sm font-bold text-slate-400">No results found for "{searchQuery}"</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -36,17 +130,9 @@ function Navbar({ onMenuClick }) {
                         <HelpCircle size={22} />
                         <span className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-xs py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Support</span>
                     </button>
-                    <button className="p-3 text-slate-400 hover:text-indigo-600 hover:bg-slate-50 rounded-xl transition-all relative group">
-                        <Bell size={22} />
-                        <span className="absolute top-3 right-3 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white animate-pulse"></span>
-                    </button>
-                    <button className="p-2 md:p-3 text-slate-400 hover:text-indigo-600 hover:bg-slate-50 rounded-xl transition-all relative group">
-                        <Bell size={22} />
-                        <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white animate-pulse"></span>
-                    </button>
-                    <button className="hidden sm:block p-3 text-slate-400 hover:text-indigo-600 hover:bg-slate-50 rounded-xl transition-all relative group">
-                        <Settings size={22} />
-                    </button>
+
+                    <NotificationCenter />
+
                 </div>
 
                 <div className="h-8 w-[1px] bg-slate-200 mx-1 md:mx-2 hidden sm:block"></div>

@@ -1,8 +1,9 @@
-
+# Core App Serializers
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.apps import apps
 from django.db import transaction as db_transaction
+from django.db.models import Sum, Count
 from .models import Program, SubProgram, Course, Batch, Student, Transaction, Document
 
 User = get_user_model()
@@ -26,6 +27,18 @@ class CourseSerializer(serializers.ModelSerializer):
     class Meta:
         model = Course
         fields = '__all__'
+
+class SubProgramHierarchySerializer(serializers.ModelSerializer):
+    courses = CourseSerializer(many=True, read_only=True)
+    class Meta:
+        model = SubProgram
+        fields = ('id', 'name', 'courses')
+
+class ProgramHierarchySerializer(serializers.ModelSerializer):
+    sub_programs = SubProgramHierarchySerializer(many=True, read_only=True)
+    class Meta:
+        model = Program
+        fields = ('id', 'name', 'description', 'slug', 'sub_programs')
 
 class BatchSerializer(serializers.ModelSerializer):
     student_count = serializers.SerializerMethodField()
@@ -79,10 +92,22 @@ class StudentSerializer(serializers.ModelSerializer):
     documents_list = DocumentSerializer(source='documents', many=True, read_only=True)
     transactions_list = TransactionSerializer(source='transactions', many=True, read_only=True)
     
+    # Financial fields
+    total_paid = serializers.SerializerMethodField()
+    total_due = serializers.SerializerMethodField()
+
     class Meta:
         model = Student
         fields = '__all__'
         read_only_fields = ('user', 'crm_student_id')
+
+    def get_total_paid(self, obj):
+        return obj.transactions.aggregate(total=Sum('amount'))['total'] or 0
+
+    def get_total_due(self, obj):
+        course_fee = obj.course.fee_amount if obj.course else 0
+        paid = self.get_total_paid(obj)
+        return max(0, course_fee - paid)
 
     def create(self, validated_data):
         dynamic_values = validated_data.pop('dynamic_values', None)

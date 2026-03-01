@@ -4,7 +4,7 @@ from rest_framework.routers import DefaultRouter
 from .views import LoginView, UserDetailView, UserViewSet, MentorListView, RolePermissionViewSet
 
 router = DefaultRouter()
-router.register(r'users', UserViewSet)
+router.register(r'users', UserViewSet, basename='user')
 router.register(r'permissions', RolePermissionViewSet)
 
 urlpatterns = [

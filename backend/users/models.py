@@ -13,6 +13,9 @@ class User(AbstractUser):
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='STUDENT')
     phone_number = models.CharField(max_length=15, blank=True, null=True)
 
+    class Meta:
+        ordering = ['-id']
+
     def __str__(self):
         return f"{self.username} ({self.role})"
 
@@ -23,6 +26,7 @@ class RolePermission(models.Model):
         ('STUDENT', 'Student Portal'),
         ('ACADEMIC', 'Academic Module'),
         ('ADMIN', 'Admin Module'),
+        ('ANALYTICS', 'Analytics & Reports'),
     )
     role = models.CharField(max_length=20, choices=User.ROLE_CHOICES)
     module = models.CharField(max_length=20, choices=MODULE_CHOICES)

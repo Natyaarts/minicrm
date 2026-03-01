@@ -189,8 +189,19 @@ const StudentPortal = () => {
                                 <div className="text-slate-800 font-medium text-base">{profile.program_name || 'N/A'}</div>
                             </div>
                             <div>
-                                <label className="text-slate-400 font-semibold block text-xs uppercase mb-1">Course</label>
-                                <div className="text-slate-800 font-medium text-base">{profile.course_name || 'N/A'}</div>
+                                <label className="text-slate-400 font-semibold block text-xs uppercase mb-1">Assigned Courses (Wise LMS)</label>
+                                {lmsData?.enrolled_courses && lmsData.enrolled_courses.length > 0 ? (
+                                    <div className="space-y-2">
+                                        {lmsData.enrolled_courses.map(course => (
+                                            <div key={course.id} className="flex items-center gap-2">
+                                                <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                                                <div className="text-slate-800 font-bold text-sm">{course.name}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="text-slate-800 font-medium text-base">{profile.course_name || 'N/A'}</div>
+                                )}
                             </div>
                             <div>
                                 <label className="text-slate-400 font-semibold block text-xs uppercase mb-1">Batch</label>
@@ -218,19 +229,40 @@ const StudentPortal = () => {
                         </div>
                     </div>
 
-                    {/* LMS Stats - Attendance */}
-                    {lmsData && lmsData.attendance !== undefined && (
-                        <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
-                            <h3 className="text-lg font-bold text-slate-800 mb-6">Attendance</h3>
-                            <div className="flex items-center justify-between mb-4">
-                                <div className="text-5xl font-extrabold text-rose-600">{lmsData.attendance}%</div>
-                            </div>
-                            <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden shadow-inner">
-                                <div
-                                    className="bg-rose-500 h-full rounded-full"
-                                    style={{ width: `${lmsData.attendance}%` }}
-                                ></div>
-                            </div>
+                    {/* LMS Stats - Attendance & Progress */}
+                    {lmsData && (
+                        <div className="space-y-6">
+                            {lmsData.attendance !== undefined && (
+                                <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
+                                    <h3 className="text-lg font-bold text-slate-800 mb-6">Attendance</h3>
+                                    <div className="flex items-center justify-between mb-4">
+                                        <div className="text-5xl font-extrabold text-rose-600">{lmsData.attendance}%</div>
+                                    </div>
+                                    <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden shadow-inner">
+                                        <div
+                                            className="bg-rose-500 h-full rounded-full transition-all duration-1000"
+                                            style={{ width: `${lmsData.attendance}%` }}
+                                        ></div>
+                                    </div>
+                                    <p className="text-xs text-slate-400 mt-4 font-medium italic">* Based on live sessions joined</p>
+                                </div>
+                            )}
+
+                            {lmsData.course_progress !== undefined && (
+                                <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
+                                    <h3 className="text-lg font-bold text-slate-800 mb-6">Course Progress</h3>
+                                    <div className="flex items-center justify-between mb-4">
+                                        <div className="text-5xl font-extrabold text-amber-500">{lmsData.course_progress}%</div>
+                                    </div>
+                                    <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden shadow-inner">
+                                        <div
+                                            className="bg-amber-500 h-full rounded-full transition-all duration-1000"
+                                            style={{ width: `${lmsData.course_progress}%` }}
+                                        ></div>
+                                    </div>
+                                    <p className="text-xs text-slate-400 mt-4 font-medium italic">* Overall completion of modules & assessments</p>
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>

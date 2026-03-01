@@ -1,5 +1,5 @@
 
-from rest_framework import status, views, viewsets, generics
+from rest_framework import status, views, viewsets, generics, filters
 from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
 from django.contrib.auth import authenticate
@@ -35,9 +35,20 @@ class UserDetailView(views.APIView):
         return Response(serializer.data)
 
 class UserViewSet(viewsets.ModelViewSet):
-    queryset = User.objects.all()
     serializer_class = UserSerializer
     permission_classes = [IsAdminUser]
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['username', 'email', 'first_name', 'last_name']
+
+    def get_queryset(self):
+        queryset = User.objects.all().order_by('-id')
+        role = self.request.query_params.get('role')
+        if role:
+            if role == 'ADMIN':
+                queryset = queryset.filter(role__in=['ADMIN', 'SUPER_ADMIN', 'ACADEMIC'])
+            else:
+                queryset = queryset.filter(role=role)
+        return queryset
 
 class MentorListView(generics.ListAPIView):
     serializer_class = UserSerializer

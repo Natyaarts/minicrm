@@ -24,6 +24,7 @@ urlpatterns = [
     path('api/auth/', include('users.urls')),
     path('api/forms/', include('forms_builder.urls')),
     path('api/integrations/', include('integrations.urls')),
+    path('api/notifications/', include('notifications.urls')),
     path('api/', include('core.urls')),
 ]
 

@@ -66,6 +66,8 @@ const SalesModule = () => {
     const [editFormData, setEditFormData] = useState({});
     const [editSubPrograms, setEditSubPrograms] = useState([]);
     const [editCourses, setEditCourses] = useState([]);
+    const [studentPage, setStudentPage] = useState(1);
+    const [studentPagination, setStudentPagination] = useState({ count: 0, next: null, previous: null });
 
     // Helper: Load Program Details
     const loadProgramDetails = async (progId) => {
@@ -127,17 +129,37 @@ const SalesModule = () => {
             const fetchStudents = async () => {
                 setLoading(true);
                 try {
-                    const res = await api.get(`students/?is_active=${!isTrashView}`);
-                    setStudentList(res.data.results || res.data);
+                    const res = await api.get(`students/?is_active=${!isTrashView}&page=${studentPage}&search=${searchTerm}`);
+                    const data = res.data;
+                    if (data.results) {
+                        setStudentList(data.results);
+                        setStudentPagination({
+                            count: data.count,
+                            next: data.next,
+                            previous: data.previous
+                        });
+                    } else {
+                        setStudentList(Array.isArray(data) ? data : []);
+                        setStudentPagination({ count: data.length, next: null, previous: null });
+                    }
                 } catch (err) {
                     console.error("Failed to fetch students", err);
                 } finally {
                     setLoading(false);
                 }
             };
-            fetchStudents();
+
+            const timer = setTimeout(() => {
+                fetchStudents();
+            }, 500);
+            return () => clearTimeout(timer);
         }
-    }, [activeTab, isAuthenticated, isTrashView]);
+    }, [activeTab, isAuthenticated, isTrashView, studentPage, searchTerm]);
+
+    // Reset pagination on mode change
+    useEffect(() => {
+        setStudentPage(1);
+    }, [isTrashView, searchTerm]);
 
 
     // Handle Program Change UI
@@ -472,11 +494,7 @@ const SalesModule = () => {
     const hasCourses = courses.length > 0;
 
     // Filtered Students
-    const filteredStudents = studentList.filter(s =>
-        (s.first_name + ' ' + (s.last_name || '')).toLowerCase().includes(searchTerm.toLowerCase()) ||
-        s.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        s.program_name?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const filteredStudents = studentList;
 
     // UI Components
     const InputField = ({ label, name, type = "text", required = false, value, onChange, className }) => (
@@ -698,6 +716,29 @@ const SalesModule = () => {
                                         )}
                                     </tbody>
                                 </table>
+                            </div>
+
+                            {/* Pagination Controls */}
+                            <div className="mt-8 flex items-center justify-between bg-white p-4 border-t border-slate-100">
+                                <span className="text-sm text-slate-500 font-medium">
+                                    Showing <span className="text-slate-900 font-bold">{filteredStudents.length}</span> of <span className="text-slate-900 font-bold">{studentPagination.count}</span> applications
+                                </span>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => setStudentPage(p => Math.max(1, p - 1))}
+                                        disabled={!studentPagination.previous || loading}
+                                        className="px-4 py-2 rounded-xl bg-slate-100 border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-200 disabled:opacity-50 transition-all font-sans"
+                                    >
+                                        Previous
+                                    </button>
+                                    <button
+                                        onClick={() => setStudentPage(p => p + 1)}
+                                        disabled={!studentPagination.next || loading}
+                                        className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 shadow-md shadow-indigo-100 disabled:opacity-50 transition-all font-sans"
+                                    >
+                                        Next
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     ) : activeTab === 'bulk' && isAuthenticated ? (

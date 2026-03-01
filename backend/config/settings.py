@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     'core',
     'forms_builder',
     'integrations',
+    'notifications',
 ]
 
 MIDDLEWARE = [
@@ -190,3 +191,6 @@ MEDIA_ROOT = BASE_DIR / 'media'
 
 # Custom User Model
 AUTH_USER_MODEL = 'users.User'
+
+# Default primary key field type
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

@@ -190,3 +190,103 @@ class WiseService:
             except Exception as e:
                 print(f"Wise Sync Exception on page {page}: {e}")
                 break
+    # Adding student reports
+    def get_student_reports(self, lms_student_id):
+        """
+        Fetches student reports (progress, assessment results, etc.)
+        URL: https://api.wiseapp.live/public/institutes/{institute_id}/studentReports/{student_id}
+        """
+        if not self.api_key or not lms_student_id:
+            return None
+        try:
+            url = f"https://{self.host}/public/institutes/{self.institute_id}/studentReports/{lms_student_id}"
+            response = requests.get(url, headers=self.get_headers(), timeout=10)
+            if response.status_code == 200:
+                return response.json()
+            return None
+        except Exception as e:
+            print(f"Wise API Student Reports Error: {e}")
+            return None
+
+    def get_registration_data(self, lms_student_id):
+        """
+        Fetches student registration data.
+        URL: https://api.wiseapp.live/institutes/{institute_id}/participants/{student_id}?showRegistrationData=true
+        """
+        if not self.api_key or not lms_student_id:
+            return None
+        try:
+            url = f"https://{self.host}/institutes/{self.institute_id}/participants/{lms_student_id}?showRegistrationData=true"
+            response = requests.get(url, headers=self.get_headers(), timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('status') == 200:
+                    return data.get('data', {})
+            return None
+        except Exception as e:
+            print(f"Wise API Registration Data Error: {e}")
+            return None
+
+    def consume_credits(self, lms_student_id, class_id, credit, note="Consuming Credits", credit_type="DEBIT"):
+        """
+        Marks credits as consumed for a student.
+        URL: POST https://api.wiseapp.live/institutes/{institute_id}/classes/{class_id}/students/{student_id}/sessionCredits
+        """
+        if not self.api_key or not lms_student_id or not class_id:
+            return None
+        try:
+            url = f"https://{self.host}/institutes/{self.institute_id}/classes/{class_id}/students/{lms_student_id}/sessionCredits"
+            payload = {
+                "credit": str(credit),
+                "note": note,
+                "type": credit_type
+            }
+            response = requests.post(url, headers=self.get_headers(), json=payload, timeout=10)
+            if response.status_code == 200:
+                return response.json()
+            return None
+        except Exception as e:
+            print(f"Wise API Consume Credits Error: {e}")
+            return None
+
+    def get_all_courses(self, class_type="LIVE"):
+        """
+        Fetches all courses (classes) in the institute.
+        URL: https://api.wiseapp.live/institutes/{institute_id}/classes?classType={class_type}
+        """
+        if not self.api_key:
+            return []
+        try:
+            url = f"https://{self.host}/institutes/{self.institute_id}/classes?classType={class_type}&showCoTeachers=true"
+            response = requests.get(url, headers=self.get_headers(), timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('status') == 200:
+                    # Depending on API structure, it might be in 'data' or 'data.classes'
+                    result = data.get('data', {})
+                    if isinstance(result, list):
+                        return result
+                    return result.get('classes', [])
+            return []
+        except Exception as e:
+            print(f"Wise API Get Courses Error: {e}")
+            return []
+
+    def get_course_details(self, class_id):
+        """
+        Fetches detailed course information including fees.
+        URL: https://api.wiseapp.live/user/v2/classes/{class_id}?full=true
+        """
+        if not self.api_key or not class_id:
+            return None
+        try:
+            url = f"https://{self.host}/user/v2/classes/{class_id}?full=true"
+            response = requests.get(url, headers=self.get_headers(), timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('status') == 200:
+                    return data.get('data', {})
+            return None
+        except Exception as e:
+            print(f"Wise API Course Details Error: {e}")
+            return None

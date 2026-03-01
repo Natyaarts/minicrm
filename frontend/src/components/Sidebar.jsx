@@ -9,7 +9,9 @@ import {
     LogOut,
     Sparkles,
     Library,
-    X
+    X,
+    UserCircle,
+    BarChart2
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -18,19 +20,21 @@ import { motion } from 'framer-motion';
 
 const menuItems = [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/', module: 'COMMON' },
-    { icon: Users, label: 'Sales Module', path: '/sales', module: 'SALES' },
+    { icon: Users, label: 'Sales/Leads', path: '/sales', module: 'SALES' },
     { icon: GraduationCap, label: 'Mentor Module', path: '/mentor', module: 'MENTOR' },
     { icon: UserSquare2, label: 'Student Portal', path: '/student', module: 'STUDENT' },
     { icon: BookOpen, label: 'Academic', path: '/academic', module: 'ACADEMIC' },
     { icon: Library, label: 'Courses', path: '/courses', module: 'ACADEMIC' },
-    { icon: Settings, label: 'Admin', path: '/admin', module: 'ADMIN' },
+    { icon: BarChart2, label: 'Analytics', path: '/analytics', module: 'ANALYTICS' },
+    { icon: UserCircle, label: 'Staff Directory', path: '/users', module: 'ADMIN' },
+    { icon: Settings, label: 'Admin Panel', path: '/admin', module: 'ADMIN' },
 ];
 
 function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }) {
     const location = useLocation();
     const { user, logout } = useAuth();
 
-    const displayName = user ? (user.first_name ? `${user.first_name} ${user.last_name}` : user.username) : 'Guest';
+    const displayName = user ? (user.first_name ? `${user.first_name} ${user.last_name} ` : user.username) : 'Guest';
     const displayEmail = user?.email || 'No Email';
     const userRole = user?.role || 'User';
 
@@ -141,12 +145,12 @@ function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }) {
                                     className="w-full h-full rounded-full border-2 border-white"
                                     alt="Profile"
                                 />
-                            </div>
+                            </div >
                             <div className="overflow-hidden">
                                 <h4 className="text-sm font-black text-slate-800 truncate">{displayName}</h4>
                                 <p className="text-[10px] font-bold text-slate-400 truncate uppercase tracking-widest mt-0.5">{userRole.replace('_', ' ')}</p>
                             </div>
-                        </div>
+                        </div >
                         <button
                             onClick={logout}
                             className="flex items-center justify-center gap-2 w-full py-2.5 bg-slate-100 hover:bg-rose-50 hover:text-rose-600 border border-transparent hover:border-rose-100 rounded-xl text-xs font-bold text-slate-600 transition-all duration-200"
@@ -154,9 +158,9 @@ function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }) {
                             <LogOut size={14} strokeWidth={2.5} />
                             Disconnect
                         </button>
-                    </div>
-                </div>
-            </aside>
+                    </div >
+                </div >
+            </aside >
         </>
     );
 }
