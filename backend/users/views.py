@@ -12,6 +12,7 @@ User = get_user_model()
 
 class LoginView(views.APIView):
     permission_classes = [AllowAny]
+    authentication_classes = []  # No CSRF enforcement for public login endpoint
     def post(self, request):
         username = request.data.get('username')
         password = request.data.get('password')
