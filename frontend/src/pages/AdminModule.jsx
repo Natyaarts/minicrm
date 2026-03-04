@@ -5,7 +5,7 @@ import {
     ChevronRight, ChevronDown, Book, Layers, GraduationCap,
     Settings, ListPlus, Info, Eye, ExternalLink, Search,
     UserCircle, Shield, Globe, Terminal, Box, Database,
-    UserPlus, Users, Key, Settings2, ArrowRight, Send, FileText
+    UserPlus, Users, Key, Settings2, ArrowRight, Send, FileText, Check
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { copyToClipboard } from '../utils/clipboard';
@@ -18,6 +18,7 @@ const AdminModule = () => {
     const [selectedNode, setSelectedNode] = useState(null);
     const [showPreview, setShowPreview] = useState(false);
     const [previewStep, setPreviewStep] = useState(1);
+    const [toast, setToast] = useState(null);
 
     // Fields State
     const [programs, setPrograms] = useState([]);
@@ -287,7 +288,22 @@ const AdminModule = () => {
     };
 
     return (
-        <div className="space-y-8 text-slate-900 min-h-[calc(100vh-160px)] flex flex-col">
+        <div className="space-y-8 text-slate-900 min-h-[calc(100vh-160px)] flex flex-col relative">
+            <AnimatePresence>
+                {toast && (
+                    <motion.div
+                        initial={{ opacity: 0, y: -20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                        className="fixed top-8 left-1/2 -translate-x-1/2 z-[100] px-6 py-3 rounded-2xl bg-slate-900 text-white shadow-2xl flex items-center gap-3 font-bold text-sm whitespace-nowrap border border-slate-700/50 backdrop-blur-md"
+                    >
+                        <div className="w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center">
+                            <Check size={14} />
+                        </div>
+                        {toast.message}
+                    </motion.div>
+                )}
+            </AnimatePresence>
             <div className="flex justify-between items-center">
                 <h1 className="text-3xl font-black tracking-tight text-slate-800">
                     Administrator <span className="text-pink-600">Portal</span>
@@ -473,12 +489,32 @@ const AdminModule = () => {
                                 <button
                                     onClick={async () => {
                                         let slug = '';
-                                        if (selectedNode.type === 'course') slug = selectedNode.data?.program_slug || selectedNode.data?.id;
-                                        else slug = selectedNode.data?.slug || selectedNode.id;
+                                        if (selectedNode.type === 'program') {
+                                            slug = selectedNode.data?.slug || selectedNode.id;
+                                        } else {
+                                            // Find parent program slug from hierarchy
+                                            const findProg = (nodeId, type) => {
+                                                if (type === 'program') return hierarchy.find(p => p.id === nodeId);
+                                                // If node is course or subprogram, we need to traverse hierarchy
+                                                for (let p of hierarchy) {
+                                                    if (type === 'subprogram' && p.id === selectedNode.parentId) return p;
+                                                    if (p.sub_programs?.some(sp => {
+                                                        if (type === 'course' && sp.id === selectedNode.parentId) return true;
+                                                        if (type === 'subprogram' && sp.id === nodeId) return true;
+                                                        return false;
+                                                    })) return p;
+                                                }
+                                                return null;
+                                            };
+                                            const parentProg = findProg(selectedNode.id, selectedNode.type);
+                                            slug = parentProg?.slug || parentProg?.id || selectedNode.parentId || selectedNode.id;
+                                        }
+
                                         const link = `${window.location.origin}/apply/${slug}`;
                                         const success = await copyToClipboard(link);
                                         if (success) {
-                                            alert(`Link Copied: ${link}`);
+                                            setToast({ message: 'Enrollment Link Copied!' });
+                                            setTimeout(() => setToast(null), 3000);
                                         } else {
                                             window.prompt("Automatic copy blocked by browser. Please manually copy this:", link);
                                         }

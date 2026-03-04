@@ -3,7 +3,7 @@ import api from '../api/axios';
 import {
     Plus, Trash2, Edit2, AlertCircle, Save, X,
     ChevronRight, ChevronDown, Book, Layers, GraduationCap,
-    Settings, ListPlus, Info, Eye, ExternalLink, RefreshCw, FileText, Send
+    Settings, ListPlus, Info, Eye, ExternalLink, RefreshCw, FileText, Send, Check
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { copyToClipboard } from '../utils/clipboard';
@@ -25,6 +25,7 @@ const CoursesModule = () => {
     const [showPreview, setShowPreview] = useState(false);
     const [previewStep, setPreviewStep] = useState(1);
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [toast, setToast] = useState(null);
 
     // Form states
     const [formData, setFormData] = useState({
@@ -255,6 +256,21 @@ const CoursesModule = () => {
 
     return (
         <div className="h-[calc(100vh-180px)] flex gap-6 font-sans text-slate-900 overflow-hidden relative">
+            <AnimatePresence>
+                {toast && (
+                    <motion.div
+                        initial={{ opacity: 0, y: -20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                        className="fixed top-8 left-1/2 -translate-x-1/2 z-[100] px-6 py-3 rounded-2xl bg-slate-900 text-white shadow-2xl flex items-center gap-3 font-bold text-sm whitespace-nowrap border border-slate-700/50 backdrop-blur-md"
+                    >
+                        <div className="w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center">
+                            <Check size={14} />
+                        </div>
+                        {toast.message}
+                    </motion.div>
+                )}
+            </AnimatePresence>
             {/* Left Sidebar: Explorer */}
             <div className="w-80 flex flex-col bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
                 <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
@@ -419,16 +435,28 @@ const CoursesModule = () => {
                                         <div className="flex gap-2">
                                             <button
                                                 onClick={async () => {
-                                                    const slug = selectedNode.type === 'course' ? (selectedNode.data.program_slug || selectedNode.parentId) : (selectedNode.data.slug || selectedNode.id);
-                                                    const link = `${window.location.origin}/apply/${slug}`;
-
-                                                    console.log('Final link to copy:', link);
-                                                    const success = await copyToClipboard(link);
-
-                                                    if (success) {
-                                                        alert(`Link Copied: ${link}`);
+                                                    let slug = '';
+                                                    if (selectedNode.type === 'program') {
+                                                        slug = selectedNode.data?.slug || selectedNode.id;
                                                     } else {
-                                                        // Ultimate failsafe
+                                                        // Find parent program from hierarchy
+                                                        const parentProg = hierarchy.find(p =>
+                                                            p.id === selectedNode.id ||
+                                                            p.sub_programs?.some(sp =>
+                                                                sp.id === selectedNode.id ||
+                                                                sp.id === selectedNode.parentId ||
+                                                                sp.courses?.some(c => c.id === selectedNode.id)
+                                                            )
+                                                        );
+                                                        slug = parentProg?.slug || parentProg?.id || selectedNode.parentId || selectedNode.id;
+                                                    }
+
+                                                    const link = `${window.location.origin}/apply/${slug}`;
+                                                    const success = await copyToClipboard(link);
+                                                    if (success) {
+                                                        setToast({ message: 'Enrollment Link Copied!' });
+                                                        setTimeout(() => setToast(null), 3000);
+                                                    } else {
                                                         window.prompt("Automatic copy blocked by browser. Please manually copy this:", link);
                                                     }
                                                 }}

@@ -60,7 +60,7 @@ const SalesModule = () => {
     // Student List Data
     const [studentList, setStudentList] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
-    const [copied, setCopied] = useState(false);
+    const [toast, setToast] = useState(null);
     const [selectedStudentProfile, setSelectedStudentProfile] = useState(null);
     const [isTrashView, setIsTrashView] = useState(false);
     const [editingStudent, setEditingStudent] = useState(null);
@@ -114,7 +114,8 @@ const SalesModule = () => {
                         setSubPrograms(subRes.data);
 
                         const fieldsRes = await api.get(`forms/fields/?program=${progExists.id}`);
-                        setDynamicFields(fieldsRes.data.sort((a, b) => a.order - b.order));
+                        const fieldData = Array.isArray(fieldsRes.data) ? fieldsRes.data : (fieldsRes.data?.results || []);
+                        setDynamicFields(fieldData.sort((a, b) => a.order - b.order));
                     }
                 }
             } catch (err) {
@@ -184,11 +185,12 @@ const SalesModule = () => {
     const handleCopyLink = async () => {
         const prog = programs.find(p => p.id === parseInt(selectedProgram));
         const progSlug = prog?.slug || selectedProgram;
-        const url = `${window.location.origin}/apply?p=${progSlug}`;
+        const url = `${window.location.origin}/apply/${progSlug}`;
+
         const success = await copyToClipboard(url);
         if (success) {
-            setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
+            setToast({ type: 'success', message: 'Professional Share Link Copied!' });
+            setTimeout(() => setToast(null), 3000);
         }
     };
 
@@ -212,7 +214,8 @@ const SalesModule = () => {
     const fetchDynamicFields = async (param, id) => {
         try {
             const res = await api.get(`forms/fields/?${param}=${id}`);
-            const sorted = res.data.sort((a, b) => a.order - b.order);
+            const data = Array.isArray(res.data) ? res.data : (res.data?.results || []);
+            const sorted = data.sort((a, b) => a.order - b.order);
             setDynamicFields(sorted);
         } catch (err) {
             console.error(err);
@@ -577,7 +580,21 @@ const SalesModule = () => {
                     </div>
                 )}
 
-                <AnimatePresence mode='wait'>
+                <AnimatePresence>
+                    {toast && (
+                        <motion.div
+                            initial={{ opacity: 0, y: -20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -20 }}
+                            className="fixed top-8 left-1/2 -translate-x-1/2 z-[100] px-6 py-3 rounded-2xl bg-slate-900 text-white shadow-2xl flex items-center gap-3 font-bold text-sm whitespace-nowrap border border-slate-700/50 backdrop-blur-md"
+                        >
+                            <div className="w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center">
+                                <Check size={14} />
+                            </div>
+                            {toast.message}
+                        </motion.div>
+                    )}
+
                     {message && (
                         <motion.div
                             initial={{ opacity: 0, height: 0 }}
@@ -827,10 +844,13 @@ const SalesModule = () => {
                                             <button
                                                 type="button"
                                                 onClick={handleCopyLink}
-                                                className="flex items-center gap-2 px-4 py-3 rounded-xl border border-indigo-200 text-indigo-600 hover:bg-indigo-50 font-bold text-sm transition-colors w-full md:w-auto justify-center"
+                                                className="group relative flex items-center gap-3 px-6 py-4 rounded-2xl bg-white border-2 border-slate-100 hover:border-indigo-500 text-slate-600 hover:text-indigo-600 font-black text-sm transition-all w-full md:w-auto overflow-hidden shadow-sm hover:shadow-indigo-100"
                                             >
-                                                {copied ? <Check size={18} /> : <Copy size={18} />}
-                                                {copied ? 'Copied Public Link!' : 'Copy Public Form Link'}
+                                                <div className="relative z-10 flex items-center gap-3">
+                                                    <Copy size={18} className="transition-transform group-hover:scale-110" />
+                                                    <span>Get Enrollment Link</span>
+                                                </div>
+                                                <div className="absolute inset-0 bg-indigo-50 translate-y-[101%] group-hover:translate-y-0 transition-transform duration-300" />
                                             </button>
                                         </div>
                                     )}

@@ -15,9 +15,7 @@ const PublicApplicationForm = () => {
     const [program, setProgram] = useState(null);
     const [subPrograms, setSubPrograms] = useState([]);
     const [courses, setCourses] = useState([]);
-    const [programFields, setProgramFields] = useState([]);
-    const [subProgramFields, setSubProgramFields] = useState([]);
-    const [courseFields, setCourseFields] = useState([]);
+    const [activeFields, setActiveFields] = useState([]);
 
     // UI State
     const [step, setStep] = useState(1);
@@ -46,11 +44,12 @@ const PublicApplicationForm = () => {
 
             if (!prog) throw new Error("Program not found");
             setProgram(prog);
+            setSubPrograms(prog.sub_programs || []);
 
-            // 2. Fetch Program Fields
+            // 2. Fetch Initial Fields (Program level)
             const fRes = await api.get(`forms/fields/?program=${prog.id}`);
             const fieldData = Array.isArray(fRes.data) ? fRes.data : (fRes.data?.results || []);
-            setProgramFields(fieldData.sort((a, b) => a.order - b.order));
+            setActiveFields(fieldData.sort((a, b) => a.order - b.order));
         } catch (err) {
             console.error("Link invalid", err);
         } finally {
@@ -62,18 +61,17 @@ const PublicApplicationForm = () => {
         const sp = subPrograms.find(s => s.id.toString() === spId);
         setCourses(sp?.courses || []);
         setFormData({ ...formData, sub_program: spId, course: '' });
-        setCourseFields([]); // Reset course fields
-
         if (spId) {
             try {
                 const res = await api.get(`forms/fields/?sub_program=${spId}`);
                 const fieldData = Array.isArray(res.data) ? res.data : (res.data?.results || []);
-                setSubProgramFields(fieldData.sort((a, b) => a.order - b.order));
+                setActiveFields(fieldData.sort((a, b) => a.order - b.order));
             } catch (err) {
                 console.error("Failed to fetch sub-program fields", err);
             }
         } else {
-            setSubProgramFields([]);
+            // Revert to program fields
+            fetchApplicationContext();
         }
     };
 
@@ -83,12 +81,13 @@ const PublicApplicationForm = () => {
             try {
                 const res = await api.get(`forms/fields/?course=${cId}`);
                 const fieldData = Array.isArray(res.data) ? res.data : (res.data?.results || []);
-                setCourseFields(fieldData.sort((a, b) => a.order - b.order));
+                setActiveFields(fieldData.sort((a, b) => a.order - b.order));
             } catch (err) {
                 console.error("Failed to fetch course fields", err);
             }
         } else {
-            setCourseFields([]);
+            // Revert to sub-program fields if course deselected
+            if (formData.sub_program) handleSubProgramChange(formData.sub_program);
         }
     };
 
@@ -104,7 +103,7 @@ const PublicApplicationForm = () => {
         setSubmitting(true);
         try {
             const formDataObj = new FormData();
-            const allFields = [...programFields, ...courseFields];
+            const allFields = activeFields;
             const dynamicValues = formData.dynamic_values;
 
             // --- SMART MAPPING LOGIC ---
@@ -133,6 +132,7 @@ const PublicApplicationForm = () => {
             // Standard Defaults
             formDataObj.append('program_type', program.id);
             formDataObj.append('is_active', 'true');
+            if (formData.sub_program) formDataObj.append('sub_program', formData.sub_program);
             if (formData.course) formDataObj.append('course', formData.course);
 
             // Dynamic Values Logic
@@ -217,7 +217,41 @@ const PublicApplicationForm = () => {
                             <p className="text-slate-500 font-medium">Please provide the details required for your enrollment.</p>
                         </div>
 
-                        {([...programFields, ...courseFields]).length === 0 ? (
+                        {/* Category & Course Selection */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6 bg-slate-50 rounded-[30px] border border-slate-100">
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Select Category</label>
+                                <select
+                                    className="w-full p-4 rounded-2xl bg-white border border-slate-200 outline-none font-bold text-sm shadow-sm"
+                                    value={formData.sub_program}
+                                    onChange={(e) => handleSubProgramChange(e.target.value)}
+                                    required
+                                >
+                                    <option value="">Select Category</option>
+                                    {subPrograms.map(sp => (
+                                        <option key={sp.id} value={sp.id}>{sp.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Select Course</label>
+                                <select
+                                    className="w-full p-4 rounded-2xl bg-white border border-slate-200 outline-none font-bold text-sm shadow-sm"
+                                    value={formData.course}
+                                    onChange={(e) => handleCourseChange(e.target.value)}
+                                    required
+                                    disabled={!formData.sub_program}
+                                >
+                                    <option value="">Select Course</option>
+                                    {courses.map(c => (
+                                        <option key={c.id} value={c.id}>{c.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+
+                        {activeFields.length === 0 ? (
                             <div className="text-center py-20 bg-slate-50 rounded-[40px] border-2 border-dashed border-slate-100">
                                 <div className="w-20 h-20 bg-white rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-sm border border-slate-200">
                                     <Sparkles className="text-indigo-400" />
@@ -226,7 +260,7 @@ const PublicApplicationForm = () => {
                                 <p className="text-slate-400 max-w-xs mx-auto mt-2 text-sm">Use the form builder in your dashboard to add fields to this brand.</p>
                             </div>
                         ) : (
-                            ([...programFields, ...courseFields]).map(field => (
+                            activeFields.map(field => (
                                 <div key={field.id} className="space-y-3">
                                     <label className="block text-xs font-black uppercase tracking-widest text-slate-400 ml-1">
                                         {field.label} {field.is_required && <span className="text-red-500">*</span>}
@@ -265,7 +299,7 @@ const PublicApplicationForm = () => {
                             ))
                         )}
 
-                        {([...programFields, ...courseFields]).length > 0 && (
+                        {activeFields.length > 0 && (
                             <button
                                 type="submit"
                                 disabled={submitting}
