@@ -167,10 +167,12 @@ const AdminModule = () => {
     };
 
     const fetchFields = async () => {
-        if (!selectedNode || selectedNode.type !== 'program') return;
+        if (!selectedNode) return;
 
         const params = new URLSearchParams();
-        params.append('program', selectedNode.id);
+        if (selectedNode.type === 'program') params.append('program', selectedNode.id);
+        else if (selectedNode.type === 'subprogram') params.append('sub_program', selectedNode.id);
+        else if (selectedNode.type === 'course') params.append('course', selectedNode.id);
 
         try {
             const res = await api.get(`forms/fields/?${params.toString()}`);
@@ -183,7 +185,11 @@ const AdminModule = () => {
 
     const handleCreateField = async (e) => {
         e.preventDefault();
-        const payload = { ...newField, program: selectedNode.id };
+        const payload = { ...newField };
+
+        if (selectedNode.type === 'program') payload.program = selectedNode.id;
+        else if (selectedNode.type === 'subprogram') payload.sub_program = selectedNode.id;
+        else if (selectedNode.type === 'course') payload.course = selectedNode.id;
 
         if (payload.field_type === 'dropdown' && typeof payload.options === 'string') {
             payload.options = payload.options.split(',').map(s => s.trim());
@@ -462,25 +468,36 @@ const AdminModule = () => {
                                 {selectedNode?.type === 'program' && <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Brand-Level Custom Fields</p>}
                             </div>
 
-                            {selectedNode?.type === 'program' && (
-                                <div className="flex gap-2">
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => {
+                                        let slug = '';
+                                        if (selectedNode.type === 'course') slug = selectedNode.data?.program_slug || selectedNode.data?.id;
+                                        else slug = selectedNode.data?.slug || selectedNode.id;
+                                        const link = `${window.location.origin}/apply/${slug}`;
+                                        navigator.clipboard.writeText(link);
+                                        alert("Shareable Link Copied! Send this to your students.");
+                                    }}
+                                    className="bg-emerald-50 text-emerald-600 font-black text-[10px] uppercase tracking-widest px-4 py-3 rounded-2xl border border-emerald-100 flex items-center gap-2 hover:bg-emerald-100 transition-all active:scale-95"
+                                >
+                                    <ExternalLink size={14} /> Copy Share Link
+                                </button>
+                                <button
+                                    onClick={() => setShowPreview(!showPreview)}
+                                    className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-xl hover:shadow-2xl transform hover:-translate-y-0.5 active:scale-95 ${showPreview ? 'bg-slate-800 text-white shadow-slate-200' : 'bg-indigo-600 text-white shadow-indigo-200'}`}
+                                >
+                                    <Eye size={16} />
+                                    {showPreview ? 'Back to Editor' : 'Live Preview'}
+                                </button>
+                                {!showPreview && (
                                     <button
-                                        onClick={() => setShowPreview(!showPreview)}
-                                        className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-xl hover:shadow-2xl transform hover:-translate-y-0.5 active:scale-95 ${showPreview ? 'bg-slate-800 text-white shadow-slate-200' : 'bg-indigo-600 text-white shadow-indigo-200'}`}
+                                        onClick={() => setFieldModalOpen(true)}
+                                        className="bg-pink-600 hover:bg-pink-700 text-white font-black text-xs uppercase tracking-widest px-6 py-3 rounded-2xl transition-all shadow-xl shadow-pink-500/20 transform hover:-translate-y-0.5 active:scale-95"
                                     >
-                                        <Eye size={16} />
-                                        {showPreview ? 'Back to Editor' : 'Live Preview'}
+                                        + Create Field
                                     </button>
-                                    {!showPreview && (
-                                        <button
-                                            onClick={() => setFieldModalOpen(true)}
-                                            className="bg-pink-600 hover:bg-pink-700 text-white font-black text-xs uppercase tracking-widest px-6 py-3 rounded-2xl transition-all shadow-xl shadow-pink-500/20 transform hover:-translate-y-0.5 active:scale-95"
-                                        >
-                                            + Create Field
-                                        </button>
-                                    )}
-                                </div>
-                            )}
+                                )}
+                            </div>
                         </div>
 
                         <div className="flex-1 overflow-y-auto p-10 custom-scrollbar bg-slate-50/20">
@@ -597,26 +614,6 @@ const AdminModule = () => {
                                     <p className="text-center mt-8 text-slate-400 text-[10px] font-black uppercase tracking-[0.2em] animate-pulse">
                                         This is a simulated preview of the student application link
                                     </p>
-                                </div>
-                            ) : selectedNode.type !== 'program' ? (
-                                <div className="h-full flex flex-col items-center justify-center text-center bg-white/50 backdrop-blur-xl rounded-[40px] border-2 border-dashed border-slate-100 p-12">
-                                    <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center mb-6 shadow-sm border border-slate-50">
-                                        <Info size={32} className="text-indigo-400" />
-                                    </div>
-                                    <h4 className="text-xl font-black text-slate-800 tracking-tight">Structural Inheritance</h4>
-                                    <p className="text-slate-500 max-w-sm mt-3 text-sm leading-relaxed">
-                                        Fields are now inherited from the **Brand level**.
-                                        To add or remove questions for <span className="text-indigo-600 font-bold">{selectedNode.name}</span>, please modify the parent Brand form.
-                                    </p>
-                                    <button
-                                        onClick={() => {
-                                            const parent = hierarchy.find(p => p.id === (selectedNode.data?.program || selectedNode.data?.program_id));
-                                            if (parent) setSelectedNode({ type: 'program', id: parent.id, name: parent.name, data: parent });
-                                        }}
-                                        className="mt-8 text-xs font-black uppercase tracking-widest text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-6 py-3 rounded-xl transition"
-                                    >
-                                        Go to Parent Brand
-                                    </button>
                                 </div>
                             ) : fields.length === 0 ? (
                                 <div className="h-full flex flex-col items-center justify-center text-center border-2 border-dashed border-slate-100 rounded-[40px] bg-white/40 p-12">

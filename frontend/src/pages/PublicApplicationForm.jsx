@@ -15,7 +15,9 @@ const PublicApplicationForm = () => {
     const [program, setProgram] = useState(null);
     const [subPrograms, setSubPrograms] = useState([]);
     const [courses, setCourses] = useState([]);
-    const [customFields, setCustomFields] = useState([]);
+    const [programFields, setProgramFields] = useState([]);
+    const [subProgramFields, setSubProgramFields] = useState([]);
+    const [courseFields, setCourseFields] = useState([]);
 
     // UI State
     const [step, setStep] = useState(1);
@@ -44,11 +46,11 @@ const PublicApplicationForm = () => {
 
             if (!prog) throw new Error("Program not found");
             setProgram(prog);
-            setSubPrograms(prog.sub_programs || []);
 
-            // 2. Fetch Fields for this Program
+            // 2. Fetch Program Fields
             const fRes = await api.get(`forms/fields/?program=${prog.id}`);
-            setCustomFields(fRes.data.sort((a, b) => a.order - b.order));
+            const fieldData = Array.isArray(fRes.data) ? fRes.data : (fRes.data?.results || []);
+            setProgramFields(fieldData.sort((a, b) => a.order - b.order));
         } catch (err) {
             console.error("Link invalid", err);
         } finally {
@@ -56,10 +58,38 @@ const PublicApplicationForm = () => {
         }
     };
 
-    const handleSubProgramChange = (spId) => {
+    const handleSubProgramChange = async (spId) => {
         const sp = subPrograms.find(s => s.id.toString() === spId);
         setCourses(sp?.courses || []);
         setFormData({ ...formData, sub_program: spId, course: '' });
+        setCourseFields([]); // Reset course fields
+
+        if (spId) {
+            try {
+                const res = await api.get(`forms/fields/?sub_program=${spId}`);
+                const fieldData = Array.isArray(res.data) ? res.data : (res.data?.results || []);
+                setSubProgramFields(fieldData.sort((a, b) => a.order - b.order));
+            } catch (err) {
+                console.error("Failed to fetch sub-program fields", err);
+            }
+        } else {
+            setSubProgramFields([]);
+        }
+    };
+
+    const handleCourseChange = async (cId) => {
+        setFormData({ ...formData, course: cId });
+        if (cId) {
+            try {
+                const res = await api.get(`forms/fields/?course=${cId}`);
+                const fieldData = Array.isArray(res.data) ? res.data : (res.data?.results || []);
+                setCourseFields(fieldData.sort((a, b) => a.order - b.order));
+            } catch (err) {
+                console.error("Failed to fetch course fields", err);
+            }
+        } else {
+            setCourseFields([]);
+        }
     };
 
     const handleDynamicChange = (fieldId, value) => {
@@ -73,15 +103,57 @@ const PublicApplicationForm = () => {
         e.preventDefault();
         setSubmitting(true);
         try {
-            const payload = {
-                ...formData,
-                program_type: program.id,
-                is_active: false // Critical: Set as inactive lead
-            };
-            await api.post('students/', payload);
+            const formDataObj = new FormData();
+            const allFields = [...programFields, ...courseFields];
+            const dynamicValues = formData.dynamic_values;
+
+            // --- SMART MAPPING LOGIC ---
+            // We search for fields you created manually and map them to standard system fields
+            allFields.forEach(f => {
+                const label = f.label.toLowerCase();
+                const val = dynamicValues[f.id];
+                if (!val) return;
+
+                // Map Name
+                if ((label.includes('name') || label === 'name') && !formDataObj.has('first_name')) {
+                    const parts = String(val).trim().split(' ');
+                    formDataObj.append('first_name', parts[0]);
+                    formDataObj.append('last_name', parts.slice(1).join(' ') || 'Student');
+                }
+                // Map Email
+                if (label.includes('email') && !formDataObj.has('email')) {
+                    formDataObj.append('email', val);
+                }
+                // Map Mobile (Improved keywords: mob, phone, contact, tel)
+                if ((label.includes('mobile') || label.includes('phone') || label.includes('mob') || label.includes('contact')) && !formDataObj.has('mobile')) {
+                    formDataObj.append('mobile', val);
+                }
+            });
+
+            // Standard Defaults
+            formDataObj.append('program_type', program.id);
+            formDataObj.append('is_active', 'true');
+            if (formData.course) formDataObj.append('course', formData.course);
+
+            // Dynamic Values Logic
+            const dynamicTextValue = {};
+            Object.entries(dynamicValues).forEach(([fieldId, value]) => {
+                if (value instanceof File) {
+                    formDataObj.append(`dynamic_file_${fieldId}`, value);
+                } else {
+                    dynamicTextValue[fieldId] = value;
+                }
+            });
+
+            formDataObj.append('dynamic_values', JSON.stringify(dynamicTextValue));
+
+            await api.post('students/', formDataObj, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
             setSubmitted(true);
         } catch (err) {
-            alert("Submission failed. Please check form data.");
+            console.error("Submission error:", err);
+            alert("Submission failed. Please check if you have added Name and Mobile fields.");
         } finally {
             setSubmitting(false);
         }
@@ -129,7 +201,7 @@ const PublicApplicationForm = () => {
                         <h2 className="font-black text-xl tracking-tight">{program?.name}</h2>
                     </div>
                     <div className="flex gap-1">
-                        {[1, 2, 3].map(i => (
+                        {[1, 2].map(i => (
                             <div key={i} className={`h-1.5 w-12 rounded-full transition-all ${step >= i ? 'bg-indigo-600' : 'bg-slate-100'}`} />
                         ))}
                     </div>
@@ -139,210 +211,70 @@ const PublicApplicationForm = () => {
             <main className="max-w-3xl mx-auto py-12 px-4">
                 <form onSubmit={handleSubmit} className="space-y-8">
 
-                    {/* Step 1: Basic Info */}
-                    {step === 1 && (
-                        <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="space-y-6">
-                            <div className="mb-8">
-                                <h1 className="text-4xl font-black text-slate-900 mb-2 tracking-tight">Personal Details</h1>
-                                <p className="text-slate-500 font-medium">Let's start with your basic identification</p>
+                    <div className="bg-white p-10 rounded-[40px] border border-slate-100 shadow-2xl space-y-8 animate-fadeIn">
+                        <div className="mb-4">
+                            <h1 className="text-4xl font-black text-slate-900 tracking-tight mb-2">Application Form</h1>
+                            <p className="text-slate-500 font-medium">Please provide the details required for your enrollment.</p>
+                        </div>
+
+                        {([...programFields, ...courseFields]).length === 0 ? (
+                            <div className="text-center py-20 bg-slate-50 rounded-[40px] border-2 border-dashed border-slate-100">
+                                <div className="w-20 h-20 bg-white rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-sm border border-slate-200">
+                                    <Sparkles className="text-indigo-400" />
+                                </div>
+                                <h3 className="text-lg font-black text-slate-800">No Fields Created Yet</h3>
+                                <p className="text-slate-400 max-w-xs mx-auto mt-2 text-sm">Use the form builder in your dashboard to add fields to this brand.</p>
                             </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div>
-                                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 ml-1">First Name</label>
-                                    <div className="relative">
-                                        <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-                                        <input
-                                            required
-                                            className="w-full pl-12 pr-4 py-4 bg-white border border-slate-100 rounded-2xl focus:ring-4 focus:ring-indigo-50 focus:border-indigo-500 outline-none transition-all font-bold"
-                                            value={formData.first_name}
-                                            onChange={e => setFormData({ ...formData, first_name: e.target.value })}
-                                        />
-                                    </div>
-                                </div>
-                                <div>
-                                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 ml-1">Last Name</label>
-                                    <input
-                                        required
-                                        className="w-full px-4 py-4 bg-white border border-slate-100 rounded-2xl focus:ring-4 focus:ring-indigo-50 focus:border-indigo-500 outline-none transition-all font-bold"
-                                        value={formData.last_name}
-                                        onChange={e => setFormData({ ...formData, last_name: e.target.value })}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 ml-1">Email ID</label>
-                                    <div className="relative">
-                                        <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-                                        <input
-                                            type="email" required
-                                            className="w-full pl-12 pr-4 py-4 bg-white border border-slate-100 rounded-2xl focus:ring-4 focus:ring-indigo-50 focus:border-indigo-500 outline-none transition-all font-bold"
-                                            value={formData.email}
-                                            onChange={e => setFormData({ ...formData, email: e.target.value })}
-                                        />
-                                    </div>
-                                </div>
-                                <div>
-                                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 ml-1">Mobile Number</label>
-                                    <div className="relative">
-                                        <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-                                        <input
-                                            required
-                                            className="w-full pl-12 pr-4 py-4 bg-white border border-slate-100 rounded-2xl focus:ring-4 focus:ring-indigo-50 focus:border-indigo-500 outline-none transition-all font-bold"
-                                            value={formData.mobile}
-                                            onChange={e => setFormData({ ...formData, mobile: e.target.value })}
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-
-                            <button
-                                type="button"
-                                onClick={() => setStep(2)}
-                                className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black text-lg flex items-center justify-center gap-2 hover:bg-indigo-700 transition shadow-xl shadow-indigo-100"
-                            >
-                                Next Step <ArrowRight size={20} />
-                            </button>
-                        </motion.div>
-                    )}
-
-                    {/* Step 2: Course Selection */}
-                    {step === 2 && (
-                        <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="space-y-6">
-                            <div className="mb-8">
-                                <h1 className="text-4xl font-black text-slate-900 mb-2 tracking-tight">Select Course</h1>
-                                <p className="text-slate-500 font-medium">Choose your preferred learning track</p>
-                            </div>
-
-                            <div className="space-y-6">
-                                <div className="p-6 bg-white border border-slate-100 rounded-[32px] shadow-sm">
-                                    <label className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4">
-                                        <BookOpen size={14} /> Category
+                        ) : (
+                            ([...programFields, ...courseFields]).map(field => (
+                                <div key={field.id} className="space-y-3">
+                                    <label className="block text-xs font-black uppercase tracking-widest text-slate-400 ml-1">
+                                        {field.label} {field.is_required && <span className="text-red-500">*</span>}
                                     </label>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                        {subPrograms.map(sp => (
-                                            <div
-                                                key={sp.id}
-                                                onClick={() => handleSubProgramChange(sp.id.toString())}
-                                                className={`p-4 rounded-2xl border-2 cursor-pointer transition-all ${formData.sub_program === sp.id.toString()
-                                                        ? 'bg-indigo-50 border-indigo-500 scale-[1.02]'
-                                                        : 'bg-white border-slate-50 hover:border-slate-200'
-                                                    }`}
-                                            >
-                                                <p className="font-black text-sm">{sp.name}</p>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
 
-                                <AnimatePresence>
-                                    {courses.length > 0 && (
-                                        <motion.div
-                                            initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                                            className="p-6 bg-white border border-indigo-50 rounded-[32px] shadow-sm ring-4 ring-indigo-500/5"
+                                    {field.field_type === 'dropdown' ? (
+                                        <select
+                                            required={field.is_required}
+                                            className="w-full p-5 rounded-2xl bg-slate-50 border-2 border-transparent focus:bg-white focus:border-indigo-500 outline-none font-bold transition-all appearance-none cursor-pointer"
+                                            onChange={e => handleDynamicChange(field.id, e.target.value)}
                                         >
-                                            <label className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-indigo-400 mb-4">
-                                                <Sparkles size={14} /> Available Courses
-                                            </label>
-                                            <div className="grid grid-cols-1 gap-3">
-                                                {courses.map(c => (
-                                                    <div
-                                                        key={c.id}
-                                                        onClick={() => setFormData({ ...formData, course: c.id.toString() })}
-                                                        className={`p-5 rounded-2xl border-2 cursor-pointer transition-all flex justify-between items-center ${formData.course === c.id.toString()
-                                                                ? 'bg-indigo-600 border-transparent text-white shadow-lg'
-                                                                : 'bg-white border-slate-50 hover:border-indigo-100 text-slate-700'
-                                                            }`}
-                                                    >
-                                                        <span className="font-black">{c.name}</span>
-                                                        {c.fee_amount > 0 && <span className="text-xs font-bold opacity-80">₹{c.fee_amount}</span>}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </motion.div>
-                                    )}
-                                </AnimatePresence>
-                            </div>
-
-                            <div className="flex gap-4">
-                                <button type="button" onClick={() => setStep(1)} className="px-8 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black">Back</button>
-                                <button
-                                    type="button"
-                                    disabled={!formData.course}
-                                    onClick={() => setStep(3)}
-                                    className="flex-1 py-4 bg-indigo-600 text-white rounded-2xl font-black text-lg disabled:opacity-50 transition shadow-xl shadow-indigo-100"
-                                >
-                                    Continue
-                                </button>
-                            </div>
-                        </motion.div>
-                    )}
-
-                    {/* Step 3: Custom Fields */}
-                    {step === 3 && (
-                        <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="space-y-6">
-                            <div className="mb-8">
-                                <h1 className="text-4xl font-black text-slate-900 mb-2 tracking-tight">Additional Info</h1>
-                                <p className="text-slate-500 font-medium">Just a few more things we need to know</p>
-                            </div>
-
-                            <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm space-y-8">
-                                {customFields.length === 0 ? (
-                                    <div className="text-center py-8">
-                                        <p className="font-bold text-slate-400 uppercase tracking-widest text-xs mb-2">Almost Done!</p>
-                                        <p className="text-slate-500 font-medium">No additional information required for this program.</p>
-                                    </div>
-                                ) : (
-                                    customFields.map(field => (
-                                        <div key={field.id} className="space-y-3">
-                                            <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">
-                                                {field.label} {field.is_required && <span className="text-red-500">*</span>}
-                                            </label>
-
-                                            {field.field_type === 'dropdown' ? (
-                                                <select
-                                                    required={field.is_required}
-                                                    className="w-full p-4 rounded-2xl bg-slate-50 border border-transparent focus:bg-white focus:border-indigo-500 outline-none font-bold transition-all appearance-none"
-                                                    onChange={e => handleDynamicChange(field.id, e.target.value)}
-                                                >
-                                                    <option value="">Select Option</option>
-                                                    {(Array.isArray(field.options) ? field.options : field.options?.split(',') || []).map(opt => (
-                                                        <option key={opt} value={opt}>{opt.trim()}</option>
-                                                    ))}
-                                                </select>
-                                            ) : field.field_type === 'file' ? (
-                                                <div className="relative group">
-                                                    <input
-                                                        type="file"
-                                                        className="w-full p-4 rounded-2xl border-2 border-dashed border-slate-200 group-hover:border-indigo-300 transition-all cursor-pointer text-sm font-medium"
-                                                        onChange={e => handleDynamicChange(field.id, e.target.files[0])}
-                                                    />
-                                                </div>
-                                            ) : (
-                                                <input
-                                                    type={field.field_type}
-                                                    required={field.is_required}
-                                                    className="w-full p-4 rounded-2xl bg-slate-50 border border-transparent focus:bg-white focus:border-indigo-500 outline-none font-bold transition-all"
-                                                    placeholder={`Enter ${field.label}`}
-                                                    onChange={e => handleDynamicChange(field.id, e.target.value)}
-                                                />
-                                            )}
+                                            <option value="">Select Option</option>
+                                            {(Array.isArray(field.options) ? field.options : field.options?.split(',') || []).map(opt => (
+                                                <option key={opt} value={opt}>{opt.trim()}</option>
+                                            ))}
+                                        </select>
+                                    ) : field.field_type === 'file' ? (
+                                        <div className="relative">
+                                            <input
+                                                type="file"
+                                                required={field.is_required}
+                                                className="w-full p-5 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 group-hover:border-indigo-300 transition-all cursor-pointer text-sm font-medium"
+                                                onChange={e => handleDynamicChange(field.id, e.target.files[0])}
+                                            />
                                         </div>
-                                    ))
-                                )}
-                            </div>
+                                    ) : (
+                                        <input
+                                            type={field.field_type}
+                                            required={field.is_required}
+                                            className="w-full p-5 rounded-2xl bg-slate-50 border-2 border-transparent focus:bg-white focus:border-indigo-500 outline-none font-bold transition-all"
+                                            placeholder={`Your ${field.label}`}
+                                            onChange={e => handleDynamicChange(field.id, e.target.value)}
+                                        />
+                                    )}
+                                </div>
+                            ))
+                        )}
 
-                            <div className="flex gap-4">
-                                <button type="button" onClick={() => setStep(2)} className="px-8 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black">Back</button>
-                                <button
-                                    type="submit"
-                                    disabled={submitting}
-                                    className="flex-1 py-4 bg-indigo-600 text-white rounded-2xl font-black text-lg flex items-center justify-center gap-3 transition shadow-xl shadow-indigo-100"
-                                >
-                                    {submitting ? 'Submitting...' : <>Final Submission <Send size={20} /></>}
-                                </button>
-                            </div>
-                        </motion.div>
-                    )}
+                        {([...programFields, ...courseFields]).length > 0 && (
+                            <button
+                                type="submit"
+                                disabled={submitting}
+                                className="w-full py-5 bg-indigo-600 text-white rounded-[30px] font-black text-xl hover:bg-indigo-700 transition shadow-2xl shadow-indigo-200 transform active:scale-95 disabled:opacity-50 flex items-center justify-center gap-4"
+                            >
+                                {submitting ? "Processing..." : <>Final Submission <Send size={24} /></>}
+                            </button>
+                        )}
+                    </div>
 
                 </form>
             </main>

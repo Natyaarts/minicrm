@@ -186,7 +186,7 @@ class StudentViewSet(viewsets.ModelViewSet):
         if program:
             qs = qs.filter(program_id=program)
 
-        return qs
+        return qs.order_by('-id')
 
     def perform_destroy(self, instance):
         instance.is_active = False

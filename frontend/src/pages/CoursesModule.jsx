@@ -3,7 +3,7 @@ import api from '../api/axios';
 import {
     Plus, Trash2, Edit2, AlertCircle, Save, X,
     ChevronRight, ChevronDown, Book, Layers, GraduationCap,
-    Settings, ListPlus, Info, Eye, ExternalLink
+    Settings, ListPlus, Info, Eye, ExternalLink, RefreshCw, FileText, Send
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -23,6 +23,7 @@ const CoursesModule = () => {
     const [editMode, setEditMode] = useState(false);
     const [showPreview, setShowPreview] = useState(false);
     const [previewStep, setPreviewStep] = useState(1);
+    const [isRefreshing, setIsRefreshing] = useState(false);
 
     // Form states
     const [formData, setFormData] = useState({
@@ -62,18 +63,22 @@ const CoursesModule = () => {
     };
 
     const fetchFields = async (node) => {
-        if (node.type !== 'program') {
-            setFields([]);
-            return;
-        }
+        if (!node) return;
         const params = new URLSearchParams();
-        params.append('program', node.id);
+        if (node.type === 'program') params.append('program', node.id);
+        else if (node.type === 'subprogram') params.append('sub_program', node.id);
+        else if (node.type === 'course') params.append('course', node.id);
 
+        setIsRefreshing(true);
         try {
+            console.log(`[CoursesModule] Fetching fields for ${node.type} ID: ${node.id}`);
             const res = await api.get(`forms/fields/?${params.toString()}`);
-            setFields(res.data.sort((a, b) => a.order - b.order));
+            const fieldData = Array.isArray(res.data) ? res.data : (res.data?.results || []);
+            setFields(fieldData.sort((a, b) => a.order - b.order));
         } catch (err) {
-            console.error("Failed to fetch fields", err);
+            console.error("[CoursesModule] Failed to fetch fields", err);
+        } finally {
+            setTimeout(() => setIsRefreshing(false), 500);
         }
     };
 
@@ -98,8 +103,8 @@ const CoursesModule = () => {
                 payload = { ...formData.field };
                 if (!editMode) {
                     if (selectedNode.type === 'program') payload.program = selectedNode.id;
-                    if (selectedNode.type === 'subprogram') payload.sub_program = selectedNode.id;
-                    if (selectedNode.type === 'course') payload.course = selectedNode.id;
+                    else if (selectedNode.type === 'subprogram') payload.sub_program = selectedNode.id;
+                    else if (selectedNode.type === 'course') payload.course = selectedNode.id;
                 }
                 if (payload.field_type === 'dropdown' && typeof payload.options === 'string') {
                     payload.options = payload.options.split(',').map(s => s.trim());
@@ -123,11 +128,19 @@ const CoursesModule = () => {
                 await api.post(endpoint, payload);
             }
 
+            console.log("[CoursesModule] Action successful, refreshing view...");
             setActiveModal(null);
             setEditMode(false);
-            if (isField) fetchFields(selectedNode);
-            else fetchHierarchy();
+
+            // Refresh logic
+            if (isField) {
+                fetchFields(selectedNode);
+            } else {
+                await fetchHierarchy();
+                // If we edited the current selected node, we might need to refresh its data
+            }
         } catch (err) {
+            console.error("[CoursesModule] Action Error:", err);
             alert("Action failed. Please check inputs.");
         }
     };
@@ -240,7 +253,7 @@ const CoursesModule = () => {
     };
 
     return (
-        <div className="h-[calc(100vh-140px)] flex gap-6 font-sans text-slate-900 overflow-hidden">
+        <div className="h-[calc(100vh-180px)] flex gap-6 font-sans text-slate-900 overflow-hidden relative">
             {/* Left Sidebar: Explorer */}
             <div className="w-80 flex flex-col bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
                 <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
@@ -284,6 +297,12 @@ const CoursesModule = () => {
                                 <h1 className="text-3xl font-black text-slate-900 leading-tight">
                                     {selectedNode.name}
                                 </h1>
+                                {selectedNode.type === 'course' && (
+                                    <div className="flex items-center gap-2 mt-2 px-3 py-1 bg-emerald-50 border border-emerald-100 rounded-lg w-fit">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                        <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-widest">Shareable Course Link Active</span>
+                                    </div>
+                                )}
                             </div>
 
                             <div className="flex gap-3">
@@ -321,25 +340,100 @@ const CoursesModule = () => {
                         </div>
 
                         {/* Content Grid */}
-                        <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 overflow-hidden pb-4">
+                        <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 min-h-0 pb-4">
                             {/* Form Fields Section - Only for Programs */}
-                            {selectedNode.type === 'program' ? (
+                            {showPreview ? (
+                                <div className="lg:col-span-2 max-w-2xl mx-auto w-full animate-fadeIn overflow-y-auto custom-scrollbar pr-2 h-full">
+                                    <div className="flex justify-center gap-2 mb-6">
+                                        {[1, 2, 3].map(i => (
+                                            <div key={i} className={`h-1 w-12 rounded-full transition-all ${previewStep >= i ? 'bg-indigo-600' : 'bg-slate-200'}`} />
+                                        ))}
+                                    </div>
+
+                                    <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-2xl relative">
+                                        <div className="absolute top-0 right-0 px-4 py-1.5 bg-indigo-600 text-white text-[10px] font-black uppercase tracking-[0.2em] rounded-bl-2xl">
+                                            Simulation
+                                        </div>
+
+                                        <AnimatePresence mode="wait">
+                                            <motion.div
+                                                key="preview"
+                                                initial={{ opacity: 0, y: 20 }}
+                                                animate={{ opacity: 1, y: 0 }}
+                                                className="space-y-6"
+                                            >
+                                                <div className="mb-6">
+                                                    <h4 className="text-3xl font-black text-slate-900 tracking-tight mb-2">Form Preview</h4>
+                                                    <p className="text-slate-400 font-medium text-sm">This is how your students will see the form for <b>{selectedNode.name}</b></p>
+                                                </div>
+
+                                                <div className="space-y-6">
+                                                    {fields.length === 0 ? (
+                                                        <div className="py-20 text-center bg-slate-50 rounded-[40px] border-2 border-dashed border-slate-200">
+                                                            <div className="w-20 h-20 bg-white rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-sm border border-slate-100">
+                                                                <FileText className="text-slate-300" />
+                                                            </div>
+                                                            <p className="text-slate-500 font-black uppercase text-xs tracking-widest">Awaiting Your Fields</p>
+                                                            <p className="text-slate-400 text-sm mt-3 px-10">Add fields on the left to see them appear here in real-time.</p>
+                                                        </div>
+                                                    ) : (
+                                                        <>
+                                                            {fields.map(field => (
+                                                                <div key={field.id} className="space-y-3">
+                                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                                                                        {field.label} {field.is_required && <span className="text-red-500">*</span>}
+                                                                    </label>
+                                                                    {field.field_type === 'dropdown' ? (
+                                                                        <div className="w-full h-14 bg-slate-50 rounded-2xl border border-slate-100 px-5 flex items-center justify-between">
+                                                                            <span className="text-slate-300 font-bold">Select Option</span>
+                                                                            <ChevronDown size={18} className="text-slate-300" />
+                                                                        </div>
+                                                                    ) : (
+                                                                        <div className="w-full h-14 bg-slate-50 rounded-2xl border border-slate-100 px-5 flex items-center">
+                                                                            <span className="text-slate-300 font-bold">Mock Input...</span>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            ))}
+                                                            <button disabled className="w-full py-5 bg-indigo-600/50 text-white rounded-[30px] font-black text-xl shadow-lg flex items-center justify-center gap-4 cursor-not-allowed">
+                                                                Submit Application <Send size={24} />
+                                                            </button>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            </motion.div>
+                                        </AnimatePresence>
+                                    </div>
+                                    <p className="text-center mt-6 text-slate-400 text-[10px] font-black uppercase tracking-widest">
+                                        Generated Preview for {selectedNode.name}
+                                    </p>
+                                </div>
+                            ) : (
                                 <div className="lg:col-span-2 flex flex-col bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
                                     <div className="p-6 border-b border-slate-100 flex justify-between items-center">
                                         <h3 className="font-extrabold text-slate-800 flex items-center gap-2 text-lg">
                                             <ListPlus size={20} className="text-indigo-500" />
-                                            Brand Application Form
+                                            {selectedNode.type.charAt(0).toUpperCase() + selectedNode.type.slice(1)} Specific Form Fields
                                         </h3>
                                         <div className="flex gap-2">
                                             <button
                                                 onClick={() => {
-                                                    const link = `${window.location.origin}/apply/${selectedNode.data.slug || selectedNode.id}`;
+                                                    const link = `${window.location.origin}/apply/${selectedNode.type === 'course' ? selectedNode.data.program_slug : selectedNode.data.slug || selectedNode.id}`;
                                                     navigator.clipboard.writeText(link);
                                                     alert("Application link copied to clipboard!");
                                                 }}
                                                 className="text-emerald-600 font-bold text-sm bg-emerald-50 px-4 py-2 rounded-xl hover:bg-emerald-100 transition flex items-center gap-2"
                                             >
                                                 <ExternalLink size={16} /> Copy URL
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    fetchFields(selectedNode);
+                                                }}
+                                                className={`p-2 rounded-xl transition-all ${isRefreshing ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50'}`}
+                                                title="Refresh Fields"
+                                            >
+                                                <RefreshCw className={`${isRefreshing ? 'animate-spin' : ''}`} size={18} />
                                             </button>
                                             <button
                                                 onClick={() => {
@@ -360,8 +454,16 @@ const CoursesModule = () => {
                                                 <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center mx-auto mb-4 border border-slate-100 shadow-sm">
                                                     <ListPlus className="text-slate-300" />
                                                 </div>
-                                                <p className="text-slate-500 font-bold">No custom fields for this brand</p>
-                                                <p className="text-slate-400 text-sm mt-1">Fields here will appear on the public application form for {selectedNode.name}.</p>
+                                                <p className="text-slate-500 font-bold">No custom fields found</p>
+                                                <p className="text-slate-400 text-[10px] mt-1 px-8 mb-4 uppercase tracking-widest font-black">
+                                                    Directly managing fields for {selectedNode.type}
+                                                </p>
+                                                <button
+                                                    onClick={() => fetchFields(selectedNode)}
+                                                    className="text-xs font-black text-indigo-600 bg-indigo-50 px-4 py-2 rounded-xl hover:bg-indigo-100 transition flex items-center gap-2 mx-auto"
+                                                >
+                                                    <RefreshCw size={14} /> Tap to Refresh
+                                                </button>
                                             </div>
                                         ) : (
                                             fields.map(field => (
@@ -401,111 +503,11 @@ const CoursesModule = () => {
                                         )}
                                     </div>
                                 </div>
-                            ) : showPreview ? (
-                                <div className="lg:col-span-2 max-w-2xl mx-auto w-full animate-fadeIn">
-                                    <div className="flex justify-center gap-2 mb-8">
-                                        {[1, 2, 3].map(i => (
-                                            <div key={i} className={`h-1 w-12 rounded-full transition-all ${previewStep >= i ? 'bg-indigo-600' : 'bg-slate-200'}`} />
-                                        ))}
-                                    </div>
-
-                                    <div className="bg-white p-10 rounded-[40px] border border-slate-100 shadow-2xl relative overflow-hidden">
-                                        <div className="absolute top-0 right-0 px-4 py-1.5 bg-indigo-600 text-white text-[10px] font-black uppercase tracking-[0.2em] rounded-bl-2xl">
-                                            Simulation
-                                        </div>
-
-                                        <AnimatePresence mode="wait">
-                                            {previewStep === 1 && (
-                                                <motion.div key="p1" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
-                                                    <div>
-                                                        <h4 className="text-3xl font-black text-slate-900 tracking-tight mb-2">Basic Info</h4>
-                                                        <p className="text-slate-400 font-medium text-sm">Step 1: Identity & Contact</p>
-                                                    </div>
-                                                    <div className="grid grid-cols-2 gap-4">
-                                                        <div className="space-y-2">
-                                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">First Name</label>
-                                                            <div className="w-full h-14 bg-slate-50 rounded-2xl border border-slate-100" />
-                                                        </div>
-                                                        <div className="space-y-2">
-                                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Last Name</label>
-                                                            <div className="w-full h-14 bg-slate-50 rounded-2xl border border-slate-100" />
-                                                        </div>
-                                                    </div>
-                                                    <div className="space-y-2">
-                                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email Address</label>
-                                                        <div className="w-full h-14 bg-slate-50 rounded-2xl border border-slate-100" />
-                                                    </div>
-                                                    <button onClick={() => setPreviewStep(2)} className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black shadow-lg shadow-indigo-100 flex items-center justify-center gap-2">
-                                                        Next Step <ChevronRight size={18} />
-                                                    </button>
-                                                </motion.div>
-                                            )}
-
-                                            {previewStep === 2 && (
-                                                <motion.div key="p2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
-                                                    <div>
-                                                        <h4 className="text-3xl font-black text-slate-900 tracking-tight mb-2">Track Selection</h4>
-                                                        <p className="text-slate-400 font-medium text-sm">Step 2: Choose Course</p>
-                                                    </div>
-                                                    <div className="space-y-3">
-                                                        <div className="p-4 bg-indigo-50 border-2 border-indigo-500 rounded-2xl">
-                                                            <p className="font-bold text-indigo-700">Sample Category</p>
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex gap-4">
-                                                        <button onClick={() => setPreviewStep(1)} className="px-6 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black">Back</button>
-                                                        <button onClick={() => setPreviewStep(3)} className="flex-1 py-4 bg-indigo-600 text-white rounded-2xl font-black shadow-lg shadow-indigo-100">Continue</button>
-                                                    </div>
-                                                </motion.div>
-                                            )}
-
-                                            {previewStep === 3 && (
-                                                <motion.div key="p3" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
-                                                    <div>
-                                                        <h4 className="text-3xl font-black text-slate-900 tracking-tight mb-2">Additional Info</h4>
-                                                        <p className="text-slate-400 font-medium text-sm">Step 3: Custom Data for {selectedNode.name}</p>
-                                                    </div>
-                                                    <div className="space-y-5">
-                                                        {fields.map(field => (
-                                                            <div key={field.id} className="space-y-2">
-                                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                                                                    {field.label} {field.is_required && <span className="text-red-500">*</span>}
-                                                                </label>
-                                                                <div className="w-full h-14 bg-slate-50 rounded-2xl border border-slate-100 px-4 flex items-center">
-                                                                    <span className="text-slate-300 font-bold">Mock Input...</span>
-                                                                </div>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                    <div className="flex gap-4">
-                                                        <button onClick={() => setPreviewStep(2)} className="px-6 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black">Back</button>
-                                                        <div className="flex-1 py-4 bg-emerald-600 text-white rounded-2xl font-black shadow-lg shadow-emerald-100 flex items-center justify-center gap-2 cursor-pointer">
-                                                            Submit Application <ExternalLink size={18} />
-                                                        </div>
-                                                    </div>
-                                                </motion.div>
-                                            )}
-                                        </AnimatePresence>
-                                    </div>
-                                    <p className="text-center mt-6 text-slate-400 text-[10px] font-black uppercase tracking-widest">
-                                        Generated Preview for {selectedNode.name}
-                                    </p>
-                                </div>
-                            ) : (
-                                <div className="lg:col-span-2 flex flex-col bg-white rounded-3xl border border-slate-200 shadow-sm p-12 items-center justify-center text-center">
-                                    <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-6">
-                                        <Info size={40} className="text-slate-300" />
-                                    </div>
-                                    <h3 className="text-xl font-black text-slate-800 mb-2">Structure Settings</h3>
-                                    <p className="text-slate-500 max-w-sm">
-                                        Forms are managed at the <b>Brand (Program)</b> level to maintain consistency.
-                                        Click on a Program in the sidebar to edit the application form.
-                                    </p>
-                                </div>
                             )}
 
+
                             {/* Info/Inheritance Right Card */}
-                            <div className="flex flex-col gap-6">
+                            <div className="flex flex-col gap-6 overflow-y-auto custom-scrollbar pr-1 pb-10">
                                 {/* Inherited Knowledge */}
                                 <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
                                     <h3 className="font-extrabold text-slate-800 mb-4 flex items-center gap-2">
@@ -636,7 +638,7 @@ const CoursesModule = () => {
                     </div>
                 )}
             </AnimatePresence>
-        </div>
+        </div >
     );
 };
 

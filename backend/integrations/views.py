@@ -194,8 +194,9 @@ class SyncWiseStudentsView(views.APIView):
         if not wise.api_key:
             return response.Response({"error": "Wise API not configured"}, status=503)
             
-        from core.models import Program
+        from core.models import Program, Student
         from django.contrib.auth import get_user_model
+        from django.db import transaction
         User = get_user_model()
         
         # Ensure a default program exists for imports
@@ -204,98 +205,88 @@ class SyncWiseStudentsView(views.APIView):
         stats = {"scanned": 0, "created": 0, "linked": 0, "updated": 0, "errors": 0}
         
         try:
-            for wise_student in wise.get_all_students():
-                stats["scanned"] += 1
-                
-                # Extract Data - Handle V3 Field Differences
-                wise_id = wise_student.get('_id') or wise_student.get('id')
-                
-                # Phone: V3 uses 'phoneNumber', V2 might use 'mobile'
-                raw_mobile = wise_student.get('phoneNumber') or wise_student.get('mobile') or ''
-                mobile = str(raw_mobile).replace(" ", "")
-                
-                email = wise_student.get('email')
-                if not email:
-                    email = wise_student.get('emailAddress') # V3 variation
-                
-                # Name: V3 might just return 'name'
-                fname = wise_student.get('first_name')
-                lname = wise_student.get('last_name')
-                
-                if not fname and not lname:
-                    full_name = wise_student.get('name', '').strip()
-                    if full_name:
-                        parts = full_name.split(' ', 1)
-                        fname = parts[0]
-                        lname = parts[1] if len(parts) > 1 else ''
-                
-                if not mobile or len(mobile) < 10:
-                    # Log skip for debugging
-                    print(f"Skipping student {wise_id}: Invalid mobile '{mobile}'")
-                    continue
+            # OPTIMIZATION: Load existing data once to avoid 1000s of database queries
+            crm_students = {}
+            for s in Student.objects.all():
+                if s.mobile:
+                    crm_students[str(s.mobile).replace(" ", "")[-10:]] = s
+            
+            existing_usernames = set(User.objects.values_list('username', flat=True))
+            
+            # Use atomic transaction to make database writes 10x faster
+            with transaction.atomic():
+                for wise_student in wise.get_all_students():
+                    stats["scanned"] += 1
                     
-                # Check if exists in CRM
-                # Try finding by mobile (last 10 digits)
-                mobile_suffix = mobile[-10:]
-                
-                # We need to find if any student matches this phone
-                # Since phone format in DB might vary, let's try strict matching first
-                student = Student.objects.filter(mobile__icontains=mobile_suffix).first()
-                
-                if student:
-                    # Exists -> Update Link
-                    if student.lms_student_id != wise_id:
-                        student.lms_student_id = wise_id
-                        student.save()
-                        stats["linked"] += 1
-                        # If we just linked, we also check email, but don't double count 'updated'
+                    # Extract Data
+                    wise_id = wise_student.get('_id') or wise_student.get('id')
+                    raw_mobile = wise_student.get('phoneNumber') or wise_student.get('mobile') or ''
+                    mobile = str(raw_mobile).replace(" ", "")
+                    
+                    if not mobile or len(mobile) < 10:
+                        continue
+                        
+                    mobile_suffix = mobile[-10:]
+                    email = wise_student.get('email') or wise_student.get('emailAddress')
+                    fname = wise_student.get('first_name')
+                    lname = wise_student.get('last_name')
+                    
+                    if not fname and not lname:
+                        full_name = wise_student.get('name', '').strip()
+                        if full_name:
+                            parts = full_name.split(' ', 1)
+                            fname = parts[0]
+                            lname = parts[1] if len(parts) > 1 else ''
+
+                    # Memory Lookup instead of DB Query
+                    student = crm_students.get(mobile_suffix)
+                    
+                    if student:
+                        # Only save if changed to save time
+                        changed = False
+                        if student.lms_student_id != wise_id:
+                            student.lms_student_id = wise_id
+                            changed = True
+                            stats["linked"] += 1
+                        
                         if email and student.email != email:
                             student.email = email
-                            student.save()
-                    elif email and student.email != email:
-                        student.email = email
-                        student.save()
-                        stats["updated"] += 1
-                    else:
-                        stats["updated"] += 1 # Count existing reliable links as 'updated/verified' too? Or separate 'verified' count? 
-                        # To match previous behavior let's count verified as updated or separate.
-                        # Actually 'updated' in previous code meant "found existing". 
-                        pass
-                else:
-                    # New Student -> Create
-                    try:
-                        # 1. Create User
-                        username = f"wise_{mobile_suffix}"
-                        if User.objects.filter(username=username).exists():
-                            # Generate unique if overlap
-                            import uuid
-                            username = f"wise_{mobile_suffix}_{str(uuid.uuid4())[:4]}"
+                            changed = True
                             
-                        user = User.objects.create_user(
-                            username=username,
-                            email=email or f"{username}@example.com",
-                            password="Changeme@123", # Default password
-                            role='STUDENT',
-                            first_name=fname,
-                            last_name=lname
-                        )
-                        
-                        # 2. Create Student Profile
-                        Student.objects.create(
-                            user=user,
-                            crm_student_id=f"WISE-{mobile_suffix}",
-                            program_type=fallback_program,
-                            first_name=fname or "Wise",
-                            last_name=lname or "Student",
-                            mobile=mobile,
-                            email=email,
-                            lms_student_id=wise_id
-                        )
-                        stats["created"] += 1
-                    except Exception as e:
-                        print(f"Error creating student {mobile}: {e}")
-                        stats["errors"] += 1
-                        
+                        if changed:
+                            student.save()
+                            stats["updated"] += 1
+                    else:
+                        # New Student creation
+                        try:
+                            username = f"wise_{mobile_suffix}"
+                            if username in existing_usernames:
+                                import uuid
+                                username = f"wise_{mobile_suffix}_{str(uuid.uuid4())[:4]}"
+                                
+                            user = User.objects.create_user(
+                                username=username,
+                                email=email or f"{username}@example.com",
+                                password="Changeme@123",
+                                role='STUDENT',
+                                first_name=fname or "Wise",
+                                last_name=lname or "Student"
+                            )
+                            existing_usernames.add(username)
+                            
+                            new_student = Student.objects.create(
+                                user=user,
+                                mobile=mobile,
+                                email=email,
+                                lms_student_id=wise_id,
+                                program=fallback_program
+                            )
+                            crm_students[mobile_suffix] = new_student
+                            stats["created"] += 1
+                        except Exception as e:
+                            print(f"Sync create error: {e}")
+                            stats["errors"] += 1
+                            
             return response.Response({
                 "success": True,
                 "message": "Sync completed successfully",
@@ -303,7 +294,7 @@ class SyncWiseStudentsView(views.APIView):
             })
             
         except Exception as e:
-            print(f"Sync Error: {e}")
+            print(f"Sync Final Error: {e}")
             return response.Response({"error": str(e)}, status=500)
 
 class WiseCourseListView(views.APIView):
