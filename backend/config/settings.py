@@ -141,34 +141,27 @@ CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
 
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:5174",
-    "http://127.0.0.1:5174",
-    "http://13.232.192.160",
-    "http://13.232.192.160:80",
     "http://13.232.192.160:5173",
+    "https://natyaarts.org",
+    "https://www.natyaarts.org",
+    "http://natyaarts.org",
+    "http://www.natyaarts.org",
 ]
 
-# For older versions compatibility
 CORS_ORIGIN_WHITELIST = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:5174",
-    "http://127.0.0.1:5174",
-    "http://13.232.192.160",
-    "http://13.232.192.160:80",
     "http://13.232.192.160:5173",
+    "https://natyaarts.org",
+    "https://www.natyaarts.org",
+    "http://natyaarts.org",
+    "http://www.natyaarts.org",
 ]
 
 CSRF_TRUSTED_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:5174",
-    "http://127.0.0.1:5174",
-    "http://13.232.192.160",
-    "http://13.232.192.160:80",
     "http://13.232.192.160:5173",
+    "https://natyaarts.org",
+    "https://www.natyaarts.org",
+    "http://natyaarts.org",
+    "http://www.natyaarts.org",
 ]
 
 from corsheaders.defaults import default_headers
