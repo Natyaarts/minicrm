@@ -6,6 +6,7 @@ import {
     Settings, ListPlus, Info, Eye, ExternalLink, RefreshCw, FileText, Send
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { copyToClipboard } from '../utils/clipboard';
 
 const CoursesModule = () => {
     // Hierarchical Data State
@@ -417,10 +418,19 @@ const CoursesModule = () => {
                                         </h3>
                                         <div className="flex gap-2">
                                             <button
-                                                onClick={() => {
-                                                    const link = `${window.location.origin}/apply/${selectedNode.type === 'course' ? selectedNode.data.program_slug : selectedNode.data.slug || selectedNode.id}`;
-                                                    navigator.clipboard.writeText(link);
-                                                    alert("Application link copied to clipboard!");
+                                                onClick={async () => {
+                                                    const slug = selectedNode.type === 'course' ? (selectedNode.data.program_slug || selectedNode.parentId) : (selectedNode.data.slug || selectedNode.id);
+                                                    const link = `${window.location.origin}/apply/${slug}`;
+
+                                                    console.log('Final link to copy:', link);
+                                                    const success = await copyToClipboard(link);
+
+                                                    if (success) {
+                                                        alert(`Link Copied: ${link}`);
+                                                    } else {
+                                                        // Ultimate failsafe
+                                                        window.prompt("Automatic copy blocked by browser. Please manually copy this:", link);
+                                                    }
                                                 }}
                                                 className="text-emerald-600 font-bold text-sm bg-emerald-50 px-4 py-2 rounded-xl hover:bg-emerald-100 transition flex items-center gap-2"
                                             >

@@ -8,6 +8,7 @@ import {
     UserPlus, Users, Key, Settings2, ArrowRight, Send, FileText
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { copyToClipboard } from '../utils/clipboard';
 
 const AdminModule = () => {
     const [activeTab, setActiveTab] = useState('fields');
@@ -470,13 +471,17 @@ const AdminModule = () => {
 
                             <div className="flex gap-2">
                                 <button
-                                    onClick={() => {
+                                    onClick={async () => {
                                         let slug = '';
                                         if (selectedNode.type === 'course') slug = selectedNode.data?.program_slug || selectedNode.data?.id;
                                         else slug = selectedNode.data?.slug || selectedNode.id;
                                         const link = `${window.location.origin}/apply/${slug}`;
-                                        navigator.clipboard.writeText(link);
-                                        alert("Shareable Link Copied! Send this to your students.");
+                                        const success = await copyToClipboard(link);
+                                        if (success) {
+                                            alert(`Link Copied: ${link}`);
+                                        } else {
+                                            window.prompt("Automatic copy blocked by browser. Please manually copy this:", link);
+                                        }
                                     }}
                                     className="bg-emerald-50 text-emerald-600 font-black text-[10px] uppercase tracking-widest px-4 py-3 rounded-2xl border border-emerald-100 flex items-center gap-2 hover:bg-emerald-100 transition-all active:scale-95"
                                 >

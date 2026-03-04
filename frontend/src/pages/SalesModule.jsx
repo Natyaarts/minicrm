@@ -3,6 +3,7 @@ import { useSearchParams, useLocation } from 'react-router-dom';
 import api from '../api/axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Copy, Check, Search, FileText, User, Trash2, Edit2, RotateCcw, Trash, X } from 'lucide-react';
+import { copyToClipboard } from '../utils/clipboard';
 
 const SalesModule = () => {
     // URL Params
@@ -180,13 +181,15 @@ const SalesModule = () => {
     };
 
     // Handle Copy Link
-    const handleCopyLink = () => {
+    const handleCopyLink = async () => {
         const prog = programs.find(p => p.id === parseInt(selectedProgram));
         const progSlug = prog?.slug || selectedProgram;
         const url = `${window.location.origin}/apply?p=${progSlug}`;
-        navigator.clipboard.writeText(url);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
+        const success = await copyToClipboard(url);
+        if (success) {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        }
     };
 
     // Handle SubProgram Change
