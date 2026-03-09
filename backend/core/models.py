@@ -31,6 +31,7 @@ class Batch(models.Model):
     end_date = models.DateField(null=True, blank=True)
     primary_mentor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='primary_batches')
     secondary_mentors = models.ManyToManyField(settings.AUTH_USER_MODEL, blank=True, related_name='secondary_batches')
+    teacher = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='teacher_batches')
 
     def __str__(self):
         return self.name

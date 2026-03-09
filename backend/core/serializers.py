@@ -44,6 +44,7 @@ class BatchSerializer(serializers.ModelSerializer):
     student_count = serializers.SerializerMethodField()
     primary_mentor_details = UserSerializer(source='primary_mentor', read_only=True)
     secondary_mentors_details = UserSerializer(source='secondary_mentors', many=True, read_only=True)
+    teacher_details = UserSerializer(source='teacher', read_only=True)
     course_name = serializers.CharField(source='course.name', read_only=True)
     
     class Meta:

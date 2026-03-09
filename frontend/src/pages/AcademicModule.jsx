@@ -5,8 +5,9 @@ import api from '../api/axios';
 const AcademicModule = () => {
     const [batches, setBatches] = useState([]);
     const [mentors, setMentors] = useState([]);
+    const [teachers, setTeachers] = useState([]);
     const [students, setStudents] = useState([]);
-    const [stats, setStats] = useState({ totalStudents: 0, totalBatches: 0, totalMentors: 0 });
+    const [stats, setStats] = useState({ totalStudents: 0, totalBatches: 0, totalMentors: 0, totalTeachers: 0 });
 
     const [activeTab, setActiveTab] = useState('overview');
     const [loading, setLoading] = useState(false);
@@ -14,14 +15,28 @@ const AcademicModule = () => {
     const [studentPage, setStudentPage] = useState(1);
     const [studentPagination, setStudentPagination] = useState({ count: 0, next: null, previous: null });
 
-    // Fee Data Modal State
+    // Modals state
     const [selectedStudent, setSelectedStudent] = useState(null);
     const [feeData, setFeeData] = useState(null);
     const [feeLoading, setFeeLoading] = useState(false);
 
+    const [showAddTeacher, setShowAddTeacher] = useState(false);
+    const [editingBatch, setEditingBatch] = useState(null);
+    const [newTeacher, setNewTeacher] = useState({ username: '', first_name: '', last_name: '', email: '', phone_number: '' });
+
     useEffect(() => {
         fetchInitialData();
     }, []);
+
+    const fetchTeachers = async () => {
+        try {
+            const res = await api.get('auth/management/teachers/');
+            setTeachers(res.data.results || res.data);
+            setStats(prev => ({ ...prev, totalTeachers: (res.data.results || res.data).length }));
+        } catch (err) {
+            console.error("Failed to fetch teachers", err);
+        }
+    };
 
     useEffect(() => {
         fetchStudents();
@@ -37,16 +52,19 @@ const AcademicModule = () => {
     const fetchInitialData = async () => {
         setLoading(true);
         try {
-            const [batchRes, mentorRes] = await Promise.all([
+            const [batchRes, mentorRes, teacherRes] = await Promise.all([
                 api.get('batches/'),
-                api.get('auth/mentors/')
+                api.get('auth/mentors/'),
+                api.get('auth/management/teachers/')
             ]);
 
             const bData = batchRes.data.results || batchRes.data;
             const mData = mentorRes.data.results || mentorRes.data;
+            const tData = teacherRes.data.results || teacherRes.data;
 
             setBatches(bData);
             setMentors(mData);
+            setTeachers(tData);
 
             // Fetch students separately or update stats from studentRes later
             await fetchStudents();
@@ -54,7 +72,8 @@ const AcademicModule = () => {
             setStats(prev => ({
                 ...prev,
                 totalBatches: batchRes.data.count || bData.length,
-                totalMentors: mentorRes.data.count || mData.length
+                totalMentors: mentorRes.data.count || mData.length,
+                totalTeachers: teacherRes.data.count || tData.length
             }));
 
         } catch (err) {
@@ -110,8 +129,32 @@ const AcademicModule = () => {
         }
     };
 
+    const handleAddTeacher = async (e) => {
+        e.preventDefault();
+        try {
+            await api.post('auth/management/teachers/', newTeacher);
+            setShowAddTeacher(false);
+            setNewTeacher({ username: '', first_name: '', last_name: '', email: '', phone_number: '' });
+            fetchTeachers();
+        } catch (err) {
+            console.error("Failed to add teacher", err);
+            alert("Failed to add teacher. Check if username/email already exists.");
+        }
+    };
+
+    const handleAssignTeacher = async (batchId, teacherId) => {
+        try {
+            await api.patch(`batches/${batchId}/`, { teacher: teacherId });
+            setEditingBatch(null);
+            const res = await api.get('batches/');
+            setBatches(res.data.results || res.data);
+        } catch (err) {
+            console.error("Failed to assign teacher", err);
+        }
+    };
+
     const renderOverview = () => (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-fadeIn">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 animate-fadeIn">
             {/* Stats Cards */}
             <div className="p-6 bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
                 <div className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-2">Total Students</div>
@@ -122,25 +165,75 @@ const AcademicModule = () => {
                 <div className="text-4xl font-extrabold text-purple-600">{stats.totalBatches}</div>
             </div>
             <div className="p-6 bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
+                <div className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-2">Teachers</div>
+                <div className="text-4xl font-extrabold text-teal-600">{stats.totalTeachers}</div>
+            </div>
+            <div className="p-6 bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
                 <div className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-2">Mentors</div>
                 <div className="text-4xl font-extrabold text-green-600">{stats.totalMentors}</div>
             </div>
 
             {/* Recent Batches Preview */}
-            <div className="md:col-span-3 mt-6">
+            <div className="md:col-span-4 mt-6">
                 <h3 className="text-xl font-bold text-slate-800 mb-6 px-1">Batch Overview</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {batches.slice(0, 6).map(batch => (
                         <div key={batch.id} className="p-6 bg-white rounded-xl border border-slate-200 shadow-sm hover:border-indigo-300 hover:shadow-md transition-all cursor-pointer group">
                             <h4 className="font-bold text-slate-900 text-lg mb-1 group-hover:text-indigo-600 transition-colors">{batch.name}</h4>
                             <p className="text-sm text-slate-500 font-medium mb-4">{batch.course_name}</p>
-                            <div className="flex justify-between items-center text-xs text-slate-500 border-t border-slate-100 pt-3">
-                                <span className="bg-slate-100 px-2 py-1 rounded text-slate-600 font-medium">Students: {batch.student_count}</span>
-                                <span className="font-medium text-slate-700">Mentor: {batch.primary_mentor_details?.username}</span>
+                            <div className="flex flex-col gap-2 text-xs border-t border-slate-100 pt-3">
+                                <div className="flex justify-between items-center text-slate-500">
+                                    <span className="bg-slate-100 px-2 py-1 rounded text-slate-600 font-medium">Students: {batch.student_count}</span>
+                                    <span className="font-medium text-slate-700">Mentor: {batch.primary_mentor_details?.username}</span>
+                                </div>
+                                <div className="text-indigo-600 font-bold">
+                                    Teacher: {batch.teacher_details?.username || 'Not Assigned'}
+                                </div>
                             </div>
                         </div>
                     ))}
                 </div>
+            </div>
+        </div>
+    );
+
+    const renderTeachers = () => (
+        <div className="space-y-6 animate-fadeIn">
+            <div className="flex justify-between items-center px-1">
+                <h3 className="text-xl font-bold text-slate-800">Teacher Directory</h3>
+                <button
+                    onClick={() => setShowAddTeacher(true)}
+                    className="px-4 py-2 bg-teal-600 text-white rounded-xl text-sm font-bold hover:bg-teal-700 shadow-lg shadow-teal-200 transition-all flex items-center gap-2"
+                >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+                    Add Teacher
+                </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {teachers.map(teacher => (
+                    <div key={teacher.id} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm group hover:border-teal-300 transition-all">
+                        <div className="flex items-center gap-4 mb-4">
+                            <div className="w-12 h-12 bg-teal-50 rounded-full flex items-center justify-center text-teal-600 font-bold text-xl">
+                                {teacher.first_name?.[0] || teacher.username[0].toUpperCase()}
+                            </div>
+                            <div>
+                                <h4 className="font-bold text-slate-900">{teacher.first_name} {teacher.last_name}</h4>
+                                <p className="text-xs text-slate-500 font-mono">@{teacher.username}</p>
+                            </div>
+                        </div>
+                        <div className="space-y-2 text-sm text-slate-600">
+                            <div className="flex items-center gap-2">
+                                <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                                {teacher.email}
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path></svg>
+                                {teacher.phone_number || 'N/A'}
+                            </div>
+                        </div>
+                    </div>
+                ))}
             </div>
         </div>
     );
@@ -155,8 +248,9 @@ const AcademicModule = () => {
                             <th className="p-4 font-bold text-slate-500 uppercase text-xs">Batch Name</th>
                             <th className="p-4 font-bold text-slate-500 uppercase text-xs">Course</th>
                             <th className="p-4 font-bold text-slate-500 uppercase text-xs">Primary Mentor</th>
+                            <th className="p-4 font-bold text-slate-500 uppercase text-xs">Assigned Teacher</th>
                             <th className="p-4 font-bold text-slate-500 uppercase text-xs">Students</th>
-                            <th className="p-4 font-bold text-slate-500 uppercase text-xs">Start Date</th>
+                            <th className="p-4 font-bold text-slate-500 uppercase text-xs">Action</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 bg-white">
@@ -164,9 +258,23 @@ const AcademicModule = () => {
                             <tr key={batch.id} className="hover:bg-slate-50 transition-colors">
                                 <td className="p-4 font-bold text-slate-900">{batch.name}</td>
                                 <td className="p-4 text-slate-600 font-medium">{batch.course_name}</td>
-                                <td className="p-4 text-slate-600">{batch.primary_mentor_details?.username}</td>
+                                <td className="p-4 text-slate-600 font-medium">{batch.primary_mentor_details?.username}</td>
+                                <td className="p-4 text-slate-900">
+                                    {batch.teacher_details ? (
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-bold text-indigo-600">{batch.teacher_details.username}</span>
+                                        </div>
+                                    ) : <span className="text-slate-400 italic font-medium">Not Assigned</span>}
+                                </td>
                                 <td className="p-4 text-slate-600">{batch.student_count}</td>
-                                <td className="p-4 text-slate-600 font-mono text-xs">{batch.start_date}</td>
+                                <td className="p-4">
+                                    <button
+                                        onClick={() => setEditingBatch(batch)}
+                                        className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-lg text-xs font-bold hover:bg-indigo-100 transition-colors"
+                                    >
+                                        Assign Teacher
+                                    </button>
+                                </td>
                             </tr>
                         ))}
                     </tbody>
@@ -255,7 +363,7 @@ const AcademicModule = () => {
     );
 
     return (
-        <div className="space-y-8 text-slate-900 w-full">
+        <div className="space-y-8 text-slate-900 w-full pb-20">
             <div className="flex flex-col md:flex-row justify-between items-center bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
                 <h1 className="text-3xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-teal-500 to-blue-600">
                     Academic Oversight
@@ -276,6 +384,12 @@ const AcademicModule = () => {
                         Batches ({batches.length})
                     </button>
                     <button
+                        onClick={() => setActiveTab('teachers')}
+                        className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'teachers' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}
+                    >
+                        Teachers ({teachers.length})
+                    </button>
+                    <button
                         onClick={() => setActiveTab('students')}
                         className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'students' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}
                     >
@@ -291,10 +405,93 @@ const AcademicModule = () => {
                     <div className="min-h-[500px]">
                         {activeTab === 'overview' && renderOverview()}
                         {activeTab === 'batches' && renderBatches()}
+                        {activeTab === 'teachers' && renderTeachers()}
                         {activeTab === 'students' && renderStudents()}
                     </div>
                 )
             }
+
+            {/* Modals Container */}
+
+            {/* Add Teacher Modal */}
+            {showAddTeacher && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn">
+                    <div className="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl relative">
+                        <h2 className="text-2xl font-bold mb-6 text-slate-900">Add New Teacher</h2>
+                        <form onSubmit={handleAddTeacher} className="space-y-4">
+                            <input
+                                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-teal-500 transition-all font-medium"
+                                placeholder="Username"
+                                value={newTeacher.username}
+                                onChange={e => setNewTeacher({ ...newTeacher, username: e.target.value })}
+                                required
+                            />
+                            <div className="grid grid-cols-2 gap-4">
+                                <input
+                                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-teal-500 transition-all font-medium"
+                                    placeholder="First Name"
+                                    value={newTeacher.first_name}
+                                    onChange={e => setNewTeacher({ ...newTeacher, first_name: e.target.value })}
+                                    required
+                                />
+                                <input
+                                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-teal-500 transition-all font-medium"
+                                    placeholder="Last Name"
+                                    value={newTeacher.last_name}
+                                    onChange={e => setNewTeacher({ ...newTeacher, last_name: e.target.value })}
+                                />
+                            </div>
+                            <input
+                                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-teal-500 transition-all font-medium"
+                                placeholder="Email"
+                                type="email"
+                                value={newTeacher.email}
+                                onChange={e => setNewTeacher({ ...newTeacher, email: e.target.value })}
+                                required
+                            />
+                            <input
+                                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-teal-500 transition-all font-medium"
+                                placeholder="Phone Number"
+                                value={newTeacher.phone_number}
+                                onChange={e => setNewTeacher({ ...newTeacher, phone_number: e.target.value })}
+                            />
+                            <div className="flex gap-4 pt-4">
+                                <button type="button" onClick={() => setShowAddTeacher(false)} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors">Cancel</button>
+                                <button type="submit" className="flex-1 py-3 bg-teal-600 text-white rounded-xl font-bold hover:bg-teal-700 transition-colors">Create Account</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Assign Teacher Modal */}
+            {editingBatch && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn">
+                    <div className="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl relative">
+                        <h2 className="text-2xl font-bold mb-2 text-slate-900">Assign Teacher</h2>
+                        <p className="text-sm text-slate-500 mb-6 font-medium">Assign a teacher to <span className="text-indigo-600 font-bold">{editingBatch.name}</span></p>
+
+                        <div className="space-y-3 max-h-60 overflow-y-auto pr-2">
+                            {teachers.map(t => (
+                                <button
+                                    key={t.id}
+                                    onClick={() => handleAssignTeacher(editingBatch.id, t.id)}
+                                    className={`w-full p-4 rounded-2xl border text-left flex items-center justify-between group transition-all ${editingBatch.teacher === t.id ? 'border-indigo-600 bg-indigo-50' : 'border-slate-100 hover:border-slate-300 bg-slate-50'}`}
+                                >
+                                    <div>
+                                        <div className="font-bold text-slate-900">{t.first_name || t.username} {t.last_name}</div>
+                                        <div className="text-xs text-slate-500 font-mono">@{t.username}</div>
+                                    </div>
+                                    {editingBatch.teacher === t.id && <div className="text-indigo-600"><svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"></path></svg></div>}
+                                </button>
+                            ))}
+                            {teachers.length === 0 && <p className="text-center py-4 text-slate-500 italic">No teachers found. Add some teachers first.</p>}
+                        </div>
+
+                        <button onClick={() => setEditingBatch(null)} className="w-full mt-6 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors">Close</button>
+                    </div>
+                </div>
+            )}
 
             {/* Fee Status Modal */}
             {

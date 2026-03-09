@@ -59,6 +59,33 @@ class MentorListView(generics.ListAPIView):
     def get_queryset(self):
         return User.objects.filter(role='MENTOR')
 
+class TeacherListView(generics.ListAPIView):
+    serializer_class = UserSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = None
+
+    def get_queryset(self):
+        return User.objects.filter(role='TEACHER')
+
+from core.permissions import DynamicRolePermission
+
+class TeacherViewSet(viewsets.ModelViewSet):
+    serializer_class = UserSerializer
+    permission_classes = [DynamicRolePermission]
+    module_name = 'ACADEMIC'
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['username', 'first_name', 'last_name', 'email']
+
+    def get_queryset(self):
+        return User.objects.filter(role='TEACHER').order_by('-id')
+
+    def perform_create(self, serializer):
+        # Force role to TEACHER and set a default password if not provided
+        user = serializer.save(role='TEACHER')
+        if not user.password:
+            user.set_password('welcome123')
+            user.save()
+
 class RolePermissionViewSet(viewsets.ModelViewSet):
     queryset = RolePermission.objects.all()
     serializer_class = RolePermissionSerializer

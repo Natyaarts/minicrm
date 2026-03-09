@@ -8,6 +8,7 @@ class User(AbstractUser):
         ('SALES', 'Sales User'),
         ('MENTOR', 'Mentor'),
         ('ACADEMIC', 'Academic User'),
+        ('TEACHER', 'Teacher'),
         ('STUDENT', 'Student'),
     )
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='STUDENT')
