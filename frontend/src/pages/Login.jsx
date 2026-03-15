@@ -14,7 +14,11 @@ function Login() {
         setError('');
         const result = await login(username, password);
         if (result.success) {
-            navigate('/');
+            if (result.user.role === 'STUDENT') {
+                navigate('/student');
+            } else {
+                navigate('/');
+            }
         } else {
             setError(result.error);
         }

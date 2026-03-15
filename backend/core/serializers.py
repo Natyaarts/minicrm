@@ -16,7 +16,7 @@ class UserSerializer(serializers.ModelSerializer):
 class ProgramSerializer(serializers.ModelSerializer):
     class Meta:
         model = Program
-        fields = ('id', 'name', 'description', 'slug')
+        fields = ('id', 'name', 'description', 'slug', 'require_payment', 'registration_fee')
 
 class SubProgramSerializer(serializers.ModelSerializer):
     class Meta:
@@ -32,13 +32,13 @@ class SubProgramHierarchySerializer(serializers.ModelSerializer):
     courses = CourseSerializer(many=True, read_only=True)
     class Meta:
         model = SubProgram
-        fields = ('id', 'name', 'courses')
+        fields = ('id', 'name', 'courses', 'require_payment', 'registration_fee')
 
 class ProgramHierarchySerializer(serializers.ModelSerializer):
     sub_programs = SubProgramHierarchySerializer(many=True, read_only=True)
     class Meta:
         model = Program
-        fields = ('id', 'name', 'description', 'slug', 'sub_programs')
+        fields = ('id', 'name', 'description', 'slug', 'sub_programs', 'require_payment', 'registration_fee')
 
 class BatchSerializer(serializers.ModelSerializer):
     student_count = serializers.SerializerMethodField()

@@ -71,8 +71,8 @@ class BatchViewSet(viewsets.ModelViewSet):
         
         if user.role in ['ADMIN', 'SUPER_ADMIN', 'ACADEMIC']:
             pass
-        elif user.role == 'MENTOR':
-            qs = qs.filter(Q(primary_mentor=user) | Q(secondary_mentors=user)).distinct()
+        elif user.role in ['MENTOR', 'TEACHER']:
+            qs = qs.filter(Q(primary_mentor=user) | Q(secondary_mentors=user) | Q(teacher=user)).distinct()
         elif user.role == 'STUDENT':
             qs = qs.filter(students__user=user).distinct()
         else:
@@ -134,6 +134,10 @@ class StudentViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action == 'create':
             return [permissions.AllowAny()]
+        # Allow students, mentors, and teachers to view relevant profiles/lists
+        if self.request.user.is_authenticated and self.action in ['list', 'retrieve']:
+            if self.request.user.role in ['STUDENT', 'MENTOR', 'TEACHER']:
+                return [permissions.IsAuthenticated()]
         return super().get_permissions()
 
     def perform_create(self, serializer):
@@ -161,10 +165,11 @@ class StudentViewSet(viewsets.ModelViewSet):
             
         if user.role in ['ADMIN', 'SUPER_ADMIN', 'ACADEMIC', 'SALES']:
             pass 
-        elif user.role == 'MENTOR':
+        elif user.role in ['MENTOR', 'TEACHER']:
             qs = qs.filter(
                 Q(batch__primary_mentor=user) | 
                 Q(batch__secondary_mentors=user) |
+                Q(batch__teacher=user) |
                 Q(batch__isnull=True)
             ).distinct()
         elif user.role == 'STUDENT':
@@ -184,7 +189,8 @@ class StudentViewSet(viewsets.ModelViewSet):
             
         program = self.request.query_params.get('program')
         if program:
-            qs = qs.filter(program_id=program)
+            # Fix case-insensitive or misspelled program_id to program_type_id
+            qs = qs.filter(program_type_id=program)
 
         return qs.order_by('-id')
 
@@ -279,25 +285,47 @@ class DocumentViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
 class DashboardStatsView(APIView):
-    permission_classes = [DynamicRolePermission]
-    module_name = 'ANALYTICS'
+    permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         user = request.user
+        # Use Q for complex lookups if needed
+        from django.db.models import Q
+        
+        # Base querysets
         student_qs = Student.objects.filter(is_active=True)
         batch_qs = Batch.objects.all()
         trans_qs = Transaction.objects.all()
-
-        if user.role == 'MENTOR':
-            student_qs = student_qs.filter(Q(batch__primary_mentor=user) | Q(batch__secondary_mentors=user))
-            batch_qs = batch_qs.filter(Q(primary_mentor=user) | Q(secondary_mentors=user))
-            trans_qs = Transaction.objects.none()
+        
+        # Import RolePermission to check for ANALYTICS access for revenue
+        from users.models import RolePermission
+        has_analytics = user.role == 'SUPER_ADMIN' or user.is_superuser or \
+                        RolePermission.objects.filter(role=user.role, module='ANALYTICS', can_view=True).exists()
+        
+        if user.role in ['MENTOR', 'TEACHER']:
+            # Mentors/Teachers only see stats for their own assigned batches/students
+            student_qs = student_qs.filter(Q(batch__primary_mentor=user) | Q(batch__secondary_mentors=user) | Q(batch__teacher=user)).distinct()
+            batch_qs = batch_qs.filter(Q(primary_mentor=user) | Q(secondary_mentors=user) | Q(teacher=user)).distinct()
+            # Mentors generally don't see revenue unless they have explicit analytical perms
+            if not has_analytics:
+                trans_qs = Transaction.objects.none()
+        
+        elif user.role == 'SALES':
+            # Sales may see all active leads/students, but revenue might be restricted
+            if not has_analytics:
+                trans_qs = Transaction.objects.none()
+        
+        elif user.role == 'STUDENT':
+            # Students are redirected, but for safety: 
+            return Response({'error': 'Unauthorized'}, status=status.HTTP_403_FORBIDDEN)
 
         stats = {
             "students": student_qs.count(),
             "batches": batch_qs.count(),
             "revenue": trans_qs.aggregate(total=Sum('amount'))['total'] or 0,
-            "distribution": list(student_qs.values(name=F('program_type__name')).annotate(value=Count('id')))
+            "leads": Student.objects.filter(is_active=True, batch__isnull=True).count(),
+            "distribution": list(student_qs.values(name=F('program_type__name')).annotate(value=Count('id'))),
+            "revenue_distribution": list(trans_qs.values(name=F('student__program_type__name')).annotate(value=Sum('amount')))
         }
         return Response(stats)
 

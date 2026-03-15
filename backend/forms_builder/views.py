@@ -44,6 +44,10 @@ class DynamicFieldViewSet(viewsets.ModelViewSet):
         elif program_id:
             queryset = queryset.filter(program_id=program_id)
         
+        field_group = self.request.query_params.get('field_group')
+        if field_group:
+            queryset = queryset.filter(field_group=field_group)
+        
         print(f"DEBUG: Returning {queryset.count()} fields")
         return queryset
 

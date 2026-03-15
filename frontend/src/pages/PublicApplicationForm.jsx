@@ -31,6 +31,10 @@ const PublicApplicationForm = () => {
         dynamic_values: {}
     });
 
+    const [paymentConfig, setPaymentConfig] = useState({ required: false, amount: 0 });
+    const [paymentDone, setPaymentDone] = useState(false);
+    const [transactionId, setTransactionId] = useState('');
+
     useEffect(() => {
         fetchApplicationContext();
     }, [programSlug]);
@@ -46,8 +50,62 @@ const PublicApplicationForm = () => {
             setProgram(prog);
             setSubPrograms(prog.sub_programs || []);
 
-            // 2. Fetch Initial Fields (Program level)
-            const fRes = await api.get(`forms/fields/?program=${prog.id}`);
+            // Pre-fill from URL params
+            const params = new URLSearchParams(window.location.search);
+            const spId = params.get('sp');
+            const cId = params.get('c');
+
+            let currentFieldParams = `program=${prog.id}`;
+            let newFormData = {
+                first_name: '', last_name: '', email: '', mobile: '',
+                gender: 'Male', dob: '', address: '',
+                sub_program: '', course: '',
+                dynamic_values: {}
+            };
+            let currentCourses = [];
+
+            if (spId) {
+                const sp = (prog.sub_programs || []).find(s => s.id.toString() === spId);
+                if (sp) {
+                    newFormData.sub_program = spId;
+                    currentCourses = sp.courses || [];
+                    setCourses(currentCourses);
+                    currentFieldParams = `sub_program=${spId}`;
+
+                    if (cId) {
+                        const course = currentCourses.find(c => c.id.toString() === cId);
+                        if (course) {
+                            newFormData.course = cId;
+                            currentFieldParams = `course=${cId}`;
+                        }
+                    }
+                }
+            }
+
+            setFormData(prev => ({ ...prev, ...newFormData }));
+
+            // 2. Determine Payment Requirement
+            let payReq = prog.require_payment;
+            let payAmt = prog.registration_fee;
+
+            if (spId) {
+                const sp = (prog.sub_programs || []).find(s => s.id.toString() === spId);
+                if (sp && sp.require_payment) {
+                    payReq = true;
+                    payAmt = sp.registration_fee;
+                }
+                if (cId) {
+                    const c = (sp?.courses || []).find(course => course.id.toString() === cId);
+                    if (c && c.require_payment) {
+                        payReq = true;
+                        payAmt = c.registration_fee;
+                    }
+                }
+            }
+            setPaymentConfig({ required: payReq, amount: payAmt });
+
+            // 3. Fetch Initial Fields (Based on deepest selected level)
+            const fRes = await api.get(`forms/fields/?${currentFieldParams}&field_group=INITIAL`);
             const fieldData = Array.isArray(fRes.data) ? fRes.data : (fRes.data?.results || []);
             setActiveFields(fieldData.sort((a, b) => a.order - b.order));
         } catch (err) {
@@ -61,9 +119,18 @@ const PublicApplicationForm = () => {
         const sp = subPrograms.find(s => s.id.toString() === spId);
         setCourses(sp?.courses || []);
         setFormData({ ...formData, sub_program: spId, course: '' });
+
+        // Update Payment Config
+        if (sp) {
+            setPaymentConfig({ 
+                required: sp.require_payment || program.require_payment, 
+                amount: sp.require_payment ? sp.registration_fee : program.registration_fee 
+            });
+        }
+
         if (spId) {
             try {
-                const res = await api.get(`forms/fields/?sub_program=${spId}`);
+                const res = await api.get(`forms/fields/?sub_program=${spId}&field_group=INITIAL`);
                 const fieldData = Array.isArray(res.data) ? res.data : (res.data?.results || []);
                 setActiveFields(fieldData.sort((a, b) => a.order - b.order));
             } catch (err) {
@@ -77,9 +144,17 @@ const PublicApplicationForm = () => {
 
     const handleCourseChange = async (cId) => {
         setFormData({ ...formData, course: cId });
+        const c = courses.find(course => course.id.toString() === cId);
+        if (c) {
+            setPaymentConfig({ 
+                required: c.require_payment || paymentConfig.required,
+                amount: c.require_payment ? c.registration_fee : paymentConfig.amount
+            });
+        }
+
         if (cId) {
             try {
-                const res = await api.get(`forms/fields/?course=${cId}`);
+                const res = await api.get(`forms/fields/?course=${cId}&field_group=INITIAL`);
                 const fieldData = Array.isArray(res.data) ? res.data : (res.data?.results || []);
                 setActiveFields(fieldData.sort((a, b) => a.order - b.order));
             } catch (err) {
@@ -146,6 +221,13 @@ const PublicApplicationForm = () => {
             });
 
             formDataObj.append('dynamic_values', JSON.stringify(dynamicTextValue));
+
+            if (paymentDone && transactionId) {
+                formDataObj.append('transaction_details', JSON.stringify({
+                    transaction_id: transactionId,
+                    amount: paymentConfig.amount
+                }));
+            }
 
             await api.post('students/', formDataObj, {
                 headers: { 'Content-Type': 'multipart/form-data' }
@@ -300,13 +382,49 @@ const PublicApplicationForm = () => {
                         )}
 
                         {activeFields.length > 0 && (
-                            <button
-                                type="submit"
-                                disabled={submitting}
-                                className="w-full py-5 bg-indigo-600 text-white rounded-[30px] font-black text-xl hover:bg-indigo-700 transition shadow-2xl shadow-indigo-200 transform active:scale-95 disabled:opacity-50 flex items-center justify-center gap-4"
-                            >
-                                {submitting ? "Processing..." : <>Final Submission <Send size={24} /></>}
-                            </button>
+                            <div className="pt-8 border-t border-slate-100">
+                                {paymentConfig.required && !paymentDone ? (
+                                    <div className="p-8 bg-slate-900 rounded-[40px] text-white shadow-2xl relative overflow-hidden group">
+                                        <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/20 rounded-full blur-3xl -mr-32 -mt-32" />
+                                        <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-6">
+                                            <div>
+                                                <p className="text-[10px] font-black uppercase tracking-widest opacity-60 mb-1">Registration Fee Required</p>
+                                                <h3 className="text-4xl font-black tracking-tight">₹{paymentConfig.amount}</h3>
+                                            </div>
+                                            <button 
+                                                type="button"
+                                                onClick={() => {
+                                                    setSubmitting(true);
+                                                    // Simulation: In real app, this triggers Razorpay
+                                                    setTimeout(() => {
+                                                        const fakeId = "pay_" + Math.random().toString(36).substr(2, 9).toUpperCase();
+                                                        setTransactionId(fakeId);
+                                                        setSubmitting(false);
+                                                        setPaymentDone(true);
+                                                    }, 1500);
+                                                }}
+                                                disabled={submitting}
+                                                className="w-full md:w-auto px-10 py-5 bg-indigo-500 text-white rounded-[24px] font-black text-xl hover:bg-indigo-600 transition shadow-xl flex items-center justify-center gap-3 active:scale-95 disabled:opacity-50"
+                                            >
+                                                {submitting ? "Processing..." : <>Pay & Proceed <Sparkles size={20} /></>}
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <button
+                                        type="submit"
+                                        disabled={submitting}
+                                        className="w-full py-6 bg-indigo-600 text-white rounded-[32px] font-black text-xl shadow-2xl shadow-indigo-200 hover:bg-indigo-700 hover:translate-y-[-2px] active:translate-y-0 transition-all flex items-center justify-center gap-4 group disabled:opacity-50"
+                                    >
+                                        {submitting ? "Processing..." : <>Final Submission <Send size={24} /></>}
+                                    </button>
+                                )}
+                                {paymentDone && (
+                                    <div className="mt-4 flex items-center gap-2 justify-center text-emerald-500 font-bold text-sm animate-bounce">
+                                        <CheckCircle2 size={16} /> Payment Verified - You can now submit your application.
+                                    </div>
+                                )}
+                            </div>
                         )}
                     </div>
 

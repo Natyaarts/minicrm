@@ -71,7 +71,18 @@ const UsersModule = () => {
             setEditUser(null);
         } catch (err) {
             console.error(err);
-            alert("Failed to save user");
+            let errorMessage = "Failed to save user";
+            if (err.response && err.response.data) {
+                const data = err.response.data;
+                if (typeof data === 'object') {
+                    errorMessage = Object.entries(data)
+                        .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : value}`)
+                        .join('\n');
+                } else if (typeof data === 'string') {
+                    errorMessage = data;
+                }
+            }
+            alert(errorMessage);
         }
     };
 

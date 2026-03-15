@@ -8,12 +8,20 @@ import { useAuth } from '../context/AuthContext';
 function Dashboard() {
     const { user } = useAuth();
     const navigate = useNavigate();
+
+    // Redirect Students to Student Portal if they land on the main dashboard
+    useEffect(() => {
+        if (user && user.role === 'STUDENT') {
+            navigate('/student');
+        }
+    }, [user, navigate]);
     const [loading, setLoading] = useState(true);
     const [stats, setStats] = useState({
         students: 0,
         batches: 0,
         revenue: 0,
-        leads: 0
+        leads: 0,
+        revenue_distribution: []
     });
     const [distribution, setDistribution] = useState([]);
 
@@ -25,7 +33,8 @@ function Dashboard() {
                     students: res.data.students || 0,
                     batches: res.data.batches || 0,
                     revenue: res.data.revenue || 0,
-                    leads: 0
+                    leads: 0,
+                    revenue_distribution: res.data.revenue_distribution || []
                 });
                 setDistribution(res.data.distribution || []);
             } catch (err) {
@@ -53,12 +62,17 @@ function Dashboard() {
         }
     };
 
+    const canViewAnalytics = user?.role === 'SUPER_ADMIN' || user?.is_superuser || user?.permissions?.ANALYTICS?.view;
+    const canViewSales = user?.role === 'SUPER_ADMIN' || user?.is_superuser || user?.permissions?.SALES?.view;
+    const canViewAdmin = user?.role === 'SUPER_ADMIN' || user?.is_superuser || user?.permissions?.ADMIN?.view;
+    const canViewAcademic = user?.role === 'SUPER_ADMIN' || user?.is_superuser || user?.permissions?.ACADEMIC?.view;
+
     const statCards = [
-        { title: 'Total Students', value: stats.students.toLocaleString(), icon: Users, color: 'from-blue-500 to-blue-600' },
-        { title: 'Active Batches', value: stats.batches.toLocaleString(), icon: GraduationCap, color: 'from-indigo-500 to-indigo-600' },
-        { title: 'Total Revenue', value: `₹${stats.revenue.toLocaleString()}`, icon: DollarSign, color: 'from-emerald-500 to-emerald-600' },
-        { title: 'New Leads', value: stats.leads.toLocaleString(), icon: TrendingUp, color: 'from-pink-500 to-pink-600' },
-    ];
+        { title: 'Total Students', value: stats.students.toLocaleString(), icon: Users, color: 'from-blue-500 to-blue-600', show: true },
+        { title: 'Active Batches', value: stats.batches.toLocaleString(), icon: GraduationCap, color: 'from-indigo-500 to-indigo-600', show: true },
+        { title: 'Total Revenue', value: `₹${stats.revenue.toLocaleString()}`, icon: DollarSign, color: 'from-emerald-500 to-emerald-600', show: canViewAnalytics },
+        { title: 'New Leads', value: (stats.leads || 0).toLocaleString(), icon: TrendingUp, color: 'from-pink-500 to-pink-600', show: canViewSales },
+    ].filter(card => card.show);
 
     if (loading) {
         return (
@@ -78,18 +92,22 @@ function Dashboard() {
                     </p>
                 </div>
                 <div className="flex flex-wrap gap-3 w-full md:w-auto">
-                    <button
-                        onClick={handleExport}
-                        className="flex-1 md:flex-none px-4 py-2 bg-white border border-slate-200 rounded-xl text-slate-600 text-sm font-semibold shadow-sm hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
-                    >
-                        <Download size={16} /> Export Report
-                    </button>
-                    <button
-                        onClick={() => navigate('/campaigns')}
-                        className="flex-1 md:flex-none px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold shadow-lg shadow-indigo-200 transition-all"
-                    >
-                        + New Campaign
-                    </button>
+                    {canViewSales && (
+                        <button
+                            onClick={handleExport}
+                            className="flex-1 md:flex-none px-4 py-2 bg-white border border-slate-200 rounded-xl text-slate-600 text-sm font-semibold shadow-sm hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
+                        >
+                            <Download size={16} /> Export Report
+                        </button>
+                    )}
+                    {canViewSales && (
+                        <button
+                            onClick={() => navigate('/sales')}
+                            className="flex-1 md:flex-none px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold shadow-lg shadow-indigo-200 transition-all"
+                        >
+                            + New Admission
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -131,33 +149,67 @@ function Dashboard() {
                             </div>
                         ))}
                     </div>
+
+                    {canViewAnalytics && stats.revenue_distribution?.length > 0 && (
+                        <div className="mt-12 pt-8 border-t border-slate-100">
+                            <h3 className="text-xl font-bold text-slate-900 mb-6">Revenue Breakdown</h3>
+                            <div className="space-y-6">
+                                {stats.revenue_distribution.map((item, i) => (
+                                    <div key={i}>
+                                        <div className="flex justify-between text-sm mb-2 font-bold text-slate-600 uppercase tracking-widest text-[10px]">
+                                            <span>{item.name || "General"}</span>
+                                            <span className="text-emerald-600">₹{item.value?.toLocaleString()}</span>
+                                        </div>
+                                        <div className="w-full bg-slate-50 h-2 rounded-full overflow-hidden">
+                                            <motion.div
+                                                initial={{ width: 0 }}
+                                                animate={{ width: `${(item.value / stats.revenue) * 100}%` }}
+                                                className="bg-emerald-500 h-full rounded-full shadow-sm"
+                                            />
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 <div className="bg-slate-900 p-8 rounded-[2.5rem] text-white shadow-2xl relative overflow-hidden">
                     <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/20 rounded-full blur-3xl"></div>
                     <h3 className="text-xl font-bold mb-6">Quick Actions</h3>
                     <div className="space-y-4 relative z-10">
-                        <button
-                            onClick={() => navigate('/analytics')}
-                            className="w-full py-4 px-6 bg-white/10 hover:bg-white/20 rounded-2xl flex items-center justify-between group transition-all"
-                        >
-                            <span className="font-bold">Deep Analytics</span>
-                            <ArrowUpRight className="text-indigo-400 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
-                        </button>
-                        <button
-                            onClick={() => navigate('/users')}
-                            className="w-full py-4 px-6 bg-white/10 hover:bg-white/20 rounded-2xl flex items-center justify-between group transition-all"
-                        >
-                            <span className="font-bold">Manage Staff</span>
-                            <ArrowUpRight className="text-indigo-400 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
-                        </button>
-                        <button
-                            onClick={() => navigate('/academic')}
-                            className="w-full py-4 px-6 bg-indigo-600 hover:bg-indigo-700 rounded-2xl flex items-center justify-between group transition-all mt-4"
-                        >
-                            <span className="font-bold">Academic Setup</span>
-                            <ArrowUpRight className="text-white group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
-                        </button>
+                        {canViewAnalytics && (
+                            <button
+                                onClick={() => navigate('/analytics')}
+                                className="w-full py-4 px-6 bg-white/10 hover:bg-white/20 rounded-2xl flex items-center justify-between group transition-all"
+                            >
+                                <span className="font-bold text-sm">Deep Analytics</span>
+                                <ArrowUpRight className="text-indigo-400 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
+                            </button>
+                        )}
+                        {canViewAdmin && (
+                            <button
+                                onClick={() => navigate('/users')}
+                                className="w-full py-4 px-6 bg-white/10 hover:bg-white/20 rounded-2xl flex items-center justify-between group transition-all"
+                            >
+                                <span className="font-bold text-sm">Manage Staff</span>
+                                <ArrowUpRight className="text-indigo-400 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
+                            </button>
+                        )}
+                        {canViewAcademic && (
+                            <button
+                                onClick={() => navigate('/academic')}
+                                className="w-full py-4 px-6 bg-indigo-600 hover:bg-indigo-700 rounded-2xl flex items-center justify-between group transition-all mt-4"
+                            >
+                                <span className="font-bold text-sm">Academic Setup</span>
+                                <ArrowUpRight className="text-white group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
+                            </button>
+                        )}
+                        {!canViewAnalytics && !canViewAdmin && !canViewAcademic && (
+                            <div className="text-slate-500 italic text-sm py-4">
+                                Contact admin for additional permissions.
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

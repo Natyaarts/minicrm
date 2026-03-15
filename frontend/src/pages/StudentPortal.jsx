@@ -28,18 +28,16 @@ const StudentPortal = () => {
         try {
             setLoading(true);
             const userRes = await api.get('auth/me/');
+            setProfile(userRes.data); // Initial fallback
+
             // Fetch student record linked to this user
             const studentRes = await api.get('students/');
-
-            // Handle Pagination if present
             const students = Array.isArray(studentRes.data) ? studentRes.data : (studentRes.data.results || []);
 
             if (students.length > 0) {
-                const myProfile = students[0]; // Assuming filtered by user in backend
+                const myProfile = students[0];
                 setProfile(myProfile);
                 fetchLmsData(myProfile.id);
-            } else {
-                setProfile(userRes.data); // Fallback to basic user
             }
         } catch (err) {
             console.error("Error fetching student data", err);

@@ -590,6 +590,10 @@ const MentorModule = () => {
                                         <span className="w-1.5 h-1.5 bg-slate-300 rounded-full"></span>
                                         <span>Primary: <span className="font-medium text-slate-700">{batch.primary_mentor_details?.username || 'None'}</span></span>
                                     </div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="w-1.5 h-1.5 bg-slate-300 rounded-full"></span>
+                                        <span>Teacher: <span className="font-bold text-indigo-600">{batch.teacher_details?.username || 'Not Assigned'}</span></span>
+                                    </div>
                                 </div>
                             </motion.div>
                         ))}
@@ -652,6 +656,12 @@ const MentorModule = () => {
                                 <div>
                                     <span className="block text-slate-400 text-xs uppercase tracking-wider font-semibold mb-1">Total Students</span>
                                     <span className="text-slate-900 font-medium">{studentsInBatch.length}</span>
+                                </div>
+                                <div className="border-l border-slate-200 pl-8">
+                                    <span className="block text-slate-400 text-xs uppercase tracking-wider font-semibold mb-1">Assigned Teacher</span>
+                                    <span className={`text-sm font-bold ${selectedBatch.teacher_details ? 'text-indigo-600' : 'text-slate-400 italic'}`}>
+                                        {selectedBatch.teacher_details ? `@${selectedBatch.teacher_details.username}` : 'Not Assigned'}
+                                    </span>
                                 </div>
                             </div>
                         </div>

@@ -104,16 +104,35 @@ const SalesModule = () => {
 
                 // Check URL Param (Support both Slug and ID for backward compatibility)
                 const urlProg = searchParams.get('program') || searchParams.get('p');
+                const urlSubProg = searchParams.get('sp');
+                const urlCourse = searchParams.get('c');
+
                 if (urlProg) {
                     const progExists = res.data.find(p => p.slug === urlProg || p.id === parseInt(urlProg));
                     if (progExists) {
                         setSelectedProgram(progExists.id.toString());
 
-                        // Valid program found, load its specific sub-programs and fields
+                        // Valid program found, load its specific sub-programs
                         const subRes = await api.get(`sub-programs/?program=${progExists.id}`);
                         setSubPrograms(subRes.data);
 
-                        const fieldsRes = await api.get(`forms/fields/?program=${progExists.id}`);
+                        let fieldsParam = `program=${progExists.id}`;
+                        
+                        if (urlSubProg) {
+                            setSelectedSubProgram(urlSubProg);
+                            fieldsParam = `sub_program=${urlSubProg}`;
+                            
+                            // Fetch courses for this sub-program
+                            const courseRes = await api.get(`courses/?sub_program=${urlSubProg}`);
+                            setCourses(courseRes.data);
+
+                            if (urlCourse) {
+                                setSelectedCourse(urlCourse);
+                                fieldsParam = `course=${urlCourse}`;
+                            }
+                        }
+
+                        const fieldsRes = await api.get(`forms/fields/?${fieldsParam}&field_group=INITIAL`);
                         const fieldData = Array.isArray(fieldsRes.data) ? fieldsRes.data : (fieldsRes.data?.results || []);
                         setDynamicFields(fieldData.sort((a, b) => a.order - b.order));
                     }
@@ -185,7 +204,14 @@ const SalesModule = () => {
     const handleCopyLink = async () => {
         const prog = programs.find(p => p.id === parseInt(selectedProgram));
         const progSlug = prog?.slug || selectedProgram;
-        const url = `${window.location.origin}/apply/${progSlug}`;
+        let url = `${window.location.origin}/apply/${progSlug}`;
+
+        const params = new URLSearchParams();
+        if (selectedSubProgram) params.append('sp', selectedSubProgram);
+        if (selectedCourse) params.append('c', selectedCourse);
+        
+        const qStr = params.toString();
+        if (qStr) url += `?${qStr}`;
 
         const success = await copyToClipboard(url);
         if (success) {
@@ -202,18 +228,52 @@ const SalesModule = () => {
         setCourses([]);
         setDynamicFields([]);
 
-        try {
-            const res = await api.get(`courses/?sub_program=${subId}`);
-            setCourses(res.data);
-        } catch (err) {
-            console.error(err);
+        // Update URL
+        const newParams = new URLSearchParams(searchParams);
+        newParams.set('sp', subId);
+        newParams.delete('c');
+        setSearchParams(newParams);
+
+        if (subId) {
+            try {
+                const res = await api.get(`courses/?sub_program=${subId}`);
+                setCourses(res.data);
+                fetchDynamicFields('sub_program', subId);
+            } catch (err) {
+                console.error(err);
+            }
+        } else {
+            // Revert to program fields
+            fetchDynamicFields('program', selectedProgram);
         }
-        fetchDynamicFields('sub_program', subId);
+    };
+
+    const handleCourseChange = async (e) => {
+        const courseId = e.target.value;
+        setSelectedCourse(courseId);
+        setDynamicFields([]);
+
+        // Update URL
+        const newParams = new URLSearchParams(searchParams);
+        if (courseId) {
+            newParams.set('c', courseId);
+        } else {
+            newParams.delete('c');
+        }
+        setSearchParams(newParams);
+
+        if (courseId) {
+            fetchDynamicFields('course', courseId);
+        } else if (selectedSubProgram) {
+            fetchDynamicFields('sub_program', selectedSubProgram);
+        } else {
+            fetchDynamicFields('program', selectedProgram);
+        }
     };
 
     const fetchDynamicFields = async (param, id) => {
         try {
-            const res = await api.get(`forms/fields/?${param}=${id}`);
+            const res = await api.get(`forms/fields/?${param}=${id}&field_group=INITIAL`);
             const data = Array.isArray(res.data) ? res.data : (res.data?.results || []);
             const sorted = data.sort((a, b) => a.order - b.order);
             setDynamicFields(sorted);
@@ -642,6 +702,7 @@ const SalesModule = () => {
                                             <th className="p-4 font-bold">Student</th>
                                             <th className="p-4 font-bold">Contact</th>
                                             <th className="p-4 font-bold">Program</th>
+                                            <th className="p-4 font-bold">Transaction ID</th>
                                             <th className="p-4 font-bold">Status</th>
                                             <th className="p-4 font-bold text-right">Action</th>
                                         </tr>
@@ -672,7 +733,13 @@ const SalesModule = () => {
                                                         <div className="text-xs text-slate-500">{student.sub_program_name || student.course_name || '-'}</div>
                                                     </td>
                                                     <td className="p-4">
-                                                        {student.transaction_details?.transaction_id || student.is_paid ? (
+                                                        <div className="font-medium text-slate-800">{student.transactions_list?.[0]?.transaction_id || '-'}</div>
+                                                        {student.transactions_list?.length > 1 && (
+                                                            <div className="text-[10px] text-indigo-500 font-bold mt-1">+{student.transactions_list.length - 1} more</div>
+                                                        )}
+                                                    </td>
+                                                    <td className="p-4">
+                                                        {student.transactions_list?.length > 0 || student.is_paid ? (
                                                             <span className="inline-flex items-center px-2 py-1 rounded bg-green-50 text-green-700 text-xs font-medium">
                                                                 Paid
                                                             </span>
@@ -732,7 +799,7 @@ const SalesModule = () => {
                                                 </tr>
                                             ))
                                         ) : (
-                                            <tr><td colSpan="5" className="p-8 text-center text-slate-400">No applications found.</td></tr>
+                                            <tr><td colSpan="6" className="p-8 text-center text-slate-400">No applications found.</td></tr>
                                         )}
                                     </tbody>
                                 </table>
@@ -869,7 +936,7 @@ const SalesModule = () => {
                                         <SelectField
                                             label="Select Course/Subject"
                                             value={selectedCourse}
-                                            onChange={e => setSelectedCourse(e.target.value)}
+                                            onChange={handleCourseChange}
                                             options={courses}
                                             required
                                         />

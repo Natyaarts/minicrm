@@ -29,10 +29,10 @@ const CoursesModule = () => {
 
     // Form states
     const [formData, setFormData] = useState({
-        program: { name: '', description: '' },
-        subprogram: { name: '', program: '' },
-        course: { name: '', fee_amount: 0, sub_program: '' },
-        field: { label: '', field_type: 'text', options: '', order: 0, is_required: true }
+        program: { name: '', description: '', require_payment: false, registration_fee: 0 },
+        subprogram: { name: '', program: '', require_payment: false, registration_fee: 0 },
+        course: { name: '', fee_amount: 0, sub_program: '', require_payment: false },
+        field: { label: '', field_type: 'text', field_group: 'INITIAL', options: '', order: 0, is_required: true }
     });
 
     useEffect(() => {
@@ -151,11 +151,20 @@ const CoursesModule = () => {
         const type = selectedNode.type;
         const data = selectedNode.data;
         if (type === 'program') {
-            setFormData(prev => ({ ...prev, program: { id: data.id, name: data.name, description: data.description } }));
+            setFormData(prev => ({ ...prev, program: { 
+                id: data.id, name: data.name, description: data.description, 
+                require_payment: data.require_payment, registration_fee: data.registration_fee 
+            } }));
         } else if (type === 'subprogram') {
-            setFormData(prev => ({ ...prev, subprogram: { id: data.id, name: data.name, program: data.program_id } }));
+            setFormData(prev => ({ ...prev, subprogram: { 
+                id: data.id, name: data.name, program: data.program_id,
+                require_payment: data.require_payment, registration_fee: data.registration_fee 
+            } }));
         } else if (type === 'course') {
-            setFormData(prev => ({ ...prev, course: { id: data.id, name: data.name, fee_amount: data.fee_amount, sub_program: data.sub_program_id } }));
+            setFormData(prev => ({ ...prev, course: { 
+                id: data.id, name: data.name, fee_amount: data.fee_amount, sub_program: data.sub_program_id,
+                require_payment: data.require_payment
+            } }));
         }
         setEditMode(true);
         setActiveModal(type);
@@ -253,6 +262,20 @@ const CoursesModule = () => {
             </div>
         );
     };
+
+    const exactFields = fields.filter(f => {
+        if (!selectedNode) return false;
+        if (selectedNode.type === 'program') return f.program === selectedNode.id;
+        if (selectedNode.type === 'subprogram') return f.sub_program === selectedNode.id;
+        return f.course === selectedNode.id;
+    });
+
+    const inheritedFields = fields.filter(f => {
+        if (!selectedNode) return false;
+        if (selectedNode.type === 'program') return f.program !== selectedNode.id;
+        if (selectedNode.type === 'subprogram') return f.sub_program !== selectedNode.id;
+        return f.course !== selectedNode.id;
+    });
 
     return (
         <div className="h-[calc(100vh-180px)] flex gap-6 font-sans text-slate-900 overflow-hidden relative">
@@ -436,28 +459,38 @@ const CoursesModule = () => {
                                             <button
                                                 onClick={async () => {
                                                     let slug = '';
+                                                    let params = new URLSearchParams();
+
                                                     if (selectedNode.type === 'program') {
                                                         slug = selectedNode.data?.slug || selectedNode.id;
-                                                    } else {
-                                                        // Find parent program from hierarchy
-                                                        const parentProg = hierarchy.find(p =>
-                                                            p.id === selectedNode.id ||
-                                                            p.sub_programs?.some(sp =>
-                                                                sp.id === selectedNode.id ||
-                                                                sp.id === selectedNode.parentId ||
+                                                    } else if (selectedNode.type === 'subprogram') {
+                                                        const parentProg = hierarchy.find(p => p.sub_programs?.some(sp => sp.id === selectedNode.id));
+                                                        slug = parentProg?.slug || parentProg?.id || '';
+                                                        params.append('sp', selectedNode.id);
+                                                    } else if (selectedNode.type === 'course') {
+                                                        const parentProg = hierarchy.find(p => 
+                                                            p.sub_programs?.some(sp => 
                                                                 sp.courses?.some(c => c.id === selectedNode.id)
                                                             )
                                                         );
-                                                        slug = parentProg?.slug || parentProg?.id || selectedNode.parentId || selectedNode.id;
+                                                        const subProg = parentProg?.sub_programs?.find(sp => 
+                                                            sp.courses?.some(c => c.id === selectedNode.id)
+                                                        );
+                                                        slug = parentProg?.slug || parentProg?.id || '';
+                                                        if (subProg) params.append('sp', subProg.id);
+                                                        params.append('c', selectedNode.id);
                                                     }
 
-                                                    const link = `${window.location.origin}/apply/${slug}`;
+                                                    let link = `${window.location.origin}/apply/${slug}`;
+                                                    const qStr = params.toString();
+                                                    if (qStr) link += `?${qStr}`;
+
                                                     const success = await copyToClipboard(link);
                                                     if (success) {
-                                                        setToast({ message: 'Enrollment Link Copied!' });
+                                                        setToast({ message: 'Deep Link Copied!' });
                                                         setTimeout(() => setToast(null), 3000);
                                                     } else {
-                                                        window.prompt("Automatic copy blocked by browser. Please manually copy this:", link);
+                                                        window.prompt("Manual copy required:", link);
                                                     }
                                                 }}
                                                 className="text-emerald-600 font-bold text-sm bg-emerald-50 px-4 py-2 rounded-xl hover:bg-emerald-100 transition flex items-center gap-2"
@@ -487,7 +520,7 @@ const CoursesModule = () => {
                                     </div>
 
                                     <div className="flex-1 overflow-y-auto p-6 space-y-3 custom-scrollbar">
-                                        {fields.length === 0 ? (
+                                        {exactFields.length === 0 ? (
                                             <div className="text-center py-12 bg-slate-50/50 rounded-3xl border-2 border-dashed border-slate-200">
                                                 <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center mx-auto mb-4 border border-slate-100 shadow-sm">
                                                     <ListPlus className="text-slate-300" />
@@ -504,7 +537,7 @@ const CoursesModule = () => {
                                                 </button>
                                             </div>
                                         ) : (
-                                            fields.map(field => (
+                                            exactFields.map(field => (
                                                 <motion.div
                                                     layout
                                                     key={field.id}
@@ -538,6 +571,33 @@ const CoursesModule = () => {
                                                     </div>
                                                 </motion.div>
                                             ))
+                                        )}
+
+                                        {inheritedFields.length > 0 && (
+                                            <div className="mt-8">
+                                                <h4 className="text-xs font-black uppercase tracking-widest text-slate-400 mb-4 ml-2">Inherited Fields (Read-Only)</h4>
+                                                <div className="space-y-3">
+                                                    {inheritedFields.map(field => (
+                                                        <div key={field.id} className="flex justify-between items-center p-4 bg-slate-100 border border-slate-200 rounded-2xl opacity-70 cursor-not-allowed">
+                                                            <div className="flex items-center gap-4">
+                                                                <div className="w-10 h-10 bg-slate-200 rounded-xl flex items-center justify-center text-[10px] font-black text-slate-500 uppercase tracking-tighter shadow-inner">
+                                                                    {field.field_type.substring(0, 3)}
+                                                                </div>
+                                                                <div>
+                                                                    <p className="font-bold text-slate-600 text-base flex items-center gap-2">
+                                                                        {field.label}
+                                                                        <span className="text-[9px] font-bold bg-pink-100 text-pink-500 px-1.5 py-0.5 rounded-full uppercase">Inherited</span>
+                                                                    </p>
+                                                                    <div className="flex gap-4 mt-0.5">
+                                                                        <span className="text-[10px] font-bold text-slate-400 uppercase">Order: {field.order}</span>
+                                                                        {field.is_required && <span className="text-[10px] font-bold text-slate-400 uppercase">Required</span>}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
                                         )}
                                     </div>
                                 </div>
@@ -640,6 +700,44 @@ const CoursesModule = () => {
                                                 <option value="file">File Upload</option>
                                             </select>
                                         </div>
+                                        <div>
+                                            <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 ml-1">Field Group (Collector)</label>
+                                            <select
+                                                className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-100 focus:bg-white focus:ring-4 focus:ring-indigo-50 focus:border-indigo-500 outline-none font-bold transition-all appearance-none"
+                                                value={formData.field.field_group}
+                                                onChange={e => setFormData({ ...formData, field: { ...formData.field, field_group: e.target.value } })}
+                                            >
+                                                <option value="INITIAL">Initial Application (Sales)</option>
+                                                <option value="ACADEMIC">Academic / Post-Admission</option>
+                                            </select>
+                                        </div>
+                                        {formData.field.field_type === 'dropdown' && (
+                                            <div>
+                                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 ml-1">Dropdown Options</label>
+                                                <input
+                                                    className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-100 focus:bg-white focus:ring-4 focus:ring-indigo-50 focus:border-indigo-500 outline-none font-bold transition-all"
+                                                    placeholder="Option 1, Option 2, Option 3 (comma separated)"
+                                                    value={formData.field.options}
+                                                    onChange={e => setFormData({ ...formData, field: { ...formData.field, options: e.target.value } })}
+                                                    required
+                                                />
+                                            </div>
+                                        )}
+                                        <div>
+                                            <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 ml-1">Display Order</label>
+                                            <input
+                                                type="number"
+                                                className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-100 focus:bg-white focus:ring-4 focus:ring-indigo-50 focus:border-indigo-500 outline-none font-bold transition-all"
+                                                value={formData.field.order}
+                                                onChange={e => setFormData({ ...formData, field: { ...formData.field, order: e.target.value } })}
+                                            />
+                                        </div>
+                                        <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-100 cursor-pointer hover:bg-white transition-all group" onClick={() => setFormData({ ...formData, field: { ...formData.field, is_required: !formData.field.is_required } })}>
+                                            <div className={`w-6 h-6 rounded-lg flex items-center justify-center border-2 transition-all ${formData.field.is_required ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-slate-200 group-hover:border-indigo-300'}`}>
+                                                {formData.field.is_required && <Check size={14} className="text-white" />}
+                                            </div>
+                                            <span className="text-sm font-bold text-slate-700">Required Field</span>
+                                        </div>
                                     </>
                                 ) : (
                                     <>
@@ -655,7 +753,7 @@ const CoursesModule = () => {
                                         </div>
                                         {activeModal === 'course' && (
                                             <div>
-                                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 ml-1">Base Fee (INR)</label>
+                                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 ml-1">Full Course Fee (INR)</label>
                                                 <input
                                                     type="number"
                                                     className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-100 focus:bg-white focus:ring-4 focus:ring-indigo-50 focus:border-indigo-500 outline-none font-bold transition-all"
@@ -665,6 +763,45 @@ const CoursesModule = () => {
                                                 />
                                             </div>
                                         )}
+
+                                        <div className="pt-4 border-t border-slate-100">
+                                            <div
+                                                className="flex items-center gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-100 cursor-pointer hover:bg-white transition-all group"
+                                                onClick={() => setFormData({
+                                                    ...formData,
+                                                    [activeModal]: { ...formData[activeModal], require_payment: !formData[activeModal].require_payment }
+                                                })}
+                                            >
+                                                <div className={`w-6 h-6 rounded-lg flex items-center justify-center border-2 transition-all ${formData[activeModal].require_payment ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-slate-200 group-hover:border-indigo-300'}`}>
+                                                    {formData[activeModal].require_payment && <Check size={14} className="text-white" />}
+                                                </div>
+                                                <span className="text-sm font-bold text-slate-700">Require Initial Payment</span>
+                                            </div>
+
+                                            {formData[activeModal].require_payment && (
+                                                <div className="mt-4 animate-fadeIn">
+                                                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 ml-1">
+                                                        {activeModal === 'course' ? 'Amount to Pay Now (INR)' : 'Registration Fee (INR)'}
+                                                    </label>
+                                                    <input
+                                                        type="number"
+                                                        className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-100 focus:bg-white focus:ring-4 focus:ring-indigo-50 focus:border-indigo-500 outline-none font-bold transition-all"
+                                                        value={activeModal === 'course' ? (formData.course.registration_fee || formData.course.fee_amount) : formData[activeModal].registration_fee}
+                                                        onChange={e => {
+                                                            const val = e.target.value;
+                                                            setFormData(prev => ({
+                                                                ...prev,
+                                                                [activeModal]: { ...prev[activeModal], registration_fee: val }
+                                                            }));
+                                                        }}
+                                                        required
+                                                    />
+                                                    <p className="text-[10px] text-slate-400 mt-2 px-1 font-medium italic">
+                                                        * This amount will be collected via payment gateway during application.
+                                                    </p>
+                                                </div>
+                                            )}
+                                        </div>
                                     </>
                                 )}
 

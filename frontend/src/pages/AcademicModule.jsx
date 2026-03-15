@@ -23,6 +23,12 @@ const AcademicModule = () => {
     const [showAddTeacher, setShowAddTeacher] = useState(false);
     const [editingBatch, setEditingBatch] = useState(null);
     const [newTeacher, setNewTeacher] = useState({ username: '', first_name: '', last_name: '', email: '', phone_number: '' });
+    
+    // Profile Completion State
+    const [completingProfile, setCompletingProfile] = useState(null);
+    const [academicFields, setAcademicFields] = useState([]);
+    const [academicValues, setAcademicValues] = useState({});
+    const [savingCompletion, setSavingCompletion] = useState(false);
 
     useEffect(() => {
         fetchInitialData();
@@ -126,6 +132,48 @@ const AcademicModule = () => {
             console.error("Failed to fetch fee data", err);
         } finally {
             setFeeLoading(false);
+        }
+    };
+    
+    const handleCompleteProfile = async (student) => {
+        setCompletingProfile(student);
+        setAcademicFields([]);
+        setAcademicValues({});
+        
+        // Map existing values
+        const currentVals = {};
+        student.dynamic_values_list?.forEach(v => {
+            currentVals[v.field] = v.value;
+        });
+        setAcademicValues(currentVals);
+
+        try {
+            let params = `program=${student.program_type}`;
+            if (student.sub_program) params = `sub_program=${student.sub_program}`;
+            if (student.course) params = `course=${student.course}`;
+            
+            const res = await api.get(`forms/fields/?${params}&field_group=ACADEMIC`);
+            const fields = Array.isArray(res.data) ? res.data : (res.data?.results || []);
+            setAcademicFields(fields.sort((a,b) => a.order - b.order));
+        } catch (err) {
+            console.error("Failed to fetch academic fields", err);
+        }
+    };
+
+    const handleSaveCompletion = async (e) => {
+        e.preventDefault();
+        setSavingCompletion(true);
+        try {
+            await api.patch(`students/${completingProfile.id}/`, {
+                dynamic_values: JSON.stringify(academicValues)
+            });
+            setCompletingProfile(null);
+            fetchStudents(); // Refresh to show updated data
+        } catch (err) {
+            console.error("Save failed", err);
+            alert("Failed to save details.");
+        } finally {
+            setSavingCompletion(false);
         }
     };
 
@@ -307,6 +355,7 @@ const AcademicModule = () => {
                             <th className="p-4 font-bold text-slate-500 uppercase text-xs">Name</th>
                             <th className="p-4 font-bold text-slate-500 uppercase text-xs">Program</th>
                             <th className="p-4 font-bold text-slate-500 uppercase text-xs">Batch</th>
+                            <th className="p-4 font-bold text-slate-500 uppercase text-xs">Transaction ID</th>
                             <th className="p-4 font-bold text-slate-500 uppercase text-xs">Mobile</th>
                             <th className="p-4 font-bold text-slate-500 uppercase text-xs text-right">Fee Status</th>
                         </tr>
@@ -319,19 +368,32 @@ const AcademicModule = () => {
                                     <td className="p-4 font-bold text-slate-800">{student.first_name} {student.last_name}</td>
                                     <td className="p-4 text-slate-600">{student.program_name}</td>
                                     <td className="p-4 text-slate-600">{student.batch_name || <span className="text-slate-400 italic font-medium">Unassigned</span>}</td>
+                                    <td className="p-4">
+                                        <div className="font-mono text-[10px] font-bold text-slate-600">
+                                            {student.transactions_list?.[0]?.transaction_id || <span className="text-slate-300">-</span>}
+                                        </div>
+                                    </td>
                                     <td className="p-4 text-slate-600 font-mono text-xs">{student.mobile}</td>
                                     <td className="p-4 text-right">
-                                        <button
-                                            onClick={() => handleViewFees(student)}
-                                            className="px-3 py-1.5 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-lg text-xs font-bold transition-colors"
-                                        >
-                                            View Fees
-                                        </button>
+                                        <div className="flex justify-end gap-2">
+                                            <button
+                                                onClick={() => handleCompleteProfile(student)}
+                                                className="px-3 py-1.5 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-lg text-xs font-bold transition-colors"
+                                            >
+                                                Details
+                                            </button>
+                                            <button
+                                                onClick={() => handleViewFees(student)}
+                                                className="px-3 py-1.5 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-lg text-xs font-bold transition-colors"
+                                            >
+                                                Fees
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             ))
                         ) : (
-                            <tr><td colSpan="6" className="p-10 text-center text-slate-500 font-medium">No students found matching your search.</td></tr>
+                            <tr><td colSpan="7" className="p-10 text-center text-slate-500 font-medium">No students found matching your search.</td></tr>
                         )}
                     </tbody>
                 </table>
@@ -489,6 +551,78 @@ const AcademicModule = () => {
                         </div>
 
                         <button onClick={() => setEditingBatch(null)} className="w-full mt-6 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors">Close</button>
+                    </div>
+                </div>
+            )}
+
+            {/* Profile Completion Modal */}
+            {completingProfile && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn">
+                    <div className="bg-white rounded-3xl p-8 w-full max-w-lg shadow-2xl relative max-h-[90vh] overflow-y-auto custom-scrollbar">
+                        <button
+                            onClick={() => setCompletingProfile(null)}
+                            className="absolute top-6 right-6 text-slate-400 hover:text-slate-700 transition-colors"
+                        >
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                        </button>
+
+                        <h2 className="text-2xl font-bold mb-1 text-slate-900 text-transparent bg-clip-text bg-gradient-to-r from-teal-500 to-blue-600">Additional Details</h2>
+                        <p className="text-slate-500 text-sm mb-6">Completing profile for <span className="text-indigo-600 font-bold">{completingProfile.first_name} {completingProfile.last_name}</span></p>
+
+                        <form onSubmit={handleSaveCompletion} className="space-y-6">
+                            {academicFields.length === 0 ? (
+                                <div className="py-10 text-center bg-slate-50 rounded-2xl border-2 border-dashed border-slate-100">
+                                    <p className="text-slate-400 text-sm italic">No additional coordinator fields defined for this program.</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    {academicFields.map(field => (
+                                        <div key={field.id} className="space-y-2">
+                                            <label className="text-xs font-black uppercase tracking-widest text-slate-400 ml-1">
+                                                {field.label} {field.is_required && <span className="text-red-500">*</span>}
+                                            </label>
+                                            {field.field_type === 'dropdown' ? (
+                                                <select
+                                                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:border-teal-500 transition-all font-bold"
+                                                    value={academicValues[field.id] || ''}
+                                                    onChange={e => setAcademicValues({ ...academicValues, [field.id]: e.target.value })}
+                                                    required={field.is_required}
+                                                >
+                                                    <option value="">Select Option</option>
+                                                    {(Array.isArray(field.options) ? field.options : field.options?.split(',') || []).map(opt => (
+                                                        <option key={opt} value={opt}>{opt}</option>
+                                                    ))}
+                                                </select>
+                                            ) : field.field_type === 'file' ? (
+                                                <div className="p-4 border-2 border-dashed border-slate-100 rounded-2xl bg-slate-50 text-center">
+                                                    <p className="text-xs text-slate-400">File uploads are managed in Document view</p>
+                                                </div>
+                                            ) : (
+                                                <input
+                                                    type={field.field_type}
+                                                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:border-teal-500 transition-all font-bold"
+                                                    placeholder={`Enter ${field.label}`}
+                                                    value={academicValues[field.id] || ''}
+                                                    onChange={e => setAcademicValues({ ...academicValues, [field.id]: e.target.value })}
+                                                    required={field.is_required}
+                                                />
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            <div className="flex gap-4 pt-4">
+                                <button type="button" onClick={() => setCompletingProfile(null)} className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold hover:bg-slate-200 transition-colors">Cancel</button>
+                                <button
+                                    type="submit"
+                                    disabled={savingCompletion || academicFields.length === 0}
+                                    className="flex-1 py-4 bg-gradient-to-r from-teal-500 to-blue-600 text-white rounded-2xl font-bold hover:shadow-lg transition-all disabled:opacity-50"
+                                >
+                                    {savingCompletion ? 'Saving...' : 'Save Details'}
+                                </button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             )}

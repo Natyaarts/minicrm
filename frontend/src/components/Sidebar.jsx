@@ -41,6 +41,10 @@ function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }) {
     // Filter menu items based on permissions
     const filteredMenuItems = menuItems.filter(item => {
         if (!user) return false;
+        
+        // Hide Dashboard for Students (they have their own portal)
+        if (item.label === 'Dashboard' && user.role === 'STUDENT') return false;
+
         if (user.role === 'SUPER_ADMIN' || user.is_superuser) return true;
         if (item.module === 'COMMON') return true;
 

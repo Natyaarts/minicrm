@@ -51,9 +51,15 @@ const AdminModule = () => {
         { id: 'ADMIN', name: 'Admin Module' },
     ];
 
+    // Razorpay Integration State
+    const [razorpayConfig, setRazorpayConfig] = useState({ key_id: '', key_secret: '', is_active: false });
+    const [isSavingRazorpay, setIsSavingRazorpay] = useState(false);
+    const [razorpayModalOpen, setRazorpayModalOpen] = useState(false);
+
     useEffect(() => {
         if (activeTab === 'fields') fetchHierarchy();
         if (activeTab === 'permissions') fetchRolePermissions();
+        if (activeTab === 'integrations') fetchRazorpayConfig();
     }, [activeTab, selectedRoleForPerms]);
 
     useEffect(() => {
@@ -271,6 +277,45 @@ const AdminModule = () => {
     const [syncStatus, setSyncStatus] = useState(null);
     const [isSyncing, setIsSyncing] = useState(false);
     const [wiseCourses, setWiseCourses] = useState([]);
+
+    const fetchRazorpayConfig = async () => {
+        try {
+            const res = await api.get('integrations/settings/?name=razorpay');
+            if (res.data && res.data.config) {
+                setRazorpayConfig({
+                    key_id: res.data.config.key_id || '',
+                    key_secret: res.data.config.key_secret || '',
+                    is_active: res.data.is_active || false
+                });
+            } else {
+                setRazorpayConfig({ key_id: '', key_secret: '', is_active: false });
+            }
+        } catch (err) {
+            console.error("Failed to fetch Razorpay config", err);
+        }
+    };
+
+    const handleSaveRazorpay = async (e) => {
+        e.preventDefault();
+        setIsSavingRazorpay(true);
+        try {
+            await api.post('integrations/settings/', {
+                name: 'razorpay',
+                config: {
+                    key_id: razorpayConfig.key_id,
+                    key_secret: razorpayConfig.key_secret
+                },
+                is_active: razorpayConfig.is_active
+            });
+            setRazorpayModalOpen(false);
+            setToast({ message: 'Razorpay Settings Saved!' });
+            setTimeout(() => setToast(null), 3000);
+        } catch (err) {
+            alert("Failed to save settings");
+        } finally {
+            setIsSavingRazorpay(false);
+        }
+    };
 
     const handleSyncWise = async () => {
         setIsSyncing(true);
@@ -778,6 +823,42 @@ const AdminModule = () => {
             {/* Integrations Tab */}
             {activeTab === 'integrations' && (
                 <div className="space-y-6 animate-fadeIn">
+                    {/* Razorpay Integration Card */}
+                    <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm">
+                        <div className="flex justify-between items-start mb-6">
+                            <div>
+                                <h3 className="text-xl font-black tracking-tight text-slate-800">Payment Gateway</h3>
+                                <p className="text-slate-500 font-medium text-sm mt-1">Receive learner payments directly into your account</p>
+                            </div>
+                            <button
+                                onClick={() => setRazorpayModalOpen(true)}
+                                className="px-6 py-2.5 bg-white border border-slate-200 text-slate-700 font-black text-xs uppercase tracking-widest rounded-xl hover:bg-slate-50 transition shadow-sm"
+                            >
+                                {razorpayConfig.key_id && razorpayConfig.key_secret ? 'Change' : 'Connect'}
+                            </button>
+                        </div>
+
+                        <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 bg-white rounded-xl border border-slate-200 flex items-center justify-center p-2 shadow-sm">
+                                    <img src="https://razorpay.com/favicon.png" alt="Razorpay" className="w-full h-full object-contain" />
+                                </div>
+                                <div>
+                                    <p className="font-black text-slate-900">Razorpay</p>
+                                    <p className={`text-[10px] font-black uppercase tracking-widest mt-0.5 ${(razorpayConfig.key_id && razorpayConfig.key_secret) ? 'text-emerald-500' : 'text-slate-400'}`}>
+                                        {(razorpayConfig.key_id && razorpayConfig.key_secret) ? 'Connected' : 'Not Configured'}
+                                    </p>
+                                </div>
+                            </div>
+                            {razorpayConfig.key_id && razorpayConfig.key_secret && (
+                                <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-lg text-[10px] font-black uppercase tracking-widest">
+                                    <Check size={12} /> Active
+                                </div>
+                            )}
+                        </div>
+                        <p className="mt-4 text-[10px] text-slate-400 font-medium italic underline cursor-pointer hover:text-slate-600">Check how to connect your payment gateway</p>
+                    </div>
+
                     <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm">
                         <h2 className="text-xl font-bold text-slate-800 mb-6">Wise LMS Integration</h2>
 
@@ -995,6 +1076,54 @@ const AdminModule = () => {
                     </div>
                 )
             }
+
+            {/* Razorpay Config Modal */}
+            {razorpayModalOpen && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-[70] animate-fadeIn">
+                    <div className="bg-white rounded-3xl p-8 w-full max-w-lg border border-slate-200 shadow-2xl scale-100 group">
+                        <div className="flex justify-between items-center mb-6">
+                            <h2 className="text-2xl font-black text-slate-900">Razorpay Integration</h2>
+                            <button onClick={() => setRazorpayModalOpen(false)} className="text-slate-400 hover:text-slate-600 transition-colors"><X /></button>
+                        </div>
+                        <form onSubmit={handleSaveRazorpay} className="space-y-6">
+                            <div className="space-y-2">
+                                <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Key ID</label>
+                                <input
+                                    className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 text-slate-900 focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all font-bold"
+                                    placeholder="rzp_live_..."
+                                    value={razorpayConfig.key_id}
+                                    onChange={e => setRazorpayConfig({ ...razorpayConfig, key_id: e.target.value })}
+                                    required
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Key Secret</label>
+                                <input
+                                    type="password"
+                                    className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 text-slate-900 focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all font-bold"
+                                    placeholder="••••••••••••••••"
+                                    value={razorpayConfig.key_secret}
+                                    onChange={e => setRazorpayConfig({ ...razorpayConfig, key_secret: e.target.value })}
+                                    required
+                                />
+                            </div>
+                            <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-100 cursor-pointer" onClick={() => setRazorpayConfig({ ...razorpayConfig, is_active: !razorpayConfig.is_active })}>
+                                <div className={`w-6 h-6 rounded-lg flex items-center justify-center border-2 transition-all ${razorpayConfig.is_active ? 'bg-emerald-500 border-emerald-500' : 'bg-white border-slate-200'}`}>
+                                    {razorpayConfig.is_active && <Check size={14} className="text-white" />}
+                                </div>
+                                <span className="text-sm font-bold text-slate-700">Enable Payment Processing</span>
+                            </div>
+
+                            <div className="flex gap-3 pt-4">
+                                <button type="button" onClick={() => setRazorpayModalOpen(false)} className="flex-1 py-4 bg-slate-100 text-slate-600 font-black text-xs uppercase tracking-widest rounded-2xl hover:bg-slate-200 transition">Discard</button>
+                                <button type="submit" disabled={isSavingRazorpay} className="flex-1 py-4 bg-slate-900 rounded-2xl hover:bg-slate-800 text-white font-black text-xs uppercase tracking-widest transition shadow-xl disabled:opacity-50">
+                                    {isSavingRazorpay ? 'Saving...' : 'Save Settings'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
         </div >
     );
 };

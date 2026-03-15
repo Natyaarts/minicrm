@@ -5,6 +5,8 @@ class Program(models.Model):
     name = models.CharField(max_length=100) # e.g., Natya, Natya Career Academy
     description = models.TextField(blank=True)
     slug = models.SlugField(unique=True, blank=True, null=True)
+    require_payment = models.BooleanField(default=False)
+    registration_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
 
     def __str__(self):
         return self.name
@@ -12,6 +14,8 @@ class Program(models.Model):
 class SubProgram(models.Model):
     program = models.ForeignKey(Program, on_delete=models.CASCADE, related_name='sub_programs')
     name = models.CharField(max_length=100) # e.g., STED, AISECT
+    require_payment = models.BooleanField(default=False)
+    registration_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     
     def __str__(self):
         return f"{self.program.name} - {self.name}"
@@ -20,6 +24,8 @@ class Course(models.Model):
     sub_program = models.ForeignKey(SubProgram, on_delete=models.CASCADE, related_name='courses')
     name = models.CharField(max_length=100)
     fee_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    registration_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    require_payment = models.BooleanField(default=False)
 
     def __str__(self):
         return self.name

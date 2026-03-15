@@ -10,12 +10,18 @@ class DynamicField(models.Model):
         ('file', 'File Upload'),
     )
     
+    FIELD_GROUP_CHOICES = (
+        ('INITIAL', 'Initial Application (Sales)'),
+        ('ACADEMIC', 'Academic/Post-Admission'),
+    )
+    
     program = models.ForeignKey(Program, on_delete=models.CASCADE, related_name='dynamic_fields', null=True, blank=True)
     sub_program = models.ForeignKey(SubProgram, on_delete=models.CASCADE, related_name='dynamic_fields', null=True, blank=True)
     course = models.ForeignKey('core.Course', on_delete=models.CASCADE, related_name='dynamic_fields', null=True, blank=True)
     
     label = models.CharField(max_length=100)
     field_type = models.CharField(max_length=20, choices=FIELD_TYPE_CHOICES)
+    field_group = models.CharField(max_length=20, choices=FIELD_GROUP_CHOICES, default='INITIAL')
     is_required = models.BooleanField(default=True)
     options = models.JSONField(null=True, blank=True, help_text="Dropdown options as list of strings")
     order = models.PositiveIntegerField(default=0)

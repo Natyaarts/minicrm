@@ -2,6 +2,8 @@
 from rest_framework import views, response, permissions
 from core.models import Student
 from .utils import WiseService
+from .models import IntegrationSetting
+from .serializers import IntegrationSettingSerializer
 import random
 
 class LMSProxyView(views.APIView):
@@ -352,3 +354,39 @@ class ConsumeWiseCreditsView(views.APIView):
              return response.Response({"error": "Student not found"}, status=404)
         except Exception as e:
              return response.Response({"error": str(e)}, status=500)
+
+class IntegrationSettingViewSet(views.APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        if request.user.role not in ['ADMIN', 'SUPER_ADMIN']:
+            return response.Response({"error": "Permission denied"}, status=403)
+        
+        name = request.query_params.get('name')
+        if name:
+            try:
+                setting = IntegrationSetting.objects.get(name=name)
+                serializer = IntegrationSettingSerializer(setting)
+                return response.Response(serializer.data)
+            except IntegrationSetting.DoesNotExist:
+                return response.Response({}, status=200) # Return empty if not found
+        
+        settings = IntegrationSetting.objects.all()
+        serializer = IntegrationSettingSerializer(settings, many=True)
+        return response.Response(serializer.data)
+
+    def post(self, request):
+        if request.user.role not in ['ADMIN', 'SUPER_ADMIN']:
+            return response.Response({"error": "Permission denied"}, status=403)
+        
+        name = request.data.get('name')
+        config = request.data.get('config', {})
+        is_active = request.data.get('is_active', True)
+
+        setting, created = IntegrationSetting.objects.get_or_create(name=name)
+        setting.config = config
+        setting.is_active = is_active
+        setting.save()
+
+        serializer = IntegrationSettingSerializer(setting)
+        return response.Response(serializer.data)

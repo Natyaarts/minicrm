@@ -32,7 +32,7 @@ export const AuthProvider = ({ children }) => {
             const { token, user } = response.data;
             localStorage.setItem('token', token);
             setUser(user);
-            return { success: true };
+            return { success: true, user };
         } catch (error) {
             console.error('Login failed:', error);
             return {
