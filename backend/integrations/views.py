@@ -5,6 +5,7 @@ from .utils import WiseService
 from .models import IntegrationSetting
 from .serializers import IntegrationSettingSerializer
 import random
+import razorpay
 
 class LMSProxyView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -390,3 +391,63 @@ class IntegrationSettingViewSet(views.APIView):
 
         serializer = IntegrationSettingSerializer(setting)
         return response.Response(serializer.data)
+
+class RazorpayOrderView(views.APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        amount = request.data.get('amount')
+        currency = request.data.get('currency', 'INR')
+        
+        if not amount:
+            return response.Response({"error": "Amount is required"}, status=400)
+            
+        try:
+            # Get Razorpay credentials from DB
+            gateway = IntegrationSetting.objects.get(name='razorpay', is_active=True)
+            # Support multiple key formats and ENSURE they are stripped of accidental spaces
+            k_id = gateway.config.get('key_id') or gateway.config.get('RAZORPAY_KEY_ID')
+            k_secret = gateway.config.get('key_secret') or gateway.config.get('RAZORPAY_KEY_SECRET')
+            
+            if not k_id or not k_secret:
+                return response.Response({"error": f"Razorpay keys missing in {gateway.name} config"}, status=503)
+                
+            def clean_key(val):
+                if not val: return ""
+                # Remove common prefixes like 'Live api: ', 'Secret: ', etc.
+                if ':' in val:
+                    val = val.split(':')[-1]
+                return val.strip()
+
+            key_id = clean_key(k_id)
+            key_secret = clean_key(k_secret)
+                
+            client = razorpay.Client(auth=(key_id, key_secret))
+            
+            # Amount in paise (integer)
+            try:
+                order_amount = int(float(amount) * 100)
+            except (ValueError, TypeError):
+                return response.Response({"error": "Invalid amount format"}, status=400)
+
+            if order_amount <= 0:
+                 return response.Response({"error": "Amount must be greater than zero"}, status=400)
+            
+            order_data = {
+                'amount': order_amount,
+                'currency': currency,
+                'payment_capture': '1'
+            }
+            
+            order = client.order.create(data=order_data)
+            return response.Response({
+                "order_id": order['id'],
+                "amount": order['amount'],
+                "currency": order['currency'],
+                "key_id": key_id 
+            })
+        except IntegrationSetting.DoesNotExist:
+            return response.Response({"error": "Razorpay integration is not configured or is inactive"}, status=503)
+        except Exception as e:
+            print(f"Razorpay Error: {str(e)}")
+            return response.Response({"error": f"Gateway Error: {str(e)}"}, status=500)

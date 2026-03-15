@@ -39,6 +39,66 @@ const PublicApplicationForm = () => {
         fetchApplicationContext();
     }, [programSlug]);
 
+    const updatePaymentConfig = (spId, cId, currentFields, currentProg, currentSps) => {
+        // Use provided values or fallback to current state
+        const targetProg = currentProg || program;
+        const targetSps = currentSps || subPrograms;
+        const targetSpId = spId || formData.sub_program;
+        const targetCId = cId || formData.course;
+        const fieldsToCheck = currentFields || activeFields;
+
+        let finalAmt = 0;
+        let finalReq = false;
+
+        // 1. BASE LEVEL: Program
+        if (targetProg?.require_payment) {
+            finalReq = true;
+            finalAmt = Number(targetProg.registration_fee) || 0;
+        }
+
+        // 2. CATEGORY LEVEL: Sub-program
+        if (targetSpId) {
+            const sp = targetSps.find(s => s.id.toString() === targetSpId.toString());
+            if (sp) {
+                if (sp.require_payment && Number(sp.registration_fee) > 0) {
+                    finalReq = true;
+                    finalAmt = Number(sp.registration_fee);
+                }
+
+                // 3. COURSE LEVEL: Course
+                if (targetCId) {
+                    const c = (sp.courses || []).find(course => course.id.toString() === targetCId.toString());
+                    if (c && c.require_payment) {
+                        finalReq = true;
+                        // Use course specific fee if available
+                        const cFee = Number(c.registration_fee) > 0 ? c.registration_fee : c.fee_amount;
+                        if (Number(cFee) > 0) {
+                            finalAmt = Number(cFee);
+                        }
+                    }
+                }
+            }
+        }
+
+        // 4. OVERRIDE: If payment widget is manually added, force requirement
+        if (fieldsToCheck.some(f => f.field_type === 'payment')) {
+            finalReq = true;
+        }
+
+        console.log("Payment Calculated:", { finalAmt, finalReq, targetSpId, targetCId }); // Debug helper
+        
+        setPaymentConfig({
+            required: finalReq,
+            amount: finalAmt
+        });
+    };
+
+    const processFields = (fieldData, spId, cId) => {
+        const sorted = fieldData.sort((a, b) => a.order - b.order);
+        setActiveFields(sorted);
+        updatePaymentConfig(spId, cId, sorted);
+    };
+
     const fetchApplicationContext = async () => {
         setLoading(true);
         try {
@@ -48,7 +108,8 @@ const PublicApplicationForm = () => {
 
             if (!prog) throw new Error("Program not found");
             setProgram(prog);
-            setSubPrograms(prog.sub_programs || []);
+            const currentSubPrograms = prog.sub_programs || [];
+            setSubPrograms(currentSubPrograms);
 
             // Pre-fill from URL params
             const params = new URLSearchParams(window.location.search);
@@ -59,55 +120,29 @@ const PublicApplicationForm = () => {
             let newFormData = {
                 first_name: '', last_name: '', email: '', mobile: '',
                 gender: 'Male', dob: '', address: '',
-                sub_program: '', course: '',
+                sub_program: spId || '', course: cId || '',
                 dynamic_values: {}
             };
-            let currentCourses = [];
 
             if (spId) {
-                const sp = (prog.sub_programs || []).find(s => s.id.toString() === spId);
+                const sp = currentSubPrograms.find(s => s.id.toString() === spId);
                 if (sp) {
-                    newFormData.sub_program = spId;
-                    currentCourses = sp.courses || [];
-                    setCourses(currentCourses);
+                    setCourses(sp.courses || []);
                     currentFieldParams = `sub_program=${spId}`;
-
-                    if (cId) {
-                        const course = currentCourses.find(c => c.id.toString() === cId);
-                        if (course) {
-                            newFormData.course = cId;
-                            currentFieldParams = `course=${cId}`;
-                        }
-                    }
+                    if (cId) currentFieldParams = `course=${cId}`;
                 }
             }
 
             setFormData(prev => ({ ...prev, ...newFormData }));
 
-            // 2. Determine Payment Requirement
-            let payReq = prog.require_payment;
-            let payAmt = prog.registration_fee;
-
-            if (spId) {
-                const sp = (prog.sub_programs || []).find(s => s.id.toString() === spId);
-                if (sp && sp.require_payment) {
-                    payReq = true;
-                    payAmt = sp.registration_fee;
-                }
-                if (cId) {
-                    const c = (sp?.courses || []).find(course => course.id.toString() === cId);
-                    if (c && c.require_payment) {
-                        payReq = true;
-                        payAmt = c.registration_fee;
-                    }
-                }
-            }
-            setPaymentConfig({ required: payReq, amount: payAmt });
-
-            // 3. Fetch Initial Fields (Based on deepest selected level)
+            // 2. Fetch Initial Fields & Sync Payment
             const fRes = await api.get(`forms/fields/?${currentFieldParams}&field_group=INITIAL`);
             const fieldData = Array.isArray(fRes.data) ? fRes.data : (fRes.data?.results || []);
-            setActiveFields(fieldData.sort((a, b) => a.order - b.order));
+            const sortedFields = fieldData.sort((a, b) => a.order - b.order);
+            setActiveFields(sortedFields);
+            
+            // Manual sync for initial load
+            updatePaymentConfig(spId, cId, sortedFields, prog, currentSubPrograms);
         } catch (err) {
             console.error("Link invalid", err);
         } finally {
@@ -117,60 +152,142 @@ const PublicApplicationForm = () => {
 
     const handleSubProgramChange = async (spId) => {
         const sp = subPrograms.find(s => s.id.toString() === spId);
-        setCourses(sp?.courses || []);
-        setFormData({ ...formData, sub_program: spId, course: '' });
-
-        // Update Payment Config
-        if (sp) {
-            setPaymentConfig({ 
-                required: sp.require_payment || program.require_payment, 
-                amount: sp.require_payment ? sp.registration_fee : program.registration_fee 
-            });
-        }
+        const currentCourses = sp?.courses || [];
+        setCourses(currentCourses);
+        setFormData(prev => ({ ...prev, sub_program: spId, course: '' }));
 
         if (spId) {
             try {
                 const res = await api.get(`forms/fields/?sub_program=${spId}&field_group=INITIAL`);
-                const fieldData = Array.isArray(res.data) ? res.data : (res.data?.results || []);
-                setActiveFields(fieldData.sort((a, b) => a.order - b.order));
+                processFields(Array.isArray(res.data) ? res.data : (res.data?.results || []), spId, '');
             } catch (err) {
                 console.error("Failed to fetch sub-program fields", err);
             }
         } else {
-            // Revert to program fields
             fetchApplicationContext();
         }
     };
 
-    const handleCourseChange = async (cId) => {
-        setFormData({ ...formData, course: cId });
-        const c = courses.find(course => course.id.toString() === cId);
-        if (c) {
-            setPaymentConfig({ 
-                required: c.require_payment || paymentConfig.required,
-                amount: c.require_payment ? c.registration_fee : paymentConfig.amount
+    const loadRazorpay = () => {
+        return new Promise((resolve) => {
+            if (window.Razorpay) {
+                resolve(true);
+                return;
+            }
+            const script = document.createElement('script');
+            script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+            script.onload = () => resolve(true);
+            script.onerror = () => resolve(false);
+            document.body.appendChild(script);
+        });
+    };
+
+    const handlePayment = async () => {
+        // Validation: Try to find name/mobile in dynamic values if not set directly
+        let finalName = formData.first_name;
+        let finalMobile = formData.mobile;
+
+        if (!finalName || !finalMobile) {
+            activeFields.forEach(f => {
+                const label = f.label.toLowerCase();
+                const val = formData.dynamic_values[f.id];
+                if (!val) return;
+
+                if ((label.includes('name')) && !finalName) finalName = val;
+                if ((label.includes('mobile') || label.includes('phone') || label.includes('contact')) && !finalMobile) finalMobile = val;
             });
         }
 
+        if (!finalName || !finalMobile) {
+            alert("Please fill in your basic details (Name & Mobile) before payment.");
+            return;
+        }
+
+        setSubmitting(true);
+        try {
+            const isLoaded = await loadRazorpay();
+            if (!isLoaded) {
+                alert("Razorpay SDK failed to load. Please check your internet connection.");
+                setSubmitting(false);
+                return;
+            }
+
+            // Create Order on Backend
+            const orderRes = await api.post('integrations/razorpay/order/', {
+                amount: paymentConfig.amount
+            });
+
+            const { order_id, key_id, amount, currency } = orderRes.data;
+
+            const options = {
+                key: key_id,
+                amount: amount,
+                currency: currency,
+                name: "Natya Arts",
+                description: `Registration for ${program?.name || 'Program'}`,
+                order_id: order_id,
+                handler: function (response) {
+                    // Payment Success
+                    setTransactionId(response.razorpay_payment_id);
+                    setPaymentDone(true);
+                    setSubmitting(false);
+                },
+                prefill: {
+                    name: `${formData.first_name} ${formData.last_name}`,
+                    email: formData.email,
+                    contact: formData.mobile
+                },
+                theme: {
+                    color: "#6366f1"
+                },
+                modal: {
+                    ondismiss: function() {
+                        setSubmitting(false);
+                    }
+                }
+            };
+
+            const rzp = new window.Razorpay(options);
+            rzp.open();
+        } catch (err) {
+            console.error("Payment initiation failed", err);
+            const errorMsg = err.response?.data?.error || "Failed to start payment gateway. Please ensure keys are correctly set in Admin > Integrations.";
+            alert(errorMsg);
+            setSubmitting(false);
+        }
+    };
+
+    const handleCourseChange = async (cId) => {
+        const currentSpId = formData.sub_program; 
+        setFormData(prev => ({ ...prev, course: cId }));
+        
         if (cId) {
             try {
                 const res = await api.get(`forms/fields/?course=${cId}&field_group=INITIAL`);
-                const fieldData = Array.isArray(res.data) ? res.data : (res.data?.results || []);
-                setActiveFields(fieldData.sort((a, b) => a.order - b.order));
+                const fields = Array.isArray(res.data) ? res.data : (res.data?.results || []);
+                setActiveFields(fields.sort((a, b) => a.order - b.order));
+                updatePaymentConfig(currentSpId, cId, fields);
             } catch (err) {
                 console.error("Failed to fetch course fields", err);
+                updatePaymentConfig(currentSpId, cId);
             }
         } else {
-            // Revert to sub-program fields if course deselected
-            if (formData.sub_program) handleSubProgramChange(formData.sub_program);
+            if (currentSpId) handleSubProgramChange(currentSpId);
         }
     };
 
     const handleDynamicChange = (fieldId, value) => {
-        setFormData({
-            ...formData,
-            dynamic_values: { ...formData.dynamic_values, [fieldId]: value }
-        });
+        const field = activeFields.find(f => f.id === fieldId);
+        let updates = { dynamic_values: { ...formData.dynamic_values, [fieldId]: value } };
+
+        if (field) {
+            const label = field.label.toLowerCase();
+            if (label.includes('name')) updates.first_name = value;
+            if (label.includes('mobile') || label.includes('phone') || label.includes('contact')) updates.mobile = value;
+            if (label.includes('email')) updates.email = value;
+        }
+
+        setFormData(prev => ({ ...prev, ...updates }));
     };
 
     const handleSubmit = async (e) => {
@@ -368,6 +485,16 @@ const PublicApplicationForm = () => {
                                                 onChange={e => handleDynamicChange(field.id, e.target.files[0])}
                                             />
                                         </div>
+                                    ) : field.field_type === 'payment' ? (
+                                        <div className="p-6 bg-slate-900 rounded-[30px] text-white flex justify-between items-center shadow-xl border-2 border-indigo-500/30">
+                                            <div>
+                                                <p className="text-[10px] font-black uppercase tracking-widest opacity-50">Registration Fee</p>
+                                                <h4 className="text-2xl font-black">₹{paymentConfig.amount}</h4>
+                                            </div>
+                                            <div className="flex items-center gap-2 text-indigo-400 font-bold text-xs uppercase tracking-widest">
+                                                <Sparkles size={16} /> Pay at Bottom
+                                            </div>
+                                        </div>
                                     ) : (
                                         <input
                                             type={field.field_type}
@@ -393,16 +520,7 @@ const PublicApplicationForm = () => {
                                             </div>
                                             <button 
                                                 type="button"
-                                                onClick={() => {
-                                                    setSubmitting(true);
-                                                    // Simulation: In real app, this triggers Razorpay
-                                                    setTimeout(() => {
-                                                        const fakeId = "pay_" + Math.random().toString(36).substr(2, 9).toUpperCase();
-                                                        setTransactionId(fakeId);
-                                                        setSubmitting(false);
-                                                        setPaymentDone(true);
-                                                    }, 1500);
-                                                }}
+                                                onClick={handlePayment}
                                                 disabled={submitting}
                                                 className="w-full md:w-auto px-10 py-5 bg-indigo-500 text-white rounded-[24px] font-black text-xl hover:bg-indigo-600 transition shadow-xl flex items-center justify-center gap-3 active:scale-95 disabled:opacity-50"
                                             >

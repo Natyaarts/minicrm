@@ -702,6 +702,7 @@ const SalesModule = () => {
                                             <th className="p-4 font-bold">Student</th>
                                             <th className="p-4 font-bold">Contact</th>
                                             <th className="p-4 font-bold">Program</th>
+                                            <th className="p-4 font-bold">Amount</th>
                                             <th className="p-4 font-bold">Transaction ID</th>
                                             <th className="p-4 font-bold">Status</th>
                                             <th className="p-4 font-bold text-right">Action</th>
@@ -731,6 +732,9 @@ const SalesModule = () => {
                                                     <td className="p-4">
                                                         <div className="font-medium text-slate-800">{student.program_name}</div>
                                                         <div className="text-xs text-slate-500">{student.sub_program_name || student.course_name || '-'}</div>
+                                                    </td>
+                                                    <td className="p-4">
+                                                        <div className="font-bold text-slate-900">₹{student.total_paid || 0}</div>
                                                     </td>
                                                     <td className="p-4">
                                                         <div className="font-medium text-slate-800">{student.transactions_list?.[0]?.transaction_id || '-'}</div>

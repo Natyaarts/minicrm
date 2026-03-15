@@ -428,6 +428,14 @@ const CoursesModule = () => {
                                                                             <span className="text-slate-300 font-bold">Select Option</span>
                                                                             <ChevronDown size={18} className="text-slate-300" />
                                                                         </div>
+                                                                    ) : field.field_type === 'payment' ? (
+                                                                        <div className="w-full p-6 bg-slate-900 rounded-[30px] text-white flex justify-between items-center shadow-lg border-2 border-indigo-500/30">
+                                                                            <div>
+                                                                                <p className="text-[8px] font-black uppercase tracking-widest opacity-50">Secure Payment Widget</p>
+                                                                                <h4 className="text-xl font-black">₹ Fee Amount</h4>
+                                                                            </div>
+                                                                            <div className="px-6 py-3 bg-indigo-600 rounded-2xl font-black text-sm">Pay Now</div>
+                                                                        </div>
                                                                     ) : (
                                                                         <div className="w-full h-14 bg-slate-50 rounded-2xl border border-slate-100 px-5 flex items-center">
                                                                             <span className="text-slate-300 font-bold">Mock Input...</span>
@@ -698,7 +706,15 @@ const CoursesModule = () => {
                                                 <option value="date">Date Picker</option>
                                                 <option value="dropdown">Selection Dropdown</option>
                                                 <option value="file">File Upload</option>
+                                                <option value="payment">Payment Section</option>
                                             </select>
+                                            {formData.field.field_type === 'payment' && (
+                                                <div className="mt-3 p-4 bg-indigo-50 rounded-2xl border border-indigo-100 animate-fadeIn">
+                                                    <p className="text-[10px] text-indigo-600 font-bold leading-relaxed uppercase tracking-tight">
+                                                        💡 Note: The actual amount shown to students is controlled by the "Registration Fee" in your Program/Course settings. This field just places the widget on the form.
+                                                    </p>
+                                                </div>
+                                            )}
                                         </div>
                                         <div>
                                             <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 ml-1">Field Group (Collector)</label>

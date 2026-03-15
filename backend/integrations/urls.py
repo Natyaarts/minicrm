@@ -1,7 +1,8 @@
 from django.urls import path
 from .views import (
     LMSProxyView, LinkWiseView, SyncWiseStudentsView, 
-    WiseCourseListView, ConsumeWiseCreditsView, IntegrationSettingViewSet
+    WiseCourseListView, ConsumeWiseCreditsView, IntegrationSettingViewSet,
+    RazorpayOrderView
 )
 
 urlpatterns = [
@@ -11,4 +12,5 @@ urlpatterns = [
     path('courses/', WiseCourseListView.as_view(), name='wise-courses'),
     path('consume-credits/', ConsumeWiseCreditsView.as_view(), name='consume-credits'),
     path('settings/', IntegrationSettingViewSet.as_view(), name='integration-settings'),
+    path('razorpay/order/', RazorpayOrderView.as_view(), name='razorpay-order'),
 ]

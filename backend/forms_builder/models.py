@@ -8,6 +8,7 @@ class DynamicField(models.Model):
         ('date', 'Date'),
         ('dropdown', 'Dropdown'),
         ('file', 'File Upload'),
+        ('payment', 'Payment Section'),
     )
     
     FIELD_GROUP_CHOICES = (
