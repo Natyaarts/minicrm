@@ -769,7 +769,7 @@ const AdminModule = () => {
                     <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm">
                         <label className="block text-sm mb-4 text-slate-500 font-bold uppercase tracking-wider">Configure Permissions for Role:</label>
                         <div className="flex gap-3 flex-wrap">
-                            {['ADMIN', 'SALES', 'MENTOR', 'ACADEMIC', 'STUDENT'].map(role => (
+                            {['ADMIN', 'SALES', 'MENTOR', 'ACADEMIC', 'ACADEMIC_COORDINATOR', 'STUDENT'].map(role => (
                                 <button
                                     key={role}
                                     onClick={() => setSelectedRoleForPerms(role)}

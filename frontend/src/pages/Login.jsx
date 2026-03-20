@@ -28,6 +28,9 @@ function Login() {
         <div className="flex items-center justify-center min-h-screen bg-slate-50">
             <div className="w-full max-w-md p-10 bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl border border-white">
                 <div className="text-center mb-10">
+                    <div className="flex justify-center mb-6">
+                        <img src="/logo.png" alt="Logo" className="h-48 w-auto object-contain" />
+                    </div>
                     <h2 className="text-4xl font-extrabold mb-3 bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">
                         Welcome Back
                     </h2>

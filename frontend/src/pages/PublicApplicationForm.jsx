@@ -393,9 +393,9 @@ const PublicApplicationForm = () => {
             {/* Header */}
             <header className="bg-white border-b border-slate-100 py-6 px-4 sticky top-0 z-10">
                 <div className="max-w-3xl mx-auto flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white">
-                            <GraduationCap size={20} />
+                    <div className="flex items-center gap-5">
+                        <div className="h-32 w-auto flex items-center justify-center">
+                            <img src="/logo.png" alt="Logo" className="h-full w-auto object-contain" />
                         </div>
                         <h2 className="font-black text-xl tracking-tight">{program?.name}</h2>
                     </div>

@@ -8,6 +8,7 @@ class User(AbstractUser):
         ('SALES', 'Sales User'),
         ('MENTOR', 'Mentor'),
         ('ACADEMIC', 'Academic User'),
+        ('ACADEMIC_COORDINATOR', 'Academic Coordinator'),
         ('TEACHER', 'Teacher'),
         ('STUDENT', 'Student'),
     )

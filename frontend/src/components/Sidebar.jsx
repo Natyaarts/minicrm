@@ -72,9 +72,9 @@ function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }) {
                 <div className="absolute -bottom-20 -right-20 w-64 h-64 bg-amber-200/40 rounded-full blur-3xl pointer-events-none" />
 
                 <div className="p-8 relative z-10 flex justify-between items-center">
-                    <Link to="/" onClick={() => setIsMobileMenuOpen(false)} className="flex items-center gap-3 mb-1 group">
-                        <div className="w-10 h-10 bg-gradient-to-br from-rose-600 to-amber-500 rounded-xl flex items-center justify-center text-white shadow-lg shadow-rose-200 group-hover:scale-105 transition-transform duration-300">
-                            <Sparkles size={20} fill="currentColor" />
+                    <Link to="/" onClick={() => setIsMobileMenuOpen(false)} className="flex items-center gap-5 mb-2 group">
+                        <div className="h-24 w-auto flex items-center justify-center group-hover:scale-105 transition-transform duration-300 shrink-0">
+                            <img src="/logo.png" alt="Logo" className="h-full w-auto object-contain" />
                         </div>
                         <div>
                             <h1 className="text-2xl font-black text-slate-900 tracking-tight leading-none group-hover:text-rose-600 transition-colors">

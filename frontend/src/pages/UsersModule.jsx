@@ -207,7 +207,8 @@ const UsersModule = () => {
                                         <span className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm inline-block ${user.role === 'SUPER_ADMIN' ? 'bg-indigo-600 text-white' :
                                             user.role === 'ADMIN' ? 'bg-rose-50 border border-rose-100 text-rose-600' :
                                                 user.role === 'MENTOR' ? 'bg-emerald-50 border border-emerald-100 text-emerald-600' :
-                                                    'bg-blue-50 border border-blue-100 text-blue-600'
+                                                    user.role === 'ACADEMIC_COORDINATOR' ? 'bg-amber-50 border border-amber-100 text-amber-600' :
+                                                        'bg-blue-50 border border-blue-100 text-blue-600'
                                             }`}>
                                             {user.role.replace('_', ' ')}
                                         </span>
@@ -368,6 +369,7 @@ const UsersModule = () => {
                                                                 <option value="ADMIN">Lead Administrator</option>
                                                                 <option value="SUPER_ADMIN">System Owner / Super Admin</option>
                                                                 <option value="ACADEMIC">Academic Manager</option>
+                                                                <option value="ACADEMIC_COORDINATOR">Academic Coordinator</option>
                                                             </>
                                                         ) : activeTab === 'SALES' ? (
                                                             <option value="SALES">Sales Associate</option>
