@@ -144,38 +144,52 @@ const SalesModule = () => {
         fetchProgramsAndInit();
     }, []);
 
-    // Fetch Students for List View
-    useEffect(() => {
-        if (activeTab === 'list' && isAuthenticated) {
-            const fetchStudents = async () => {
-                setLoading(true);
-                try {
-                    const res = await api.get(`students/?is_active=${!isTrashView}&page=${studentPage}&search=${searchTerm}`);
-                    const data = res.data;
-                    if (data.results) {
-                        setStudentList(data.results);
-                        setStudentPagination({
-                            count: data.count,
-                            next: data.next,
-                            previous: data.previous
-                        });
-                    } else {
-                        setStudentList(Array.isArray(data) ? data : []);
-                        setStudentPagination({ count: data.length, next: null, previous: null });
-                    }
-                } catch (err) {
-                    console.error("Failed to fetch students", err);
-                } finally {
-                    setLoading(false);
-                }
-            };
+    const fetchStudents = async () => {
+        setLoading(true);
+        try {
+            const params = new URLSearchParams({
+                is_active: (!isTrashView).toString(),
+                page: studentPage.toString(),
+                search: searchTerm
+            });
+            
+            if (selectedProgram) params.append('program', selectedProgram);
+            if (selectedSubProgram) params.append('sub_program', selectedSubProgram);
+            if (selectedCourse) params.append('course', selectedCourse);
 
+            const res = await api.get(`students/?${params.toString()}`);
+            const data = res.data;
+            if (data.results) {
+                setStudentList(data.results);
+                setStudentPagination({
+                    count: data.count,
+                    next: data.next,
+                    previous: data.previous
+                });
+            } else {
+                setStudentList(Array.isArray(data) ? data : []);
+                setStudentPagination({ count: data.length, next: null, previous: null });
+            }
+        } catch (err) {
+            console.error("Failed to fetch students", err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        const token = localStorage.getItem('token');
+        setIsAuthenticated(!!token);
+    }, []);
+
+    useEffect(() => {
+        if (isAuthenticated) {
             const timer = setTimeout(() => {
                 fetchStudents();
             }, 500);
             return () => clearTimeout(timer);
         }
-    }, [activeTab, isAuthenticated, isTrashView, studentPage, searchTerm]);
+    }, [activeTab, isAuthenticated, isTrashView, studentPage, searchTerm, selectedProgram, selectedSubProgram, selectedCourse]);
 
     // Reset pagination on mode change
     useEffect(() => {
@@ -318,9 +332,11 @@ const SalesModule = () => {
             'full name': 'first_name',
             'name': 'first_name',
             'last name': 'last_name',
-            'mobile number': 'mobile',
-            'contact number': 'mobile',
-            'whatsapp number': 'mobile',
+            'mobile': 'mobile',
+            'mob': 'mobile',
+            'phone': 'mobile',
+            'contact': 'mobile',
+            'whatsapp': 'mobile',
             'email': 'email',
             'dob': 'dob',
             'date of birth': 'dob',
@@ -378,7 +394,18 @@ const SalesModule = () => {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
             setMessage({ type: 'success', text: 'Application submitted successfully! Welcome to the family.' });
-            // Optionally clear form here
+            
+            // Re-fetch list and clear form
+            fetchStudents();
+            setFormData({
+                first_name: '', last_name: '', father_husband_name: '', mother_name: '',
+                email: '', mobile: '', dob: '', gender: '', marital_status: '',
+                perm_address: '', perm_city: '', perm_district: '', perm_state: '', perm_pincode: '',
+                corr_address: '', corr_city: '', corr_district: '', corr_state: '', corr_pincode: '',
+            });
+            setDynamicValues({});
+            setFiles({});
+            setTransactionData({ amount: '', transaction_id: '', transaction_link: '' });
         } catch (err) {
             console.error("Submission Error:", err);
             let errorMsg = 'Failed to submit application. Please check your inputs.';
@@ -674,7 +701,59 @@ const SalesModule = () => {
                                 <h3 className="text-2xl font-bold text-slate-900">
                                     {isTrashView ? 'Trash Section' : 'Submitted Applications'}
                                 </h3>
-                                <div className="flex items-center gap-3">
+                                <div className="flex flex-wrap items-center gap-3">
+                                    {/* Program Logic Filters */}
+                                    <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-2xl border border-slate-200 shadow-inner">
+                                        <select 
+                                            value={selectedProgram}
+                                            onChange={handleProgramChange}
+                                            className="bg-transparent text-xs font-bold text-slate-700 px-3 py-1 outline-none min-w-[120px] cursor-pointer"
+                                        >
+                                            <option value="">All Brands/Programs</option>
+                                            {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                        </select>
+                                        
+                                        {selectedProgram && (
+                                            <div className="flex items-center gap-2 border-l border-slate-300 pl-2">
+                                                <select 
+                                                    value={selectedSubProgram}
+                                                    onChange={handleSubProgramChange}
+                                                    className="bg-transparent text-xs font-bold text-indigo-600 px-3 py-1 outline-none min-w-[120px] cursor-pointer"
+                                                >
+                                                    <option value="">All Categories</option>
+                                                    {subPrograms.map(sp => <option key={sp.id} value={sp.id}>{sp.name}</option>)}
+                                                </select>
+                                                
+                                                {selectedSubProgram && (
+                                                    <select 
+                                                        value={selectedCourse}
+                                                        onChange={handleCourseChange}
+                                                        className="bg-transparent text-xs font-bold text-emerald-600 px-3 py-1 outline-none min-w-[120px] border-l border-slate-300 pl-2 cursor-pointer"
+                                                    >
+                                                        <option value="">All Courses</option>
+                                                        {courses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                                    </select>
+                                                )}
+                                            </div>
+                                        )}
+                                        
+                                        {(selectedProgram || selectedSubProgram || selectedCourse) && (
+                                            <button 
+                                                onClick={() => {
+                                                    setSelectedProgram('');
+                                                    setSelectedSubProgram('');
+                                                    setSelectedCourse('');
+                                                    setSubPrograms([]);
+                                                    setCourses([]);
+                                                }}
+                                                className="p-1 text-slate-400 hover:text-rose-500 transition-colors"
+                                                title="Clear Filters"
+                                            >
+                                                <X size={14} />
+                                            </button>
+                                        )}
+                                    </div>
+
                                     <button
                                         onClick={() => setIsTrashView(!isTrashView)}
                                         className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${isTrashView ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
@@ -702,6 +781,7 @@ const SalesModule = () => {
                                             <th className="p-4 font-bold">Student</th>
                                             <th className="p-4 font-bold">Contact</th>
                                             <th className="p-4 font-bold">Program</th>
+                                            <th className="p-4 font-bold">Application Info</th>
                                             <th className="p-4 font-bold">Amount</th>
                                             <th className="p-4 font-bold">Transaction ID</th>
                                             <th className="p-4 font-bold">Status</th>
@@ -720,7 +800,12 @@ const SalesModule = () => {
                                                                 {(student.first_name?.[0] || '')}{(student.last_name?.[0] || '')}
                                                             </div>
                                                             <div>
-                                                                <div className="font-bold text-slate-900">{student.first_name} {student.last_name}</div>
+                                                                <div 
+                                                                    className="font-bold text-slate-900 hover:text-indigo-600 cursor-pointer transition-colors"
+                                                                    onClick={() => setSelectedStudentProfile(student)}
+                                                                >
+                                                                    {student.first_name} {student.last_name}
+                                                                </div>
                                                                 <div className="text-xs text-slate-400">ID: {student.crm_student_id || student.id}</div>
                                                             </div>
                                                         </div>
@@ -732,6 +817,24 @@ const SalesModule = () => {
                                                     <td className="p-4">
                                                         <div className="font-medium text-slate-800">{student.program_name}</div>
                                                         <div className="text-xs text-slate-500">{student.sub_program_name || student.course_name || '-'}</div>
+                                                    </td>
+                                                    <td className="p-4">
+                                                        <div className="max-w-[200px] space-y-1">
+                                                            {student.dynamic_values_list?.slice(0, 3).map(val => (
+                                                                <div key={val.id} className="text-[10px] leading-tight flex gap-1 truncate">
+                                                                    <span className="font-bold text-slate-400 shrink-0">{val.field_label}:</span>
+                                                                    <span className="text-slate-600 truncate">{val.value}</span>
+                                                                </div>
+                                                            ))}
+                                                            {student.dynamic_values_list?.length > 3 && (
+                                                                <div className="text-[10px] text-indigo-500 font-bold italic">
+                                                                    +{student.dynamic_values_list.length - 3} more details...
+                                                                </div>
+                                                            )}
+                                                            {!student.dynamic_values_list?.length && (
+                                                                <span className="text-[10px] text-slate-300 italic">No custom data</span>
+                                                            )}
+                                                        </div>
                                                     </td>
                                                     <td className="p-4">
                                                         <div className="font-bold text-slate-900">₹{student.total_paid || 0}</div>
@@ -1097,21 +1200,36 @@ const SalesModule = () => {
                                 </div>
                             </div>
 
-                            {/* Dynamic Fields */}
-                            <div className="md:col-span-2">
-                                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Application Form Details</h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white border border-slate-100 p-6 rounded-2xl">
-                                    {selectedStudentProfile.dynamic_values_list?.length > 0 ? (
-                                        selectedStudentProfile.dynamic_values_list.map((val) => (
-                                            <div key={val.id}>
-                                                <p className="text-xs text-slate-500 mb-1">{val.field_label}</p>
-                                                <p className="font-medium text-slate-800">{val.value || '-'}</p>
+                            {/* Dynamic Fields Groups */}
+                            <div className="md:col-span-2 space-y-8">
+                                {['INITIAL', 'ACADEMIC'].map(group => {
+                                    const groupFields = selectedStudentProfile.dynamic_values_list?.filter(val => val.field_group === group);
+                                    if (!groupFields || groupFields.length === 0) return null;
+
+                                    return (
+                                        <div key={group}>
+                                            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">
+                                                {group === 'INITIAL' ? 'Initial Application (Sales)' : 'Academic/Post-Admission Details'}
+                                            </h3>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white border border-slate-100 p-6 rounded-2xl shadow-sm">
+                                                {groupFields.map((val) => (
+                                                    <div key={val.id}>
+                                                        <p className="text-xs text-slate-500 mb-1">{val.field_label}</p>
+                                                        <p className="font-medium text-slate-800">{val.value || '-'}</p>
+                                                    </div>
+                                                ))}
                                             </div>
-                                        ))
-                                    ) : (
-                                        <p className="text-slate-400 text-sm italic col-span-2">No custom fields filled.</p>
-                                    )}
-                                </div>
+                                        </div>
+                                    );
+                                })}
+                                {!selectedStudentProfile.dynamic_values_list?.length && (
+                                    <div>
+                                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Form Details</h3>
+                                        <div className="bg-white border border-slate-100 p-6 rounded-2xl">
+                                            <p className="text-slate-400 text-sm italic">No custom fields filled.</p>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Documents */}
@@ -1275,15 +1393,18 @@ const SalesModule = () => {
                                     onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
                                 />
 
-                                {/* Dynamic Fields Integrated into Grid */}
-                                {dynamicFields.length > 0 && (
-                                    <>
-                                        <div className="md:col-span-2 border-b border-slate-100 pt-4 pb-2">
-                                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Application Form Details</h4>
-                                        </div>
-                                        {dynamicFields
-                                            .filter(f => !['First Name', 'Mobile Number', 'Contact Number', 'Mobile'].includes(f.label))
-                                            .map(field => (
+                                {['INITIAL', 'ACADEMIC'].map(group => {
+                                    const groupFields = dynamicFields.filter(f => f.field_group === group && !['First Name', 'Mobile Number', 'Contact Number', 'Mobile'].includes(f.label));
+                                    if (groupFields.length === 0) return null;
+
+                                    return (
+                                        <React.Fragment key={group}>
+                                            <div className="md:col-span-2 border-b border-slate-100 pt-4 pb-2">
+                                                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">
+                                                    {group === 'INITIAL' ? 'Initial Application Details' : 'Academic Coordinator Data Entry'}
+                                                </h4>
+                                            </div>
+                                            {groupFields.map(field => (
                                                 <div key={field.id} className={field.field_type === 'file' ? 'md:col-span-2' : ''}>
                                                     <label className="text-xs font-semibold text-slate-700 mb-1.5 block">{field.label}</label>
                                                     {field.field_type === 'dropdown' ? (
@@ -1304,13 +1425,14 @@ const SalesModule = () => {
                                                         />
                                                     ) : (
                                                         <div className="p-3 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-center">
-                                                            <p className="text-xs text-slate-400 italic">File uploads can only be changed by re-submitting an application.</p>
+                                                            <p className="text-xs text-slate-400 italic font-medium">File uploads (like {field.label}) can only be added via the application form.</p>
                                                         </div>
                                                     )}
                                                 </div>
                                             ))}
-                                    </>
-                                )}
+                                        </React.Fragment>
+                                    );
+                                })}
                             </div>
 
                             <div className="pt-6 flex gap-3">

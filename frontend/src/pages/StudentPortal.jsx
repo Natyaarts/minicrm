@@ -227,6 +227,36 @@ const StudentPortal = () => {
                         </div>
                     </div>
 
+                    {/* Custom Form Details (Directly in Dashboard) */}
+                    <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
+                        <h3 className="text-lg font-bold text-slate-800 mb-6 border-b border-slate-100 pb-4">Application Details</h3>
+                        <div className="space-y-6">
+                            {['INITIAL', 'ACADEMIC'].map(group => {
+                                const groupFields = profile.dynamic_values_list?.filter(val => val.field_group === group);
+                                if (!groupFields || groupFields.length === 0) return null;
+
+                                return (
+                                    <div key={group}>
+                                        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3">
+                                            {group === 'INITIAL' ? 'Initial Application' : 'Academic Records'}
+                                        </h4>
+                                        <div className="grid grid-cols-1 gap-4">
+                                            {groupFields.map((val) => (
+                                                <div key={val.id} className="flex justify-between items-start border-b border-slate-50 pb-2 last:border-0">
+                                                    <span className="text-xs font-semibold text-slate-500">{val.field_label}</span>
+                                                    <span className="text-xs font-bold text-slate-800 text-right max-w-[60%] truncate">{val.value || '-'}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                            {!profile.dynamic_values_list?.length && (
+                                <p className="text-slate-400 text-sm italic">No custom fields filled.</p>
+                            )}
+                        </div>
+                    </div>
+
                     {/* LMS Stats - Attendance & Progress */}
                     {lmsData && (
                         <div className="space-y-6">

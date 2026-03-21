@@ -17,6 +17,7 @@ const AcademicModule = () => {
 
     // Modals state
     const [selectedStudent, setSelectedStudent] = useState(null);
+    const [selectedStudentProfile, setSelectedStudentProfile] = useState(null);
     const [feeData, setFeeData] = useState(null);
     const [feeLoading, setFeeLoading] = useState(false);
 
@@ -354,6 +355,7 @@ const AcademicModule = () => {
                             <th className="p-4 font-bold text-slate-500 uppercase text-xs">CRM ID</th>
                             <th className="p-4 font-bold text-slate-500 uppercase text-xs">Name</th>
                             <th className="p-4 font-bold text-slate-500 uppercase text-xs">Program</th>
+                            <th className="p-4 font-bold text-slate-500 uppercase text-xs">Quick Info</th>
                             <th className="p-4 font-bold text-slate-500 uppercase text-xs">Batch</th>
                             <th className="p-4 font-bold text-slate-500 uppercase text-xs">Transaction ID</th>
                             <th className="p-4 font-bold text-slate-500 uppercase text-xs">Mobile</th>
@@ -365,9 +367,29 @@ const AcademicModule = () => {
                             displayStudents.map(student => (
                                 <tr key={student.id} className="hover:bg-slate-50 transition-colors">
                                     <td className="p-4 font-mono text-xs font-bold text-indigo-600 bg-indigo-50/50 w-24 text-center rounded-r-lg my-1">{student.crm_student_id}</td>
-                                    <td className="p-4 font-bold text-slate-800">{student.first_name} {student.last_name}</td>
-                                    <td className="p-4 text-slate-600">{student.program_name}</td>
-                                    <td className="p-4 text-slate-600">{student.batch_name || <span className="text-slate-400 italic font-medium">Unassigned</span>}</td>
+                                    <td className="p-4">
+                                        <div 
+                                            className="font-bold text-slate-800 hover:text-indigo-600 cursor-pointer transition-colors"
+                                            onClick={() => setSelectedStudentProfile(student)}
+                                        >
+                                            {student.first_name} {student.last_name}
+                                        </div>
+                                    </td>
+                                    <td className="p-4 text-slate-600 text-xs">{student.program_name}</td>
+                                    <td className="p-4">
+                                        <div className="max-w-[150px] space-y-1">
+                                            {student.dynamic_values_list?.slice(0, 2).map(val => (
+                                                <div key={val.id} className="text-[10px] leading-tight flex gap-1 truncate text-slate-500">
+                                                    <span className="font-bold opacity-70 shrink-0">{val.field_label}:</span>
+                                                    <span className="truncate">{val.value}</span>
+                                                </div>
+                                            ))}
+                                            {student.dynamic_values_list?.length > 2 && (
+                                                <div className="text-[9px] text-teal-600 font-bold italic">Check details...</div>
+                                            )}
+                                        </div>
+                                    </td>
+                                    <td className="p-4 text-slate-600 text-xs font-medium">{student.batch_name || <span className="text-slate-400 italic">Unassigned</span>}</td>
                                     <td className="p-4">
                                         <div className="font-mono text-[10px] font-bold text-slate-600">
                                             {student.transactions_list?.[0]?.transaction_id || <span className="text-slate-300">-</span>}
@@ -681,6 +703,94 @@ const AcademicModule = () => {
                     </div>
                 )
             }
+            {/* Full Profile View Modal */}
+            {selectedStudentProfile && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn overflow-y-auto">
+                    <div className="my-8 bg-slate-50 rounded-[2.5rem] p-8 md:p-12 w-full max-w-5xl shadow-2xl relative border border-white">
+                        <button
+                            onClick={() => setSelectedStudentProfile(null)}
+                            className="absolute top-8 right-8 p-3 bg-white text-slate-400 hover:text-slate-900 rounded-2xl shadow-sm hover:shadow-md transition-all z-10"
+                        >
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                        </button>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
+                            {/* Profile Header Card */}
+                            <div className="md:col-span-1 space-y-6">
+                                <div className="bg-white p-8 rounded-3xl border border-white shadow-sm">
+                                    <div className="w-24 h-24 bg-gradient-to-tr from-indigo-500 to-indigo-600 rounded-3xl flex items-center justify-center text-white text-4xl font-extrabold shadow-lg shadow-indigo-100 mb-6">
+                                        {selectedStudentProfile.first_name?.[0]}{selectedStudentProfile.last_name?.[0]}
+                                    </div>
+                                    <h2 className="text-2xl font-black text-slate-900">{selectedStudentProfile.first_name} {selectedStudentProfile.last_name}</h2>
+                                    <p className="text-sm font-bold text-slate-400 uppercase tracking-widest mt-1 mb-6">Student ID: {selectedStudentProfile.crm_student_id}</p>
+                                    
+                                    <div className="space-y-4 pt-6 border-t border-slate-50">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center text-slate-400"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path></svg></div>
+                                            <div><p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Mobile</p><p className="text-sm font-bold text-slate-700">{selectedStudentProfile.mobile}</p></div>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center text-slate-400"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg></div>
+                                            <div><p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Email</p><p className="text-sm font-bold text-slate-700 break-all">{selectedStudentProfile.email}</p></div>
+                                        </div>
+                                    </div>
+
+                                    <div className="mt-8 space-y-3">
+                                        <button 
+                                            onClick={() => {
+                                                setSelectedStudentProfile(null);
+                                                handleCompleteProfile(selectedStudentProfile);
+                                            }}
+                                            className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all flex items-center justify-center gap-2"
+                                        >
+                                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                                            Edit Academic Data
+                                        </button>
+                                        <button 
+                                            onClick={() => {
+                                                setSelectedStudentProfile(null);
+                                                handleViewFees(selectedStudentProfile);
+                                            }}
+                                            className="w-full py-3 bg-rose-50 text-rose-600 rounded-2xl font-bold hover:bg-rose-100 transition-all text-xs"
+                                        >
+                                            View Fees & Financials
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Data Groups Content */}
+                            <div className="md:col-span-2 space-y-8">
+                                {['INITIAL', 'ACADEMIC'].map(group => {
+                                    const groupFields = selectedStudentProfile.dynamic_values_list?.filter(val => val.field_group === group);
+                                    if (!groupFields || groupFields.length === 0) return null;
+
+                                    return (
+                                        <div key={group}>
+                                            <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] mb-4">
+                                                {group === 'INITIAL' ? 'Initial Application Details' : 'Academic & Post-Admission Records'}
+                                            </h3>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white p-8 rounded-[2rem] border border-white shadow-sm">
+                                                {groupFields.map((val) => (
+                                                    <div key={val.id}>
+                                                        <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">{val.field_label}</p>
+                                                        <p className="font-bold text-slate-800">{val.value || '-'}</p>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                                {!selectedStudentProfile.dynamic_values_list?.length && (
+                                    <div className="bg-white p-10 rounded-[2rem] text-center">
+                                        <p className="text-slate-400 font-medium font-italic">No custom data recorded yet.</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div >
     );
 }

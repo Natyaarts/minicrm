@@ -189,8 +189,15 @@ class StudentViewSet(viewsets.ModelViewSet):
             
         program = self.request.query_params.get('program')
         if program:
-            # Fix case-insensitive or misspelled program_id to program_type_id
             qs = qs.filter(program_type_id=program)
+
+        sub_program = self.request.query_params.get('sub_program')
+        if sub_program:
+            qs = qs.filter(sub_program_id=sub_program)
+
+        course = self.request.query_params.get('course')
+        if course:
+            qs = qs.filter(course_id=course)
 
         return qs.order_by('-id')
 

@@ -32,7 +32,7 @@ const AdminModule = () => {
     const [subProgramModalOpen, setSubProgramModalOpen] = useState(false);
     const [courseModalOpen, setCourseModalOpen] = useState(false);
     const [newField, setNewField] = useState({
-        label: '', field_type: 'text', options: '', order: 0, is_required: true
+        label: '', field_type: 'text', field_group: 'INITIAL', options: '', order: 0, is_required: true
     });
     const [newSubProgram, setNewSubProgram] = useState('');
     const [programModalOpen, setProgramModalOpen] = useState(false);
@@ -207,7 +207,7 @@ const AdminModule = () => {
             await api.post('forms/fields/', payload);
             setFieldModalOpen(false);
             fetchFields();
-            setNewField({ label: '', field_type: 'text', options: '', order: 0, is_required: true });
+            setNewField({ label: '', field_type: 'text', field_group: 'INITIAL', options: '', order: 0, is_required: true });
         } catch (err) {
             console.error(err);
             alert("Failed to create field");
@@ -957,6 +957,18 @@ const AdminModule = () => {
                                         <option value="dropdown">Dropdown</option>
                                         <option value="file">File Upload</option>
                                     </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold uppercase text-slate-500 mb-1 text-teal-600">Form Section / Responsibility</label>
+                                    <select 
+                                        className="w-full p-3 rounded-xl bg-teal-50 border border-teal-100 text-teal-900 focus:ring-2 focus:ring-teal-100 focus:border-teal-500 outline-none transition-all font-bold" 
+                                        value={newField.field_group} 
+                                        onChange={e => setNewField({ ...newField, field_group: e.target.value })}
+                                    >
+                                        <option value="INITIAL">Retail/Sales Team (Initial Application)</option>
+                                        <option value="ACADEMIC">Academic Coordinator (Post-Admission)</option>
+                                    </select>
+                                    <p className="text-[10px] text-teal-500/70 mt-1 ml-1 font-medium">Determines who will fill this field in their module.</p>
                                 </div>
                                 {newField.field_type === 'dropdown' && (
                                     <div>

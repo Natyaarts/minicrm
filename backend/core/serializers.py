@@ -66,9 +66,10 @@ class DocumentSerializer(serializers.ModelSerializer):
 
 class StudentDynamicValueReadSerializer(serializers.ModelSerializer):
     field_label = serializers.CharField(source='field.label', read_only=True)
+    field_group = serializers.CharField(source='field.field_group', read_only=True)
     class Meta:
         model = apps.get_model('forms_builder', 'StudentDynamicValue')
-        fields = ('id', 'field_label', 'value', 'field')
+        fields = ('id', 'field_label', 'field_group', 'value', 'field')
 
 class StudentSerializer(serializers.ModelSerializer):
     # Field to accept dynamic values as a JSON string or dict
