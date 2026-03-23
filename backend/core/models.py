@@ -52,7 +52,7 @@ class Student(models.Model):
     is_active = models.BooleanField(default=True)
     
     # Personal Info - Minimal required for system, others optional
-    first_name = models.CharField(max_length=50) # Keep first name as basic identifier
+    first_name = models.CharField(max_length=50, blank=True, null=True)
     last_name = models.CharField(max_length=50, blank=True, null=True)
     father_husband_name = models.CharField(max_length=100, blank=True, null=True)
     mother_name = models.CharField(max_length=100, blank=True, null=True)
@@ -60,7 +60,7 @@ class Student(models.Model):
     gender = models.CharField(max_length=20, blank=True, null=True)
     marital_status = models.CharField(max_length=20, blank=True, null=True)
     email = models.EmailField(blank=True, null=True)
-    mobile = models.CharField(max_length=15) # Keep mobile as basic identifier
+    mobile = models.CharField(max_length=15, blank=True, null=True)
     
     # Address
     perm_address = models.TextField(blank=True, null=True)

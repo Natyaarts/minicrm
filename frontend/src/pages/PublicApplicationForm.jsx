@@ -320,9 +320,16 @@ const PublicApplicationForm = () => {
                     formDataObj.append('mobile', val);
                 }
             });
-
+            
             // Standard Defaults
             formDataObj.append('program_type', program.id);
+
+            // Ensure first_name has a value for UI purposes if not provided
+            if (!formDataObj.has('first_name')) {
+                formDataObj.append('first_name', 'Student');
+                formDataObj.append('last_name', 'Applicant');
+            }
+            
             formDataObj.append('is_active', 'true');
             if (formData.sub_program) formDataObj.append('sub_program', formData.sub_program);
             if (formData.course) formDataObj.append('course', formData.course);
@@ -352,7 +359,8 @@ const PublicApplicationForm = () => {
             setSubmitted(true);
         } catch (err) {
             console.error("Submission error:", err);
-            alert("Submission failed. Please check if you have added Name and Mobile fields.");
+            const errorMsg = err.response?.data ? JSON.stringify(err.response.data) : "Submission failed. Please try again.";
+            alert(errorMsg);
         } finally {
             setSubmitting(false);
         }
@@ -462,12 +470,12 @@ const PublicApplicationForm = () => {
                             activeFields.map(field => (
                                 <div key={field.id} className="space-y-3">
                                     <label className="block text-xs font-black uppercase tracking-widest text-slate-400 ml-1">
-                                        {field.label} {field.is_required && <span className="text-red-500">*</span>}
+                                        {field.label} {field.is_required && !['name', 'mobile', 'phone', 'contact'].some(k => field.label.toLowerCase().includes(k)) && <span className="text-red-500">*</span>}
                                     </label>
 
                                     {field.field_type === 'dropdown' ? (
                                         <select
-                                            required={field.is_required}
+                                            required={field.is_required && !['name', 'mobile', 'phone', 'contact'].some(k => field.label.toLowerCase().includes(k))}
                                             className="w-full p-5 rounded-2xl bg-slate-50 border-2 border-transparent focus:bg-white focus:border-indigo-500 outline-none font-bold transition-all appearance-none cursor-pointer"
                                             onChange={e => handleDynamicChange(field.id, e.target.value)}
                                         >
@@ -480,7 +488,7 @@ const PublicApplicationForm = () => {
                                         <div className="relative">
                                             <input
                                                 type="file"
-                                                required={field.is_required}
+                                                required={field.is_required && !['name', 'mobile', 'phone', 'contact'].some(k => field.label.toLowerCase().includes(k))}
                                                 className="w-full p-5 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 group-hover:border-indigo-300 transition-all cursor-pointer text-sm font-medium"
                                                 onChange={e => handleDynamicChange(field.id, e.target.files[0])}
                                             />
@@ -498,7 +506,7 @@ const PublicApplicationForm = () => {
                                     ) : (
                                         <input
                                             type={field.field_type}
-                                            required={field.is_required}
+                                            required={field.is_required && !['name', 'mobile', 'phone', 'contact'].some(k => field.label.toLowerCase().includes(k))}
                                             className="w-full p-5 rounded-2xl bg-slate-50 border-2 border-transparent focus:bg-white focus:border-indigo-500 outline-none font-bold transition-all"
                                             placeholder={`Your ${field.label}`}
                                             onChange={e => handleDynamicChange(field.id, e.target.value)}
