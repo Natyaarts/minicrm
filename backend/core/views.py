@@ -8,11 +8,11 @@ from django.http import HttpResponse
 from django.contrib.auth import get_user_model
 import pandas as pd
 
-from .models import Program, SubProgram, Course, Batch, Student, Transaction, Document
+from .models import Program, SubProgram, Course, Batch, Student, Transaction, Document, SyllabusPart, ClassSession, Attendance
 from .serializers import (
     ProgramSerializer, SubProgramSerializer, CourseSerializer, 
     BatchSerializer, StudentSerializer, TransactionSerializer, DocumentSerializer,
-    ProgramHierarchySerializer
+    ProgramHierarchySerializer, SyllabusPartSerializer, ClassSessionSerializer, AttendanceSerializer
 )
 from rest_framework.views import APIView
 from .permissions import DynamicRolePermission, IsMentorOwner
@@ -60,9 +60,15 @@ class BatchViewSet(viewsets.ModelViewSet):
     serializer_class = BatchSerializer
     queryset = Batch.objects.all()
     filter_backends = [SearchFilter]
-    search_fields = ['name', 'primary_mentor__first_name', 'primary_mentor__last_name', 'course__name']
+    search_fields = ['name', 'primary_mentor__first_name', 'primary_mentor__last_name', 'teacher__first_name', 'teacher__last_name', 'course__name']
     permission_classes = [DynamicRolePermission, IsMentorOwner]
-    module_name = 'MENTOR'
+    @property
+    def module_name(self):
+        # Determine module based on user role for shared view
+        if hasattr(self, 'request') and self.request.user.is_authenticated:
+            if self.request.user.role == 'TEACHER':
+                return 'TEACHER'
+        return 'MENTOR'
 
     def get_queryset(self):
         user = self.request.user
@@ -122,6 +128,30 @@ class BatchViewSet(viewsets.ModelViewSet):
             return Response({'status': 'student removed'})
         except Student.DoesNotExist:
             return Response({'error': 'Student not found in this batch'}, status=status.HTTP_404_NOT_FOUND)
+
+    @action(detail=True, methods=['post'])
+    def log_session(self, request, pk=None):
+        batch = self.get_object()
+        date = request.data.get('date')
+        summary = request.data.get('teacher_summary')
+        completed_parts = request.data.get('completed_parts', [])
+        attendance_data = request.data.get('attendance', {})
+        
+        if not date:
+            return Response({'error': 'Date is required'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        session = ClassSession.objects.create(batch=batch, date=date, teacher_summary=summary)
+        
+        if completed_parts:
+            SyllabusPart.objects.filter(id__in=completed_parts, batch=batch).update(is_completed=True)
+            
+        for student_id, is_present in attendance_data.items():
+            try:
+                Attendance.objects.create(session=session, student_id=student_id, is_present=bool(is_present))
+            except:
+                pass
+                
+        return Response({'status': 'Session logged successfully'})
 
 class StudentViewSet(viewsets.ModelViewSet):
     queryset = Student.objects.all()
@@ -290,6 +320,54 @@ class DocumentViewSet(viewsets.ModelViewSet):
     queryset = Document.objects.all()
     serializer_class = DocumentSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+class SyllabusPartViewSet(viewsets.ModelViewSet):
+    queryset = SyllabusPart.objects.all()
+    serializer_class = SyllabusPartSerializer
+    permission_classes = [DynamicRolePermission, IsMentorOwner]
+    
+    @property
+    def module_name(self):
+        if hasattr(self, 'request') and self.request.user.is_authenticated:
+            if self.request.user.role == 'TEACHER':
+                return 'TEACHER'
+        return 'MENTOR'
+
+    def get_queryset(self):
+        batch_id = self.request.query_params.get('batch')
+        if batch_id:
+            return self.queryset.filter(batch_id=batch_id)
+        return self.queryset
+
+class ClassSessionViewSet(viewsets.ModelViewSet):
+    queryset = ClassSession.objects.all()
+    serializer_class = ClassSessionSerializer
+    permission_classes = [DynamicRolePermission, IsMentorOwner]
+    
+    @property
+    def module_name(self):
+        if hasattr(self, 'request') and self.request.user.is_authenticated:
+            if self.request.user.role == 'TEACHER':
+                return 'TEACHER'
+        return 'MENTOR'
+    
+    def get_queryset(self):
+        batch_id = self.request.query_params.get('batch')
+        if batch_id:
+            return self.queryset.filter(batch_id=batch_id)
+        return self.queryset
+
+class AttendanceViewSet(viewsets.ModelViewSet):
+    queryset = Attendance.objects.all()
+    serializer_class = AttendanceSerializer
+    permission_classes = [DynamicRolePermission, IsMentorOwner]
+    
+    @property
+    def module_name(self):
+        if hasattr(self, 'request') and self.request.user.is_authenticated:
+            if self.request.user.role == 'TEACHER':
+                return 'TEACHER'
+        return 'MENTOR'
 
 class DashboardStatsView(APIView):
     permission_classes = [permissions.IsAuthenticated]

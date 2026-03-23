@@ -49,8 +49,15 @@ class IsMentorOwner(permissions.BasePermission):
     Allows Mentors to only edit their own batches.
     """
     def has_object_permission(self, request, view, obj):
-        if request.user.role == 'MENTOR':
-            if hasattr(obj, 'primary_mentor'):
-                return obj.primary_mentor == request.user or request.user in obj.secondary_mentors.all()
-            return False
+        user = request.user
+        
+        # Determine the batch from the object if it's not a batch itself
+        batch = obj if hasattr(obj, 'primary_mentor') and hasattr(obj, 'teacher') else getattr(obj, 'batch', None)
+        
+        if user.role == 'MENTOR' and batch:
+            return batch.primary_mentor == user or user in batch.secondary_mentors.all()
+            
+        if user.role == 'TEACHER' and batch:
+            return batch.teacher == user
+            
         return True

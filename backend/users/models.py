@@ -29,6 +29,7 @@ class RolePermission(models.Model):
         ('ACADEMIC', 'Academic Module'),
         ('ADMIN', 'Admin Module'),
         ('ANALYTICS', 'Analytics & Reports'),
+        ('TEACHER', 'Teacher Module'),
     )
     role = models.CharField(max_length=20, choices=User.ROLE_CHOICES)
     module = models.CharField(max_length=20, choices=MODULE_CHOICES)

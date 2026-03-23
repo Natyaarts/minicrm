@@ -26,6 +26,7 @@ const menuItems = [
     { icon: UserSquare2, label: 'Student Portal', path: '/student', module: 'STUDENT' },
     { icon: BookOpen, label: 'Academic', path: '/academic', module: 'ACADEMIC' },
     { icon: ClipboardEdit, label: 'Academic Coordinator', path: '/academic-coordinator', module: 'ACADEMIC' },
+    { icon: BookOpen, label: 'Teacher Module', path: '/teacher', module: 'TEACHER' },
     { icon: Library, label: 'Courses', path: '/courses', module: 'ACADEMIC' },
     { icon: BarChart2, label: 'Analytics', path: '/analytics', module: 'ANALYTICS' },
     { icon: UserCircle, label: 'Staff Directory', path: '/users', module: 'ADMIN' },
@@ -48,6 +49,8 @@ function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }) {
         if (item.label === 'Dashboard' && user.role === 'STUDENT') return false;
 
         if (user.role === 'SUPER_ADMIN' || user.is_superuser) return true;
+        if (item.label === 'Teacher Module' && user.role === 'TEACHER') return true;
+        if (item.label === 'Teacher Module' && user.role !== 'SUPER_ADMIN') return false;
         if (item.module === 'COMMON') return true;
 
         const modulePerms = user.permissions?.[item.module];

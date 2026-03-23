@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from django.apps import apps
 from django.db import transaction as db_transaction
 from django.db.models import Sum, Count
-from .models import Program, SubProgram, Course, Batch, Student, Transaction, Document
+from .models import Program, SubProgram, Course, Batch, Student, Transaction, Document, SyllabusPart, ClassSession, Attendance
 
 User = get_user_model()
 
@@ -40,12 +40,32 @@ class ProgramHierarchySerializer(serializers.ModelSerializer):
         model = Program
         fields = ('id', 'name', 'description', 'slug', 'sub_programs', 'require_payment', 'registration_fee')
 
+class SyllabusPartSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SyllabusPart
+        fields = '__all__'
+
+class AttendanceSerializer(serializers.ModelSerializer):
+    student_name = serializers.CharField(source='student.first_name', read_only=True)
+    student_crm_id = serializers.CharField(source='student.crm_student_id', read_only=True)
+    class Meta:
+        model = Attendance
+        fields = '__all__'
+
+class ClassSessionSerializer(serializers.ModelSerializer):
+    attendances = AttendanceSerializer(many=True, read_only=True)
+    class Meta:
+        model = ClassSession
+        fields = '__all__'
+
 class BatchSerializer(serializers.ModelSerializer):
     student_count = serializers.SerializerMethodField()
     primary_mentor_details = UserSerializer(source='primary_mentor', read_only=True)
     secondary_mentors_details = UserSerializer(source='secondary_mentors', many=True, read_only=True)
     teacher_details = UserSerializer(source='teacher', read_only=True)
     course_name = serializers.CharField(source='course.name', read_only=True)
+    syllabus_parts = SyllabusPartSerializer(many=True, read_only=True)
+    syllabus_progress = serializers.SerializerMethodField()
     
     class Meta:
         model = Batch
@@ -53,6 +73,13 @@ class BatchSerializer(serializers.ModelSerializer):
         
     def get_student_count(self, obj):
         return getattr(obj, 'student_count_annotated', obj.students.count())
+        
+    def get_syllabus_progress(self, obj):
+        total = sum(part.weight_percentage for part in obj.syllabus_parts.all())
+        completed = sum(part.weight_percentage for part in obj.syllabus_parts.all() if part.is_completed)
+        if total > 0:
+            return round((completed / total) * 100, 2)
+        return 0
 
 class TransactionSerializer(serializers.ModelSerializer):
     class Meta:

@@ -46,7 +46,7 @@ class UserViewSet(viewsets.ModelViewSet):
         role = self.request.query_params.get('role')
         if role:
             if role == 'ADMIN':
-                queryset = queryset.filter(role__in=['ADMIN', 'SUPER_ADMIN', 'ACADEMIC'])
+                queryset = queryset.filter(role__in=['ADMIN', 'SUPER_ADMIN', 'ACADEMIC', 'ACADEMIC_COORDINATOR'])
             else:
                 queryset = queryset.filter(role=role)
         return queryset

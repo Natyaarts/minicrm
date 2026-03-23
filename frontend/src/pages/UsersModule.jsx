@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api/axios';
 import {
-    Plus, Trash2, Edit2, X, Search, UserCircle, UserPlus, Users, ChevronDown, Shield, GraduationCap, Briefcase
+    Plus, Trash2, Edit2, X, Search, UserCircle, UserPlus, Users, ChevronDown, Shield, GraduationCap, Briefcase, BookOpen
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -23,6 +23,7 @@ const UsersModule = () => {
         { label: 'Administrators', role: 'ADMIN', icon: Shield, color: 'text-rose-600', bg: 'bg-rose-50' },
         { label: 'Sales Management', role: 'SALES', icon: Briefcase, color: 'text-indigo-600', bg: 'bg-indigo-50' },
         { label: 'Mentors & Faculty', role: 'MENTOR', icon: GraduationCap, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+        { label: 'Teacher Staff', role: 'TEACHER', icon: BookOpen, color: 'text-teal-600', bg: 'bg-teal-50' },
         { label: 'Student Accounts', role: 'STUDENT', icon: UserCircle, color: 'text-blue-600', bg: 'bg-blue-50' },
     ];
 
@@ -151,7 +152,7 @@ const UsersModule = () => {
                 <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm relative overflow-hidden group">
                     <div className={`absolute top-0 right-0 w-24 h-24 ${tabs.find(t => t.role === activeTab)?.bg} rounded-bl-[60px] opacity-20 -z-10 group-hover:w-full group-hover:h-full group-hover:rounded-none transition-all duration-500`} />
                     <div className={`w-12 h-12 bg-white rounded-2xl shadow-sm border border-slate-50 flex items-center justify-center ${tabs.find(t => t.role === activeTab)?.color} mb-4`}>
-                        {activeTab === 'ADMIN' ? <Shield size={24} /> : activeTab === 'MENTOR' ? <GraduationCap size={24} /> : <Users size={24} />}
+                        {activeTab === 'ADMIN' ? <Shield size={24} /> : activeTab === 'MENTOR' ? <GraduationCap size={24} /> : activeTab === 'TEACHER' ? <BookOpen size={24} /> : <Users size={24} />}
                     </div>
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Active {activeTab.replace('_', ' ')}s</p>
                     <h3 className="text-3xl font-black text-slate-900">{userPagination.count}</h3>
@@ -207,8 +208,9 @@ const UsersModule = () => {
                                         <span className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm inline-block ${user.role === 'SUPER_ADMIN' ? 'bg-indigo-600 text-white' :
                                             user.role === 'ADMIN' ? 'bg-rose-50 border border-rose-100 text-rose-600' :
                                                 user.role === 'MENTOR' ? 'bg-emerald-50 border border-emerald-100 text-emerald-600' :
-                                                    user.role === 'ACADEMIC_COORDINATOR' ? 'bg-amber-50 border border-amber-100 text-amber-600' :
-                                                        'bg-blue-50 border border-blue-100 text-blue-600'
+                                                    user.role === 'TEACHER' ? 'bg-teal-50 border border-teal-100 text-teal-600' :
+                                                        user.role === 'ACADEMIC_COORDINATOR' ? 'bg-amber-50 border border-amber-100 text-amber-600' :
+                                                            'bg-blue-50 border border-blue-100 text-blue-600'
                                             }`}>
                                             {user.role.replace('_', ' ')}
                                         </span>
@@ -375,6 +377,8 @@ const UsersModule = () => {
                                                             <option value="SALES">Sales Associate</option>
                                                         ) : activeTab === 'MENTOR' ? (
                                                             <option value="MENTOR">Faculty / Mentor</option>
+                                                        ) : activeTab === 'TEACHER' ? (
+                                                            <option value="TEACHER">Staff Teacher</option>
                                                         ) : (
                                                             <option value="STUDENT">Student Scholar</option>
                                                         )}

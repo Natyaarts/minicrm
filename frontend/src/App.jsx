@@ -7,6 +7,7 @@ import MentorModule from './pages/MentorModule';
 import StudentPortal from './pages/StudentPortal';
 import AcademicModule from './pages/AcademicModule';
 import AcademicCoordinatorModule from './pages/AcademicCoordinatorModule';
+import TeacherModule from './pages/TeacherModule';
 import CoursesModule from './pages/CoursesModule';
 import AdminModule from './pages/AdminModule';
 import PublicApplicationForm from './pages/PublicApplicationForm';
@@ -34,6 +35,7 @@ function App() {
           <Route path="/student" element={<StudentPortal />} />
           <Route path="/academic" element={<AcademicModule />} />
           <Route path="/academic-coordinator" element={<AcademicCoordinatorModule />} />
+          <Route path="/teacher" element={<TeacherModule />} />
           <Route path="/courses" element={<CoursesModule />} />
           <Route path="/admin" element={<AdminModule />} />
           <Route path="/users" element={<UsersModule />} />

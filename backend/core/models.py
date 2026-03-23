@@ -102,3 +102,39 @@ class Document(models.Model):
     def __str__(self):
         return f"{self.student} - {self.document_type}"
 
+class SyllabusPart(models.Model):
+    batch = models.ForeignKey(Batch, on_delete=models.CASCADE, related_name='syllabus_parts')
+    title = models.CharField(max_length=200)
+    weight_percentage = models.DecimalField(max_digits=5, decimal_places=2, help_text="Percentage weight of this part")
+    is_completed = models.BooleanField(default=False)
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['order', 'id']
+        
+    def __str__(self):
+        return f"{self.batch.name} - {self.title}"
+
+class ClassSession(models.Model):
+    batch = models.ForeignKey(Batch, on_delete=models.CASCADE, related_name='class_sessions')
+    date = models.DateField()
+    teacher_summary = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-date', '-created_at']
+
+    def __str__(self):
+        return f"{self.batch.name} - {self.date}"
+
+class Attendance(models.Model):
+    session = models.ForeignKey(ClassSession, on_delete=models.CASCADE, related_name='attendances')
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='attendances')
+    is_present = models.BooleanField(default=True)
+    
+    class Meta:
+        unique_together = ('session', 'student')
+
+    def __str__(self):
+        return f"{self.student} - {self.session.date} - {'Present' if self.is_present else 'Absent'}"
+

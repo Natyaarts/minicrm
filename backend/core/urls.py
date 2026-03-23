@@ -4,6 +4,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     ProgramViewSet, SubProgramViewSet, CourseViewSet, 
     BatchViewSet, StudentViewSet, TransactionViewSet, DocumentViewSet,
+    SyllabusPartViewSet, ClassSessionViewSet, AttendanceViewSet,
     DashboardStatsView, AnalyticsDetailView
 )
 from .bulk_views import BulkUploadView
@@ -16,6 +17,9 @@ router.register(r'batches', BatchViewSet)
 router.register(r'students', StudentViewSet)
 router.register(r'transactions', TransactionViewSet)
 router.register(r'documents', DocumentViewSet)
+router.register(r'syllabus-parts', SyllabusPartViewSet)
+router.register(r'class-sessions', ClassSessionViewSet)
+router.register(r'attendances', AttendanceViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
