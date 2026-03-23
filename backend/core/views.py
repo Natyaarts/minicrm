@@ -47,6 +47,13 @@ class SubProgramViewSet(viewsets.ModelViewSet):
     filter_backends = [SearchFilter]
     search_fields = ['name']
 
+    def get_queryset(self):
+        queryset = SubProgram.objects.all()
+        program_id = self.request.query_params.get('program')
+        if program_id:
+            queryset = queryset.filter(program_id=program_id)
+        return queryset
+
 class CourseViewSet(viewsets.ModelViewSet):
     queryset = Course.objects.all()
     serializer_class = CourseSerializer
@@ -55,6 +62,13 @@ class CourseViewSet(viewsets.ModelViewSet):
     pagination_class = None
     filter_backends = [SearchFilter]
     search_fields = ['name']
+
+    def get_queryset(self):
+        queryset = Course.objects.all()
+        sub_program_id = self.request.query_params.get('sub_program')
+        if sub_program_id:
+            queryset = queryset.filter(sub_program_id=sub_program_id)
+        return queryset
 
 class BatchViewSet(viewsets.ModelViewSet):
     serializer_class = BatchSerializer
