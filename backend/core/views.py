@@ -31,6 +31,11 @@ class ProgramViewSet(viewsets.ModelViewSet):
     pagination_class = None
     filter_backends = [SearchFilter]
     search_fields = ['name', 'description']
+    
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve', 'hierarchy']:
+            return [permissions.AllowAny()]
+        return super().get_permissions()
 
     @action(detail=False, methods=['get'])
     def hierarchy(self, request):
@@ -47,6 +52,11 @@ class SubProgramViewSet(viewsets.ModelViewSet):
     filter_backends = [SearchFilter]
     search_fields = ['name']
 
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [permissions.AllowAny()]
+        return super().get_permissions()
+
     def get_queryset(self):
         queryset = SubProgram.objects.all()
         program_id = self.request.query_params.get('program')
@@ -62,6 +72,11 @@ class CourseViewSet(viewsets.ModelViewSet):
     pagination_class = None
     filter_backends = [SearchFilter]
     search_fields = ['name']
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [permissions.AllowAny()]
+        return super().get_permissions()
 
     def get_queryset(self):
         queryset = Course.objects.all()
