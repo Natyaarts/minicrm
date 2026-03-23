@@ -550,7 +550,7 @@ const PublicApplicationForm = () => {
             </main>
 
             <footer className="py-12 border-t border-slate-100 text-center">
-                <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em]">Secure Application Portal &bull; Natya CRM</p>
+                <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em]">Secure Application Portal &bull; Natya ERP</p>
             </footer>
         </div>
     );

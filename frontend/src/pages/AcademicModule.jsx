@@ -378,14 +378,14 @@ const AcademicModule = () => {
                                     <td className="p-4 text-slate-600 text-xs">{student.program_name}</td>
                                     <td className="p-4">
                                         <div className="max-w-[150px] space-y-1">
-                                            {student.dynamic_values_list?.slice(0, 2).map(val => (
+                                            {student.dynamic_values_list?.filter(v => v.value && v.value.trim() !== '').slice(0, 2).map(val => (
                                                 <div key={val.id} className="text-[10px] leading-tight flex gap-1 truncate text-slate-500">
                                                     <span className="font-bold opacity-70 shrink-0">{val.field_label}:</span>
                                                     <span className="truncate">{val.value}</span>
                                                 </div>
                                             ))}
-                                            {student.dynamic_values_list?.length > 2 && (
-                                                <div className="text-[9px] text-teal-600 font-bold italic">Check details...</div>
+                                            {student.dynamic_values_list?.filter(v => v.value && v.value.trim() !== '').length > 2 && (
+                                                <div className="text-[9px] text-teal-600 font-bold italic">+{student.dynamic_values_list.filter(v => v.value && v.value.trim() !== '').length - 2} more details...</div>
                                             )}
                                         </div>
                                     </td>

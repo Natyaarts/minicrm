@@ -34,7 +34,7 @@ function Login() {
                     <h2 className="text-4xl font-extrabold mb-3 bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">
                         Welcome Back
                     </h2>
-                    <p className="text-slate-500 font-medium">Sign in to Natya CRM</p>
+                    <p className="text-slate-500 font-medium">Sign in to Natya ERP</p>
                 </div>
 
                 {error && (
@@ -78,7 +78,7 @@ function Login() {
                 </form>
 
                 <div className="mt-8 text-center text-sm text-slate-400 font-medium">
-                    &copy; 2026 Natya CRM. All rights reserved.
+                    &copy; 2026 Natya ERP. All rights reserved.
                 </div>
             </div>
         </div>

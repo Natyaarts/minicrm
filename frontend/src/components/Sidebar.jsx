@@ -5,6 +5,7 @@ import {
     UserSquare2,
     GraduationCap,
     BookOpen,
+    ClipboardEdit,
     Settings,
     LogOut,
     Sparkles,
@@ -24,6 +25,7 @@ const menuItems = [
     { icon: GraduationCap, label: 'Mentor Module', path: '/mentor', module: 'MENTOR' },
     { icon: UserSquare2, label: 'Student Portal', path: '/student', module: 'STUDENT' },
     { icon: BookOpen, label: 'Academic', path: '/academic', module: 'ACADEMIC' },
+    { icon: ClipboardEdit, label: 'Academic Coordinator', path: '/academic-coordinator', module: 'ACADEMIC' },
     { icon: Library, label: 'Courses', path: '/courses', module: 'ACADEMIC' },
     { icon: BarChart2, label: 'Analytics', path: '/analytics', module: 'ANALYTICS' },
     { icon: UserCircle, label: 'Staff Directory', path: '/users', module: 'ADMIN' },
@@ -80,7 +82,7 @@ function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }) {
                             <h1 className="text-2xl font-black text-slate-900 tracking-tight leading-none group-hover:text-rose-600 transition-colors">
                                 Natya<span className="text-rose-600">.</span>
                             </h1>
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1 group-hover:text-amber-500 transition-colors">CRM Suite</p>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1 group-hover:text-amber-500 transition-colors">ERP</p>
                         </div>
                     </Link>
                     <button

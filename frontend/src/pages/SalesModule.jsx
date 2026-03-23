@@ -820,18 +820,18 @@ const SalesModule = () => {
                                                     </td>
                                                     <td className="p-4">
                                                         <div className="max-w-[200px] space-y-1">
-                                                            {student.dynamic_values_list?.slice(0, 3).map(val => (
+                                                            {student.dynamic_values_list?.filter(v => v.value && v.value.trim() !== '').slice(0, 3).map(val => (
                                                                 <div key={val.id} className="text-[10px] leading-tight flex gap-1 truncate">
                                                                     <span className="font-bold text-slate-400 shrink-0">{val.field_label}:</span>
                                                                     <span className="text-slate-600 truncate">{val.value}</span>
                                                                 </div>
                                                             ))}
-                                                            {student.dynamic_values_list?.length > 3 && (
+                                                            {student.dynamic_values_list?.filter(v => v.value && v.value.trim() !== '').length > 3 && (
                                                                 <div className="text-[10px] text-indigo-500 font-bold italic">
-                                                                    +{student.dynamic_values_list.length - 3} more details...
+                                                                    +{student.dynamic_values_list.filter(v => v.value && v.value.trim() !== '').length - 3} more details...
                                                                 </div>
                                                             )}
-                                                            {!student.dynamic_values_list?.length && (
+                                                            {!student.dynamic_values_list?.filter(v => v.value && v.value.trim() !== '').length && (
                                                                 <span className="text-[10px] text-slate-300 italic">No custom data</span>
                                                             )}
                                                         </div>
