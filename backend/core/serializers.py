@@ -259,6 +259,27 @@ class StudentSerializer(serializers.ModelSerializer):
         if updated_user:
             user.save()
 
+        # Handle Files from request.FILES
+        request = self.context.get('request')
+        if request and request.FILES:
+            Document = apps.get_model('core', 'Document')
+            DynamicField = apps.get_model('forms_builder', 'DynamicField')
+            
+            for key, file_obj in request.FILES.items():
+                if key.startswith('dynamic_file_'):
+                    try:
+                        field_id = key.split('_')[-1]
+                        field_obj = DynamicField.objects.get(id=field_id)
+                        
+                        # Use update_or_create logic based on document_type
+                        Document.objects.update_or_create(
+                            student=instance,
+                            document_type=field_obj.label,
+                            defaults={'file': file_obj}
+                        )
+                    except Exception as e:
+                        print(f"Error updating dynamic file: {e}")
+
         # Handle Dynamic Values Update
         if dynamic_values:
             StudentDynamicValue = apps.get_model('forms_builder', 'StudentDynamicValue')

@@ -20,6 +20,7 @@ const AcademicCoordinatorModule = () => {
     const [academicFields, setAcademicFields] = useState([]);
     const [academicValues, setAcademicValues] = useState({});
     const [savingCompletion, setSavingCompletion] = useState(false);
+    const [academicFiles, setAcademicFiles] = useState({});
 
     const fetchStudents = async () => {
         setLoading(true);
@@ -59,6 +60,7 @@ const AcademicCoordinatorModule = () => {
         setCompletingProfile(student);
         setAcademicFields([]);
         setAcademicValues({});
+        setAcademicFiles({});
         
         // Map existing values
         const currentVals = {};
@@ -83,9 +85,18 @@ const AcademicCoordinatorModule = () => {
     const handleSaveCompletion = async (e) => {
         e.preventDefault();
         setSavingCompletion(true);
+
+        const formData = new FormData();
+        formData.append('dynamic_values', JSON.stringify(academicValues));
+        
+        // Append academic files
+        Object.keys(academicFiles).forEach(fieldId => {
+            formData.append(`dynamic_file_${fieldId}`, academicFiles[fieldId]);
+        });
+
         try {
-            await api.patch(`students/${completingProfile.id}/`, {
-                dynamic_values: JSON.stringify(academicValues)
+            await api.patch(`students/${completingProfile.id}/`, formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
             });
             setCompletingProfile(null);
             fetchStudents(); // Refresh to show updated data
@@ -275,8 +286,23 @@ const AcademicCoordinatorModule = () => {
                                                         ))}
                                                     </select>
                                                 ) : field.field_type === 'file' ? (
-                                                    <div className="p-4 border-2 border-dashed border-slate-100 rounded-2xl bg-slate-50 text-center">
-                                                        <p className="text-xs text-slate-400">File uploads are managed in Document view</p>
+                                                    <div className="p-4 border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50 hover:bg-white transition-all cursor-pointer group">
+                                                        <input 
+                                                            type="file" 
+                                                            className="hidden" 
+                                                            id={`file-${field.id}`}
+                                                            onChange={e => setAcademicFiles({ ...academicFiles, [field.id]: e.target.files[0] })}
+                                                            required={field.is_required && !academicValues[field.id]}
+                                                        />
+                                                        <label htmlFor={`file-${field.id}`} className="flex flex-col items-center justify-center cursor-pointer">
+                                                            <div className="w-10 h-10 rounded-full bg-teal-50 text-teal-600 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
+                                                                <FileText size={20} />
+                                                            </div>
+                                                            <p className="text-xs font-bold text-slate-600">
+                                                                {academicFiles[field.id] ? academicFiles[field.id].name : `Upload ${field.label}`}
+                                                            </p>
+                                                            {field.is_required && <p className="text-[10px] text-rose-500 mt-1">Required</p>}
+                                                        </label>
                                                     </div>
                                                 ) : (
                                                     <input
@@ -371,6 +397,37 @@ const AcademicCoordinatorModule = () => {
                                                 <p className="text-sm font-medium text-slate-800 break-words">{val.value}</p>
                                             </div>
                                         ))}
+                                    </div>
+                                </div>
+                                {/* Documents Section */}
+                                <div className="md:col-span-2">
+                                    <h3 className="text-sm font-black text-slate-700 uppercase tracking-widest mb-4 flex items-center gap-2">
+                                        <FileText size={16} /> Uploaded Documents
+                                    </h3>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        {viewingProfile.documents_list?.length > 0 ? (
+                                            viewingProfile.documents_list.map((doc) => (
+                                                <a
+                                                    key={doc.id}
+                                                    href={doc.file.startsWith('http') ? doc.file : `${api.defaults.baseURL.split('/api')[0]}${doc.file}`}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    className="flex items-center gap-3 p-4 bg-slate-50 border border-slate-200 rounded-2xl hover:border-teal-300 hover:bg-teal-50 transition-all group"
+                                                >
+                                                    <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-slate-400 group-hover:text-teal-600 shadow-sm transition-colors">
+                                                        <FileText size={20} />
+                                                    </div>
+                                                    <div className="flex-1 overflow-hidden">
+                                                        <p className="text-sm font-bold text-slate-800 truncate">{doc.document_type}</p>
+                                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Click to view</p>
+                                                    </div>
+                                                </a>
+                                            ))
+                                        ) : (
+                                            <div className="md:col-span-2 py-6 text-center bg-slate-50 rounded-2xl border-2 border-dashed border-slate-100">
+                                                <p className="text-sm text-slate-400 italic">No documents uploaded yet.</p>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </div>

@@ -214,25 +214,6 @@ const SalesModule = () => {
         loadProgramDetails(progId);
     };
 
-    // Handle Copy Link
-    const handleCopyLink = async () => {
-        const prog = programs.find(p => p.id === parseInt(selectedProgram));
-        const progSlug = prog?.slug || selectedProgram;
-        let url = `${window.location.origin}/apply/${progSlug}`;
-
-        const params = new URLSearchParams();
-        if (selectedSubProgram) params.append('sp', selectedSubProgram);
-        if (selectedCourse) params.append('c', selectedCourse);
-        
-        const qStr = params.toString();
-        if (qStr) url += `?${qStr}`;
-
-        const success = await copyToClipboard(url);
-        if (success) {
-            setToast({ type: 'success', message: 'Professional Share Link Copied!' });
-            setTimeout(() => setToast(null), 3000);
-        }
-    };
 
     // Handle SubProgram Change
     const handleSubProgramChange = async (e) => {
@@ -369,6 +350,7 @@ const SalesModule = () => {
         if (!foundMobile) data.append('mobile', '0000000000');
 
         data.append('dynamic_values', JSON.stringify(dynamicValues));
+        data.append('is_active', 'true');
 
         // Handle dynamic files
         Object.keys(files).forEach(fieldId => {
@@ -1012,22 +994,6 @@ const SalesModule = () => {
                                         </div>
                                     )}
 
-                                    {/* Copy Link Feature */}
-                                    {isAuthenticated && !isPublicView && selectedProgram && (
-                                        <div className="pb-1">
-                                            <button
-                                                type="button"
-                                                onClick={handleCopyLink}
-                                                className="group relative flex items-center gap-3 px-6 py-4 rounded-2xl bg-white border-2 border-slate-100 hover:border-indigo-500 text-slate-600 hover:text-indigo-600 font-black text-sm transition-all w-full md:w-auto overflow-hidden shadow-sm hover:shadow-indigo-100"
-                                            >
-                                                <div className="relative z-10 flex items-center gap-3">
-                                                    <Copy size={18} className="transition-transform group-hover:scale-110" />
-                                                    <span>Get Enrollment Link</span>
-                                                </div>
-                                                <div className="absolute inset-0 bg-indigo-50 translate-y-[101%] group-hover:translate-y-0 transition-transform duration-300" />
-                                            </button>
-                                        </div>
-                                    )}
 
                                     {hasSubPrograms && (
                                         <SelectField
@@ -1240,7 +1206,7 @@ const SalesModule = () => {
                                         selectedStudentProfile.documents_list.map((doc) => (
                                             <a
                                                 key={doc.id}
-                                                href={`${api.defaults.baseURL.replace('/api/', '')}${doc.file}`}
+                                                href={doc.file.startsWith('http') ? doc.file : `${api.defaults.baseURL.split('/api')[0]}${doc.file}`}
                                                 target="_blank"
                                                 rel="noreferrer"
                                                 className="flex items-center gap-3 p-4 bg-slate-50 border border-slate-100 rounded-xl hover:border-indigo-300 hover:bg-indigo-50 transition-all group"
