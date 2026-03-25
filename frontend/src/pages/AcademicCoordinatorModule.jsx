@@ -206,7 +206,24 @@ const AcademicCoordinatorModule = () => {
                                                 </div>
                                             </td>
                                             <td className="p-4 text-slate-600 font-mono text-xs">{student.mobile}</td>
-                                            <td className="p-4 text-right">
+                                            <td className="p-4 text-right flex gap-2 justify-end">
+                                                <button
+                                                    onClick={() => {
+                                                        const progId = student.program_type_id || (student.program_name ? student.program_name : '');
+                                                        const slug = student.program_slug || progId;
+                                                        
+                                                        let link = `${window.location.origin}/apply/${slug}?group=ACADEMIC&sid=${student.id}`;
+                                                        if (student.sub_program_id) link += `&sp=${student.sub_program_id}`;
+                                                        if (student.course_id) link += `&c=${student.course_id}`;
+                                                        
+                                                        navigator.clipboard.writeText(link);
+                                                        setToast({ message: `Direct Link Copied for ${student.first_name}!` });
+                                                        setTimeout(() => setToast(null), 3000);
+                                                    }}
+                                                    className="px-3 py-1.5 bg-indigo-50 text-indigo-600 hover:bg-white border border-indigo-100 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+                                                >
+                                                    Copy Link
+                                                </button>
                                                 <button
                                                     onClick={() => handleCompleteProfile(student)}
                                                     className="px-4 py-2 bg-teal-50 text-teal-600 hover:bg-teal-100 rounded-xl text-xs font-bold transition-colors"

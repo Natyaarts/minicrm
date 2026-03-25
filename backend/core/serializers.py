@@ -111,6 +111,7 @@ class StudentSerializer(serializers.ModelSerializer):
 
     # Read-only nested fields for display
     program_name = serializers.CharField(source='program_type.name', read_only=True)
+    program_slug = serializers.CharField(source='program_type.slug', read_only=True)
     sub_program_name = serializers.CharField(source='sub_program.name', read_only=True)
     course_name = serializers.CharField(source='course.name', read_only=True)
     batch_name = serializers.CharField(source='batch.name', read_only=True)
@@ -124,6 +125,12 @@ class StudentSerializer(serializers.ModelSerializer):
     # Financial fields
     total_paid = serializers.SerializerMethodField()
     total_due = serializers.SerializerMethodField()
+
+    # Read-only numeric IDs for frontend sync
+    program_type_id = serializers.IntegerField(source='program_type.id', read_only=True)
+    sub_program_id = serializers.IntegerField(source='sub_program.id', read_only=True, allow_null=True)
+    course_id = serializers.IntegerField(source='course.id', read_only=True, allow_null=True)
+    batch_id = serializers.IntegerField(source='batch.id', read_only=True, allow_null=True)
 
     class Meta:
         model = Student

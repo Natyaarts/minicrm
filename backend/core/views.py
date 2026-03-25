@@ -191,13 +191,39 @@ class StudentViewSet(viewsets.ModelViewSet):
     module_name = 'SALES'
     
     def get_permissions(self):
-        if self.action == 'create':
+        if self.action in ['create', 'public_lookup', 'partial_update']:
             return [permissions.AllowAny()]
         # Allow students, mentors, and teachers to view relevant profiles/lists
         if self.request.user.is_authenticated and self.action in ['list', 'retrieve']:
             if self.request.user.role in ['STUDENT', 'MENTOR', 'TEACHER']:
                 return [permissions.IsAuthenticated()]
         return super().get_permissions()
+
+    @action(detail=False, methods=['get'], permission_classes=[permissions.AllowAny])
+    def public_lookup(self, request):
+        mobile = request.query_params.get('mobile')
+        sid = request.query_params.get('sid')
+        
+        student = None
+        if sid:
+            student = Student.objects.filter(id=sid, is_active=True).first()
+        elif mobile:
+            student = Student.objects.filter(mobile=mobile, is_active=True).first()
+            
+        if not student:
+            return Response({'error': 'No active student found matching these details.'}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Return summary info to confirm
+        return Response({
+            'id': student.id,
+            'name': f"{student.first_name} {student.last_name}",
+            'program': student.program_type.name,
+            'course': student.course.name if student.course else 'N/A',
+            'mobile': student.mobile,
+            'first_name': student.first_name,
+            'last_name': student.last_name,
+            'email': student.email
+        })
 
     def perform_create(self, serializer):
         student = serializer.save()

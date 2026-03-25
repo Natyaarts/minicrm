@@ -16,12 +16,18 @@ const PublicApplicationForm = () => {
     const [subPrograms, setSubPrograms] = useState([]);
     const [courses, setCourses] = useState([]);
     const [activeFields, setActiveFields] = useState([]);
+    const [formGroup, setFormGroup] = useState('INITIAL');
 
     // UI State
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
     const [submitted, setSubmitted] = useState(false);
+    
+    // Academic Phase States
+    const [lookupMobile, setLookupMobile] = useState('');
+    const [foundStudent, setFoundStudent] = useState(null);
+    const [lookupError, setLookupError] = useState('');
 
     // Form data
     const [formData, setFormData] = useState({
@@ -37,7 +43,7 @@ const PublicApplicationForm = () => {
 
     useEffect(() => {
         fetchApplicationContext();
-    }, [programSlug]);
+    }, [programSlug, window.location.search]);
 
     const updatePaymentConfig = (spId, cId, currentFields, currentProg, currentSps) => {
         // Use provided values or fallback to current state
@@ -115,38 +121,92 @@ const PublicApplicationForm = () => {
             const params = new URLSearchParams(window.location.search);
             const spId = params.get('sp');
             const cId = params.get('c');
+            const sid = params.get('sid');
+            const requestedGroup = params.get('group') || 'INITIAL';
+            const isAcademic = requestedGroup === 'ACADEMIC';
+            setFormGroup(requestedGroup);
 
-            let currentFieldParams = `program=${prog.id}`;
+            // Fetch Student Profile if SID is present (Skip Lookup)
+            let studentInfo = null;
+            if (sid && isAcademic) {
+                try {
+                    const res = await api.get(`students/public_lookup/?sid=${sid}`);
+                    studentInfo = res.data;
+                    setFoundStudent(studentInfo);
+                } catch (err) {
+                    console.error("Direct student fetch failed", err);
+                }
+            }
+
+            // Sync Category/Course context
+            const finalSpId = studentInfo?.sub_program_id || spId;
+            const finalCId = studentInfo?.course_id || cId;
+
+            let currentFieldParams = `program=${prog.id}&group=${requestedGroup}`;
+            if (finalSpId) currentFieldParams += `&sub_program=${finalSpId}`;
+            if (finalCId) currentFieldParams += `&course=${finalCId}`;
+
             let newFormData = {
-                first_name: '', last_name: '', email: '', mobile: '',
-                gender: 'Male', dob: '', address: '',
-                sub_program: spId || '', course: cId || '',
+                first_name: studentInfo?.first_name || '', 
+                last_name: studentInfo?.last_name || '', 
+                email: studentInfo?.email || '', 
+                mobile: studentInfo?.mobile || '',
+                gender: studentInfo?.gender || 'Male', dob: studentInfo?.dob || '', 
+                address: studentInfo?.address || '',
+                sub_program: finalSpId || '', course: finalCId || '',
                 dynamic_values: {}
             };
 
-            if (spId) {
-                const sp = currentSubPrograms.find(s => s.id.toString() === spId);
+            if (finalSpId) {
+                const sp = currentSubPrograms.find(s => s.id.toString() === finalSpId.toString());
                 if (sp) {
                     setCourses(sp.courses || []);
-                    currentFieldParams = `sub_program=${spId}`;
-                    if (cId) currentFieldParams = `course=${cId}`;
                 }
             }
 
             setFormData(prev => ({ ...prev, ...newFormData }));
 
-            // 2. Fetch Initial Fields & Sync Payment
-            const fRes = await api.get(`forms/fields/?${currentFieldParams}&field_group=INITIAL`);
+            // 2. Fetch Fields based on group & Sync Payment
+            const fRes = await api.get(`forms/fields/?${currentFieldParams}&field_group=${requestedGroup}`);
             const fieldData = Array.isArray(fRes.data) ? fRes.data : (fRes.data?.results || []);
             const sortedFields = fieldData.sort((a, b) => a.order - b.order);
             setActiveFields(sortedFields);
             
-            // Manual sync for initial load
-            updatePaymentConfig(spId, cId, sortedFields, prog, currentSubPrograms);
+            // Manual sync for initial load - Fee only applies to INITIAL applications
+            if (requestedGroup === 'INITIAL') {
+                updatePaymentConfig(spId, cId, sortedFields, prog, currentSubPrograms);
+            } else {
+                setPaymentConfig({ required: false, amount: 0 });
+            }
         } catch (err) {
             console.error("Link invalid", err);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleStudentLookup = async () => {
+        if (!lookupMobile) return;
+        setSubmitting(true);
+        setLookupError('');
+        try {
+            // Find student by mobile number
+            const res = await api.get(`students/public_lookup/?mobile=${lookupMobile}`);
+            setFoundStudent(res.data);
+            
+            // Auto-populate form from found record
+            setFormData(prev => ({
+                ...prev,
+                first_name: res.data.first_name,
+                last_name: res.data.last_name,
+                mobile: res.data.mobile,
+                email: res.data.email || ''
+            }));
+        } catch (err) {
+            console.error("Lookup failed", err);
+            setLookupError(err.response?.data?.error || "Profile not found. Please check your mobile number.");
+        } finally {
+            setSubmitting(false);
         }
     };
 
@@ -158,7 +218,7 @@ const PublicApplicationForm = () => {
 
         if (spId) {
             try {
-                const res = await api.get(`forms/fields/?sub_program=${spId}&field_group=INITIAL`);
+                const res = await api.get(`forms/fields/?sub_program=${spId}&field_group=${formGroup}`);
                 processFields(Array.isArray(res.data) ? res.data : (res.data?.results || []), spId, '');
             } catch (err) {
                 console.error("Failed to fetch sub-program fields", err);
@@ -263,13 +323,17 @@ const PublicApplicationForm = () => {
         
         if (cId) {
             try {
-                const res = await api.get(`forms/fields/?course=${cId}&field_group=INITIAL`);
+                const res = await api.get(`forms/fields/?course=${cId}&field_group=${formGroup}`);
                 const fields = Array.isArray(res.data) ? res.data : (res.data?.results || []);
                 setActiveFields(fields.sort((a, b) => a.order - b.order));
-                updatePaymentConfig(currentSpId, cId, fields);
+                if (formGroup === 'INITIAL') {
+                    updatePaymentConfig(currentSpId, cId, fields);
+                }
             } catch (err) {
                 console.error("Failed to fetch course fields", err);
-                updatePaymentConfig(currentSpId, cId);
+                if (formGroup === 'INITIAL') {
+                    updatePaymentConfig(currentSpId, cId);
+                }
             }
         } else {
             if (currentSpId) handleSubProgramChange(currentSpId);
@@ -295,55 +359,49 @@ const PublicApplicationForm = () => {
         setSubmitting(true);
         try {
             const formDataObj = new FormData();
-            const allFields = activeFields;
-            const dynamicValues = formData.dynamic_values;
-
-            // --- SMART MAPPING LOGIC ---
-            // We search for fields you created manually and map them to standard system fields
-            allFields.forEach(f => {
-                const label = f.label.toLowerCase();
-                const val = dynamicValues[f.id];
-                if (!val) return;
-
-                // Map Name
-                if ((label.includes('name') || label === 'name') && !formDataObj.has('first_name')) {
-                    const parts = String(val).trim().split(' ');
-                    formDataObj.append('first_name', parts[0]);
-                    formDataObj.append('last_name', parts.slice(1).join(' ') || 'Student');
-                }
-                // Map Email
-                if (label.includes('email') && !formDataObj.has('email')) {
-                    formDataObj.append('email', val);
-                }
-                // Map Mobile (Improved keywords: mob, phone, contact, tel)
-                if ((label.includes('mobile') || label.includes('phone') || label.includes('mob') || label.includes('contact')) && !formDataObj.has('mobile')) {
-                    formDataObj.append('mobile', val);
-                }
-            });
             
-            // Standard Defaults
-            formDataObj.append('program_type', program.id);
+            if (!foundStudent) {
+                // Creation Mode (INITIAL)
+                const allFields = activeFields;
+                const dynamicValues = formData.dynamic_values;
 
-            // Ensure first_name has a value for UI purposes if not provided
-            if (!formDataObj.has('first_name')) {
-                formDataObj.append('first_name', 'Student');
-                formDataObj.append('last_name', 'Applicant');
+                allFields.forEach(f => {
+                    const label = f.label.toLowerCase();
+                    const val = dynamicValues[f.id];
+                    if (!val) return;
+
+                    if ((label.includes('name') || label === 'name') && !formDataObj.has('first_name')) {
+                        const parts = String(val).trim().split(' ');
+                        formDataObj.append('first_name', parts[0]);
+                        formDataObj.append('last_name', parts.slice(1).join(' ') || 'Student');
+                    }
+                    if (label.includes('email') && !formDataObj.has('email')) {
+                        formDataObj.append('email', val);
+                    }
+                    if ((label.includes('mobile') || label.includes('phone') || label.includes('mob') || label.includes('contact')) && !formDataObj.has('mobile')) {
+                        formDataObj.append('mobile', val);
+                    }
+                });
+                
+                formDataObj.append('program_type', program.id);
+                if (!formDataObj.has('first_name')) {
+                    formDataObj.append('first_name', 'Student');
+                    formDataObj.append('last_name', 'Applicant');
+                }
+                formDataObj.append('is_active', 'true');
+                if (formData.sub_program) formDataObj.append('sub_program', formData.sub_program);
+                if (formData.course) formDataObj.append('course', formData.course);
             }
-            
-            formDataObj.append('is_active', 'true');
-            if (formData.sub_program) formDataObj.append('sub_program', formData.sub_program);
-            if (formData.course) formDataObj.append('course', formData.course);
 
-            // Dynamic Values Logic
+            // Dynamic Values Logic (Both Modes)
             const dynamicTextValue = {};
-            Object.entries(dynamicValues).forEach(([fieldId, value]) => {
+            Object.entries(formData.dynamic_values).forEach(([fieldId, value]) => {
                 if (value instanceof File) {
                     formDataObj.append(`dynamic_file_${fieldId}`, value);
                 } else {
                     dynamicTextValue[fieldId] = value;
                 }
             });
-
             formDataObj.append('dynamic_values', JSON.stringify(dynamicTextValue));
 
             if (paymentDone && transactionId) {
@@ -353,9 +411,17 @@ const PublicApplicationForm = () => {
                 }));
             }
 
-            await api.post('students/', formDataObj, {
-                headers: { 'Content-Type': 'multipart/form-data' }
-            });
+            if (foundStudent) {
+                // Update Mode (ACADEMIC)
+                await api.patch(`students/${foundStudent.id}/`, formDataObj, {
+                    headers: { 'Content-Type': 'multipart/form-data' }
+                });
+            } else {
+                // Creation Mode
+                await api.post('students/', formDataObj, {
+                    headers: { 'Content-Type': 'multipart/form-data' }
+                });
+            }
             setSubmitted(true);
         } catch (err) {
             console.error("Submission error:", err);
@@ -382,19 +448,76 @@ const PublicApplicationForm = () => {
                 <div className="w-24 h-24 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-8">
                     <CheckCircle2 size={48} className="text-emerald-500" />
                 </div>
-                <h1 className="text-3xl font-black text-slate-900 mb-4 tracking-tight">Application Submitted!</h1>
+                <h1 className="text-3xl font-black text-slate-900 mb-4 tracking-tight">
+                    {formGroup === 'ACADEMIC' ? 'Details Updated!' : 'Application Submitted!'}
+                </h1>
                 <p className="text-slate-500 font-medium leading-relaxed mb-8">
-                    Thank you for applying to <b>{program?.name}</b>. Our admissions team has been notified and will contact you via mobile/email shortly.
+                    {formGroup === 'ACADEMIC' 
+                        ? `Thank you, ${foundStudent?.name}. Your academic records have been successfully submitted for coordination.`
+                        : `Thank you for applying to ${program?.name}. Our admissions team will contact you shortly.`
+                    }
                 </p>
                 <button
                     onClick={() => window.location.reload()}
                     className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black hover:bg-slate-800 transition shadow-xl"
                 >
-                    Apply for another course
+                    {formGroup === 'ACADEMIC' ? 'Submit another section' : 'Apply for another course'}
                 </button>
             </motion.div>
         </div>
     );
+
+    // Initial lookup for Academic forms
+    if (formGroup === 'ACADEMIC' && !foundStudent) {
+        return (
+            <div className="min-h-screen bg-slate-50 font-sans text-slate-900 flex flex-col">
+                <header className="bg-white border-b border-slate-100 py-6 px-4 sticky top-0 z-10">
+                    <div className="max-w-3xl mx-auto flex items-center justify-between">
+                        <div className="flex items-center gap-5">
+                            <div className="h-20 w-auto flex items-center justify-center">
+                                <img src="/logo.png" alt="Logo" className="h-full w-auto object-contain" />
+                            </div>
+                            <h2 className="font-black text-xl tracking-tight leading-tight">{program?.name}<br/><span className="text-xs text-indigo-500 uppercase tracking-widest">Section 2: Academic Details</span></h2>
+                        </div>
+                    </div>
+                </header>
+
+                <main className="flex-1 flex items-center justify-center p-6">
+                    <motion.div 
+                        initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+                        className="bg-white p-10 rounded-[40px] border border-slate-100 shadow-2xl max-w-md w-full text-center"
+                    >
+                        <div className="w-16 h-16 bg-indigo-50 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                            <User className="text-indigo-500" size={28} />
+                        </div>
+                        <h1 className="text-2xl font-black text-slate-900 mb-2">Find Your Account</h1>
+                        <p className="text-slate-500 text-sm font-medium mb-8">Enter the mobile number you used during initial application to continue.</p>
+                        
+                        <div className="space-y-4">
+                            <div className="text-left">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Mobile Number</label>
+                                <input
+                                    type="tel"
+                                    className={`w-full p-4 mt-2 rounded-2xl bg-slate-50 border-2 outline-none font-bold transition-all ${lookupError ? 'border-red-200 focus:border-red-500' : 'border-slate-100 focus:border-indigo-500'}`}
+                                    placeholder="e.g. 9876543210"
+                                    value={lookupMobile}
+                                    onChange={(e) => setLookupMobile(e.target.value)}
+                                />
+                                {lookupError && <p className="text-red-500 text-[10px] font-black uppercase mt-2 ml-1">{lookupError}</p>}
+                            </div>
+                            <button
+                                onClick={handleStudentLookup}
+                                disabled={submitting || !lookupMobile}
+                                className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black hover:bg-indigo-700 transition shadow-lg disabled:opacity-50"
+                            >
+                                {submitting ? 'Searching...' : 'Find My Profile'}
+                            </button>
+                        </div>
+                    </motion.div>
+                </main>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
@@ -402,11 +525,22 @@ const PublicApplicationForm = () => {
             <header className="bg-white border-b border-slate-100 py-6 px-4 sticky top-0 z-10">
                 <div className="max-w-3xl mx-auto flex items-center justify-between">
                     <div className="flex items-center gap-5">
-                        <div className="h-32 w-auto flex items-center justify-center">
+                        <div className="h-20 w-auto flex items-center justify-center">
                             <img src="/logo.png" alt="Logo" className="h-full w-auto object-contain" />
                         </div>
-                        <h2 className="font-black text-xl tracking-tight">{program?.name}</h2>
+                        <div className="flex flex-col">
+                            <h2 className="font-black text-xl tracking-tight leading-tight">{program?.name}</h2>
+                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-500">
+                                Form Section: {formGroup === 'ACADEMIC' ? 'ACADEMIC DETAILS' : 'INITIAL APPLICATION'}
+                            </p>
+                        </div>
                     </div>
+                    {foundStudent && (
+                        <div className="flex items-center gap-3 px-4 py-2 bg-emerald-50 rounded-xl border border-emerald-100">
+                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            <span className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">{foundStudent.name}</span>
+                        </div>
+                    )}
                     <div className="flex gap-1">
                         {[1, 2].map(i => (
                             <div key={i} className={`h-1.5 w-12 rounded-full transition-all ${step >= i ? 'bg-indigo-600' : 'bg-slate-100'}`} />
@@ -420,51 +554,61 @@ const PublicApplicationForm = () => {
 
                     <div className="bg-white p-10 rounded-[40px] border border-slate-100 shadow-2xl space-y-8 animate-fadeIn">
                         <div className="mb-4">
-                            <h1 className="text-4xl font-black text-slate-900 tracking-tight mb-2">Application Form</h1>
-                            <p className="text-slate-500 font-medium">Please provide the details required for your enrollment.</p>
+                            <h1 className="text-4xl font-black text-slate-900 tracking-tight mb-2">
+                                {formGroup === 'ACADEMIC' ? 'Academic Details' : 'Application Form'}
+                            </h1>
+                            <p className="text-slate-500 font-medium">
+                                {formGroup === 'ACADEMIC' 
+                                    ? 'Please provide your post-admission academic details and documents.' 
+                                    : 'Please provide the details required for your enrollment.'
+                                }
+                            </p>
                         </div>
 
-                        {/* Category & Course Selection */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6 bg-slate-50 rounded-[30px] border border-slate-100">
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Select Category</label>
-                                <select
-                                    className="w-full p-4 rounded-2xl bg-white border border-slate-200 outline-none font-bold text-sm shadow-sm"
-                                    value={formData.sub_program}
-                                    onChange={(e) => handleSubProgramChange(e.target.value)}
-                                    required
-                                >
-                                    <option value="">Select Category</option>
-                                    {subPrograms.map(sp => (
-                                        <option key={sp.id} value={sp.id}>{sp.name}</option>
-                                    ))}
-                                </select>
-                            </div>
+                        {/* Category & Course Selection - Hidden if profile found since they are already enrolled */}
+                        {!foundStudent && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6 bg-slate-50 rounded-[30px] border border-slate-100">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Select Category</label>
+                                    <select
+                                        className="w-full p-4 rounded-2xl bg-white border border-slate-200 outline-none font-bold text-sm shadow-sm"
+                                        value={formData.sub_program}
+                                        onChange={(e) => handleSubProgramChange(e.target.value)}
+                                        required
+                                    >
+                                        <option value="">Select Category</option>
+                                        {subPrograms.map(sp => (
+                                            <option key={sp.id} value={sp.id}>{sp.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
 
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Select Course</label>
-                                <select
-                                    className="w-full p-4 rounded-2xl bg-white border border-slate-200 outline-none font-bold text-sm shadow-sm"
-                                    value={formData.course}
-                                    onChange={(e) => handleCourseChange(e.target.value)}
-                                    required
-                                    disabled={!formData.sub_program}
-                                >
-                                    <option value="">Select Course</option>
-                                    {courses.map(c => (
-                                        <option key={c.id} value={c.id}>{c.name}</option>
-                                    ))}
-                                </select>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Select Course</label>
+                                    <select
+                                        className="w-full p-4 rounded-2xl bg-white border border-slate-200 outline-none font-bold text-sm shadow-sm"
+                                        value={formData.course}
+                                        onChange={(e) => handleCourseChange(e.target.value)}
+                                        required
+                                        disabled={!formData.sub_program}
+                                    >
+                                        <option value="">Select Course</option>
+                                        {courses.map(c => (
+                                            <option key={c.id} value={c.id}>{c.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
                             </div>
-                        </div>
+                        )}
 
                         {activeFields.length === 0 ? (
                             <div className="text-center py-20 bg-slate-50 rounded-[40px] border-2 border-dashed border-slate-100">
                                 <div className="w-20 h-20 bg-white rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-sm border border-slate-200">
                                     <Sparkles className="text-indigo-400" />
                                 </div>
-                                <h3 className="text-lg font-black text-slate-800">No Fields Created Yet</h3>
-                                <p className="text-slate-400 max-w-xs mx-auto mt-2 text-sm">Use the form builder in your dashboard to add fields to this brand.</p>
+                                <h3 className="text-lg font-black text-slate-800">No Fields Required</h3>
+                                <p className="text-slate-400 max-w-xs mx-auto mt-2 text-sm">There are no additional fields to fill in this section.</p>
+                                <button type="submit" className="mt-8 px-10 py-4 bg-indigo-600 text-white rounded-2xl font-black">Skip & Complete</button>
                             </div>
                         ) : (
                             activeFields.map(field => (
@@ -492,16 +636,6 @@ const PublicApplicationForm = () => {
                                                 className="w-full p-5 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 group-hover:border-indigo-300 transition-all cursor-pointer text-sm font-medium"
                                                 onChange={e => handleDynamicChange(field.id, e.target.files[0])}
                                             />
-                                        </div>
-                                    ) : field.field_type === 'payment' ? (
-                                        <div className="p-6 bg-slate-900 rounded-[30px] text-white flex justify-between items-center shadow-xl border-2 border-indigo-500/30">
-                                            <div>
-                                                <p className="text-[10px] font-black uppercase tracking-widest opacity-50">Registration Fee</p>
-                                                <h4 className="text-2xl font-black">₹{paymentConfig.amount}</h4>
-                                            </div>
-                                            <div className="flex items-center gap-2 text-indigo-400 font-bold text-xs uppercase tracking-widest">
-                                                <Sparkles size={16} /> Pay at Bottom
-                                            </div>
                                         </div>
                                     ) : (
                                         <input
@@ -542,7 +676,7 @@ const PublicApplicationForm = () => {
                                         disabled={submitting}
                                         className="w-full py-6 bg-indigo-600 text-white rounded-[32px] font-black text-xl shadow-2xl shadow-indigo-200 hover:bg-indigo-700 hover:translate-y-[-2px] active:translate-y-0 transition-all flex items-center justify-center gap-4 group disabled:opacity-50"
                                     >
-                                        {submitting ? "Processing..." : <>Final Submission <Send size={24} /></>}
+                                        {submitting ? "Processing..." : <>{formGroup === 'ACADEMIC' ? 'Submit Academic Profile' : 'Final Submission'} <Send size={24} /></>}
                                     </button>
                                 )}
                                 {paymentDone && (

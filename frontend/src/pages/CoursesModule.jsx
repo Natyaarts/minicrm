@@ -464,47 +464,93 @@ const CoursesModule = () => {
                                             {selectedNode.type.charAt(0).toUpperCase() + selectedNode.type.slice(1)} Specific Form Fields
                                         </h3>
                                         <div className="flex gap-2">
-                                            <button
-                                                onClick={async () => {
-                                                    let slug = '';
-                                                    let params = new URLSearchParams();
+                                            <div className="flex bg-slate-100 p-1 rounded-xl">
+                                                <button
+                                                    onClick={async () => {
+                                                        let slug = '';
+                                                        let params = new URLSearchParams();
 
-                                                    if (selectedNode.type === 'program') {
-                                                        slug = selectedNode.data?.slug || selectedNode.id;
-                                                    } else if (selectedNode.type === 'subprogram') {
-                                                        const parentProg = hierarchy.find(p => p.sub_programs?.some(sp => sp.id === selectedNode.id));
-                                                        slug = parentProg?.slug || parentProg?.id || '';
-                                                        params.append('sp', selectedNode.id);
-                                                    } else if (selectedNode.type === 'course') {
-                                                        const parentProg = hierarchy.find(p => 
-                                                            p.sub_programs?.some(sp => 
+                                                        if (selectedNode.type === 'program') {
+                                                            slug = selectedNode.data?.slug || selectedNode.id;
+                                                        } else if (selectedNode.type === 'subprogram') {
+                                                            const parentProg = hierarchy.find(p => p.sub_programs?.some(sp => sp.id === selectedNode.id));
+                                                            slug = parentProg?.slug || parentProg?.id || '';
+                                                            params.append('sp', selectedNode.id);
+                                                        } else if (selectedNode.type === 'course') {
+                                                            const parentProg = hierarchy.find(p => 
+                                                                p.sub_programs?.some(sp => 
+                                                                    sp.courses?.some(c => c.id === selectedNode.id)
+                                                                )
+                                                            );
+                                                            const subProg = parentProg?.sub_programs?.find(sp => 
                                                                 sp.courses?.some(c => c.id === selectedNode.id)
-                                                            )
-                                                        );
-                                                        const subProg = parentProg?.sub_programs?.find(sp => 
-                                                            sp.courses?.some(c => c.id === selectedNode.id)
-                                                        );
-                                                        slug = parentProg?.slug || parentProg?.id || '';
-                                                        if (subProg) params.append('sp', subProg.id);
-                                                        params.append('c', selectedNode.id);
-                                                    }
+                                                            );
+                                                            slug = parentProg?.slug || parentProg?.id || '';
+                                                            if (subProg) params.append('sp', subProg.id);
+                                                            params.append('c', selectedNode.id);
+                                                        }
 
-                                                    let link = `${window.location.origin}/apply/${slug}`;
-                                                    const qStr = params.toString();
-                                                    if (qStr) link += `?${qStr}`;
+                                                        let link = `${window.location.origin}/apply/${slug}`;
+                                                        const qStr = params.toString();
+                                                        if (qStr) link += `?${qStr}`;
 
-                                                    const success = await copyToClipboard(link);
-                                                    if (success) {
-                                                        setToast({ message: 'Deep Link Copied!' });
-                                                        setTimeout(() => setToast(null), 3000);
-                                                    } else {
-                                                        window.prompt("Manual copy required:", link);
-                                                    }
-                                                }}
-                                                className="text-emerald-600 font-bold text-sm bg-emerald-50 px-4 py-2 rounded-xl hover:bg-emerald-100 transition flex items-center gap-2"
-                                            >
-                                                <ExternalLink size={16} /> Copy URL
-                                            </button>
+                                                        const success = await copyToClipboard(link);
+                                                        if (success) {
+                                                            setToast({ message: 'Application Link Copied!' });
+                                                            setTimeout(() => setToast(null), 3000);
+                                                        }
+                                                    }}
+                                                    className="px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-indigo-600 hover:bg-white rounded-lg transition-all"
+                                                >
+                                                    <div className="flex items-center gap-1.5">
+                                                        <ExternalLink size={12} /> Step 1: Application
+                                                    </div>
+                                                </button>
+                                                <div className="w-px h-4 bg-slate-200 self-center mx-1" />
+                                                <button
+                                                    onClick={async () => {
+                                                        let slug = '';
+                                                        let params = new URLSearchParams();
+
+                                                        if (selectedNode.type === 'program') {
+                                                            slug = selectedNode.data?.slug || selectedNode.id;
+                                                        } else if (selectedNode.type === 'subprogram') {
+                                                            const parentProg = hierarchy.find(p => p.sub_programs?.some(sp => sp.id === selectedNode.id));
+                                                            slug = parentProg?.slug || parentProg?.id || '';
+                                                            params.append('sp', selectedNode.id);
+                                                        } else if (selectedNode.type === 'course') {
+                                                            const parentProg = hierarchy.find(p => 
+                                                                p.sub_programs?.some(sp => 
+                                                                    sp.courses?.some(c => c.id === selectedNode.id)
+                                                                )
+                                                            );
+                                                            const subProg = parentProg?.sub_programs?.find(sp => 
+                                                                sp.courses?.some(c => c.id === selectedNode.id)
+                                                            );
+                                                            slug = parentProg?.slug || parentProg?.id || '';
+                                                            if (subProg) params.append('sp', subProg.id);
+                                                            params.append('c', selectedNode.id);
+                                                        }
+                                                        
+                                                        params.append('group', 'ACADEMIC');
+
+                                                        let link = `${window.location.origin}/apply/${slug}`;
+                                                        const qStr = params.toString();
+                                                        if (qStr) link += `?${qStr}`;
+
+                                                        const success = await copyToClipboard(link);
+                                                        if (success) {
+                                                            setToast({ message: 'Academic Link Copied!' });
+                                                            setTimeout(() => setToast(null), 3000);
+                                                        }
+                                                    }}
+                                                    className="px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-emerald-600 hover:bg-white rounded-lg transition-all"
+                                                >
+                                                    <div className="flex items-center gap-1.5">
+                                                        <FileText size={12} /> Step 2: Academic
+                                                    </div>
+                                                </button>
+                                            </div>
                                             <button
                                                 onClick={() => {
                                                     fetchFields(selectedNode);
