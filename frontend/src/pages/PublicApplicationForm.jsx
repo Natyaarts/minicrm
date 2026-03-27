@@ -694,7 +694,14 @@ const PublicApplicationForm = () => {
                                         disabled={submitting}
                                         className="w-full py-6 bg-indigo-600 text-white rounded-[32px] font-black text-xl shadow-2xl shadow-indigo-200 hover:bg-indigo-700 hover:translate-y-[-2px] active:translate-y-0 transition-all flex items-center justify-center gap-4 group disabled:opacity-50"
                                     >
-                                        {submitting ? "Processing..." : <>{formGroup === 'ACADEMIC' ? 'Submit Academic Profile' : 'Final Submission'} <Send size={24} /></>}
+                                        {submitting ? (
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                                <span>Uploading & Processing...</span>
+                                            </div>
+                                        ) : (
+                                            <>{formGroup === 'ACADEMIC' ? 'Submit Academic Profile' : 'Final Submission'} <Send size={24} /></>
+                                        )}
                                     </button>
                                 )}
                                 {paymentDone && (

@@ -1428,7 +1428,12 @@ const SalesModule = () => {
                                     disabled={loading}
                                     className="flex-1 py-3 bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-100 hover:shadow-indigo-200 transition-all disabled:opacity-50"
                                 >
-                                    {loading ? 'Saving...' : 'Update Details'}
+                                    {loading ? (
+                                        <div className="flex items-center justify-center gap-2">
+                                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                            <span>Saving...</span>
+                                        </div>
+                                    ) : 'Update Details'}
                                 </button>
                             </div>
                         </form>
