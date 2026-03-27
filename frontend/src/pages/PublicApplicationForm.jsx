@@ -25,11 +25,12 @@ const PublicApplicationForm = () => {
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
     const [submitted, setSubmitted] = useState(false);
+    const [processingFiles, setProcessingFiles] = useState(0);
+    const [lookupError, setLookupError] = useState('');
     
     // Academic Phase States
     const [lookupMobile, setLookupMobile] = useState('');
     const [foundStudent, setFoundStudent] = useState(null);
-    const [lookupError, setLookupError] = useState('');
 
     // Form data
     const [formData, setFormData] = useState({
@@ -133,10 +134,16 @@ const PublicApplicationForm = () => {
             if (sid && isAcademic) {
                 try {
                     const res = await api.get(`students/public_lookup/?sid=${sid}`);
-                    studentInfo = res.data;
-                    setFoundStudent(studentInfo);
+                    if (res.data) {
+                        studentInfo = res.data;
+                        setFoundStudent(studentInfo);
+                        setFormData(prev => ({ ...prev, sub_program: res.data.sub_program?.toString(), course: res.data.course?.toString() }));
+                    } else {
+                        alert("Student profile not found. Please check your link or use the lookup form.");
+                    }
                 } catch (err) {
                     console.error("Direct student fetch failed", err);
+                    alert("Unable to fetch student profile. Please ensure you are using the correct application link.");
                 }
             }
 
@@ -347,17 +354,23 @@ const PublicApplicationForm = () => {
         
         // Handle File Uploads (Compress & Size Check)
         if (value instanceof File) {
-            let processedFile = value;
-            if (value.type.startsWith('image/')) {
-                // Keep file name and extension consistent but compress/resize
-                processedFile = await compressImage(value, { maxWidth: 1024, maxHeight: 1024, quality: 0.7 });
-            }
+            setProcessingFiles(prev => prev + 1);
+            try {
+                let processedFile = value;
+                if (value.type.startsWith('image/')) {
+                    processedFile = await compressImage(value, { maxWidth: 1024, maxHeight: 1024, quality: 0.7 });
+                }
 
-            if (processedFile.size > 10 * 1024 * 1024) {
-                alert(`File "${processedFile.name}" is too large even after compression. Max limit is 10MB.`);
-                return;
+                if (processedFile.size > 10 * 1024 * 1024) {
+                    alert(`File "${processedFile.name}" is too large even after compression. Max limit is 10MB.`);
+                    return;
+                }
+                value = processedFile;
+            } catch (err) {
+                console.error("Compression error:", err);
+            } finally {
+                setProcessingFiles(prev => Math.max(0, prev - 1));
             }
-            value = processedFile;
         }
 
         let updates = { dynamic_values: { ...formData.dynamic_values, [fieldId]: value } };
@@ -374,6 +387,32 @@ const PublicApplicationForm = () => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        
+        if (processingFiles > 0) {
+            alert("Please wait for your files to finish processing before submitting.");
+            return;
+        }
+
+        // Manual Validation
+        if (!foundStudent && (!formData.sub_program || !formData.course)) {
+            alert("Please select both Category and Course to continue.");
+            return;
+        }
+
+        const missingFields = activeFields.filter(f => {
+            if (!f.is_required) return false;
+            // Skip automated fields
+            if (['name', 'mobile', 'phone', 'contact'].some(k => f.label.toLowerCase().includes(k))) return false;
+            return !formData.dynamic_values[f.id];
+        });
+
+        if (missingFields.length > 0) {
+            alert(`Please complete the field: ${missingFields[0].label}`);
+            // Scroll to top to help find missing fields
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            return;
+        }
+
         setSubmitting(true);
         try {
             const formDataObj = new FormData();
@@ -567,8 +606,8 @@ const PublicApplicationForm = () => {
                 </div>
             </header>
 
-            <main className="max-w-3xl mx-auto py-12 px-4">
-                <form onSubmit={handleSubmit} className="space-y-8">
+            <main className="max-w-3xl mx-auto py-12 px-4 focus-within:scroll-mt-32">
+                <form onSubmit={handleSubmit} className="space-y-8" noValidate>
 
                     <div className="bg-white p-10 rounded-[40px] border border-slate-100 shadow-2xl space-y-8 animate-fadeIn">
                         <div className="mb-4">
