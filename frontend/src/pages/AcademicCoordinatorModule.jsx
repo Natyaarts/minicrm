@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import api from '../api/axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Check, Search, FileText, X } from 'lucide-react';
+import { copyToClipboard } from '../utils/clipboard';
 
 const AcademicCoordinatorModule = () => {
     const [students, setStudents] = useState([]);
@@ -216,7 +217,7 @@ const AcademicCoordinatorModule = () => {
                                                         if (student.sub_program_id) link += `&sp=${student.sub_program_id}`;
                                                         if (student.course_id) link += `&c=${student.course_id}`;
                                                         
-                                                        navigator.clipboard.writeText(link);
+                                                        copyToClipboard(link);
                                                         setToast({ message: `Direct Link Copied for ${student.first_name}!` });
                                                         setTimeout(() => setToast(null), 3000);
                                                     }}
@@ -308,7 +309,15 @@ const AcademicCoordinatorModule = () => {
                                                             type="file" 
                                                             className="hidden" 
                                                             id={`file-${field.id}`}
-                                                            onChange={e => setAcademicFiles({ ...academicFiles, [field.id]: e.target.files[0] })}
+                                                            onChange={e => {
+                                                                const file = e.target.files[0];
+                                                                if (file && file.size > 10 * 1024 * 1024) {
+                                                                    alert(`File "${file.name}" is too large. Please upload a file smaller than 10MB.`);
+                                                                    e.target.value = ''; // Reset input
+                                                                    return;
+                                                                }
+                                                                setAcademicFiles({ ...academicFiles, [field.id]: file });
+                                                            }}
                                                             required={field.is_required && !academicValues[field.id]}
                                                         />
                                                         <label htmlFor={`file-${field.id}`} className="flex flex-col items-center justify-center cursor-pointer">

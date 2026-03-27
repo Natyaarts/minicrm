@@ -286,7 +286,13 @@ const SalesModule = () => {
     };
 
     const handleDynamicFileChange = (e, fieldId) => {
-        setFiles(prev => ({ ...prev, [fieldId]: e.target.files[0] }));
+        const file = e.target.files[0];
+        if (file && file.size > 10 * 1024 * 1024) {
+            alert(`File "${file.name}" is too large. Please upload a file smaller than 10MB.`);
+            e.target.value = ''; 
+            return;
+        }
+        setFiles(prev => ({ ...prev, [fieldId]: file }));
     };
 
     const handleTxnChange = (e) => {

@@ -342,6 +342,13 @@ const PublicApplicationForm = () => {
 
     const handleDynamicChange = (fieldId, value) => {
         const field = activeFields.find(f => f.id === fieldId);
+        
+        // File Size Validation (10MB Limit)
+        if (value instanceof File && value.size > 10 * 1024 * 1024) {
+            alert(`File "${value.name}" is too large. Please upload a file smaller than 10MB.`);
+            return;
+        }
+
         let updates = { dynamic_values: { ...formData.dynamic_values, [fieldId]: value } };
 
         if (field) {
