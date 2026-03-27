@@ -86,6 +86,41 @@ const AcademicCoordinatorModule = () => {
 
     const handleSaveCompletion = async (e) => {
         e.preventDefault();
+        
+        // Dynamic Validation
+        for (const field of academicFields) {
+            const value = academicValues[field.id];
+            
+            // 1. Required Check
+            if (field.is_required && !value && field.field_type !== 'file') {
+                alert(`${field.label} is required.`);
+                return;
+            }
+            if (field.is_required && field.field_type === 'file' && !academicFiles[field.id] && !value) {
+                alert(`${field.label} file is required.`);
+                return;
+            }
+
+            // 2. Custom Regex Validation
+            if (value && field.validation_rules) {
+                try {
+                    const rules = typeof field.validation_rules === 'string' 
+                        ? JSON.parse(field.validation_rules) 
+                        : field.validation_rules;
+                    
+                    if (rules.pattern) {
+                        const regex = new RegExp(rules.pattern);
+                        if (!regex.test(value)) {
+                            alert(rules.message || `Invalid ${field.label}`);
+                            return;
+                        }
+                    }
+                } catch (e) {
+                    console.error("Rules parsing failed", e);
+                }
+            }
+        }
+
         setSavingCompletion(true);
 
         const formData = new FormData();

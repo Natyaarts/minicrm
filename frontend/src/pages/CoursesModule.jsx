@@ -32,7 +32,7 @@ const CoursesModule = () => {
         program: { name: '', description: '', require_payment: false, registration_fee: 0 },
         subprogram: { name: '', program: '', require_payment: false, registration_fee: 0 },
         course: { name: '', fee_amount: 0, sub_program: '', require_payment: false },
-        field: { label: '', field_type: 'text', field_group: 'INITIAL', options: '', order: 0, is_required: true }
+        field: { label: '', field_type: 'text', field_group: 'INITIAL', options: '', order: 0, is_required: true, validation_pattern: '', validation_message: '' }
     });
 
     useEffect(() => {
@@ -111,6 +111,13 @@ const CoursesModule = () => {
                 if (payload.field_type === 'dropdown' && typeof payload.options === 'string') {
                     payload.options = payload.options.split(',').map(s => s.trim());
                 }
+                
+                if (payload.validation_pattern) {
+                    payload.validation_rules = {
+                        pattern: payload.validation_pattern,
+                        message: payload.validation_message || `Invalid ${payload.label}`
+                    };
+                }
             } else {
                 if (activeModal === 'program') {
                     endpoint = editMode ? `programs/${formData.program.id}/` : 'programs/';
@@ -175,7 +182,9 @@ const CoursesModule = () => {
             ...prev,
             field: {
                 ...field,
-                options: Array.isArray(field.options) ? field.options.join(', ') : (field.options || '')
+                options: Array.isArray(field.options) ? field.options.join(', ') : (field.options || ''),
+                validation_pattern: field.validation_rules?.pattern || '',
+                validation_message: field.validation_rules?.message || ''
             }
         }));
         setEditMode(true);
@@ -562,7 +571,7 @@ const CoursesModule = () => {
                                             </button>
                                             <button
                                                 onClick={() => {
-                                                    setFormData(prev => ({ ...prev, field: { label: '', field_type: 'text', options: '', order: 0, is_required: true } }));
+                                                    setFormData(prev => ({ ...prev, field: { label: '', field_type: 'text', field_group: 'INITIAL', options: '', order: 0, is_required: true, validation_pattern: '', validation_message: '' } }));
                                                     setEditMode(false);
                                                     setActiveModal('field');
                                                 }}
@@ -785,20 +794,47 @@ const CoursesModule = () => {
                                                 />
                                             </div>
                                         )}
-                                        <div>
-                                            <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 ml-1">Display Order</label>
-                                            <input
-                                                type="number"
-                                                className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-100 focus:bg-white focus:ring-4 focus:ring-indigo-50 focus:border-indigo-500 outline-none font-bold transition-all"
-                                                value={formData.field.order}
-                                                onChange={e => setFormData({ ...formData, field: { ...formData.field, order: e.target.value } })}
-                                            />
-                                        </div>
-                                        <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-100 cursor-pointer hover:bg-white transition-all group" onClick={() => setFormData({ ...formData, field: { ...formData.field, is_required: !formData.field.is_required } })}>
-                                            <div className={`w-6 h-6 rounded-lg flex items-center justify-center border-2 transition-all ${formData.field.is_required ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-slate-200 group-hover:border-indigo-300'}`}>
-                                                {formData.field.is_required && <Check size={14} className="text-white" />}
+                                        
+                                        <div className="flex gap-4">
+                                            <div className="flex-1">
+                                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 ml-1">Display Order</label>
+                                                <input
+                                                    type="number"
+                                                    className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-100 focus:bg-white focus:ring-4 focus:ring-indigo-50 focus:border-indigo-500 outline-none font-bold transition-all"
+                                                    value={formData.field.order}
+                                                    onChange={e => setFormData({ ...formData, field: { ...formData.field, order: e.target.value } })}
+                                                />
                                             </div>
-                                            <span className="text-sm font-bold text-slate-700">Required Field</span>
+                                            <div 
+                                                className="flex-1 flex items-center gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-100 cursor-pointer hover:bg-white transition-all group mt-6" 
+                                                onClick={() => setFormData({ ...formData, field: { ...formData.field, is_required: !formData.field.is_required } })}
+                                            >
+                                                <div className={`w-6 h-6 rounded-lg flex items-center justify-center border-2 transition-all ${formData.field.is_required ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-slate-200 group-hover:border-indigo-300'}`}>
+                                                    {formData.field.is_required && <Check size={14} className="text-white" />}
+                                                </div>
+                                                <span className="text-xs font-black text-slate-700 uppercase tracking-tight">Required Field</span>
+                                            </div>
+                                        </div>
+
+                                        <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-4">
+                                            <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1 flex items-center gap-2">
+                                                <AlertCircle size={12} className="text-indigo-500" />
+                                                Validation Rules (Optional)
+                                            </p>
+                                            <div className="space-y-3">
+                                                <input
+                                                    className="w-full p-3.5 rounded-xl bg-white border border-slate-200 text-slate-900 focus:ring-4 focus:ring-indigo-50 focus:border-indigo-500 outline-none transition-all font-mono text-[11px]"
+                                                    placeholder="Regex Pattern (e.g. ^[0-9]{10}$)"
+                                                    value={formData.field.validation_pattern}
+                                                    onChange={e => setFormData({ ...formData, field: { ...formData.field, validation_pattern: e.target.value } })}
+                                                />
+                                                <input
+                                                    className="w-full p-3.5 rounded-xl bg-white border border-slate-200 text-slate-900 focus:ring-4 focus:ring-indigo-50 focus:border-indigo-500 outline-none transition-all text-xs font-bold"
+                                                    placeholder="Custom Error Message"
+                                                    value={formData.field.validation_message}
+                                                    onChange={e => setFormData({ ...formData, field: { ...formData.field, validation_message: e.target.value } })}
+                                                />
+                                            </div>
                                         </div>
                                     </>
                                 ) : (
@@ -875,7 +911,7 @@ const CoursesModule = () => {
                     </div>
                 )}
             </AnimatePresence>
-        </div >
+        </div>
     );
 };
 

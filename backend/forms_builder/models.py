@@ -27,6 +27,7 @@ class DynamicField(models.Model):
     options = models.JSONField(null=True, blank=True, help_text="Dropdown options as list of strings")
     order = models.PositiveIntegerField(default=0)
     conditional_rule = models.JSONField(null=True, blank=True, help_text="Rules for visibility")
+    validation_rules = models.JSONField(null=True, blank=True, help_text="Validation rules (JSON) e.g. {'pattern': '^[0-9]{10}$', 'message': 'Invalid phone'}")
 
     class Meta:
         ordering = ['order']

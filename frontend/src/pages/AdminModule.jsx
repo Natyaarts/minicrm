@@ -32,7 +32,8 @@ const AdminModule = () => {
     const [subProgramModalOpen, setSubProgramModalOpen] = useState(false);
     const [courseModalOpen, setCourseModalOpen] = useState(false);
     const [newField, setNewField] = useState({
-        label: '', field_type: 'text', field_group: 'INITIAL', options: '', order: 0, is_required: true
+        label: '', field_type: 'text', field_group: 'INITIAL', options: '', order: 0, is_required: true,
+        validation_pattern: '', validation_message: ''
     });
     const [newSubProgram, setNewSubProgram] = useState('');
     const [programModalOpen, setProgramModalOpen] = useState(false);
@@ -204,11 +205,18 @@ const AdminModule = () => {
             payload.options = payload.options.split(',').map(s => s.trim());
         }
 
+        if (payload.validation_pattern) {
+            payload.validation_rules = {
+                pattern: payload.validation_pattern,
+                message: payload.validation_message || `Invalid ${payload.label}`
+            };
+        }
+
         try {
             await api.post('forms/fields/', payload);
             setFieldModalOpen(false);
             fetchFields();
-            setNewField({ label: '', field_type: 'text', field_group: 'INITIAL', options: '', order: 0, is_required: true });
+            setNewField({ label: '', field_type: 'text', field_group: 'INITIAL', options: '', order: 0, is_required: true, validation_pattern: '', validation_message: '' });
         } catch (err) {
             console.error(err);
             alert("Failed to create field");
@@ -983,11 +991,27 @@ const AdminModule = () => {
                                         <input type="number" className="w-full p-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none transition-all font-medium" value={newField.order} onChange={e => setNewField({ ...newField, order: parseInt(e.target.value) })} />
                                     </div>
                                     <div className="flex items-center pt-6">
-                                        <input type="checkbox" className="w-5 h-5 text-indigo-600 rounded focus:ring-indigo-500 border-gray-300 mr-3" checked={newField.is_required} onChange={e => setNewField({ ...newField, is_required: e.target.checked })} />
-                                        <label className="text-sm font-bold text-slate-700">Is Required</label>
-                                    </div>
-                                </div>
-                                <div className="flex gap-4 pt-4">
+                                         <input type="checkbox" className="w-5 h-5 text-indigo-600 rounded focus:ring-indigo-500 border-gray-300 mr-3" checked={newField.is_required} onChange={e => setNewField({ ...newField, is_required: e.target.checked })} />
+                                         <label className="text-sm font-bold text-slate-700">Is Required</label>
+                                     </div>
+                                 </div>
+                                 <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-3">
+                                     <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Optional Validation</p>
+                                     <div className="grid grid-cols-1 gap-3">
+                                         <input 
+                                             className="w-full p-3 rounded-xl bg-white border border-slate-200 text-slate-900 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none transition-all text-xs font-mono" 
+                                             placeholder="Regex Pattern (e.g. ^[0-9]{10}$)" 
+                                             value={newField.validation_pattern} 
+                                             onChange={e => setNewField({ ...newField, validation_pattern: e.target.value })} 
+                                         />
+                                         <input 
+                                             className="w-full p-3 rounded-xl bg-white border border-slate-200 text-slate-900 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none transition-all text-xs" 
+                                             placeholder="Error Message" 
+                                             value={newField.validation_message} 
+                                             onChange={e => setNewField({ ...newField, validation_message: e.target.value })} 
+                                         />
+                                     </div>
+                                 </div><div className="flex gap-4 pt-4">
                                     <button type="button" onClick={() => setFieldModalOpen(false)} className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition">Cancel</button>
                                     <button type="submit" className="flex-1 py-3 bg-indigo-600 rounded-xl hover:bg-indigo-700 text-white font-bold transition shadow-md">Add Field</button>
                                 </div>

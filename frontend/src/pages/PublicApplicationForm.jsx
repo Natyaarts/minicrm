@@ -413,20 +413,34 @@ const PublicApplicationForm = () => {
             return;
         }
 
-        // 10-Digit Mobile/Phone Validation
-        const invalidMobile = activeFields.find(f => {
-            const label = f.label.toLowerCase();
+        // Dynamic Rule-Based Validation
+        const failedValidationField = activeFields.find(f => {
             const val = formData.dynamic_values[f.id];
-            if ((label.includes('mobile') || label.includes('phone') || label.includes('contact')) && val) {
-                // Remove spaces/hyphens and check if exactly 10 digits
+            if (!val) return false;
+
+            // 1. Check Custom Regex Pattern if exists
+            if (f.validation_rules?.pattern) {
+                try {
+                    const regex = new RegExp(f.validation_rules.pattern);
+                    return !regex.test(val.toString());
+                } catch(e) { 
+                    console.error("Invalid Regex Pattern for field:", f.label);
+                    return false; 
+                }
+            }
+
+            // 2. Fallback: Standard 10-Digit Mobile Check (Auto-applied to common labels)
+            const label = f.label.toLowerCase();
+            if ((label.includes('mobile') || label.includes('phone') || label.includes('contact'))) {
                 const numbersOnly = val.toString().replace(/[^0-9]/g, '');
                 return numbersOnly.length !== 10;
             }
             return false;
         });
 
-        if (invalidMobile) {
-            alert(`Please enter a valid 10-digit number for: ${invalidMobile.label}`);
+        if (failedValidationField) {
+            const errorMsg = failedValidationField.validation_rules?.message || `Please enter a valid format for: ${failedValidationField.label}`;
+            alert(errorMsg);
             return;
         }
 
