@@ -241,12 +241,14 @@ class StudentViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+        if not user.is_authenticated:
+            # Allow public submissions (PATCH) for active student profiles via deep links
+            return Student.objects.filter(is_active=True)
+        
+        # Staff/Internal View
         qs = Student.objects.select_related(
             'user', 'program_type', 'sub_program', 'course', 'batch'
         ).prefetch_related('dynamic_values__field', 'documents', 'transactions').all()
-
-        if not user.is_authenticated:
-            return Student.objects.none()
             
         if user.role in ['ADMIN', 'SUPER_ADMIN', 'ACADEMIC', 'SALES']:
             pass 

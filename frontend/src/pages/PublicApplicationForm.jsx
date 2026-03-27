@@ -413,6 +413,23 @@ const PublicApplicationForm = () => {
             return;
         }
 
+        // 10-Digit Mobile/Phone Validation
+        const invalidMobile = activeFields.find(f => {
+            const label = f.label.toLowerCase();
+            const val = formData.dynamic_values[f.id];
+            if ((label.includes('mobile') || label.includes('phone') || label.includes('contact')) && val) {
+                // Remove spaces/hyphens and check if exactly 10 digits
+                const numbersOnly = val.toString().replace(/[^0-9]/g, '');
+                return numbersOnly.length !== 10;
+            }
+            return false;
+        });
+
+        if (invalidMobile) {
+            alert(`Please enter a valid 10-digit number for: ${invalidMobile.label}`);
+            return;
+        }
+
         setSubmitting(true);
         try {
             const formDataObj = new FormData();
