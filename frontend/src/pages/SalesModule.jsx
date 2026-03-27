@@ -4,6 +4,7 @@ import api from '../api/axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Copy, Check, Search, FileText, User, Trash2, Edit2, RotateCcw, Trash, X } from 'lucide-react';
 import { copyToClipboard } from '../utils/clipboard';
+import { compressImage } from '../utils/fileCompressor';
 
 const SalesModule = () => {
     // URL Params
@@ -285,14 +286,21 @@ const SalesModule = () => {
         setDynamicValues({ ...dynamicValues, [fieldId]: e.target.value });
     };
 
-    const handleDynamicFileChange = (e, fieldId) => {
+    const handleDynamicFileChange = async (e, fieldId) => {
         const file = e.target.files[0];
-        if (file && file.size > 10 * 1024 * 1024) {
-            alert(`File "${file.name}" is too large. Please upload a file smaller than 10MB.`);
+        if (!file) return;
+
+        let processedFile = file;
+        if (file.type.startsWith('image/')) {
+            processedFile = await compressImage(file, { maxWidth: 1024, maxHeight: 1024, quality: 0.7 });
+        }
+
+        if (processedFile.size > 10 * 1024 * 1024) {
+            alert(`File "${processedFile.name}" is too large even after compression. Max limit is 10MB.`);
             e.target.value = ''; 
             return;
         }
-        setFiles(prev => ({ ...prev, [fieldId]: file }));
+        setFiles(prev => ({ ...prev, [fieldId]: processedFile }));
     };
 
     const handleTxnChange = (e) => {

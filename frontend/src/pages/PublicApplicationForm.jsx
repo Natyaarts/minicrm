@@ -7,6 +7,8 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
+import { compressImage } from '../utils/fileCompressor';
+
 const PublicApplicationForm = () => {
     const { programSlug } = useParams();
     const navigate = useNavigate();
@@ -340,13 +342,22 @@ const PublicApplicationForm = () => {
         }
     };
 
-    const handleDynamicChange = (fieldId, value) => {
+    const handleDynamicChange = async (fieldId, value) => {
         const field = activeFields.find(f => f.id === fieldId);
         
-        // File Size Validation (10MB Limit)
-        if (value instanceof File && value.size > 10 * 1024 * 1024) {
-            alert(`File "${value.name}" is too large. Please upload a file smaller than 10MB.`);
-            return;
+        // Handle File Uploads (Compress & Size Check)
+        if (value instanceof File) {
+            let processedFile = value;
+            if (value.type.startsWith('image/')) {
+                // Keep file name and extension consistent but compress/resize
+                processedFile = await compressImage(value, { maxWidth: 1024, maxHeight: 1024, quality: 0.7 });
+            }
+
+            if (processedFile.size > 10 * 1024 * 1024) {
+                alert(`File "${processedFile.name}" is too large even after compression. Max limit is 10MB.`);
+                return;
+            }
+            value = processedFile;
         }
 
         let updates = { dynamic_values: { ...formData.dynamic_values, [fieldId]: value } };
