@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import api from '../api/axios';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, Search, FileText, X } from 'lucide-react';
+import { Check, Search, FileText, X, Download } from 'lucide-react';
 import { copyToClipboard } from '../utils/clipboard';
 import { compressImage } from '../utils/fileCompressor';
 
@@ -84,6 +84,71 @@ const AcademicCoordinatorModule = () => {
         }
     };
 
+    const handleExport = () => {
+        if (students.length === 0) {
+            setToast({ type: 'error', message: 'No data to export!' });
+            setTimeout(() => setToast(null), 3000);
+            return;
+        }
+
+        // Collect all dynamic field headers across all students in current view
+        const initialHeaders = new Set();
+        const academicHeaders = new Set();
+        
+        students.forEach(s => {
+            s.dynamic_values_list?.forEach(v => {
+                if (v.field_group === 'INITIAL') initialHeaders.add(v.field_label);
+                if (v.field_group === 'ACADEMIC') academicHeaders.add(v.field_label);
+            });
+        });
+
+        const sortedInitialFields = Array.from(initialHeaders).sort();
+        const sortedAcademicFields = Array.from(academicHeaders).sort();
+
+        const headers = [
+            'CRM ID', 'First Name', 'Last Name', 'Mobile', 'Email', 'Program', 
+            ...sortedInitialFields,
+            ...sortedAcademicFields
+        ];
+
+        const rows = students.map(s => {
+            const rowData = {
+                'CRM ID': s.crm_student_id,
+                'First Name': s.first_name,
+                'Last Name': s.last_name,
+                'Mobile': s.mobile,
+                'Email': s.email,
+                'Program': s.program_name
+            };
+
+            // Map dynamic fields from the student's value list
+            s.dynamic_values_list?.forEach(v => {
+                rowData[v.field_label] = v.value;
+            });
+
+            // Return comma-separated row with escaped values
+            return headers.map(h => {
+                const val = (rowData[h] || '').toString();
+                // Escape quotes and wrap in quotes to handle commas
+                return `"${val.replace(/"/g, '""')}"`;
+            }).join(',');
+        });
+
+        const csvContent = [headers.join(','), ...rows].join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        const url = URL.createObjectURL(blob);
+        link.setAttribute("href", url);
+        link.setAttribute("download", `student_academic_export_${new Date().toISOString().split('T')[0]}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        setToast({ type: 'success', message: 'Exporting Current Page...' });
+        setTimeout(() => setToast(null), 3000);
+    };
+
     const handleSaveCompletion = async (e) => {
         e.preventDefault();
         
@@ -163,15 +228,24 @@ const AcademicCoordinatorModule = () => {
                             Review applications from Sales and enter Post-Admission Academic details.
                         </p>
                     </div>
-                    <div className="relative mt-4 md:mt-0">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                        <input
-                            type="text"
-                            placeholder="Search students..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="pl-10 pr-4 py-2 rounded-xl border border-slate-200 focus:border-teal-500 outline-none text-sm w-64"
-                        />
+                    <div className="flex gap-2 mt-4 md:mt-0">
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                            <input
+                                type="text"
+                                placeholder="Search students..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="pl-10 pr-4 py-2 rounded-xl border border-slate-200 focus:border-teal-500 outline-none text-sm w-64 shadow-sm"
+                            />
+                        </div>
+                        <button
+                            onClick={handleExport}
+                            className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-xl text-sm font-bold hover:bg-slate-800 transition-all shadow-lg active:scale-95"
+                            title="Export Current Page to CSV"
+                        >
+                            <Download size={18} /> Export
+                        </button>
                     </div>
                 </motion.div>
 
