@@ -27,6 +27,15 @@ const PublicApplicationForm = () => {
     const [submitted, setSubmitted] = useState(false);
     const [processingFiles, setProcessingFiles] = useState(0);
     const [lookupError, setLookupError] = useState('');
+    const [validationError, setValidationError] = useState(null);
+    
+    // Auto-clear validation error
+    useEffect(() => {
+        if (validationError) {
+            const timer = setTimeout(() => setValidationError(null), 8000);
+            return () => clearTimeout(timer);
+        }
+    }, [validationError]);
     
     // Academic Phase States
     const [lookupMobile, setLookupMobile] = useState('');
@@ -401,8 +410,7 @@ const PublicApplicationForm = () => {
 
         const missingFields = activeFields.filter(f => {
             if (!f.is_required) return false;
-            // Skip automated fields
-            if (['name', 'mobile', 'phone', 'contact'].some(k => f.label.toLowerCase().includes(k))) return false;
+            // No longer skip automated fields as they may be dynamic fields that needs filling
             return !formData.dynamic_values[f.id];
         });
 
@@ -417,30 +425,56 @@ const PublicApplicationForm = () => {
         const failedValidationField = activeFields.find(f => {
             const val = formData.dynamic_values[f.id];
             if (!val) return false;
+            
+            console.log(`[Validation Debug] Checking ${f.label}:`, val);
+
+            // Normalize rules (handle string or object)
+            let rules = f.validation_rules;
+            if (typeof rules === 'string') {
+                try { rules = JSON.parse(rules); } catch(e) { rules = null; }
+            }
 
             // 1. Check Custom Regex Pattern if exists
-            if (f.validation_rules?.pattern) {
+            if (rules?.pattern) {
                 try {
-                    const regex = new RegExp(f.validation_rules.pattern);
-                    return !regex.test(val.toString());
+                    const regex = new RegExp(rules.pattern);
+                    if (!regex.test(val.toString())) {
+                        console.warn(`[Validation Debug] ${f.label} failed regex:`, rules.pattern);
+                        return true;
+                    }
                 } catch(e) { 
                     console.error("Invalid Regex Pattern for field:", f.label);
-                    return false; 
                 }
             }
 
             // 2. Fallback: Standard 10-Digit Mobile Check (Auto-applied to common labels)
-            const label = f.label.toLowerCase();
-            if ((label.includes('mobile') || label.includes('phone') || label.includes('contact'))) {
+            const label = f.label?.toLowerCase() || "";
+            if (['mobile', 'phone', 'contact'].some(k => label.includes(k))) {
                 const numbersOnly = val.toString().replace(/[^0-9]/g, '');
-                return numbersOnly.length !== 10;
+                if (numbersOnly.length !== 10) {
+                    console.warn(`[Validation Debug] ${f.label} failed 10-digit check:`, numbersOnly);
+                    return true;
+                }
             }
             return false;
         });
 
         if (failedValidationField) {
-            const errorMsg = failedValidationField.validation_rules?.message || `Please enter a valid format for: ${failedValidationField.label}`;
-            alert(errorMsg);
+            let rules = failedValidationField.validation_rules;
+            if (typeof rules === 'string') {
+                try { rules = JSON.parse(rules); } catch(e) { rules = null; }
+            }
+            const errorMsg = rules?.message || `Please enter a valid format for: ${failedValidationField.label}`;
+            setValidationError({ fieldId: failedValidationField.id, message: errorMsg });
+            setSubmitting(false); // Ensure button re-enables
+            
+            // Scroll to the field that failed
+            const element = document.getElementById(`field-${failedValidationField.id}`);
+            if (element) {
+                element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            } else {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
             return;
         }
 
@@ -639,6 +673,18 @@ const PublicApplicationForm = () => {
 
             <main className="max-w-3xl mx-auto py-12 px-4 focus-within:scroll-mt-32">
                 <form onSubmit={handleSubmit} className="space-y-8" noValidate>
+                    {validationError && (
+                        <motion.div 
+                            initial={{ opacity: 0, y: -20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="p-4 bg-red-50 border border-red-200 rounded-2xl flex items-center gap-3 text-red-600 font-bold text-sm shadow-lg shadow-red-100/50"
+                        >
+                            <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                                <Sparkles size={16} />
+                            </div>
+                            <p>{validationError.message}</p>
+                        </motion.div>
+                    )}
 
                     <div className="bg-white p-10 rounded-[40px] border border-slate-100 shadow-2xl space-y-8 animate-fadeIn">
                         <div className="mb-4">
@@ -707,9 +753,13 @@ const PublicApplicationForm = () => {
 
                                     {field.field_type === 'dropdown' ? (
                                         <select
-                                            required={field.is_required && !['name', 'mobile', 'phone', 'contact'].some(k => field.label.toLowerCase().includes(k))}
-                                            className="w-full p-5 rounded-2xl bg-slate-50 border-2 border-transparent focus:bg-white focus:border-indigo-500 outline-none font-bold transition-all appearance-none cursor-pointer"
-                                            onChange={e => handleDynamicChange(field.id, e.target.value)}
+                                            id={`field-${field.id}`}
+                                            required={field.is_required}
+                                            className={`w-full p-5 rounded-2xl bg-slate-50 border-2 transition-all appearance-none cursor-pointer font-bold outline-none ${validationError?.fieldId === field.id ? 'border-red-500 bg-red-50' : 'border-transparent focus:bg-white focus:border-indigo-500'}`}
+                                            onChange={e => {
+                                                handleDynamicChange(field.id, e.target.value);
+                                                if (validationError?.fieldId === field.id) setValidationError(null);
+                                            }}
                                         >
                                             <option value="">Select Option</option>
                                             {(Array.isArray(field.options) ? field.options : field.options?.split(',') || []).map(opt => (
@@ -719,20 +769,33 @@ const PublicApplicationForm = () => {
                                     ) : field.field_type === 'file' ? (
                                         <div className="relative">
                                             <input
+                                                id={`field-${field.id}`}
                                                 type="file"
-                                                required={field.is_required && !['name', 'mobile', 'phone', 'contact'].some(k => field.label.toLowerCase().includes(k))}
-                                                className="w-full p-5 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 group-hover:border-indigo-300 transition-all cursor-pointer text-sm font-medium"
-                                                onChange={e => handleDynamicChange(field.id, e.target.files[0])}
+                                                required={field.is_required}
+                                                className={`w-full p-5 rounded-2xl border-2 border-dashed transition-all cursor-pointer text-sm font-medium ${validationError?.fieldId === field.id ? 'border-red-500 bg-red-50' : 'border-slate-200 bg-slate-50 group-hover:border-indigo-300'}`}
+                                                onChange={e => {
+                                                    handleDynamicChange(field.id, e.target.files[0]);
+                                                    if (validationError?.fieldId === field.id) setValidationError(null);
+                                                }}
                                             />
                                         </div>
                                     ) : (
                                         <input
+                                            id={`field-${field.id}`}
                                             type={field.field_type}
-                                            required={field.is_required && !['name', 'mobile', 'phone', 'contact'].some(k => field.label.toLowerCase().includes(k))}
-                                            className="w-full p-5 rounded-2xl bg-slate-50 border-2 border-transparent focus:bg-white focus:border-indigo-500 outline-none font-bold transition-all"
+                                            required={field.is_required}
+                                            className={`w-full p-5 rounded-2xl bg-slate-50 border-2 transition-all font-bold outline-none ${validationError?.fieldId === field.id ? 'border-red-500 bg-red-50 text-red-900 focus:bg-white' : 'border-transparent focus:bg-white focus:border-indigo-500'}`}
                                             placeholder={`Your ${field.label}`}
-                                            onChange={e => handleDynamicChange(field.id, e.target.value)}
+                                            onChange={e => {
+                                                handleDynamicChange(field.id, e.target.value);
+                                                if (validationError?.fieldId === field.id) setValidationError(null);
+                                            }}
                                         />
+                                    )}
+                                    {validationError?.fieldId === field.id && (
+                                        <p className="text-red-500 text-[10px] font-black uppercase tracking-widest mt-1 ml-1 animate-pulse">
+                                            {validationError.message}
+                                        </p>
                                     )}
                                 </div>
                             ))
