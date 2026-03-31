@@ -66,6 +66,7 @@ const CoursesModule = () => {
 
     const fetchFields = async (node) => {
         if (!node) return;
+        setFields([]); // Clear old fields to avoid ghosting
         const params = new URLSearchParams();
         if (node.type === 'program') params.append('program', node.id);
         else if (node.type === 'subprogram') params.append('sub_program', node.id);
@@ -274,16 +275,22 @@ const CoursesModule = () => {
 
     const exactFields = fields.filter(f => {
         if (!selectedNode) return false;
-        if (selectedNode.type === 'program') return f.program === selectedNode.id;
-        if (selectedNode.type === 'subprogram') return f.sub_program === selectedNode.id;
-        return f.course === selectedNode.id;
+        // Direct match with type-insensitive comparison
+        if (selectedNode.type === 'program') return f.program == selectedNode.id && !f.sub_program && !f.course;
+        if (selectedNode.type === 'subprogram') return f.sub_program == selectedNode.id && !f.course;
+        return f.course == selectedNode.id;
     });
 
     const inheritedFields = fields.filter(f => {
         if (!selectedNode) return false;
-        if (selectedNode.type === 'program') return f.program !== selectedNode.id;
-        if (selectedNode.type === 'subprogram') return f.sub_program !== selectedNode.id;
-        return f.course !== selectedNode.id;
+        // Fields that are in the response but NOT directly on this node (parents)
+        if (selectedNode.type === 'program') return false; // Programs have no parents
+        if (selectedNode.type === 'subprogram') return f.program == selectedNode.data.program_id && !f.sub_program;
+        if (selectedNode.type === 'course') {
+             return (f.program == selectedNode.data.program_id && !f.sub_program) || 
+                    (f.sub_program == selectedNode.data.sub_program_id && !f.course);
+        }
+        return false;
     });
 
     return (
@@ -345,6 +352,9 @@ const CoursesModule = () => {
                                 </div>
                                 <h1 className="text-3xl font-black text-slate-900 leading-tight">
                                     {selectedNode.name}
+                                    <span className="ml-4 text-sm font-bold text-slate-400 bg-slate-100 px-3 py-1 rounded-full align-middle">
+                                        {fields.length} Fields Found
+                                    </span>
                                 </h1>
                                 {selectedNode.type === 'course' && (
                                     <div className="flex items-center gap-2 mt-2 px-3 py-1 bg-emerald-50 border border-emerald-100 rounded-lg w-fit">

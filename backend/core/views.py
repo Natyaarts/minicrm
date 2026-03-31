@@ -8,11 +8,12 @@ from django.http import HttpResponse
 from django.contrib.auth import get_user_model
 import pandas as pd
 
-from .models import Program, SubProgram, Course, Batch, Student, Transaction, Document, SyllabusPart, ClassSession, Attendance
+from .models import Program, SubProgram, Course, Batch, Student, Transaction, Document, SyllabusPart, ClassSession, Attendance, BatchResource, Exam, ExamResult, Question, QuestionOption, StudentSubmission
 from .serializers import (
     ProgramSerializer, SubProgramSerializer, CourseSerializer, 
     BatchSerializer, StudentSerializer, TransactionSerializer, DocumentSerializer,
-    ProgramHierarchySerializer, SyllabusPartSerializer, ClassSessionSerializer, AttendanceSerializer
+    ProgramHierarchySerializer, SyllabusPartSerializer, ClassSessionSerializer, AttendanceSerializer, BatchResourceSerializer,
+    ExamSerializer, ExamResultSerializer, QuestionSerializer, StudentSubmissionSerializer
 )
 from rest_framework.views import APIView
 from .permissions import DynamicRolePermission, IsMentorOwner
@@ -425,6 +426,117 @@ class AttendanceViewSet(viewsets.ModelViewSet):
             if self.request.user.role == 'TEACHER':
                 return 'TEACHER'
         return 'MENTOR'
+
+class BatchResourceViewSet(viewsets.ModelViewSet):
+    queryset = BatchResource.objects.all()
+    serializer_class = BatchResourceSerializer
+    permission_classes = [DynamicRolePermission, IsMentorOwner]
+    
+    @property
+    def module_name(self):
+        if hasattr(self, 'request') and self.request.user.is_authenticated:
+            if self.request.user.role == 'TEACHER':
+                return 'TEACHER'
+        return 'MENTOR'
+
+    def get_queryset(self):
+        batch_id = self.request.query_params.get('batch')
+        if batch_id:
+            return self.queryset.filter(batch_id=batch_id)
+        return self.queryset
+
+
+class ExamViewSet(viewsets.ModelViewSet):
+    queryset = Exam.objects.all()
+    serializer_class = ExamSerializer
+    permission_classes = [DynamicRolePermission, IsMentorOwner]
+    
+    @property
+    def module_name(self):
+        if hasattr(self, 'request') and self.request.user.is_authenticated:
+            if self.request.user.role == 'TEACHER':
+                return 'TEACHER'
+        return 'MENTOR'
+
+    def get_queryset(self):
+        batch_id = self.request.query_params.get('batch')
+        if batch_id:
+            return self.queryset.filter(batch_id=batch_id)
+        return self.queryset
+
+class ExamResultViewSet(viewsets.ModelViewSet):
+    queryset = ExamResult.objects.all()
+    serializer_class = ExamResultSerializer
+    permission_classes = [DynamicRolePermission, IsMentorOwner]
+    
+    @property
+    def module_name(self):
+        if hasattr(self, 'request') and self.request.user.is_authenticated:
+            if self.request.user.role == 'TEACHER':
+                return 'TEACHER'
+        return 'MENTOR'
+
+    @action(detail=False, methods=['post'])
+    def bulk_submit(self, request):
+        exam_id = request.data.get('exam_id')
+        results = request.data.get('results', {}) # student_id -> marks
+        
+        exam = Exam.objects.get(id=exam_id)
+        for student_id, data in results.items():
+            ExamResult.objects.update_or_create(
+                exam=exam,
+                student_id=student_id,
+                defaults={
+                    'marks_obtained': data.get('marks', 0),
+                    'remarks': data.get('remarks', ''),
+                    'is_present': data.get('is_present', True)
+                }
+            )
+        return Response({'status': 'Marks updated successfully'})
+
+
+class QuestionViewSet(viewsets.ModelViewSet):
+    queryset = Question.objects.all()
+    serializer_class = QuestionSerializer
+    permission_classes = [DynamicRolePermission]
+    
+    @property
+    def module_name(self):
+        return 'TEACHER'
+
+    def get_queryset(self):
+        exam_id = self.request.query_params.get('exam')
+        if exam_id:
+            return self.queryset.filter(exam_id=exam_id)
+        return self.queryset
+
+class StudentSubmissionViewSet(viewsets.ModelViewSet):
+    queryset = StudentSubmission.objects.all()
+    serializer_class = StudentSubmissionSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def perform_create(self, serializer):
+        # Auto-grade MCQs upon submission
+        instance = serializer.save()
+        if instance.is_submitted:
+            self.calculate_score(instance)
+
+    def calculate_score(self, submission):
+        exam = submission.exam
+        questions = exam.questions.all()
+        total_score = 0
+        
+        for q in questions:
+            user_ans = submission.answers_json.get(str(q.id))
+            if q.question_type == 'MCQ' and user_ans:
+                # user_ans is the option_id for MCQs
+                correct_opt = q.options.filter(is_correct=True).first()
+                if correct_opt and str(correct_opt.id) == str(user_ans):
+                    total_score += q.marks
+            # Theory questions remain for manual grading later
+        
+        submission.score = total_score
+        submission.save()
 
 class DashboardStatsView(APIView):
     permission_classes = [permissions.IsAuthenticated]

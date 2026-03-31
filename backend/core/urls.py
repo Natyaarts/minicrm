@@ -4,8 +4,8 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     ProgramViewSet, SubProgramViewSet, CourseViewSet, 
     BatchViewSet, StudentViewSet, TransactionViewSet, DocumentViewSet,
-    SyllabusPartViewSet, ClassSessionViewSet, AttendanceViewSet,
-    DashboardStatsView, AnalyticsDetailView
+    SyllabusPartViewSet, ClassSessionViewSet, AttendanceViewSet, BatchResourceViewSet,
+    ExamViewSet, ExamResultViewSet, QuestionViewSet, DashboardStatsView, AnalyticsDetailView
 )
 from .bulk_views import BulkUploadView
 
@@ -20,6 +20,10 @@ router.register(r'documents', DocumentViewSet)
 router.register(r'syllabus-parts', SyllabusPartViewSet)
 router.register(r'class-sessions', ClassSessionViewSet)
 router.register(r'attendances', AttendanceViewSet)
+router.register(r'batch-resources', BatchResourceViewSet)
+router.register(r'exams', ExamViewSet)
+router.register(r'exam-results', ExamResultViewSet)
+router.register(r'questions', QuestionViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

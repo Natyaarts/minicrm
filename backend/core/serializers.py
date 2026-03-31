@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from django.apps import apps
 from django.db import transaction as db_transaction
 from django.db.models import Sum, Count
-from .models import Program, SubProgram, Course, Batch, Student, Transaction, Document, SyllabusPart, ClassSession, Attendance
+from .models import Program, SubProgram, Course, Batch, Student, Transaction, Document, SyllabusPart, ClassSession, Attendance, BatchResource, Exam, ExamResult, Question, QuestionOption, StudentSubmission
 
 User = get_user_model()
 
@@ -52,6 +52,58 @@ class AttendanceSerializer(serializers.ModelSerializer):
         model = Attendance
         fields = '__all__'
 
+class BatchResourceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BatchResource
+        fields = '__all__'
+
+class StudentSubmissionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = StudentSubmission
+        fields = ['id', 'exam', 'student', 'start_time', 'end_time', 'is_submitted', 'answers_json', 'score']
+        read_only_fields = ['score']
+
+class QuestionOptionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = QuestionOption
+        fields = ['id', 'option_text', 'is_correct']
+
+class QuestionSerializer(serializers.ModelSerializer):
+    options = QuestionOptionSerializer(many=True, required=False)
+    
+    class Meta:
+        model = Question
+        fields = ['id', 'text', 'question_type', 'marks', 'options']
+
+    def create(self, validated_data):
+        options_data = validated_data.pop('options', [])
+        question = Question.objects.create(**validated_data)
+        for option_data in options_data:
+            QuestionOption.objects.create(question=question, **option_data)
+        return question
+
+class ExamResultSerializer(serializers.ModelSerializer):
+    student_name = serializers.CharField(source='student.first_name', read_only=True)
+    class Meta:
+        model = ExamResult
+        fields = '__all__'
+
+class ExamSerializer(serializers.ModelSerializer):
+    results = ExamResultSerializer(many=True, read_only=True)
+    questions = QuestionSerializer(many=True, read_only=True)
+    pass_percentage = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Exam
+        fields = ['id', 'title', 'exam_type', 'description', 'date', 'total_marks', 'passing_marks', 'is_published', 'pass_percentage', 'results', 'questions']
+
+    def get_pass_percentage(self, obj):
+        results = obj.results.all()
+        if not results:
+            return 0
+        passed = results.filter(marks_obtained__gte=obj.passing_marks, is_present=True).count()
+        return round((passed / results.count()) * 100, 2)
+
 class ClassSessionSerializer(serializers.ModelSerializer):
     attendances = AttendanceSerializer(many=True, read_only=True)
     class Meta:
@@ -65,6 +117,8 @@ class BatchSerializer(serializers.ModelSerializer):
     teacher_details = UserSerializer(source='teacher', read_only=True)
     course_name = serializers.CharField(source='course.name', read_only=True)
     syllabus_parts = SyllabusPartSerializer(many=True, read_only=True)
+    resources = BatchResourceSerializer(many=True, read_only=True)
+    exams = ExamSerializer(many=True, read_only=True)
     syllabus_progress = serializers.SerializerMethodField()
     
     class Meta:

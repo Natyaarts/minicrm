@@ -9,47 +9,51 @@ class DynamicFieldViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated] # Or IsAdminUser for mutations
 
     def get_queryset(self):
+        from django.db.models import Q
         queryset = DynamicField.objects.all()
         program_id = self.request.query_params.get('program')
         sub_program_id = self.request.query_params.get('sub_program')
         course_id = self.request.query_params.get('course')
+        field_group = self.request.query_params.get('field_group')
         
-        print(f"DEBUG: fetchFields params - program:{program_id}, subprogram:{sub_program_id}, course:{course_id}")
-
+        filter_q = Q()
+        
+        # 1. Base Program Filter (from URL param)
+        if program_id:
+            filter_q |= Q(program_id=program_id, sub_program__isnull=True, course__isnull=True)
+            
+        # 2. Course Hierarchy Filter
         if course_id:
-            # If course is specified, we want fields for this course, its subprogram, AND its program
+            filter_q |= Q(course_id=course_id)
             try:
                 from core.models import Course
                 course_obj = Course.objects.get(id=course_id)
-                from django.db.models import Q
-                queryset = queryset.filter(
-                    Q(course_id=course_id) | 
-                    Q(sub_program_id=course_obj.sub_program_id) |
-                    Q(program_id=course_obj.sub_program.program_id)
-                )
-            except:
-                queryset = queryset.filter(course_id=course_id)
-        elif sub_program_id:
-            # If sub_program is specified, we want fields for this sub_program AND its program
+                # Include fields for this course's parents
+                if course_obj.sub_program_id:
+                    filter_q |= Q(sub_program_id=course_obj.sub_program_id, course__isnull=True)
+                    if course_obj.sub_program.program_id:
+                        filter_q |= Q(program_id=course_obj.sub_program.program_id, sub_program__isnull=True, course__isnull=True)
+            except Exception as e:
+                print(f"Error resolving course hierarchy: {e}")
+
+        # 3. Sub-Program Hierarchy Filter
+        if sub_program_id:
+            filter_q |= Q(sub_program_id=sub_program_id, course__isnull=True)
             try:
                 from core.models import SubProgram
                 sp_obj = SubProgram.objects.get(id=sub_program_id)
-                from django.db.models import Q
-                queryset = queryset.filter(
-                    Q(sub_program_id=sub_program_id) | 
-                    Q(program_id=sp_obj.program_id)
-                )
-            except:
-                queryset = queryset.filter(sub_program_id=sub_program_id)
-        elif program_id:
-            queryset = queryset.filter(program_id=program_id)
-        
-        field_group = self.request.query_params.get('field_group')
+                if sp_obj.program_id:
+                    filter_q |= Q(program_id=sp_obj.program_id, sub_program__isnull=True, course__isnull=True)
+            except Exception as e:
+                print(f"Error resolving sub-program hierarchy: {e}")
+
+        if filter_q:
+            queryset = queryset.filter(filter_q)
+            
         if field_group:
             queryset = queryset.filter(field_group=field_group)
         
-        print(f"DEBUG: Returning {queryset.count()} fields")
-        return queryset
+        return queryset.distinct()
 
     def get_permissions(self):
         if self.action in ['create', 'update', 'partial_update', 'destroy']:

@@ -104,6 +104,9 @@ class Document(models.Model):
 
 class SyllabusPart(models.Model):
     batch = models.ForeignKey(Batch, on_delete=models.CASCADE, related_name='syllabus_parts')
+    semester = models.CharField(max_length=100, blank=True, null=True, help_text="e.g., Semester 1")
+    module = models.CharField(max_length=100, blank=True, null=True, help_text="e.g., Module A")
+    subject = models.CharField(max_length=100, blank=True, null=True, help_text="e.g., Theory")
     title = models.CharField(max_length=200)
     weight_percentage = models.DecimalField(max_digits=5, decimal_places=2, help_text="Percentage weight of this part")
     is_completed = models.BooleanField(default=False)
@@ -137,4 +140,85 @@ class Attendance(models.Model):
 
     def __str__(self):
         return f"{self.student} - {self.session.date} - {'Present' if self.is_present else 'Absent'}"
+class BatchResource(models.Model):
+    batch = models.ForeignKey(Batch, on_delete=models.CASCADE, related_name='resources')
+    title = models.CharField(max_length=200)
+    file = models.FileField(upload_to='batch_resources/')
+    uploaded_at = models.DateTimeField(auto_now_add=True)
 
+    def __str__(self):
+        return f"{self.batch.name} - {self.title}"
+
+class Exam(models.Model):
+    EXAM_TYPES = [
+        ('UNIT', 'Unit Test'),
+        ('PERIODIC', 'Periodic Assessment'),
+        ('MIDTERM', 'Midterm Examination'),
+        ('FINAL', 'Final Examination'),
+        ('ASSIGNMENT', 'Assignment/Project'),
+        ('VIVA', 'Viva Voce'),
+    ]
+    batch = models.ForeignKey(Batch, on_delete=models.CASCADE, related_name='exams')
+    title = models.CharField(max_length=200)
+    exam_type = models.CharField(max_length=20, choices=EXAM_TYPES, default='UNIT')
+    description = models.TextField(blank=True, null=True)
+    date = models.DateField()
+    total_marks = models.DecimalField(max_digits=5, decimal_places=2, default=100)
+    passing_marks = models.DecimalField(max_digits=5, decimal_places=2, default=40)
+    is_published = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.batch.name} - {self.title}"
+
+class Question(models.Model):
+    QUESTION_TYPES = [
+        ('MCQ', 'Multiple Choice Topic'),
+        ('THEORY', 'Short/Long Answer'),
+        ('TRUEFALSE', 'True / False'),
+    ]
+    exam = models.ForeignKey(Exam, on_delete=models.CASCADE, related_name='questions')
+    text = models.TextField()
+    question_type = models.CharField(max_length=20, choices=QUESTION_TYPES, default='MCQ')
+    marks = models.IntegerField(default=1)
+    correct_answer_text = models.TextField(blank=True, null=True, help_text="For theory auto-keywords or reference")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.exam.title} - Q: {self.text[:30]}"
+
+class QuestionOption(models.Model):
+    question = models.ForeignKey(Question, on_delete=models.CASCADE, related_name='options')
+    option_text = models.CharField(max_length=500)
+    is_correct = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f"Option for {self.question.id}"
+
+class StudentSubmission(models.Model):
+    exam = models.ForeignKey(Exam, on_delete=models.CASCADE)
+    student = models.ForeignKey(Student, on_delete=models.CASCADE)
+    start_time = models.DateTimeField(auto_now_add=True)
+    end_time = models.DateTimeField(blank=True, null=True)
+    is_submitted = models.BooleanField(default=False)
+    
+    # Store answers as JSON for flexibility: {question_id: answer_text/option_id}
+    answers_json = models.JSONField(default=dict) 
+    
+    score = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+
+    def __str__(self):
+        return f"{self.student.first_name} - {self.exam.title}"
+
+class ExamResult(models.Model):
+    exam = models.ForeignKey(Exam, on_delete=models.CASCADE, related_name='results')
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='exam_results')
+    marks_obtained = models.DecimalField(max_digits=5, decimal_places=2)
+    remarks = models.CharField(max_length=200, blank=True, null=True)
+    is_present = models.BooleanField(default=True)
+
+    class Meta:
+        unique_together = ('exam', 'student')
+
+    def __str__(self):
+        return f"{self.student} - {self.exam.title} - {self.marks_obtained}"

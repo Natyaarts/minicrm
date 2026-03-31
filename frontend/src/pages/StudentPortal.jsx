@@ -7,7 +7,12 @@ const StudentPortal = () => {
     const { user } = useAuth();
     const [profile, setProfile] = useState(null);
     const [lmsData, setLmsData] = useState(null);
+    const [batchDetails, setBatchDetails] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [activeTab, setActiveTab] = useState('DASHBOARD');
+    const [takingExam, setTakingExam] = useState(null); // Exam object
+    const [examAnswers, setExamAnswers] = useState({}); // q_id -> ans
+    const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
 
     // Admin Mode Search
     const [searchTerm, setSearchTerm] = useState('');
@@ -48,13 +53,23 @@ const StudentPortal = () => {
 
     const fetchLmsData = async (studentId) => {
         try {
-            // Include student_id param for Admin override if supported, otherwise it uses request.user context
             const res = await api.get(`integrations/details/?student_id=${studentId}`);
             setLmsData(res.data);
-        } catch (err) {
-            console.error("LMS Data fetch error", err);
-        }
+        } catch (err) { console.error("LMS Data fetch error", err); }
     };
+
+    const fetchBatchDetails = async (batchId) => {
+        try {
+            const res = await api.get(`batches/${batchId}/`);
+            setBatchDetails(res.data);
+        } catch (err) { console.error("Batch details error", err); }
+    };
+
+    useEffect(() => {
+        if (profile?.batch_id) {
+            fetchBatchDetails(profile.batch_id);
+        }
+    }, [profile?.batch_id]);
 
     const handleAdminSearch = async (e) => {
         e.preventDefault();
@@ -176,7 +191,21 @@ const StudentPortal = () => {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {/* Navigation Tabs */}
+            <div className="flex gap-4 border-b border-slate-200">
+                {['DASHBOARD', 'EXAMS'].map(tab => (
+                    <button 
+                        key={tab} 
+                        onClick={() => setActiveTab(tab)}
+                        className={`pb-4 px-2 text-sm font-black uppercase tracking-widest transition-all ${activeTab === tab ? 'text-rose-600 border-b-2 border-rose-600' : 'text-slate-400 hover:text-slate-600'}`}
+                    >
+                        {tab}
+                    </button>
+                ))}
+            </div>
+
+            {activeTab === 'DASHBOARD' ? (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                 {/* Profile Card */}
                 <div className="md:col-span-1 space-y-6">
                     <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
@@ -341,6 +370,183 @@ const StudentPortal = () => {
                     )}
                 </div>
             </div>
+            ) : (
+                <div className="space-y-8 animate-fadeIn">
+                    <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
+                        <h3 className="text-xl font-black text-slate-800 mb-8 border-b border-slate-100 pb-4 flex items-center gap-2">
+                            <span className="w-2 h-8 bg-rose-600 rounded-full" />
+                            Academic Examinations
+                        </h3>
+
+                        {!batchDetails?.exams || batchDetails.exams.length === 0 ? (
+                            <div className="py-20 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                                <AlertCircle className="w-12 h-12 text-slate-200 mx-auto mb-4" />
+                                <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">No exams have been scheduled yet</p>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {batchDetails.exams.map(exam => {
+                                    const myResult = exam.is_published ? exam.results?.find(r => r.student === profile.id) : null;
+                                    const isPassed = myResult && myResult.marks_obtained >= exam.passing_marks;
+
+                                    return (
+                                        <div key={exam.id} className="bg-slate-50 p-6 rounded-2xl border border-slate-100 hover:border-rose-200 transition-all group">
+                                            <div className="flex justify-between items-start mb-6">
+                                                <div>
+                                                    <span className="text-[10px] font-black bg-rose-100 text-rose-600 px-2 py-1 rounded uppercase tracking-widest mb-2 inline-block">
+                                                        {exam.exam_type?.replace('_', ' ')}
+                                                    </span>
+                                                    <h4 className="text-lg font-black text-slate-800">{exam.title}</h4>
+                                                    <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">Date: {new Date(exam.date).toLocaleDateString()}</p>
+                                                </div>
+                                                <div className="text-right">
+                                                    <div className="text-[10px] text-slate-400 font-bold uppercase">Total Marks</div>
+                                                    <div className="text-2xl font-black text-slate-800">{exam.total_marks}</div>
+                                                </div>
+                                            </div>
+
+                                            {exam.is_published ? (
+                                                <div className={`p-4 rounded-xl flex items-center justify-between ${isPassed ? 'bg-emerald-50 border border-emerald-100' : 'bg-rose-50 border border-rose-100'}`}>
+                                                    <div>
+                                                        <p className={`text-[10px] font-black uppercase tracking-widest ${isPassed ? 'text-emerald-600' : 'text-rose-600'}`}>Your score</p>
+                                                        <p className={`text-2xl font-black ${isPassed ? 'text-emerald-700' : 'text-rose-700'}`}>{myResult?.marks_obtained || 0} / <span className="text-sm opacity-60">{exam.total_marks}</span></p>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <div className={`px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest ${isPassed ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'}`}>
+                                                            {myResult?.is_present === false ? 'Absent' : (isPassed ? 'Passed' : 'Failed')}
+                                                        </div>
+                                                        {myResult?.remarks && <p className="text-[10px] font-medium text-slate-500 mt-2 italic max-w-[120px] line-clamp-2">{myResult.remarks}</p>}
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="space-y-4">
+                                                    <div className={`p-4 rounded-xl border border-dashed flex items-center gap-3 ${new Date(exam.date) > new Date() ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-amber-50 border-amber-200 text-amber-600'}`}>
+                                                        <div className={`w-2 h-2 rounded-full animate-pulse ${new Date(exam.date) > new Date() ? 'bg-indigo-500' : 'bg-amber-500'}`} />
+                                                        <span className="text-xs font-black uppercase tracking-widest">
+                                                            {new Date(exam.date) > new Date() ? 'Upcoming Assessment' : 'Awaiting Result Publication'}
+                                                        </span>
+                                                    </div>
+
+                                                    {exam.questions?.length > 0 && new Date(exam.date).toDateString() === new Date().toDateString() && (
+                                                        <button 
+                                                            onClick={() => {
+                                                                setTakingExam(exam);
+                                                                setExamAnswers({});
+                                                                setCurrentQuestionIdx(0);
+                                                            }}
+                                                            className="w-full py-3 bg-indigo-600 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-slate-900 transition-all shadow-lg shadow-indigo-100"
+                                                        >
+                                                            Attend Exam Now
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {takingExam && (
+                <div className="fixed inset-0 bg-slate-900/95 backdrop-blur-md z-[100] flex flex-col p-4 md:p-10 animate-fadeIn">
+                    <div className="max-w-4xl mx-auto w-full flex flex-col h-full gap-6">
+                        {/* Player Header */}
+                        <div className="flex justify-between items-center text-white">
+                            <div>
+                                <h2 className="text-2xl font-black">{takingExam.title}</h2>
+                                <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">{takingExam.exam_type} • {takingExam.questions.length} Questions</p>
+                            </div>
+                            <div className="text-right">
+                                <div className="text-[10px] font-black uppercase text-rose-500 animate-pulse">Live Exam Session</div>
+                                <div className="text-3xl font-mono font-bold">--:--</div>
+                            </div>
+                        </div>
+
+                        {/* Question Area */}
+                        <div className="bg-white rounded-[40px] flex-1 shadow-2xl p-8 md:p-14 overflow-y-auto relative">
+                           <div className="max-w-2xl mx-auto">
+                                <div className="flex items-center gap-3 mb-8">
+                                    <span className="w-10 h-10 bg-indigo-600 text-white rounded-2xl flex items-center justify-center font-black">Q{currentQuestionIdx + 1}</span>
+                                    <span className="text-xs font-black text-slate-400 uppercase tracking-widest">{takingExam.questions[currentQuestionIdx].marks} Marks</span>
+                                </div>
+
+                                <h3 className="text-xl md:text-3xl font-bold text-slate-800 leading-tight mb-12">
+                                    {takingExam.questions[currentQuestionIdx].text}
+                                </h3>
+
+                                {takingExam.questions[currentQuestionIdx].question_type === 'MCQ' ? (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        {takingExam.questions[currentQuestionIdx].options.map(opt => (
+                                            <button 
+                                                key={opt.id}
+                                                onClick={() => setExamAnswers({...examAnswers, [takingExam.questions[currentQuestionIdx].id]: opt.id})}
+                                                className={`p-6 rounded-3xl text-left font-bold transition-all border-2 ${examAnswers[takingExam.questions[currentQuestionIdx].id] === opt.id ? 'bg-indigo-600 border-indigo-600 text-white shadow-xl shadow-indigo-200' : 'bg-slate-50 border-slate-100 text-slate-600 hover:border-indigo-200'}`}
+                                            >
+                                                {opt.option_text}
+                                            </button>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <textarea 
+                                        value={examAnswers[takingExam.questions[currentQuestionIdx].id] || ''}
+                                        onChange={e => setExamAnswers({...examAnswers, [takingExam.questions[currentQuestionIdx].id]: e.target.value})}
+                                        placeholder="Type your answer here..."
+                                        className="w-full p-8 bg-slate-50 border-2 border-slate-100 rounded-3xl outline-none min-h-[250px] font-medium text-lg focus:border-indigo-600 transition-all"
+                                    />
+                                )}
+                           </div>
+                        </div>
+
+                        {/* Player Footer / Navigation */}
+                        <div className="flex justify-between items-center bg-white/10 p-2 rounded-full border border-white/5 backdrop-blur-sm">
+                            <button 
+                                disabled={currentQuestionIdx === 0}
+                                onClick={() => setCurrentQuestionIdx(currentQuestionIdx - 1)}
+                                className="px-8 py-4 rounded-full font-black text-xs uppercase tracking-widest text-white hover:bg-white/10 disabled:opacity-20"
+                            >
+                                Previous
+                            </button>
+                            
+                            <div className="hidden md:flex gap-2">
+                                {takingExam.questions.map((_, i) => (
+                                    <button 
+                                        key={i} 
+                                        onClick={() => setCurrentQuestionIdx(i)}
+                                        className={`w-10 h-10 rounded-full font-black text-xs border ${currentQuestionIdx === i ? 'bg-white text-slate-900 border-white' : 'text-white border-white/20 hover:border-white/50'} ${examAnswers[takingExam.questions[i].id] ? 'bg-emerald-500/20' : ''}`}
+                                    >
+                                        {i + 1}
+                                    </button>
+                                ))}
+                            </div>
+
+                            {currentQuestionIdx < takingExam.questions.length - 1 ? (
+                                <button 
+                                    onClick={() => setCurrentQuestionIdx(currentQuestionIdx + 1)}
+                                    className="px-10 py-4 bg-white text-slate-900 rounded-full font-black text-xs uppercase tracking-widest hover:bg-indigo-500 hover:text-white transition-all shadow-xl"
+                                >
+                                    Next Question
+                                </button>
+                            ) : (
+                                <button 
+                                    onClick={() => {
+                                        if (window.confirm("Are you sure you want to submit your exam?")) {
+                                            setToast({ type: 'success', message: 'Exam Submitted Successfully!' });
+                                            setTakingExam(null);
+                                            setTimeout(() => setToast(null), 3000);
+                                        }
+                                    }}
+                                    className="px-10 py-4 bg-emerald-500 text-white rounded-full font-black text-xs uppercase tracking-widest hover:bg-emerald-600 transition-all shadow-xl shadow-emerald-500/20"
+                                >
+                                    Submit Final Test
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
