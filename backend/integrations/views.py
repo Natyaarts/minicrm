@@ -6,6 +6,7 @@ from .models import IntegrationSetting
 from .serializers import IntegrationSettingSerializer
 import random
 import razorpay
+from django.db import models
 
 class LMSProxyView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
