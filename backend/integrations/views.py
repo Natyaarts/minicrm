@@ -374,18 +374,32 @@ class SyncWiseBatchView(views.APIView):
         
         # 3. Create/Update Batch
         batch_name = class_details.get('name') or f"Batch - {course_name}"
-        # Use lms_batch_id in Student to track, but Batch model doesn't have an LMS ID yet.
-        # Let's add it or use name matching for now, OR better, check if students are assigned to it.
-        # I'll look for a batch that has this Wise ID in some way or just match by name.
-        # Actually, let's just create/get by name for now, or we should add an 'lms_id' to Batch model.
+        # 1. Ensure a proper Program and Sub-Program structure exists
+        wise_program, _ = Program.objects.get_or_create(name="Wise LMS Integrated")
         
-        # Temporarily using name matching - better to add field but I'll skip migration for split second
+        # 2. Extract Wise class details to create a proper CRM Course
+        wise_class_name = request.data.get('class_name', class_details.get('name') or f"Wise Class {wise_class_id}")
+        wise_subject = request.data.get('subject', class_details.get('subject') or 'General')
+        
+        # Use subject as Sub-Program or a generic one
+        wise_sub_program, _ = SubProgram.objects.get_or_create(
+            name=wise_subject, 
+            program=wise_program
+        )
+        
+        # Create a matching CRM Course so 'Course (CRM)' is not empty
+        crm_course, _ = Course.objects.get_or_create(
+            name=wise_class_name,
+            sub_program=wise_sub_program,
+            defaults={'duration_weeks': 4, 'fee_amount': 0}
+        )
+
         batch, created = Batch.objects.get_or_create(
-            name=batch_name,
-            course=course,
+            name=wise_class_name,
+            course=crm_course,
             defaults={
                 "start_date": datetime.date.today(),
-                "primary_mentor": request.user # Assign to creator by default
+                "primary_mentor": request.user
             }
         )
         
@@ -426,19 +440,27 @@ class SyncWiseBatchView(views.APIView):
                 student = Student.objects.create(
                     user=user,
                     crm_student_id=f"WISE-{clean_phone[-10:]}",
-                    program_type=program,
+                    program_type=wise_program,
                     mobile=clean_phone,
                     email=email,
-                    lms_student_id=p_id,
-                    lms_batch_id=wise_class_id,
+                    lms_student_id=str(p_id),
+                    sub_program=wise_sub_program,
+                    course=crm_course,
                     batch=batch
                 )
                 stats["new"] += 1
             else:
-                # Update Student
+                # Update existing student with Wise details if empty
+                if not student.lms_student_id:
+                    student.lms_student_id = str(p_id)
+                if not student.course:
+                    student.course = crm_course
+                if not student.sub_program:
+                    student.sub_program = wise_sub_program
+                if not student.program_type:
+                    student.program_type = wise_program
+                
                 student.batch = batch
-                student.lms_student_id = p_id
-                student.lms_batch_id = wise_class_id
                 student.save()
                 stats["synced"] += 1
                 
