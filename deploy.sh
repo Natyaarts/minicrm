@@ -18,7 +18,7 @@ echo "🐍 Updating Backend..."
 if [ -d "$VENV_DIR" ]; then
     source "$VENV_DIR/bin/activate"
     pip install -r "$BACKEND_DIR/requirements.txt"
-    python "$BACKEND_DIR/manage.py migrate"
+    python "$BACKEND_DIR/manage.py" migrate
     deactivate
 else
     echo "⚠️  Warning: Virtual environment not found at $VENV_DIR"
