@@ -144,6 +144,33 @@ class BatchViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Student not found'}, status=status.HTTP_404_NOT_FOUND)
 
     @action(detail=True, methods=['post'])
+    def bulk_add_students(self, request, pk=None):
+        try:
+            batch = self.get_object()
+        except:
+            return Response({'error': 'Batch not found or access denied'}, status=status.HTTP_404_NOT_FOUND)
+            
+        student_ids = request.data.get('student_ids', [])
+        if not student_ids:
+            return Response({'error': 'No student IDs provided'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        students = Student.objects.filter(id__in=student_ids)
+        students.update(batch=batch)
+        
+        from notifications.models import Notification
+        if batch.primary_mentor:
+            for student in students:
+                Notification.objects.create(
+                    user=batch.primary_mentor,
+                    title="Student Assigned",
+                    message=f"Student {student.first_name} has been added to your batch {batch.name}.",
+                    notification_type='BATCH',
+                    target_url=f"/mentor"
+                )
+        
+        return Response({'status': f'Students added'})
+
+    @action(detail=True, methods=['post'])
     def remove_student(self, request, pk=None):
         try:
             batch = self.get_object()

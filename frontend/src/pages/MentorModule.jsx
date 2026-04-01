@@ -34,6 +34,8 @@ const MentorModule = () => {
     const [selectedWiseCourse, setSelectedWiseCourse] = useState(null);
     const [wiseParticipants, setWiseParticipants] = useState([]);
     const [studentSearchQuery, setStudentSearchQuery] = useState('');
+    const [unassignedSearchQuery, setUnassignedSearchQuery] = useState('');
+    const [selectedUnassignedStudents, setSelectedUnassignedStudents] = useState([]);
     const [studentPage, setStudentPage] = useState(1);
     const [studentPagination, setStudentPagination] = useState({ count: 0, next: null, previous: null });
 
@@ -57,6 +59,12 @@ const MentorModule = () => {
         secondary_mentors: []
     });
     const [isEditMode, setIsEditMode] = useState(false);
+
+    useEffect(() => {
+        if (isAddStudentModalOpen) {
+            fetchUnassignedStudents();
+        }
+    }, [unassignedPage, unassignedSearchQuery]);
 
     useEffect(() => {
         if (selectedStudentProfile) {
@@ -303,7 +311,7 @@ const MentorModule = () => {
     const fetchUnassignedStudents = async () => {
         try {
             setLoading(true);
-            const res = await api.get(`students/?unassigned=true&page=${unassignedPage}`);
+            const res = await api.get(`students/?unassigned=true&page=${unassignedPage}&search=${unassignedSearchQuery}`);
             const data = res.data;
             if (data.results) {
                 setUnassignedStudents(data.results);
@@ -323,22 +331,18 @@ const MentorModule = () => {
         }
     };
 
-    useEffect(() => {
-        if (isAddStudentModalOpen) {
-            fetchUnassignedStudents();
-        }
-    }, [unassignedPage, isAddStudentModalOpen]);
-
     const openAddStudentModal = () => {
+        setUnassignedSearchQuery('');
+        setUnassignedPage(1);
+        setSelectedUnassignedStudents([]);
         setIsAddStudentModalOpen(true);
-        fetchUnassignedStudents();
     };
 
     const addStudentToBatch = async (studentId) => {
         if (!selectedBatch) return;
         try {
             await api.post(`batches/${selectedBatch.id}/add_student/`, { student_id: studentId });
-            // Refresh list
+            // Refresh batch students
             const res = await api.get(`students/?batch=${selectedBatch.id}`);
             setStudentsInBatch(res.data?.results || res.data || []);
             setIsAddStudentModalOpen(false);
@@ -346,6 +350,30 @@ const MentorModule = () => {
             console.error(err);
             alert("Failed to add student");
         }
+    };
+
+    const bulkAddStudents = async () => {
+        if (!selectedBatch || selectedUnassignedStudents.length === 0) return;
+        try {
+            setLoading(true);
+            await api.post(`batches/${selectedBatch.id}/bulk_add_students/`, { student_ids: selectedUnassignedStudents });
+            // Refresh batch students
+            const res = await api.get(`students/?batch=${selectedBatch.id}`);
+            setStudentsInBatch(res.data?.results || res.data || []);
+            setIsAddStudentModalOpen(false);
+            setSelectedUnassignedStudents([]);
+        } catch (err) {
+            console.error(err);
+            alert("Failed to add students");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const toggleStudentSelection = (id) => {
+        setSelectedUnassignedStudents(prev => 
+            prev.includes(id) ? prev.filter(sId => sId !== id) : [...prev, id]
+        );
     };
 
     const removeStudentFromBatch = async (studentId) => {
@@ -1034,20 +1062,59 @@ const MentorModule = () => {
                         animate={{ scale: 1, opacity: 1 }}
                         className="bg-white rounded-2xl p-6 w-full max-w-lg shadow-2xl h-[80vh] flex flex-col"
                     >
-                        <h2 className="text-xl font-bold mb-4 text-slate-900">Add Student to Batch</h2>
-                        <div className="overflow-y-auto flex-1 space-y-2 pr-2 custom-scrollbar">
+                        <div className="flex justify-between items-center mb-6">
+                            <h2 className="text-2xl font-bold text-slate-800">Add Student to Batch</h2>
+                            <button onClick={() => setIsAddStudentModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                                <X size={24} />
+                            </button>
+                        </div>
+
+                        <div className="mb-6">
+                            <div className="relative">
+                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                <input
+                                    type="text"
+                                    placeholder="Search by name, ID or mobile..."
+                                    className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-sm"
+                                    value={unassignedSearchQuery}
+                                    onChange={(e) => setUnassignedSearchQuery(e.target.value)}
+                                />
+                            </div>
+                        </div>
+
+                        {selectedUnassignedStudents.length > 0 && (
+                            <div className="mb-6 p-4 bg-indigo-50 border border-indigo-100 rounded-2xl flex items-center justify-between animate-fadeIn">
+                                <span className="text-sm font-bold text-indigo-700">{selectedUnassignedStudents.length} students selected</span>
+                                <button 
+                                    onClick={bulkAddStudents}
+                                    className="px-6 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200"
+                                >
+                                    Add All Selected
+                                </button>
+                            </div>
+                        )}
+
+                        <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
                             {unassignedStudents.length === 0 ? (
-                                <p className="text-slate-500 text-center py-10 bg-slate-50 rounded-xl border border-dashed border-slate-200">No unassigned students found.</p>
+                                <p className="text-center py-10 text-slate-400">No unassigned students found.</p>
                             ) : (
                                 unassignedStudents.map(student => (
-                                    <div key={student.id} className="flex justify-between items-center p-4 bg-white border border-slate-100 rounded-xl hover:border-indigo-300 hover:shadow-md transition-all">
-                                        <div>
-                                            <p className="font-bold text-slate-800">{student.first_name} {student.last_name}</p>
-                                            <p className="text-sm text-slate-500">{student.email}</p>
+                                    <div key={student.id} className={`flex items-center justify-between p-4 bg-slate-50 rounded-2xl border transition-all ${selectedUnassignedStudents.includes(student.id) ? 'border-indigo-400 bg-indigo-50/30' : 'border-slate-100'}`}>
+                                        <div className="flex items-center gap-4">
+                                            <input 
+                                                type="checkbox" 
+                                                className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                                checked={selectedUnassignedStudents.includes(student.id)}
+                                                onChange={() => toggleStudentSelection(student.id)}
+                                            />
+                                            <div>
+                                                <p className="font-bold text-slate-900 leading-none mb-1">{student.first_name} {student.last_name}</p>
+                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{student.crm_student_id}</p>
+                                            </div>
                                         </div>
                                         <button
                                             onClick={() => addStudentToBatch(student.id)}
-                                            className="px-4 py-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 text-sm font-semibold transition-colors"
+                                            className="px-4 py-2 bg-white text-indigo-600 border border-indigo-100 rounded-lg hover:bg-indigo-50 text-xs font-bold transition-colors"
                                         >
                                             Add
                                         </button>
