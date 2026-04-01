@@ -45,6 +45,8 @@ const MentorModule = () => {
     const [wiseIdInput, setWiseIdInput] = useState('');
     const [unassignedPage, setUnassignedPage] = useState(1);
     const [unassignedPagination, setUnassignedPagination] = useState({ count: 0, next: null, previous: null });
+    const [teachers, setTeachers] = useState([]);
+    const [isAssignTeacherModalOpen, setIsAssignTeacherModalOpen] = useState(false);
 
     // Selection state for Create Modal
     const [selectedProgramId, setSelectedProgramId] = useState('');
@@ -195,12 +197,14 @@ const MentorModule = () => {
 
     const fetchMeta = async () => {
         try {
-            const [progRes, mentorRes] = await Promise.all([
+            const [progRes, mentorRes, teacherRes] = await Promise.all([
                 api.get('programs/'),
-                api.get('auth/mentors/')
+                api.get('auth/mentors/'),
+                api.get('auth/teachers/')
             ]);
             setPrograms(progRes.data);
             setMentors(mentorRes.data);
+            setTeachers(teacherRes.data);
         } catch (err) {
             console.error(err);
         }
@@ -378,6 +382,23 @@ const MentorModule = () => {
         setSelectedUnassignedStudents(prev => 
             prev.includes(id) ? prev.filter(sId => sId !== id) : [...prev, id]
         );
+    };
+
+    const handleAssignTeacher = async (batchId, teacherId) => {
+        try {
+            setLoading(true);
+            await api.patch(`batches/${batchId}/`, { teacher: teacherId });
+            // Refresh batch details
+            const res = await api.get(`batches/${batchId}/`);
+            setSelectedBatch(res.data);
+            setIsAssignTeacherModalOpen(false);
+            fetchBatches();
+        } catch (err) {
+            console.error("Failed to assign teacher", err);
+            alert("Failed to assign teacher");
+        } finally {
+            setLoading(false);
+        }
     };
 
     const removeStudentFromBatch = async (studentId) => {
@@ -831,8 +852,14 @@ const MentorModule = () => {
                                 <div className="border-l border-slate-200 pl-8">
                                     <span className="block text-slate-400 text-xs uppercase tracking-wider font-semibold mb-1">Assigned Teacher</span>
                                     <span className={`text-sm font-bold ${selectedBatch.teacher_details ? 'text-indigo-600' : 'text-slate-400 italic'}`}>
-                                        {selectedBatch.teacher_details ? `@${selectedBatch.teacher_details.username}` : 'Not Assigned'}
+                                        {selectedBatch.teacher_details ? `${selectedBatch.teacher_details.first_name || ''} ${selectedBatch.teacher_details.last_name || ''} (@${selectedBatch.teacher_details.username})` : 'Not Assigned'}
                                     </span>
+                                    <button 
+                                        onClick={() => setIsAssignTeacherModalOpen(true)}
+                                        className="ml-3 text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-widest border-b border-indigo-200"
+                                    >
+                                        Edit
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -1158,6 +1185,45 @@ const MentorModule = () => {
                     </motion.div>
                 </div>
             )}
+             
+             {/* Assign Teacher Modal */}
+             {isAssignTeacherModalOpen && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-[60] animate-fadeIn">
+                    <motion.div 
+                        initial={{ scale: 0.95, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        className="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl relative"
+                    >
+                        <h2 className="text-2xl font-bold mb-6 text-slate-800">Assign Teacher</h2>
+                        <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
+                            {teachers.map(t => (
+                                <button
+                                    key={t.id}
+                                    onClick={() => handleAssignTeacher(selectedBatch.id, t.id)}
+                                    className={`w-full p-4 rounded-2xl border text-left flex items-center justify-between group transition-all ${selectedBatch.teacher === t.id ? 'border-indigo-600 bg-indigo-50 shadow-sm shadow-indigo-50' : 'border-slate-100 hover:border-indigo-200 hover:bg-slate-50'}`}
+                                >
+                                    <div>
+                                        <div className="font-bold text-slate-900 leading-tight mb-0.5">{t.first_name || t.username} {t.last_name || ''}</div>
+                                        <div className="text-xs text-slate-400 font-medium">@{t.username}</div>
+                                    </div>
+                                    {selectedBatch.teacher === t.id && (
+                                        <div className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center">
+                                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"></path></svg>
+                                        </div>
+                                    )}
+                                </button>
+                            ))}
+                            {teachers.length === 0 && (
+                                <div className="text-center py-10 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                                    <p className="text-slate-400 font-medium italic">No teachers found in system.</p>
+                                </div>
+                            )}
+                        </div>
+                        <button onClick={() => setIsAssignTeacherModalOpen(false)} className="w-full mt-8 py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold hover:bg-slate-200 transition-colors">Close</button>
+                    </motion.div>
+                </div>
+            )}
+
             {/* Student Profile Modal */}
             {selectedStudentProfile && (
                 <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
