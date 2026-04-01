@@ -64,7 +64,7 @@ const MentorModule = () => {
         if (isAddStudentModalOpen) {
             fetchUnassignedStudents();
         }
-    }, [unassignedPage, unassignedSearchQuery]);
+    }, [unassignedPage, unassignedSearchQuery, isAddStudentModalOpen]);
 
     useEffect(() => {
         if (selectedStudentProfile) {
@@ -311,7 +311,11 @@ const MentorModule = () => {
     const fetchUnassignedStudents = async () => {
         try {
             setLoading(true);
-            const res = await api.get(`students/?unassigned=true&page=${unassignedPage}&search=${unassignedSearchQuery}`);
+            let url = `students/?unassigned=true&page=${unassignedPage}`;
+            if (unassignedSearchQuery) {
+                url += `&search=${encodeURIComponent(unassignedSearchQuery)}`;
+            }
+            const res = await api.get(url);
             const data = res.data;
             if (data.results) {
                 setUnassignedStudents(data.results);
