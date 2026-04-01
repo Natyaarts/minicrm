@@ -10,6 +10,7 @@ const AcademicModule = () => {
     const [stats, setStats] = useState({ totalStudents: 0, totalBatches: 0, totalMentors: 0, totalTeachers: 0 });
 
     const [activeTab, setActiveTab] = useState('overview');
+    const [wiseCourses, setWiseCourses] = useState([]);
     const [loading, setLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [studentPage, setStudentPage] = useState(1);
@@ -55,6 +56,34 @@ const AcademicModule = () => {
             setStudentPage(1);
         }
     }, [searchTerm]);
+
+    const fetchWiseCourses = async () => {
+        try {
+            setLoading(true);
+            const res = await api.get('integrations/courses/?type=LIVE');
+            setWiseCourses(res.data);
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const syncWiseBatch = async (courseId) => {
+        if (!window.confirm("This will create a new Batch in CRM and import all students from Wise LMS. Proceed?")) return;
+        try {
+            setLoading(true);
+            const res = await api.post('integrations/sync-batch/', { class_id: courseId });
+            alert(res.data.message);
+            setActiveTab('batches');
+            fetchInitialData();
+        } catch (err) {
+            console.error(err);
+            alert("Sync failed: " + (err.response?.data?.error || "Unknown error"));
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const fetchInitialData = async () => {
         setLoading(true);
@@ -479,6 +508,12 @@ const AcademicModule = () => {
                     >
                         Students ({students.length})
                     </button>
+                    <button
+                        onClick={() => { setActiveTab('wise'); fetchWiseCourses(); }}
+                        className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'wise' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}
+                    >
+                        Wise LMS
+                    </button>
                 </div>
             </div>
 
@@ -491,6 +526,32 @@ const AcademicModule = () => {
                         {activeTab === 'batches' && renderBatches()}
                         {activeTab === 'teachers' && renderTeachers()}
                         {activeTab === 'students' && renderStudents()}
+                        {activeTab === 'wise' && (
+                            <div className="space-y-6 animate-fadeIn">
+                                <div className="flex justify-between items-center px-1">
+                                    <h3 className="text-xl font-bold text-slate-800">Wise LMS Classes</h3>
+                                    <button onClick={fetchWiseCourses} className="text-indigo-600 text-sm font-bold">Refresh List</button>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                    {wiseCourses.map(course => (
+                                        <div key={course._id} className="p-6 bg-white rounded-2xl border border-slate-200 shadow-sm group hover:border-indigo-300 transition-all">
+                                            <h4 className="font-bold text-slate-900 mb-1 group-hover:text-indigo-600">{course.name || course.subject}</h4>
+                                            <p className="text-xs text-slate-500 font-medium mb-4">{course.subject}</p>
+                                            <div className="flex justify-between items-center pt-4 border-t border-slate-50">
+                                                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">{course.studentCount || 0} Students</span>
+                                                <button 
+                                                    onClick={() => syncWiseBatch(course._id)}
+                                                    className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all"
+                                                >
+                                                    Sync to CRM
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {wiseCourses.length === 0 && <p className="col-span-full text-center py-10 text-slate-400">No Wise classes found.</p>}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )
             }

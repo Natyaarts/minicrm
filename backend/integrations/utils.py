@@ -290,3 +290,24 @@ class WiseService:
         except Exception as e:
             print(f"Wise API Course Details Error: {e}")
             return None
+
+    def get_class_participants(self, class_id):
+        """
+        Fetches all participants (students) for a specific class/batch.
+        URL: https://api.wiseapp.live/user/classes/{class_id}/participants?showCoTeachers=true
+        """
+        if not self.api_key or not class_id:
+            return []
+        try:
+            url = f"https://{self.host}/user/classes/{class_id}/participants?showCoTeachers=true"
+            response = requests.get(url, headers=self.get_headers(), timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('status') == 200:
+                    # Participants are usually in joinedRequest array
+                    # data format: { data: { joinedRequest: [...] } }
+                    return data.get('data', {}).get('joinedRequest', [])
+            return []
+        except Exception as e:
+            print(f"Wise API Get Participants Error: {e}")
+            return []

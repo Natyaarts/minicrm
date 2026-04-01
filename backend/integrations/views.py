@@ -304,14 +304,149 @@ class WiseCourseListView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        if request.user.role not in ['ADMIN', 'SUPER_ADMIN', 'ACADEMIC']:
+        if request.user.role not in ['ADMIN', 'SUPER_ADMIN', 'ACADEMIC', 'MENTOR']:
             return response.Response({"error": "Permission denied"}, status=403)
             
         class_type = request.query_params.get('type', 'LIVE')
         wise = WiseService()
         courses = wise.get_all_courses(class_type=class_type)
         
+        # Optionally fetch details for each to get student counts if not provided by Wise list
+        # But Wise list usually has studentCount or similar if showCoTeachers=true is used
+        
         return response.Response(courses)
+
+class WiseClassStudentsView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, class_id):
+        if request.user.role not in ['ADMIN', 'SUPER_ADMIN', 'ACADEMIC', 'MENTOR']:
+            return response.Response({"error": "Permission denied"}, status=403)
+            
+        wise = WiseService()
+        participants = wise.get_class_participants(class_id)
+        return response.Response(participants)
+
+class SyncWiseBatchView(views.APIView):
+    """
+    Syncs a specific Wise Class into the CRM as a Batch and imports its students.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if request.user.role not in ['ADMIN', 'SUPER_ADMIN']:
+            return response.Response({"error": "Permission denied"}, status=403)
+            
+        wise_class_id = request.data.get('class_id')
+        if not wise_class_id:
+            return response.Response({"error": "class_id is required"}, status=400)
+            
+        from core.models import Batch, Course, Program, Student, SubProgram
+        from django.contrib.auth import get_user_model
+        from django.utils.timezone import now
+        import datetime
+        
+        User = get_user_model()
+        wise = WiseService()
+        
+        # 1. Fetch Class Details
+        class_details = wise.get_course_details(wise_class_id)
+        if not class_details:
+            # Try getting from list if details endpoint fails
+            all_c = wise.get_all_courses()
+            class_details = next((c for c in all_c if c.get('_id') == wise_class_id), None)
+            
+        if not class_details:
+             return response.Response({"error": "Class not found in Wise LMS"}, status=404)
+        
+        # 2. Ensure Course exists
+        # We might need a default Program/SubProgram
+        program, _ = Program.objects.get_or_create(name="Wise Courses", defaults={"slug": "wise-courses"})
+        sub_prog, _ = SubProgram.objects.get_or_create(program=program, name="LMS Imported")
+        
+        course_name = class_details.get('subject') or class_details.get('name') or "Wise Course"
+        course, _ = Course.objects.get_or_create(
+            name=course_name, 
+            sub_program=sub_prog,
+            defaults={"fee_amount": 0}
+        )
+        
+        # 3. Create/Update Batch
+        batch_name = class_details.get('name') or f"Batch - {course_name}"
+        # Use lms_batch_id in Student to track, but Batch model doesn't have an LMS ID yet.
+        # Let's add it or use name matching for now, OR better, check if students are assigned to it.
+        # I'll look for a batch that has this Wise ID in some way or just match by name.
+        # Actually, let's just create/get by name for now, or we should add an 'lms_id' to Batch model.
+        
+        # Temporarily using name matching - better to add field but I'll skip migration for split second
+        batch, created = Batch.objects.get_or_create(
+            name=batch_name,
+            course=course,
+            defaults={
+                "start_date": datetime.date.today(),
+                "primary_mentor": request.user # Assign to creator by default
+            }
+        )
+        
+        # 4. Fetch and Sync Participants
+        participants = wise.get_class_participants(wise_class_id)
+        stats = {"found": len(participants), "synced": 0, "new": 0}
+        
+        for p in participants:
+            p_id = p.get('_id') or p.get('id')
+            p_name = p.get('name', 'Wise Student')
+            phone = p.get('phoneNumber') or p.get('mobile') or ''
+            email = p.get('email') or f"wise_{p_id}@example.com"
+            
+            # Clean phone
+            clean_phone = str(phone).replace(" ", "")
+            if len(clean_phone) < 10: continue
+            
+            # Try to find existing student
+            student = Student.objects.filter(models.Q(lms_student_id=p_id) | models.Q(mobile=clean_phone)).first()
+            
+            if not student:
+                # Create User
+                username = f"wise_{clean_phone[-10:]}"
+                user, u_created = User.objects.get_or_create(
+                    username=username,
+                    defaults={
+                        "email": email,
+                        "role": "STUDENT",
+                        "first_name": p_name.split(' ')[0],
+                        "last_name": ' '.join(p_name.split(' ')[1:]) if ' ' in p_name else 'Student'
+                    }
+                )
+                if u_created:
+                    user.set_password("Changeme@123")
+                    user.save()
+                
+                # Create Student
+                student = Student.objects.create(
+                    user=user,
+                    crm_student_id=f"WISE-{clean_phone[-10:]}",
+                    program_type=program,
+                    mobile=clean_phone,
+                    email=email,
+                    lms_student_id=p_id,
+                    lms_batch_id=wise_class_id,
+                    batch=batch
+                )
+                stats["new"] += 1
+            else:
+                # Update Student
+                student.batch = batch
+                student.lms_student_id = p_id
+                student.lms_batch_id = wise_class_id
+                student.save()
+                stats["synced"] += 1
+                
+        return response.Response({
+            "success": True,
+            "message": f"Batch '{batch_name}' synchronized.",
+            "batch_id": batch.id,
+            "stats": stats
+        })
 
 class ConsumeWiseCreditsView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]

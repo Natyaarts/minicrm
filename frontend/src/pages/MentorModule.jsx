@@ -29,7 +29,10 @@ const MentorModule = () => {
     const [credentialStudent, setCredentialStudent] = useState(null);
     const [credentialForm, setCredentialForm] = useState({ username: '', password: '' });
     const [allStudents, setAllStudents] = useState([]);
-    const [viewTab, setViewTab] = useState('batches');
+    const [viewTab, setViewTab] = useState('batches'); // 'batches', 'all-students', 'wise-courses'
+    const [wiseCourses, setWiseCourses] = useState([]);
+    const [selectedWiseCourse, setSelectedWiseCourse] = useState(null);
+    const [wiseParticipants, setWiseParticipants] = useState([]);
     const [studentSearchQuery, setStudentSearchQuery] = useState('');
     const [studentPage, setStudentPage] = useState(1);
     const [studentPagination, setStudentPagination] = useState({ count: 0, next: null, previous: null });
@@ -81,6 +84,8 @@ const MentorModule = () => {
     useEffect(() => {
         if (viewTab === 'all-students') {
             fetchStudentsWithPagination();
+        } else if (viewTab === 'wise-courses') {
+            fetchWiseCourses();
         }
     }, [viewTab, studentPage]);
 
@@ -120,6 +125,47 @@ const MentorModule = () => {
 
     // fetchUser removed as we use useAuth()
 
+
+    const fetchWiseCourses = async () => {
+        try {
+            setLoading(true);
+            const res = await api.get('integrations/courses/?type=LIVE');
+            setWiseCourses(res.data);
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const fetchWiseParticipants = async (courseId) => {
+        try {
+            setLoading(true);
+            const res = await api.get(`integrations/courses/${courseId}/participants/`);
+            setWiseParticipants(res.data);
+            setSelectedWiseCourse(wiseCourses.find(c => c._id === courseId));
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const syncWiseBatch = async (courseId) => {
+        if (!window.confirm("This will create a new Batch in CRM and import all students from Wise LMS. Proceed?")) return;
+        try {
+            setLoading(true);
+            const res = await api.post('integrations/sync-batch/', { class_id: courseId });
+            alert(res.data.message);
+            setViewTab('batches');
+            fetchBatches();
+        } catch (err) {
+            console.error(err);
+            alert("Sync failed: " + (err.response?.data?.error || "Unknown error"));
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const fetchBatches = async () => {
         try {
@@ -428,6 +474,14 @@ const MentorModule = () => {
                     >
                         Full Student List
                     </button>
+                    {authUser?.role === 'ADMIN' || authUser?.role === 'SUPER_ADMIN' ? (
+                        <button
+                            onClick={() => { setViewTab('wise-courses'); setSelectedBatch(null); setSelectedWiseCourse(null); }}
+                            className={`flex-1 md:flex-none px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${viewTab === 'wise-courses' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        >
+                            Wise LMS Batches
+                        </button>
+                    ) : null}
                 </div>
 
                 {!selectedBatch && viewTab === 'batches' && (
@@ -559,6 +613,91 @@ const MentorModule = () => {
                     </div>
                 </motion.div>
             ) : null}
+
+            {/* Wise Courses View */}
+            {viewTab === 'wise-courses' && !selectedWiseCourse && (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+                    <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                        <div className="flex justify-between items-center mb-8">
+                            <div>
+                                <h2 className="text-xl font-bold text-slate-800">Wise LMS Classes</h2>
+                                <p className="text-sm text-slate-500">Live classes available in your Wise LMS account</p>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {wiseCourses.map(course => (
+                                <div key={course._id} className="p-6 bg-slate-50 rounded-2xl border border-slate-100 hover:border-indigo-300 transition-all group">
+                                    <h3 className="font-bold text-slate-900 mb-1">{course.name || course.subject}</h3>
+                                    <p className="text-xs text-slate-500 mb-4">{course.subject}</p>
+                                    <div className="flex justify-between items-center mt-4">
+                                        <span className="text-xs font-bold text-indigo-600">{course.studentCount || 0} Students</span>
+                                        <div className="flex gap-2">
+                                            <button 
+                                                onClick={() => fetchWiseParticipants(course._id)}
+                                                className="px-3 py-1.5 bg-white text-indigo-600 border border-indigo-100 rounded-lg text-xs font-bold hover:bg-indigo-50"
+                                            >
+                                                View
+                                            </button>
+                                            <button 
+                                                onClick={() => syncWiseBatch(course._id)}
+                                                className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 shadow-sm"
+                                            >
+                                                Sync to CRM
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </motion.div>
+            )}
+
+            {viewTab === 'wise-courses' && selectedWiseCourse && (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+                    <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                        <div className="flex justify-between items-center mb-6">
+                            <button onClick={() => setSelectedWiseCourse(null)} className="text-indigo-600 text-sm font-bold flex items-center gap-1">
+                                ← Back to List
+                            </button>
+                            <button 
+                                onClick={() => syncWiseBatch(selectedWiseCourse._id)}
+                                className="px-5 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700"
+                            >
+                                Sync this Batch to CRM
+                            </button>
+                        </div>
+
+                        <h2 className="text-2xl font-bold text-slate-900 mb-2">{selectedWiseCourse.name}</h2>
+                        <p className="text-slate-500 mb-6 font-medium">Participants in Wise LMS</p>
+
+                        <div className="overflow-x-auto">
+                            <table className="w-full">
+                                <thead className="text-left border-b border-slate-100">
+                                    <tr>
+                                        <th className="pb-4 text-xs font-bold text-slate-400 uppercase">Student Name</th>
+                                        <th className="pb-4 text-xs font-bold text-slate-400 uppercase">Phone</th>
+                                        <th className="pb-4 text-xs font-bold text-slate-400 uppercase">Email</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {wiseParticipants.map(wp => (
+                                        <tr key={wp._id || wp.id} className="border-b border-slate-50 last:border-0">
+                                            <td className="py-4 font-bold text-slate-800">{wp.name}</td>
+                                            <td className="py-4 text-slate-600">{wp.phoneNumber}</td>
+                                            <td className="py-4 text-slate-500">{wp.email}</td>
+                                        </tr>
+                                    ))}
+                                    {wiseParticipants.length === 0 && (
+                                        <tr><td colSpan="3" className="py-10 text-center text-slate-400">No participants found in this Wise class.</td></tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </motion.div>
+            )}
 
             {viewTab === 'batches' && (
                 !selectedBatch ? (
