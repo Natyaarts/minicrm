@@ -372,6 +372,7 @@ const UsersModule = () => {
                                                                 <option value="SUPER_ADMIN">System Owner / Super Admin</option>
                                                                 <option value="ACADEMIC">Academic Manager</option>
                                                                 <option value="ACADEMIC_COORDINATOR">Academic Coordinator</option>
+                                                                <option value="TEACHER">Staff Teacher</option>
                                                             </>
                                                         ) : activeTab === 'SALES' ? (
                                                             <option value="SALES">Sales Associate</option>
