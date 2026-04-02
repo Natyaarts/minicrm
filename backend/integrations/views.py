@@ -386,7 +386,7 @@ class SyncWiseBatchView(views.APIView):
             crm_course, _ = Course.objects.get_or_create(
                 name=wise_class_name,
                 sub_program=wise_sub_program,
-                defaults={'duration_weeks': 4, 'fee_amount': 0}
+                defaults={'fee_amount': 0}
             )
 
             batch, created = Batch.objects.get_or_create(
