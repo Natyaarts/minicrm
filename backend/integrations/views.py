@@ -345,131 +345,141 @@ class SyncWiseBatchView(views.APIView):
         from core.models import Batch, Course, Program, Student, SubProgram
         from django.contrib.auth import get_user_model
         from django.utils.timezone import now
+        from django.db import transaction
         import datetime
         
         User = get_user_model()
         wise = WiseService()
         
-        # 1. Fetch Class Details
-        class_details = wise.get_course_details(wise_class_id)
-        if not class_details:
-            # Try getting from list if details endpoint fails
-            all_c = wise.get_all_courses()
-            class_details = next((c for c in all_c if c.get('_id') == wise_class_id), None)
+        try:
+            # 1. Fetch Class Details
+            class_details = wise.get_course_details(wise_class_id)
+            if not class_details:
+                # Try getting from list if details endpoint fails
+                all_c = wise.get_all_courses()
+                class_details = next((c for c in all_c if c.get('_id') == wise_class_id), None)
+                
+            if not class_details:
+                 return response.Response({"error": "Class not found in Wise LMS"}, status=404)
             
-        if not class_details:
-             return response.Response({"error": "Class not found in Wise LMS"}, status=404)
-        
-        # 2. Ensure Course exists
-        # We might need a default Program/SubProgram
-        program, _ = Program.objects.get_or_create(name="Wise Courses", defaults={"slug": "wise-courses"})
-        sub_prog, _ = SubProgram.objects.get_or_create(program=program, name="LMS Imported")
-        
-        course_name = class_details.get('subject') or class_details.get('name') or "Wise Course"
-        course, _ = Course.objects.get_or_create(
-            name=course_name, 
-            sub_program=sub_prog,
-            defaults={"fee_amount": 0}
-        )
-        
-        # 3. Create/Update Batch
-        batch_name = class_details.get('name') or f"Batch - {course_name}"
-        # 1. Ensure a proper Program and Sub-Program structure exists
-        wise_program, _ = Program.objects.get_or_create(name="Wise LMS Integrated")
-        
-        # 2. Extract Wise class details to create a proper CRM Course
-        wise_class_name = request.data.get('class_name', class_details.get('name') or f"Wise Class {wise_class_id}")
-        wise_subject = request.data.get('subject', class_details.get('subject') or 'General')
-        
-        # Use subject as Sub-Program or a generic one
-        wise_sub_program, _ = SubProgram.objects.get_or_create(
-            name=wise_subject, 
-            program=wise_program
-        )
-        
-        # Create a matching CRM Course so 'Course (CRM)' is not empty
-        crm_course, _ = Course.objects.get_or_create(
-            name=wise_class_name,
-            sub_program=wise_sub_program,
-            defaults={'duration_weeks': 4, 'fee_amount': 0}
-        )
+            # 2. Ensure Course exists
+            program, _ = Program.objects.get_or_create(name="Wise Courses", defaults={"slug": "wise-courses"})
+            sub_prog, _ = SubProgram.objects.get_or_create(program=program, name="LMS Imported")
+            
+            course_name = class_details.get('subject') or class_details.get('name') or "Wise Course"
+            course, _ = Course.objects.get_or_create(
+                name=course_name, 
+                sub_program=sub_prog,
+                defaults={"fee_amount": 0}
+            )
+            
+            # 3. Create/Update Batch
+            wise_program, _ = Program.objects.get_or_create(name="Wise LMS Integrated")
+            wise_class_name = request.data.get('class_name', class_details.get('name') or f"Wise Class {wise_class_id}")
+            wise_subject = request.data.get('subject', class_details.get('subject') or 'General')
+            
+            wise_sub_program, _ = SubProgram.objects.get_or_create(
+                name=wise_subject, 
+                program=wise_program
+            )
+            
+            crm_course, _ = Course.objects.get_or_create(
+                name=wise_class_name,
+                sub_program=wise_sub_program,
+                defaults={'duration_weeks': 4, 'fee_amount': 0}
+            )
 
-        batch, created = Batch.objects.get_or_create(
-            name=wise_class_name,
-            course=crm_course,
-            defaults={
-                "start_date": datetime.date.today(),
-                "primary_mentor": request.user
-            }
-        )
-        
-        # 4. Fetch and Sync Participants
-        participants = wise.get_class_participants(wise_class_id)
-        stats = {"found": len(participants), "synced": 0, "new": 0}
-        
-        for p in participants:
-            p_id = p.get('_id') or p.get('id')
-            p_name = p.get('name', 'Wise Student')
-            phone = p.get('phoneNumber') or p.get('mobile') or ''
-            email = p.get('email') or f"wise_{p_id}@example.com"
+            batch, created = Batch.objects.get_or_create(
+                name=wise_class_name,
+                course=crm_course,
+                defaults={
+                    "start_date": datetime.date.today(),
+                    "primary_mentor": request.user
+                }
+            )
             
-            # Clean phone
-            clean_phone = str(phone).replace(" ", "")
-            if len(clean_phone) < 10: continue
+            # 4. Fetch and Sync Participants
+            participants = wise.get_class_participants(wise_class_id)
+            stats = {"found": len(participants), "synced": 0, "new": 0}
             
-            # Try to find existing student
-            student = Student.objects.filter(models.Q(lms_student_id=p_id) | models.Q(mobile=clean_phone)).first()
-            
-            if not student:
-                # Create User
-                username = f"wise_{clean_phone[-10:]}"
-                user, u_created = User.objects.get_or_create(
-                    username=username,
-                    defaults={
-                        "email": email,
-                        "role": "STUDENT",
-                        "first_name": p_name.split(' ')[0],
-                        "last_name": ' '.join(p_name.split(' ')[1:]) if ' ' in p_name else 'Student'
-                    }
-                )
-                if u_created:
-                    user.set_password("Changeme@123")
-                    user.save()
+            with transaction.atomic():
+                for p in participants:
+                    p_id = p.get('_id') or p.get('id')
+                    p_name = p.get('name', 'Wise Student')
+                    phone = p.get('phoneNumber') or p.get('mobile') or ''
+                    email = p.get('email') or f"wise_{p_id}@example.com"
+                    
+                    # Clean phone
+                    clean_phone = str(phone).replace(" ", "")
+                    if len(clean_phone) < 10: continue
+                    
+                    # Try to find existing student (Better lookup to prevent IntegrityErrors)
+                    expected_crm_id = f"WISE-{clean_phone[-10:]}"
+                    student = Student.objects.filter(
+                        models.Q(lms_student_id=str(p_id)) | 
+                        models.Q(mobile=clean_phone) | 
+                        models.Q(crm_student_id=expected_crm_id)
+                    ).first()
+                    
+                    if not student:
+                        # Create User
+                        username = f"wise_{clean_phone[-10:]}"
+                        # Check if username exists already to avoid clash
+                        if User.objects.filter(username=username).exists():
+                             import uuid
+                             username = f"wise_{clean_phone[-10:]}_{str(uuid.uuid4())[:4]}"
+
+                        user, u_created = User.objects.get_or_create(
+                            username=username,
+                            defaults={
+                                "email": email,
+                                "role": "STUDENT",
+                                "first_name": p_name.split(' ')[0],
+                                "last_name": ' '.join(p_name.split(' ')[1:]) if ' ' in p_name else 'Student'
+                            }
+                        )
+                        if u_created:
+                            user.set_password("Changeme@123")
+                            user.save()
+                        
+                        # Create Student
+                        student = Student.objects.create(
+                            user=user,
+                            crm_student_id=expected_crm_id,
+                            program_type=wise_program,
+                            mobile=clean_phone,
+                            email=email,
+                            lms_student_id=str(p_id),
+                            sub_program=wise_sub_program,
+                            course=crm_course,
+                            batch=batch
+                        )
+                        stats["new"] += 1
+                    else:
+                        # Update existing student with Wise details if empty
+                        if not student.lms_student_id:
+                            student.lms_student_id = str(p_id)
+                        if not student.course:
+                            student.course = crm_course
+                        if not student.sub_program:
+                            student.sub_program = wise_sub_program
+                        if not student.program_type:
+                            student.program_type = wise_program
+                        
+                        student.batch = batch
+                        student.save()
+                        stats["synced"] += 1
                 
-                # Create Student
-                student = Student.objects.create(
-                    user=user,
-                    crm_student_id=f"WISE-{clean_phone[-10:]}",
-                    program_type=wise_program,
-                    mobile=clean_phone,
-                    email=email,
-                    lms_student_id=str(p_id),
-                    sub_program=wise_sub_program,
-                    course=crm_course,
-                    batch=batch
-                )
-                stats["new"] += 1
-            else:
-                # Update existing student with Wise details if empty
-                if not student.lms_student_id:
-                    student.lms_student_id = str(p_id)
-                if not student.course:
-                    student.course = crm_course
-                if not student.sub_program:
-                    student.sub_program = wise_sub_program
-                if not student.program_type:
-                    student.program_type = wise_program
-                
-                student.batch = batch
-                student.save()
-                stats["synced"] += 1
-                
-        return response.Response({
-            "success": True,
-            "message": f"Batch '{batch_name}' synchronized.",
-            "batch_id": batch.id,
-            "stats": stats
-        })
+            return response.Response({
+                "success": True,
+                "message": f"Batch '{wise_class_name}' synchronized.",
+                "batch_id": batch.id,
+                "stats": stats
+            })
+        except Exception as e:
+            print(f"SyncWiseBatch Error: {str(e)}")
+            return response.Response({"error": f"Sync failed: {str(e)}"}, status=500)
+
 
 class ConsumeWiseCreditsView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]

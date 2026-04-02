@@ -42,7 +42,7 @@ class WiseService:
             if response.status_code == 200:
                 data = response.json()
                 if data.get('status') == 200:
-                    return data.get('data', {})
+                    return data.get('data') or {}
             return None
         except Exception as e:
             print(f"Wise API Fee Summary Error: {e}")
@@ -221,7 +221,7 @@ class WiseService:
             if response.status_code == 200:
                 data = response.json()
                 if data.get('status') == 200:
-                    return data.get('data', {})
+                    return data.get('data') or {}
             return None
         except Exception as e:
             print(f"Wise API Registration Data Error: {e}")
@@ -263,10 +263,10 @@ class WiseService:
                 data = response.json()
                 if data.get('status') == 200:
                     # Depending on API structure, it might be in 'data' or 'data.classes'
-                    result = data.get('data', {})
+                    result = data.get('data') or {}
                     if isinstance(result, list):
                         return result
-                    return result.get('classes', [])
+                    return result.get('classes') or []
             return []
         except Exception as e:
             print(f"Wise API Get Courses Error: {e}")
@@ -285,7 +285,7 @@ class WiseService:
             if response.status_code == 200:
                 data = response.json()
                 if data.get('status') == 200:
-                    return data.get('data', {})
+                    return data.get('data') or {}
             return None
         except Exception as e:
             print(f"Wise API Course Details Error: {e}")
@@ -306,7 +306,8 @@ class WiseService:
                 if data.get('status') == 200:
                     # Participants are usually in joinedRequest array
                     # data format: { data: { joinedRequest: [...] } }
-                    return data.get('data', {}).get('joinedRequest', [])
+                    result_data = data.get('data') or {}
+                    return result_data.get('joinedRequest') or []
             return []
         except Exception as e:
             print(f"Wise API Get Participants Error: {e}")
