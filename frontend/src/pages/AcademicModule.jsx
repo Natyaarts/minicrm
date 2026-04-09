@@ -135,28 +135,6 @@ const AcademicModule = () => {
 
     const fetchStudents = async () => {
         try {
-            const res = await api.get(`students/?page=${studentPage}&search=${searchTerm}`);
-            const data = res.data;
-            if (data.results) {
-                setStudents(data.results);
-                setStudentPagination({
-                    count: data.count,
-                    next: data.next,
-                    previous: data.previous
-                });
-                setStats(prev => ({ ...prev, totalStudents: data.count }));
-            } else {
-                setStudents(Array.isArray(data) ? data : []);
-                setStudentPagination({ count: data.length, next: null, previous: null });
-                setStats(prev => ({ ...prev, totalStudents: data.length }));
-            }
-        } catch (err) {
-            console.error("Failed to fetch students", err);
-        }
-    };
-
-    const fetchStudents = async () => {
-        try {
             setLoading(true);
             let url = `students/?page=${studentPage}&search=${searchTerm}`;
             if (selectedBatchId) {
