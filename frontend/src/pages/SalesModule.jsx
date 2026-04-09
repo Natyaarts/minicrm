@@ -402,6 +402,11 @@ const SalesModule = () => {
             setDynamicValues({});
             setFiles({});
             setTransactionData({ amount: '', transaction_id: '', transaction_link: '' });
+            setSelectedProgram('');
+            setSelectedSubProgram('');
+            setSelectedCourse('');
+            setSubPrograms([]);
+            setCourses([]);
         } catch (err) {
             console.error("Submission Error:", err);
             let errorMsg = 'Failed to submit application. Please check your inputs.';
@@ -1057,6 +1062,7 @@ const SalesModule = () => {
                                                         <div className="relative">
                                                             <select
                                                                 className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition-all text-slate-700 shadow-sm appearance-none"
+                                                                value={dynamicValues[field.id] || ''}
                                                                 onChange={(e) => handleDynamicChange(e, field.id)}
                                                                 required={field.is_required}
                                                             >
@@ -1081,6 +1087,7 @@ const SalesModule = () => {
                                                             type={field.field_type}
                                                             placeholder={`Enter ${field.label}`}
                                                             className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition-all placeholder:text-slate-400 text-slate-700 shadow-sm"
+                                                            value={dynamicValues[field.id] || ''}
                                                             onChange={(e) => handleDynamicChange(e, field.id)}
                                                             required={field.is_required}
                                                         />
