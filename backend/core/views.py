@@ -105,7 +105,7 @@ class BatchViewSet(viewsets.ModelViewSet):
         qs = Batch.objects.select_related('primary_mentor', 'course').prefetch_related('secondary_mentors')
         qs = qs.annotate(student_count_annotated=Count('students'))
         
-        if user.role in ['ADMIN', 'SUPER_ADMIN', 'ACADEMIC']:
+        if user.role in ['ADMIN', 'SUPER_ADMIN', 'ACADEMIC', 'ACADEMIC_COORDINATOR', 'SALES']:
             pass
         elif user.role in ['MENTOR', 'TEACHER']:
             qs = qs.filter(Q(primary_mentor=user) | Q(secondary_mentors=user) | Q(teacher=user)).distinct()
@@ -114,7 +114,7 @@ class BatchViewSet(viewsets.ModelViewSet):
         else:
             return Batch.objects.none()
             
-        return qs
+        return qs.order_by('-id')
 
     @action(detail=True, methods=['post'])
     def add_student(self, request, pk=None):
@@ -221,9 +221,9 @@ class StudentViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ['create', 'public_lookup', 'partial_update']:
             return [permissions.AllowAny()]
-        # Allow students, mentors, and teachers to view relevant profiles/lists
+        # Allow students, mentors, teachers, and academic staff to view relevant profiles/lists
         if self.request.user.is_authenticated and self.action in ['list', 'retrieve']:
-            if self.request.user.role in ['STUDENT', 'MENTOR', 'TEACHER']:
+            if self.request.user.role in ['STUDENT', 'MENTOR', 'TEACHER', 'ACADEMIC', 'ACADEMIC_COORDINATOR']:
                 return [permissions.IsAuthenticated()]
         return super().get_permissions()
 
@@ -278,7 +278,7 @@ class StudentViewSet(viewsets.ModelViewSet):
             'user', 'program_type', 'sub_program', 'course', 'batch'
         ).prefetch_related('dynamic_values__field', 'documents', 'transactions').all()
             
-        if user.role in ['ADMIN', 'SUPER_ADMIN', 'ACADEMIC', 'SALES']:
+        if user.role in ['ADMIN', 'SUPER_ADMIN', 'ACADEMIC', 'ACADEMIC_COORDINATOR', 'SALES']:
             pass 
         elif user.role in ['MENTOR', 'TEACHER']:
             qs = qs.filter(

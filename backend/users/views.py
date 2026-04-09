@@ -46,10 +46,10 @@ class UserViewSet(viewsets.ModelViewSet):
         role = self.request.query_params.get('role')
         if role:
             if role == 'ADMIN':
-                queryset = queryset.filter(role__in=['ADMIN', 'SUPER_ADMIN', 'ACADEMIC', 'ACADEMIC_COORDINATOR'])
+                queryset = queryset.filter(role__in=['ADMIN', 'SUPER_ADMIN', 'ACADEMIC', 'ACADEMIC_COORDINATOR', 'SALES', 'MENTOR'])
             else:
                 queryset = queryset.filter(role=role)
-        return queryset
+        return queryset.order_by('-id')
 
 class MentorListView(generics.ListAPIView):
     serializer_class = UserSerializer
@@ -77,7 +77,8 @@ class TeacherViewSet(viewsets.ModelViewSet):
     search_fields = ['username', 'first_name', 'last_name', 'email']
 
     def get_queryset(self):
-        return User.objects.filter(role='TEACHER').order_by('-id')
+        # Allow TEACHER, MENTOR, and ACADEMIC roles to be listed as "Faculty" in the Academic Module
+        return User.objects.filter(role__in=['TEACHER', 'MENTOR', 'ACADEMIC', 'ACADEMIC_COORDINATOR']).order_by('-id')
 
     def perform_create(self, serializer):
         # Force role to TEACHER and set a default password if not provided

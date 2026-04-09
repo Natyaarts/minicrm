@@ -4,8 +4,19 @@ import api from '../api/axios';
 
 const AcademicModule = () => {
     const [batches, setBatches] = useState([]);
+    const [batchPagination, setBatchPagination] = useState({ count: 0, next: null, previous: null });
+    const [batchPage, setBatchPage] = useState(1);
+    const [batchSearch, setBatchSearch] = useState('');
+
     const [mentors, setMentors] = useState([]);
+    const [mentorPagination, setMentorPagination] = useState({ count: 0, next: null, previous: null });
+    const [mentorPage, setMentorPage] = useState(1);
+
     const [teachers, setTeachers] = useState([]);
+    const [teacherPagination, setTeacherPagination] = useState({ count: 0, next: null, previous: null });
+    const [teacherPage, setTeacherPage] = useState(1);
+    const [teacherSearch, setTeacherSearch] = useState('');
+
     const [students, setStudents] = useState([]);
     const [stats, setStats] = useState({ totalStudents: 0, totalBatches: 0, totalMentors: 0, totalTeachers: 0 });
 
@@ -34,13 +45,18 @@ const AcademicModule = () => {
 
     useEffect(() => {
         fetchInitialData();
-    }, []);
+    }, [batchPage, batchSearch, mentorPage, teacherPage, teacherSearch]);
 
     const fetchTeachers = async () => {
         try {
-            const res = await api.get('auth/management/teachers/');
+            const res = await api.get(`auth/management/teachers/?page=${teacherPage}&search=${teacherSearch}`);
             setTeachers(res.data.results || res.data);
-            setStats(prev => ({ ...prev, totalTeachers: (res.data.results || res.data).length }));
+            setTeacherPagination({
+                count: res.data.count || (res.data.results || res.data).length,
+                next: res.data.next,
+                previous: res.data.previous
+            });
+            setStats(prev => ({ ...prev, totalTeachers: res.data.count || (res.data.results || res.data).length }));
         } catch (err) {
             console.error("Failed to fetch teachers", err);
         }
@@ -48,14 +64,7 @@ const AcademicModule = () => {
 
     useEffect(() => {
         fetchStudents();
-    }, [studentPage]);
-
-    useEffect(() => {
-        // Reset to page 1 when searching
-        if (searchTerm) {
-            setStudentPage(1);
-        }
-    }, [searchTerm]);
+    }, [studentPage, searchTerm]);
 
     const fetchWiseCourses = async () => {
         try {
@@ -88,29 +97,34 @@ const AcademicModule = () => {
     const fetchInitialData = async () => {
         setLoading(true);
         try {
-            const [batchRes, mentorRes, teacherRes] = await Promise.all([
-                api.get('batches/'),
-                api.get('auth/mentors/'),
-                api.get('auth/management/teachers/')
-            ]);
+            // Fetch batches with pagination and search
+            try {
+                const batchRes = await api.get(`batches/?page=${batchPage}&search=${batchSearch}`);
+                const bData = batchRes.data.results || batchRes.data;
+                setBatches(bData);
+                setBatchPagination({
+                    count: batchRes.data.count || bData.length,
+                    next: batchRes.data.next,
+                    previous: batchRes.data.previous
+                });
+                setStats(prev => ({ ...prev, totalBatches: batchRes.data.count || bData.length }));
+            } catch (err) { console.error("Batch fetch failed", err); }
 
-            const bData = batchRes.data.results || batchRes.data;
-            const mData = mentorRes.data.results || mentorRes.data;
-            const tData = teacherRes.data.results || teacherRes.data;
+            // Fetch mentors
+            try {
+                const mentorRes = await api.get(`auth/mentors/?page=${mentorPage}`);
+                const mData = mentorRes.data.results || mentorRes.data;
+                setMentors(mData);
+                setMentorPagination({
+                    count: mentorRes.data.count || mData.length,
+                    next: mentorRes.data.next,
+                    previous: mentorRes.data.previous
+                });
+                setStats(prev => ({ ...prev, totalMentors: mentorRes.data.count || mData.length }));
+            } catch (err) { console.error("Mentor fetch failed", err); }
 
-            setBatches(bData);
-            setMentors(mData);
-            setTeachers(tData);
-
-            // Fetch students separately or update stats from studentRes later
-            await fetchStudents();
-
-            setStats(prev => ({
-                ...prev,
-                totalBatches: batchRes.data.count || bData.length,
-                totalMentors: mentorRes.data.count || mData.length,
-                totalTeachers: teacherRes.data.count || tData.length
-            }));
+            // Fetch teachers
+            await fetchTeachers();
 
         } catch (err) {
             console.error(err);
@@ -144,12 +158,7 @@ const AcademicModule = () => {
     // Filtered students is now just 'students' because the API handles search
     const displayStudents = students;
 
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            fetchStudents();
-        }, 500);
-        return () => clearTimeout(timer);
-    }, [searchTerm]);
+    // Removed redundant useEffect since fetchInitialData handles it now
 
     const handleViewFees = async (student) => {
         setSelectedStudent(student);
@@ -277,18 +286,29 @@ const AcademicModule = () => {
 
     const renderTeachers = () => (
         <div className="space-y-6 animate-fadeIn">
-            <div className="flex justify-between items-center px-1">
-                <h3 className="text-xl font-bold text-slate-800">Teacher Directory</h3>
-                <button
-                    onClick={() => setShowAddTeacher(true)}
-                    className="px-4 py-2 bg-teal-600 text-white rounded-xl text-sm font-bold hover:bg-teal-700 shadow-lg shadow-teal-200 transition-all flex items-center gap-2"
-                >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
-                    Add Teacher
-                </button>
+            <div className="flex justify-between items-center mb-6 px-1">
+                <h3 className="text-xl font-bold text-slate-800">Faculty & Staff</h3>
+                <div className="flex gap-4">
+                    <div className="relative">
+                        <input
+                            type="text"
+                            placeholder="Search faculty..."
+                            className="pl-4 pr-10 py-2.5 bg-white border border-slate-200 rounded-xl text-sm w-64 focus:border-teal-500 outline-none transition-all shadow-sm"
+                            value={teacherSearch}
+                            onChange={e => setTeacherSearch(e.target.value)}
+                        />
+                    </div>
+                    <button
+                        onClick={() => setShowAddTeacher(true)}
+                        className="px-6 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-bold hover:bg-teal-700 shadow-lg shadow-teal-100 transition-all flex items-center gap-2"
+                    >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+                        Add Teacher
+                    </button>
+                </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 {teachers.map(teacher => (
                     <div key={teacher.id} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm group hover:border-teal-300 transition-all">
                         <div className="flex items-center gap-4 mb-4">
@@ -306,19 +326,51 @@ const AcademicModule = () => {
                                 {teacher.email}
                             </div>
                             <div className="flex items-center gap-2">
-                                <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path></svg>
-                                {teacher.phone_number || 'N/A'}
+                                <span className="px-2 py-0.5 bg-slate-100 rounded text-[10px] font-bold text-slate-500 uppercase">{teacher.role}</span>
                             </div>
                         </div>
                     </div>
                 ))}
+            </div>
+            {/* Teacher Pagination */}
+            <div className="flex items-center justify-between bg-white p-4 rounded-xl border border-slate-200 mt-6 shadow-sm">
+                <span className="text-xs text-slate-500 font-bold uppercase tracking-widest">
+                    Showing {teachers.length} of {teacherPagination.count} Faculty
+                </span>
+                <div className="flex gap-2">
+                    <button
+                        onClick={() => setTeacherPage(p => Math.max(1, p - 1))}
+                        disabled={!teacherPagination.previous}
+                        className="px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-xs font-bold disabled:opacity-50"
+                    >
+                        Prev
+                    </button>
+                    <button
+                        onClick={() => setTeacherPage(p => p + 1)}
+                        disabled={!teacherPagination.next}
+                        className="px-3 py-1.5 rounded-lg bg-teal-600 text-white text-xs font-bold disabled:opacity-50"
+                    >
+                        Next
+                    </button>
+                </div>
             </div>
         </div>
     );
 
     const renderBatches = () => (
         <div className="space-y-6 animate-fadeIn">
-            <h3 className="text-xl font-bold text-slate-800 px-1">All Batches</h3>
+            <div className="flex justify-between items-center px-1">
+                <h3 className="text-xl font-bold text-slate-800">All Batches</h3>
+                <div className="relative">
+                    <input
+                        type="text"
+                        placeholder="Search batches..."
+                        className="pl-4 pr-10 py-2.5 bg-white border border-slate-200 rounded-xl text-sm w-64 focus:border-indigo-500 outline-none transition-all shadow-sm"
+                        value={batchSearch}
+                        onChange={e => setBatchSearch(e.target.value)}
+                    />
+                </div>
+            </div>
             <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm">
                 <table className="w-full text-left text-sm">
                     <thead className="bg-slate-50 border-b border-slate-200">
@@ -357,6 +409,29 @@ const AcademicModule = () => {
                         ))}
                     </tbody>
                 </table>
+            </div>
+
+            {/* Batch Pagination */}
+            <div className="flex items-center justify-between bg-white p-4 rounded-xl border border-slate-200">
+                <span className="text-xs text-slate-500 font-bold uppercase tracking-widest">
+                    Showing {batches.length} of {batchPagination.count} Batches
+                </span>
+                <div className="flex gap-2">
+                    <button
+                        onClick={() => setBatchPage(p => Math.max(1, p - 1))}
+                        disabled={!batchPagination.previous}
+                        className="px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-xs font-bold disabled:opacity-50"
+                    >
+                        Prev
+                    </button>
+                    <button
+                        onClick={() => setBatchPage(p => p + 1)}
+                        disabled={!batchPagination.next}
+                        className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-bold disabled:opacity-50"
+                    >
+                        Next
+                    </button>
+                </div>
             </div>
         </div>
     );
