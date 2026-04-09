@@ -64,7 +64,7 @@ const AcademicModule = () => {
 
     useEffect(() => {
         fetchStudents();
-    }, [studentPage, searchTerm]);
+    }, [studentPage, searchTerm, selectedBatchId]);
 
     const fetchWiseCourses = async () => {
         try {
