@@ -595,19 +595,19 @@ const AcademicModule = () => {
                         onClick={() => setActiveTab('batches')}
                         className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'batches' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}
                     >
-                        Batches ({batches.length})
+                        Batches ({batchPagination.count})
                     </button>
                     <button
                         onClick={() => setActiveTab('teachers')}
                         className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'teachers' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}
                     >
-                        Teachers ({teachers.length})
+                        Teachers ({teacherPagination.count})
                     </button>
                     <button
                         onClick={() => setActiveTab('students')}
                         className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'students' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}
                     >
-                        Students ({students.length})
+                        Students ({studentPagination.count})
                     </button>
                     <button
                         onClick={() => { setActiveTab('wise'); fetchWiseCourses(); }}
