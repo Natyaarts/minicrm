@@ -471,9 +471,10 @@ class SyncWiseBatchView(views.APIView):
                         stats["synced"] += 1
                 
             status_word = "created" if created else "updated"
+            summary = f"Total Found: {stats['found']}, New: {stats['new']}, Updated: {stats['synced']}"
             return response.Response({
                 "success": True,
-                "message": f"Batch '{wise_class_name}' successfully {status_word}.",
+                "message": f"Batch '{wise_class_name}' {status_word}. {summary}",
                 "batch_id": batch.id,
                 "stats": stats
             })

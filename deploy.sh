@@ -36,7 +36,11 @@ else
 fi
 cd "$PROJECT_DIR"
 
-# 4. Restart Services
+# 4. Copy to Web Root (Ensures Nginx sees the new files)
+echo "📂 Deploying to Nginx web root..."
+sudo cp -r "$FRONTEND_DIR/dist/"* /var/www/html/ 2>/dev/null || echo "⚠️  Note: /var/www/html not found or accessible, skipping copy. Please check your Nginx root."
+
+# 5. Restart Services
 echo "🔄 Restarting Services..."
 sudo systemctl restart "$SERVICE_NAME"
 sudo systemctl status "$SERVICE_NAME" --no-pager
