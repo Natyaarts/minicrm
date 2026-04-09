@@ -37,7 +37,7 @@ const AcademicModule = () => {
     const [editingBatch, setEditingBatch] = useState(null);
     const [newTeacher, setNewTeacher] = useState({ username: '', first_name: '', last_name: '', email: '', phone_number: '' });
     
-    // Profile Completion State
+    const [selectedBatchId, setSelectedBatchId] = useState('');
     const [completingProfile, setCompletingProfile] = useState(null);
     const [academicFields, setAcademicFields] = useState([]);
     const [academicValues, setAcademicValues] = useState({});
@@ -155,10 +155,37 @@ const AcademicModule = () => {
         }
     };
 
-    // Filtered students is now just 'students' because the API handles search
-    const displayStudents = students;
+    const fetchStudents = async () => {
+        try {
+            setLoading(true);
+            let url = `students/?page=${studentPage}&search=${searchTerm}`;
+            if (selectedBatchId) {
+                url += `&batch=${selectedBatchId}`;
+            }
+            const res = await api.get(url);
+            const data = res.data;
+            if (data.results) {
+                setStudents(data.results);
+                setStudentPagination({
+                    count: data.count,
+                    next: data.next,
+                    previous: data.previous
+                });
+            } else {
+                setStudents(Array.isArray(data) ? data : []);
+                setStudentPagination({ count: (Array.isArray(data) ? data.length : 0), next: null, previous: null });
+            }
+        } catch (err) {
+            console.error("Failed to fetch students", err);
+        } finally {
+            setLoading(false);
+        }
+    };
 
-    // Removed redundant useEffect since fetchInitialData handles it now
+    useEffect(() => {
+        // Reset to page 1 when filter changes
+        setStudentPage(1);
+    }, [selectedBatchId, searchTerm]);
 
     const handleViewFees = async (student) => {
         setSelectedStudent(student);
@@ -265,7 +292,14 @@ const AcademicModule = () => {
                 <h3 className="text-xl font-bold text-slate-800 mb-6 px-1">Batch Overview</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {batches.slice(0, 6).map(batch => (
-                        <div key={batch.id} className="p-6 bg-white rounded-xl border border-slate-200 shadow-sm hover:border-indigo-300 hover:shadow-md transition-all cursor-pointer group">
+                        <div 
+                            key={batch.id} 
+                            onClick={() => {
+                                setSelectedBatchId(batch.id);
+                                setActiveTab('students');
+                            }}
+                            className="p-6 bg-white rounded-xl border border-slate-200 shadow-sm hover:border-indigo-300 hover:shadow-md transition-all cursor-pointer group"
+                        >
                             <h4 className="font-bold text-slate-900 text-lg mb-1 group-hover:text-indigo-600 transition-colors">{batch.name}</h4>
                             <p className="text-sm text-slate-500 font-medium mb-4">{batch.course_name}</p>
                             <div className="flex flex-col gap-2 text-xs border-t border-slate-100 pt-3">
@@ -436,19 +470,33 @@ const AcademicModule = () => {
         </div>
     );
 
-    const renderStudents = () => (
-        <div className="space-y-6 animate-fadeIn">
-            <div className="flex justify-between items-center px-1">
-                <h3 className="text-xl font-bold text-slate-800">Student Directory</h3>
-                <div className="relative">
-                    <input
-                        type="text"
-                        placeholder="Search students..."
-                        className="pl-4 pr-10 py-2.5 bg-white border border-slate-200 rounded-xl text-sm w-72 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition-all shadow-sm"
-                        value={searchTerm}
-                        onChange={e => setSearchTerm(e.target.value)}
-                    />
-                    <svg className="w-4 h-4 text-slate-400 absolute right-3 top-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+    const renderStudents = () => {
+        const displayStudents = students;
+        return (
+            <div className="space-y-6 animate-fadeIn">
+            <div className="flex flex-col md:flex-row gap-4 items-center px-1">
+                <h3 className="text-xl font-bold text-slate-800 shrink-0">Student Directory</h3>
+                <div className="flex flex-wrap gap-3 w-full justify-end">
+                    <select
+                        className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:border-indigo-500 outline-none transition-all shadow-sm font-bold min-w-[200px]"
+                        value={selectedBatchId}
+                        onChange={e => setSelectedBatchId(e.target.value)}
+                    >
+                        <option value="">All Batches</option>
+                        {batches.map(b => (
+                            <option key={b.id} value={b.id}>{b.name}</option>
+                        ))}
+                    </select>
+                    <div className="relative">
+                        <input
+                            type="text"
+                            placeholder="Search students..."
+                            className="pl-4 pr-10 py-2.5 bg-white border border-slate-200 rounded-xl text-sm w-72 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition-all shadow-sm"
+                            value={searchTerm}
+                            onChange={e => setSearchTerm(e.target.value)}
+                        />
+                        <svg className="w-4 h-4 text-slate-400 absolute right-3 top-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                    </div>
                 </div>
             </div>
 
@@ -548,7 +596,7 @@ const AcademicModule = () => {
                 </div>
             </div>
         </div>
-    );
+    ); };
 
     return (
         <div className="space-y-8 text-slate-900 w-full pb-20">
