@@ -100,6 +100,12 @@ class BatchViewSet(viewsets.ModelViewSet):
                 return 'TEACHER'
         return 'MENTOR'
 
+    def get_permissions(self):
+        if self.request.user.is_authenticated and self.action in ['list', 'retrieve']:
+            if self.request.user.role in ['ACADEMIC', 'ACADEMIC_COORDINATOR', 'ADMIN', 'SUPER_ADMIN']:
+                return [permissions.IsAuthenticated()]
+        return super().get_permissions()
+
     def get_queryset(self):
         user = self.request.user
         qs = Batch.objects.select_related('primary_mentor', 'course').prefetch_related('secondary_mentors')
