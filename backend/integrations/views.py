@@ -470,7 +470,7 @@ class SyncWiseBatchView(views.APIView):
                         student.save()
                         stats["synced"] += 1
                 
-            status_word = "created" if created else "updated"
+            status_word = "created" if created else "already synced and updated"
             summary = f"Total Found: {stats['found']}, New: {stats['new']}, Updated: {stats['synced']}"
             return response.Response({
                 "success": True,
