@@ -470,9 +470,10 @@ class SyncWiseBatchView(views.APIView):
                         student.save()
                         stats["synced"] += 1
                 
+            status_word = "created" if created else "updated"
             return response.Response({
                 "success": True,
-                "message": f"Batch '{wise_class_name}' synchronized.",
+                "message": f"Batch '{wise_class_name}' successfully {status_word}.",
                 "batch_id": batch.id,
                 "stats": stats
             })
