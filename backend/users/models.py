@@ -44,3 +44,13 @@ class RolePermission(models.Model):
 
     def __str__(self):
         return f"{self.role} - {self.module} Permissions"
+
+class Teacher(User):
+    class Meta:
+        proxy = True
+        verbose_name = 'Teacher'
+        verbose_name_plural = 'Teachers'
+
+    def save(self, *args, **kwargs):
+        self.role = 'TEACHER'
+        super().save(*args, **kwargs)
