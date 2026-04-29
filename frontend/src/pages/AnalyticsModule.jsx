@@ -22,6 +22,9 @@ const AnalyticsModule = () => {
     
     const [batchPage, setBatchPage] = useState(1);
     const batchesPerPage = 5;
+    
+    const [expandedTeacher, setExpandedTeacher] = useState(null);
+    const [expandedBatch, setExpandedBatch] = useState(null);
 
     useEffect(() => {
         fetchAnalytics();
@@ -63,6 +66,40 @@ const AnalyticsModule = () => {
         } catch (err) {
             alert("Export failed");
         }
+    };
+
+    const exportTeachersCSV = () => {
+        if (!data?.teacher_performance) return;
+        
+        let csvContent = "Teacher Name,Total Assigned Courses,Total Time Taught,Total Classes,Batch Name,Class Date,Class Duration\n";
+        
+        data.teacher_performance.forEach(t => {
+            const name = `"${t.name.replace(/"/g, '""')}"`;
+            
+            if (t.classes && t.classes.length > 0) {
+                t.classes.forEach(c => {
+                    const batchName = `"${c.batch_name.replace(/"/g, '""')}"`;
+                    if (c.dates && c.dates.length > 0) {
+                        c.dates.forEach(d => {
+                            csvContent += `${name},${t.courses},${t.formatted_time},${t.sessions},${batchName},${d.date},${d.duration}\n`;
+                        });
+                    } else {
+                        csvContent += `${name},${t.courses},${t.formatted_time},${t.sessions},${batchName},N/A,N/A\n`;
+                    }
+                });
+            } else {
+                csvContent += `${name},${t.courses},${t.formatted_time},${t.sessions},N/A,N/A,N/A\n`;
+            }
+        });
+        
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `faculty_attendance_${selectedMonth}_${selectedYear}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     };
 
     if (loading) {
@@ -322,6 +359,12 @@ const AnalyticsModule = () => {
                                     <option key={y} value={y}>{y}</option>
                                 ))}
                             </select>
+                            <button
+                                onClick={exportTeachersCSV}
+                                className="ml-2 px-4 py-2 bg-indigo-50 text-indigo-600 border border-indigo-100 rounded-xl text-sm font-bold shadow-sm hover:bg-indigo-100 transition-all flex items-center gap-2"
+                            >
+                                <Download size={16} /> Export
+                            </button>
                         </div>
                     </div>
 
@@ -332,11 +375,16 @@ const AnalyticsModule = () => {
                                     <th className="pb-4 pl-4">Teacher Name</th>
                                     <th className="pb-4 text-center">Assigned Courses</th>
                                     <th className="pb-4 text-center">Total Time Taught</th>
+                                    <th className="pb-4"></th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-50">
                                 {data.teacher_performance?.map((t, i) => (
-                                    <tr key={i} className="group hover:bg-slate-50/50 transition-colors">
+                                    <React.Fragment key={i}>
+                                    <tr 
+                                        className={`group hover:bg-slate-50/50 transition-colors cursor-pointer ${expandedTeacher === t.id ? 'bg-slate-50' : ''}`}
+                                        onClick={() => setExpandedTeacher(expandedTeacher === t.id ? null : t.id)}
+                                    >
                                         <td className="py-5 pl-4 font-bold text-slate-800 flex items-center gap-3">
                                             <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-black text-xs">
                                                 {t.name.charAt(0)}
@@ -353,7 +401,60 @@ const AnalyticsModule = () => {
                                                 {t.formatted_time} <span className="text-[9px] font-bold text-emerald-500/80 ml-1">({t.sessions} classes)</span>
                                             </span>
                                         </td>
+                                        <td className="py-5 text-right opacity-0 group-hover:opacity-100 transition-opacity pr-4">
+                                            <button className="p-2 text-slate-400 hover:text-indigo-600 transition-colors">
+                                                <ChevronRight size={18} className={`transform transition-transform ${expandedTeacher === t.id ? 'rotate-90' : ''}`} />
+                                            </button>
+                                        </td>
                                     </tr>
+                                    <AnimatePresence>
+                                        {expandedTeacher === t.id && t.classes && t.classes.length > 0 && (
+                                            <motion.tr
+                                                initial={{ opacity: 0, height: 0 }}
+                                                animate={{ opacity: 1, height: 'auto' }}
+                                                exit={{ opacity: 0, height: 0 }}
+                                            >
+                                                <td colSpan="4" className="p-0 border-b-0">
+                                                    <div className="bg-slate-50/80 p-6 m-2 ml-14 rounded-2xl border border-slate-100">
+                                                        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Class-wise Breakdown</h4>
+                                                        <div className="grid gap-3">
+                                                            {t.classes.map((c, idx) => (
+                                                                <div key={idx} className="flex flex-col bg-white rounded-xl border border-slate-100 shadow-sm hover:border-indigo-100 transition-colors overflow-hidden">
+                                                                    <div 
+                                                                        className="flex justify-between items-center p-4 cursor-pointer"
+                                                                        onClick={() => setExpandedBatch(expandedBatch === `${t.id}-${c.batch_name}` ? null : `${t.id}-${c.batch_name}`)}
+                                                                    >
+                                                                        <div className="font-bold text-slate-700 flex items-center gap-2">
+                                                                            <ChevronRight size={14} className={`text-slate-400 transform transition-transform ${expandedBatch === `${t.id}-${c.batch_name}` ? 'rotate-90' : ''}`} />
+                                                                            {c.batch_name}
+                                                                        </div>
+                                                                        <div className="flex gap-3">
+                                                                            <span className="text-xs font-bold text-slate-500 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100">{c.sessions} classes</span>
+                                                                            <span className="text-xs font-black text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100">{c.formatted_time}</span>
+                                                                        </div>
+                                                                    </div>
+                                                                    {expandedBatch === `${t.id}-${c.batch_name}` && c.dates && (
+                                                                        <div className="bg-slate-50/50 p-4 border-t border-slate-100 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                                                                            {c.dates.map((d, didx) => (
+                                                                                <div key={didx} className="flex justify-between items-center bg-white border border-slate-100 px-3 py-2 rounded-lg shadow-sm">
+                                                                                    <span className="text-xs font-bold text-slate-600">{d.date}</span>
+                                                                                    <span className="text-[10px] font-black text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-md">{d.duration}</span>
+                                                                                </div>
+                                                                            ))}
+                                                                            {c.dates.length === 0 && (
+                                                                                <div className="col-span-full text-xs text-slate-400 italic text-center py-2">No detailed date records available</div>
+                                                                            )}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </motion.tr>
+                                        )}
+                                    </AnimatePresence>
+                                    </React.Fragment>
                                 ))}
                                 {(!data.teacher_performance || data.teacher_performance.length === 0) && (
                                     <tr>

@@ -649,11 +649,51 @@ class AnalyticsDetailView(APIView):
             s_count = sessions.count()
             
             total_milliseconds = 0
+            batch_breakdown = {}
             for session in sessions:
                 if session.teacher_summary:
                     match = re.search(r'Duration:\s*(\d+)', session.teacher_summary)
                     if match:
-                        total_milliseconds += int(match.group(1))
+                        ms = int(match.group(1))
+                        total_milliseconds += ms
+                        
+                        # Add to batch breakdown
+                        b_id = session.batch.id
+                        if b_id not in batch_breakdown:
+                            batch_breakdown[b_id] = {
+                                'batch_name': session.batch.name,
+                                'sessions': 0,
+                                'ms': 0,
+                                'dates': []
+                            }
+                        batch_breakdown[b_id]['sessions'] += 1
+                        batch_breakdown[b_id]['ms'] += ms
+                        
+                        s_mins = round(ms / (1000 * 60))
+                        s_h = s_mins // 60
+                        s_m = s_mins % 60
+                        s_duration = f"{s_h}h {s_m}m" if s_h > 0 else f"{s_m}m"
+                        
+                        batch_breakdown[b_id]['dates'].append({
+                            'date': session.date.strftime("%d %b %Y"),
+                            'duration': s_duration
+                        })
+            
+            # format batch breakdown
+            classes_breakdown = []
+            for b_id, b_data in batch_breakdown.items():
+                b_mins = round(b_data['ms'] / (1000 * 60))
+                b_h = b_mins // 60
+                b_m = b_mins % 60
+                classes_breakdown.append({
+                    'batch_name': b_data['batch_name'],
+                    'sessions': b_data['sessions'],
+                    'formatted_time': f"{b_h}h {b_m}m",
+                    'dates': b_data['dates']
+                })
+            
+            # sort breakdown by sessions descending
+            classes_breakdown.sort(key=lambda x: x['sessions'], reverse=True)
             
             # The Wise LMS API returned duration in milliseconds
             total_minutes = round(total_milliseconds / (1000 * 60))
@@ -667,7 +707,8 @@ class AnalyticsDetailView(APIView):
                     'courses': b_count,
                     'sessions': s_count,
                     'hours': round(total_minutes / 60, 2), # Keep for sorting
-                    'formatted_time': f"{full_hours}h {rem_minutes}m"
+                    'formatted_time': f"{full_hours}h {rem_minutes}m",
+                    'classes': classes_breakdown
                 })
 
         # sort by hours
