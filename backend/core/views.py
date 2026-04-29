@@ -656,7 +656,7 @@ class AnalyticsDetailView(APIView):
                         total_milliseconds += int(match.group(1))
             
             # The Wise LMS API returned duration in milliseconds
-            total_minutes = total_milliseconds / (1000 * 60)
+            total_minutes = round(total_milliseconds / (1000 * 60))
             full_hours = int(total_minutes // 60)
             rem_minutes = int(total_minutes % 60)
             

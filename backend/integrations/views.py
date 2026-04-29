@@ -412,7 +412,6 @@ class SyncWiseBatchView(views.APIView):
                 course=crm_course,
                 defaults={
                     "start_date": datetime.date.today(),
-                    "primary_mentor": request.user,
                     "lms_batch_id": wise_class_id
                 }
             )
@@ -656,75 +655,66 @@ class SyncWiseAttendanceView(views.APIView):
         if request.user.role not in ['ADMIN', 'SUPER_ADMIN', 'ACADEMIC']:
             return response.Response({"error": "Permission denied"}, status=403)
             
-        from core.models import Batch, ClassSession
+        from core.models import Batch, ClassSession, Attendance
         from django.contrib.auth import get_user_model
         from django.utils.dateparse import parse_datetime
-        import datetime
+        import threading
         
-        User = get_user_model()
-        wise = WiseService()
-        batches = Batch.objects.filter(lms_batch_id__isnull=False)
-        
-        stats = {"batches_processed": 0, "sessions_found": 0, "new_logs": 0, "unmapped_teachers": []}
-        
-        for batch in batches:
-            stats["batches_processed"] += 1
-            logs = wise.get_session_logs(batch.lms_batch_id)
+        def run_sync():
+            User = get_user_model()
+            wise = WiseService()
+            batches = Batch.objects.filter(lms_batch_id__isnull=False)
             
-            for log in logs:
-                stats["sessions_found"] += 1
-                start_time_str = log.get('start_time') or log.get('startTime')
-                if not start_time_str: continue
-                
-                start_time = parse_datetime(start_time_str)
-                if not start_time: continue
-                
-                log_date = start_time.date()
-                instructor_id = str(log.get('instructor_id') or log.get('instructorId') or log.get('hostedBy') or '')
-                
-                # Try to find the teacher in our CRM by Wise ID
-                conducting_teacher = None
-                if instructor_id:
-                    conducting_teacher = User.objects.filter(lms_teacher_id=instructor_id).first()
-                
-                # Fallback to the batch's default teacher if no specific instructor mapped
-                if not conducting_teacher:
-                    conducting_teacher = batch.teacher
-                    if instructor_id and instructor_id not in stats["unmapped_teachers"]:
-                        stats["unmapped_teachers"].append(instructor_id)
+            for batch in batches:
+                try:
+                    logs = wise.get_session_logs(batch.lms_batch_id)
+                    for log in logs:
+                        start_time_str = log.get('start_time') or log.get('startTime')
+                        if not start_time_str: continue
+                        
+                        start_time = parse_datetime(start_time_str)
+                        if not start_time: continue
+                        
+                        log_date = start_time.date()
+                        
+                        instructor_id = str(log.get('hostedBy') or log.get('instructorId'))
+                        conducting_teacher = None
+                        if instructor_id:
+                            conducting_teacher = User.objects.filter(lms_teacher_id=instructor_id).first()
+                            
+                        if not conducting_teacher:
+                            conducting_teacher = batch.teacher
 
-                # Check if we already logged this session on this date for this batch
-                # We could also check for same teacher to be more precise
-                session, created = ClassSession.objects.get_or_create(
-                    batch=batch, 
-                    date=log_date,
-                    teacher=conducting_teacher,
-                    defaults={
-                        'teacher_summary': f"Auto-synced from Wise LMS Zoom Session (Duration: {log.get('duration', 'N/A')} mins)"
-                    }
-                )
-                
-                if created:
-                    stats["new_logs"] += 1
-
-                # Now sync attendance for all students in the batch
-                from core.models import Attendance
-                present_lms_ids = log.get('students', [])
-                
-                for student in batch.students.all():
-                    is_present = bool(student.lms_student_id and student.lms_student_id in present_lms_ids)
-                    # Get or create attendance record
-                    Attendance.objects.update_or_create(
-                        session=session,
-                        student=student,
-                        defaults={'is_present': is_present}
-                    )
+                        session, created = ClassSession.objects.get_or_create(
+                            batch=batch, 
+                            date=log_date,
+                            teacher=conducting_teacher,
+                            defaults={
+                                'teacher_summary': f"Auto-synced from Wise LMS Zoom Session (Duration: {log.get('duration', 'N/A')} mins)"
+                            }
+                        )
+                        
+                        present_lms_ids = log.get('students', [])
+                        for student in batch.students.all():
+                            is_present = bool(student.lms_student_id and student.lms_student_id in present_lms_ids)
+                            Attendance.objects.update_or_create(
+                                session=session,
+                                student=student,
+                                defaults={'is_present': is_present}
+                            )
+                except Exception as e:
+                    print(f"Failed to sync batch {batch.id}: {e}")
                     
+            from django.db import connection
+            connection.close()
+
+        thread = threading.Thread(target=run_sync)
+        thread.daemon = True
+        thread.start()
+
         return response.Response({
             "success": True,
-            "message": f"Synced {stats['new_logs']} new class logs.",
-            "unmapped": stats["unmapped_teachers"],
-            "stats": stats
+            "message": "Attendance sync has been started in the background. Please check back in a few minutes.",
         })
 
 class SyncWiseTeachersView(views.APIView):

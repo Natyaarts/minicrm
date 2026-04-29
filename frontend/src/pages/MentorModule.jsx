@@ -38,6 +38,7 @@ const MentorModule = () => {
     const [selectedUnassignedStudents, setSelectedUnassignedStudents] = useState([]);
     const [studentPage, setStudentPage] = useState(1);
     const [studentPagination, setStudentPagination] = useState({ count: 0, next: null, previous: null });
+    const [batchSearchQuery, setBatchSearchQuery] = useState('');
 
     // Wise ID Linking State
     const [isWiseLinkModalOpen, setIsWiseLinkModalOpen] = useState(false);
@@ -90,6 +91,19 @@ const MentorModule = () => {
         fetchBatches();
         fetchMeta();
     }, [batchPage]); // Re-fetch batches when page changes
+
+    useEffect(() => {
+        if (viewTab === 'batches') {
+            const timer = setTimeout(() => {
+                if (batchPage !== 1) {
+                    setBatchPage(1); // Reset to page 1 on search
+                } else {
+                    fetchBatches();
+                }
+            }, 500);
+            return () => clearTimeout(timer);
+        }
+    }, [batchSearchQuery]);
 
     useEffect(() => {
         if (viewTab === 'all-students') {
@@ -179,7 +193,7 @@ const MentorModule = () => {
 
     const fetchBatches = async () => {
         try {
-            const res = await api.get(`batches/?page=${batchPage}`);
+            const res = await api.get(`batches/?page=${batchPage}&search=${batchSearchQuery}`);
             if (res.data.results) {
                 setBatches(res.data.results);
                 setBatchPagination({
@@ -754,9 +768,20 @@ const MentorModule = () => {
 
             {viewTab === 'batches' && (
                 !selectedBatch ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {batches.map(batch => (
-                            <motion.div
+                    <div className="space-y-6">
+                        <div className="relative w-full md:w-80">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                            <input
+                                type="text"
+                                placeholder="Search batches..."
+                                className="w-full pl-11 pr-4 py-3 rounded-2xl bg-white shadow-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 transition-all text-sm"
+                                value={batchSearchQuery}
+                                onChange={(e) => setBatchSearchQuery(e.target.value)}
+                            />
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {batches.map(batch => (
+                                <motion.div
                                 whileHover={{ y: -4 }}
                                 key={batch.id}
                                 onClick={() => handleBatchClick(batch)}
@@ -818,6 +843,7 @@ const MentorModule = () => {
                             </div>
                         )}
                     </div>
+                </div>
                 ) : (
                     <div className="space-y-6 animate-fadeIn">
                         {/* Batch Details Header */}
