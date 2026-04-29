@@ -218,51 +218,58 @@ class SyncWiseStudentsView(views.APIView):
             existing_usernames = set(User.objects.values_list('username', flat=True))
             
             # Use atomic transaction to make database writes 10x faster
-            with transaction.atomic():
-                for wise_student in wise.get_all_students():
-                    stats["scanned"] += 1
-                    
-                    # Extract Data
-                    wise_id = wise_student.get('_id') or wise_student.get('id')
-                    raw_mobile = wise_student.get('phoneNumber') or wise_student.get('mobile') or ''
-                    mobile = str(raw_mobile).replace(" ", "")
-                    
-                    if not mobile or len(mobile) < 10:
-                        continue
+            for wise_student in wise.get_all_students():
+                stats["scanned"] += 1
+                
+                try:
+                    with transaction.atomic():
+                        # Extract Data
+                        wise_id = wise_student.get('_id') or wise_student.get('id')
+                        raw_mobile = wise_student.get('phoneNumber') or wise_student.get('mobile') or ''
+                        mobile = str(raw_mobile).replace(" ", "")
                         
-                    mobile_suffix = mobile[-10:]
-                    email = wise_student.get('email') or wise_student.get('emailAddress')
-                    fname = wise_student.get('first_name')
-                    lname = wise_student.get('last_name')
-                    
-                    if not fname and not lname:
-                        full_name = wise_student.get('name', '').strip()
-                        if full_name:
-                            parts = full_name.split(' ', 1)
-                            fname = parts[0]
-                            lname = parts[1] if len(parts) > 1 else ''
-
-                    # Memory Lookup instead of DB Query
-                    student = crm_students.get(mobile_suffix)
-                    
-                    if student:
-                        # Only save if changed to save time
-                        changed = False
-                        if student.lms_student_id != wise_id:
-                            student.lms_student_id = wise_id
-                            changed = True
-                            stats["linked"] += 1
-                        
-                        if email and student.email != email:
-                            student.email = email
-                            changed = True
+                        if not mobile or len(mobile) < 10:
+                            continue
                             
-                        if changed:
-                            student.save()
-                            stats["updated"] += 1
-                    else:
-                        # New Student creation
-                        try:
+                        mobile_suffix = mobile[-10:]
+                        email = wise_student.get('email') or wise_student.get('emailAddress')
+                        fname = wise_student.get('first_name')
+                        lname = wise_student.get('last_name')
+                        
+                        if not fname and not lname:
+                            full_name = wise_student.get('name', '').strip()
+                            if full_name:
+                                parts = full_name.split(' ', 1)
+                                fname = parts[0]
+                                lname = parts[1] if len(parts) > 1 else ''
+
+                        # Memory Lookup instead of DB Query
+                        student = crm_students.get(mobile_suffix)
+                        
+                        if student:
+                            # Only save if changed to save time
+                            changed = False
+                            if student.lms_student_id != wise_id:
+                                student.lms_student_id = wise_id
+                                changed = True
+                                stats["linked"] += 1
+                            
+                            if email and student.email != email:
+                                student.email = email
+                                changed = True
+                            
+                            if not student.first_name and fname:
+                                student.first_name = fname
+                                changed = True
+                            if not student.last_name and lname:
+                                student.last_name = lname
+                                changed = True
+                                
+                            if changed:
+                                student.save()
+                                stats["updated"] += 1
+                        else:
+                            # New Student creation
                             username = f"wise_{mobile_suffix}"
                             if username in existing_usernames:
                                 import uuid
@@ -280,16 +287,19 @@ class SyncWiseStudentsView(views.APIView):
                             
                             new_student = Student.objects.create(
                                 user=user,
+                                crm_student_id=f"WISE-{mobile_suffix}",
+                                first_name=fname or "Wise",
+                                last_name=lname or "Student",
                                 mobile=mobile,
                                 email=email,
                                 lms_student_id=wise_id,
-                                program=fallback_program
+                                program_type=fallback_program
                             )
                             crm_students[mobile_suffix] = new_student
                             stats["created"] += 1
-                        except Exception as e:
-                            print(f"Sync create error: {e}")
-                            stats["errors"] += 1
+                except Exception as e:
+                    print(f"Sync error for student: {e}")
+                    stats["errors"] += 1
                             
             return response.Response({
                 "success": True,
@@ -312,10 +322,18 @@ class WiseCourseListView(views.APIView):
         wise = WiseService()
         courses = wise.get_all_courses(class_type=class_type)
         
-        # Optionally fetch details for each to get student counts if not provided by Wise list
-        # But Wise list usually has studentCount or similar if showCoTeachers=true is used
-        
-        return response.Response(courses)
+        # Normalize for frontend expectations
+        normalized = []
+        for c in courses:
+            normalized.append({
+                "id": c.get('_id') or c.get('id'),
+                "name": c.get('name') or c.get('title'),
+                "sessionsCount": c.get('studentCount', 0), # Using studentCount as a fallback label
+                "type": c.get('classType', 'LIVE'),
+                "fee": c.get('feesAdded', False)
+            })
+            
+        return response.Response(normalized)
 
 class WiseClassStudentsView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -394,9 +412,14 @@ class SyncWiseBatchView(views.APIView):
                 course=crm_course,
                 defaults={
                     "start_date": datetime.date.today(),
-                    "primary_mentor": request.user
+                    "primary_mentor": request.user,
+                    "lms_batch_id": wise_class_id
                 }
             )
+            
+            if not created and not batch.lms_batch_id:
+                batch.lms_batch_id = wise_class_id
+                batch.save()
             
             # 4. Fetch and Sync Participants
             participants = wise.get_class_participants(wise_class_id)
@@ -621,3 +644,203 @@ class RazorpayOrderView(views.APIView):
         except Exception as e:
             print(f"Razorpay Error: {str(e)}")
             return response.Response({"error": f"Gateway Error: {str(e)}"}, status=500)
+
+class SyncWiseAttendanceView(views.APIView):
+    """
+    Syncs live session logs from Wise LMS and converts them into CRM ClassSessions.
+    This effectively calculates teacher attendance based on Zoom activity.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if request.user.role not in ['ADMIN', 'SUPER_ADMIN', 'ACADEMIC']:
+            return response.Response({"error": "Permission denied"}, status=403)
+            
+        from core.models import Batch, ClassSession
+        from django.contrib.auth import get_user_model
+        from django.utils.dateparse import parse_datetime
+        import datetime
+        
+        User = get_user_model()
+        wise = WiseService()
+        batches = Batch.objects.filter(lms_batch_id__isnull=False)
+        
+        stats = {"batches_processed": 0, "sessions_found": 0, "new_logs": 0, "unmapped_teachers": []}
+        
+        for batch in batches:
+            stats["batches_processed"] += 1
+            logs = wise.get_session_logs(batch.lms_batch_id)
+            
+            for log in logs:
+                stats["sessions_found"] += 1
+                start_time_str = log.get('start_time') or log.get('startTime')
+                if not start_time_str: continue
+                
+                start_time = parse_datetime(start_time_str)
+                if not start_time: continue
+                
+                log_date = start_time.date()
+                instructor_id = str(log.get('instructor_id') or log.get('instructorId') or log.get('hostedBy') or '')
+                
+                # Try to find the teacher in our CRM by Wise ID
+                conducting_teacher = None
+                if instructor_id:
+                    conducting_teacher = User.objects.filter(lms_teacher_id=instructor_id).first()
+                
+                # Fallback to the batch's default teacher if no specific instructor mapped
+                if not conducting_teacher:
+                    conducting_teacher = batch.teacher
+                    if instructor_id and instructor_id not in stats["unmapped_teachers"]:
+                        stats["unmapped_teachers"].append(instructor_id)
+
+                # Check if we already logged this session on this date for this batch
+                # We could also check for same teacher to be more precise
+                session, created = ClassSession.objects.get_or_create(
+                    batch=batch, 
+                    date=log_date,
+                    teacher=conducting_teacher,
+                    defaults={
+                        'teacher_summary': f"Auto-synced from Wise LMS Zoom Session (Duration: {log.get('duration', 'N/A')} mins)"
+                    }
+                )
+                
+                if created:
+                    stats["new_logs"] += 1
+
+                # Now sync attendance for all students in the batch
+                from core.models import Attendance
+                present_lms_ids = log.get('students', [])
+                
+                for student in batch.students.all():
+                    is_present = bool(student.lms_student_id and student.lms_student_id in present_lms_ids)
+                    # Get or create attendance record
+                    Attendance.objects.update_or_create(
+                        session=session,
+                        student=student,
+                        defaults={'is_present': is_present}
+                    )
+                    
+        return response.Response({
+            "success": True,
+            "message": f"Synced {stats['new_logs']} new class logs.",
+            "unmapped": stats["unmapped_teachers"],
+            "stats": stats
+        })
+
+class SyncWiseTeachersView(views.APIView):
+    """
+    Imports all teachers from Wise LMS and creates CRM accounts for them.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if request.user.role not in ['ADMIN', 'SUPER_ADMIN']:
+            return response.Response({"error": "Permission denied"}, status=403)
+            
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        wise = WiseService()
+        
+        # Now using the fixed V2 Super-Scan
+        wise_teachers = wise.get_all_teachers()
+        stats = {"found": len(wise_teachers), "created": 0, "updated": 0, "errors": 0}
+        
+        for wt in wise_teachers:
+            try:
+                wt_id = str(wt.get('_id') or wt.get('id'))
+                email = wt.get('email')
+                phone = wt.get('mobile') or wt.get('phoneNumber') or ''
+                name = wt.get('name', 'Wise Teacher')
+                
+                teacher = User.objects.filter(models.Q(lms_teacher_id=wt_id) | models.Q(email=email)).first()
+                
+                if not teacher:
+                    username = f"wise_t_{wt_id}"
+                    teacher = User.objects.create_user(
+                        username=username,
+                        email=email,
+                        password='welcome123',
+                        first_name=name.split(' ')[0],
+                        last_name=' '.join(name.split(' ')[1:]) if ' ' in name else '',
+                        role='TEACHER',
+                        lms_teacher_id=wt_id,
+                        phone_number=phone
+                    )
+                    stats["created"] += 1
+                else:
+                    if not teacher.lms_teacher_id:
+                        teacher.lms_teacher_id = wt_id
+                        teacher.save()
+                    stats["updated"] += 1
+            except Exception as e:
+                stats["errors"] += 1
+                
+        return response.Response({
+            "success": True,
+            "message": f"Synced {stats['created']} new teachers and linked {stats['updated']} existing ones.",
+            "stats": stats,
+            "debug_info": {
+                "total_found": len(wise_teachers)
+            }
+        })
+
+class AutoLinkWiseDataView(views.APIView):
+    """
+    Automatically links CRM batches to Wise classes by name and assigns teachers.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if request.user.role not in ['ADMIN', 'SUPER_ADMIN']:
+            return response.Response({"error": "Permission denied"}, status=403)
+            
+        from core.models import Batch
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        wise = WiseService()
+        
+        # 1. Fetch all Wise classes (Super-Scan style)
+        all_wise_classes = []
+        for type_val in ["LIVE", "UPCOMING", "PAST"]:
+            all_wise_classes.extend(wise.get_course_list(type=type_val))
+            
+        stats = {"batches_linked": 0, "teachers_assigned": 0, "errors": 0}
+        
+        for wc in all_wise_classes:
+            try:
+                wc_name = wc.get('title') or wc.get('name')
+                wc_id = str(wc.get('_id') or wc.get('id'))
+                if not wc_name or not wc_id: continue
+                
+                # Try to find a matching batch in CRM
+                batch = Batch.objects.filter(name__iexact=wc_name).first()
+                if batch:
+                    # Link ID
+                    batch.lms_batch_id = wc_id
+                    
+                    # 2. Link Teacher (Scan instructors and co-teachers)
+                    details = wise.get_course_details(wc_id)
+                    if details:
+                        instructors = details.get('coTeachers') or []
+                        if details.get('instructor'): instructors.append(details.get('instructor'))
+                        
+                        for inst in instructors:
+                            inst_id = str(inst.get('_id') or inst.get('id'))
+                            crm_teacher = User.objects.filter(lms_teacher_id=inst_id).first()
+                            if crm_teacher:
+                                # Assign to batch
+                                batch.teacher = crm_teacher
+                                stats["teachers_assigned"] += 1
+                                break
+                    
+                    batch.save()
+                    stats["batches_linked"] += 1
+            except Exception as e:
+                print(f"Auto-link error for {wc.get('title')}: {e}")
+                stats["errors"] += 1
+                
+        return response.Response({
+            "success": True,
+            "message": f"Successfully linked {stats['batches_linked']} batches and assigned {stats['teachers_assigned']} teachers.",
+            "stats": stats
+        })

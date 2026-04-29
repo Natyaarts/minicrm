@@ -63,6 +63,29 @@ const SalesModule = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [toast, setToast] = useState(null);
     const [selectedStudentProfile, setSelectedStudentProfile] = useState(null);
+    const [wiseData, setWiseData] = useState(null);
+    const [loadingWise, setLoadingWise] = useState(false);
+
+    useEffect(() => {
+        if (selectedStudentProfile?.id) {
+            fetchLiveWiseData(selectedStudentProfile.id);
+        } else {
+            setWiseData(null);
+        }
+    }, [selectedStudentProfile]);
+
+    const fetchLiveWiseData = async (studentId) => {
+        setLoadingWise(true);
+        try {
+            const res = await api.get(`integrations/details/?student_id=${studentId}`);
+            setWiseData(res.data);
+        } catch (err) {
+            console.error("Failed to fetch Wise details", err);
+            setWiseData(null);
+        } finally {
+            setLoadingWise(false);
+        }
+    };
     const [isTrashView, setIsTrashView] = useState(false);
     const [editingStudent, setEditingStudent] = useState(null);
     const [editFormData, setEditFormData] = useState({});
@@ -1153,6 +1176,67 @@ const SalesModule = () => {
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            {/* Live Wise LMS Data */}
+                            <div className="md:col-span-2 bg-indigo-50 p-6 rounded-2xl border border-indigo-200 shadow-sm">
+                                <div className="flex justify-between items-center mb-6">
+                                    <h3 className="text-xs font-black text-indigo-600 uppercase tracking-[0.2em] flex items-center gap-2">
+                                        <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+                                        Live Wise LMS Status
+                                    </h3>
+                                    {loadingWise ? (
+                                        <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+                                    ) : (
+                                        <span className="text-[10px] font-bold text-indigo-300 uppercase tracking-widest">Real-time Connection</span>
+                                    )}
+                                </div>
+
+                                {wiseData && !wiseData.error_message ? (
+                                    <div className="space-y-6">
+                                        {/* Fees */}
+                                        <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+                                            <div className="bg-white p-3 rounded-xl border border-indigo-100 shadow-sm">
+                                                <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider mb-1">Due Balance</p>
+                                                <p className="font-black text-rose-600 text-xl">₹{wiseData.fee_details?.due_fee || 0}</p>
+                                            </div>
+                                            <div className="bg-white p-3 rounded-xl border border-indigo-100 shadow-sm">
+                                                <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider mb-1">Total Paid</p>
+                                                <p className="font-black text-emerald-600 text-xl">₹{wiseData.fee_details?.paid_fee || 0}</p>
+                                            </div>
+                                            <div className="bg-white p-3 rounded-xl border border-indigo-100 shadow-sm">
+                                                <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider mb-1">Attendance</p>
+                                                <p className="font-black text-indigo-900 text-xl">{wiseData.attendance || 0} Sessions</p>
+                                            </div>
+                                        </div>
+
+                                        {/* Enrolled Courses */}
+                                        <div>
+                                            <p className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.1em] mb-3 ml-1">Currently Enrolled Wise Batches</p>
+                                            <div className="flex flex-wrap gap-2">
+                                                {wiseData.enrolled_courses?.length > 0 ? (
+                                                    wiseData.enrolled_courses.map(course => (
+                                                        <div key={course.id} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-100 flex items-center gap-2">
+                                                            <div className="w-1.5 h-1.5 bg-indigo-300 rounded-full" />
+                                                            {course.name}
+                                                        </div>
+                                                    ))
+                                                ) : (
+                                                    <p className="text-indigo-400 text-xs italic ml-1">No active enrollments found in Wise.</p>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : !loadingWise ? (
+                                    <div className="text-center py-6 bg-white/50 rounded-xl border border-dashed border-indigo-200">
+                                        <p className="text-indigo-400 text-sm font-bold italic">No Live Wise Data for this profile yet.</p>
+                                        <p className="text-[10px] text-indigo-300 uppercase tracking-widest mt-1">Sync might be required or profile is missing LMS ID</p>
+                                    </div>
+                                ) : (
+                                    <div className="h-24 flex items-center justify-center">
+                                        <div className="w-8 h-8 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin" />
+                                    </div>
+                                )}
+                            </div>
+
                             {/* Program Info */}
                             <div className="md:col-span-2 bg-slate-50 p-6 rounded-2xl border border-slate-100">
                                 <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Enrollment Details</h3>

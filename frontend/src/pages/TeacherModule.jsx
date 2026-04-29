@@ -552,59 +552,65 @@ const TeacherModule = () => {
                                 )}
 
                                 {activeTab === 'HISTORY' && (
-                                    <div className="space-y-6 animate-fadeIn">
-                                        <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><Calendar size={18}/> Past Class Sessions</h3>
-                                        {classSessions.length === 0 ? (
-                                            <div className="text-center py-16 bg-white rounded-3xl border border-dashed border-slate-200">
-                                                <Calendar size={48} className="mx-auto text-slate-200 mb-4" />
-                                                <p className="text-slate-400 font-medium italic">No class sessions recorded yet for this batch.</p>
-                                            </div>
-                                        ) : (
-                                            <div className="space-y-4">
-                                                {[...classSessions].sort((a, b) => new Date(b.date) - new Date(a.date)).map(session => (
-                                                    <div key={session.id} className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
-                                                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
-                                                            <div className="flex items-center gap-3">
-                                                                 <div className="bg-indigo-50 text-indigo-600 p-2 rounded-xl">
-                                                                    <Calendar size={20} />
-                                                                </div>
-                                                                <div>
-                                                                    <h4 className="font-black text-slate-800">
-                                                                        {new Date(session.date).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-                                                                    </h4>
-                                                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Session Log ID: #{session.id}</p>
-                                                                </div>
-                                                            </div>
-                                                            <div className="flex items-center gap-4">
-                                                                <div className="px-3 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-xs font-black uppercase tracking-widest flex items-center gap-1.5">
-                                                                    <Users size={12}/> {session.attendances?.filter(a => a.is_present).length || 0} Present
-                                                                </div>
-                                                                <div className="px-3 py-1 bg-rose-50 text-rose-600 rounded-lg text-xs font-black uppercase tracking-widest flex items-center gap-1.5">
-                                                                    <Users size={12}/> {session.attendances?.filter(a => !a.is_present).length || 0} Absent
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                        
-                                                        <div className="bg-slate-50 rounded-xl p-4 border border-slate-100 mb-4">
-                                                            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Teacher's Summary</p>
-                                                            <p className="text-sm text-slate-700 font-medium leading-relaxed whitespace-pre-wrap">{session.teacher_summary}</p>
-                                                        </div>
-
-                                                        <div>
-                                                            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Attendance Detailed List</p>
-                                                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-                                                                {session.attendances?.map(att => (
-                                                                    <div key={att.id} className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-[11px] font-bold ${att.is_present ? 'border-emerald-100 bg-emerald-50/20 text-emerald-700' : 'border-rose-100 bg-rose-50/20 text-rose-700'}`}>
-                                                                        <div className={`w-1.5 h-1.5 rounded-full ${att.is_present ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-                                                                        <span className="truncate">{att.student_name}</span>
+                                    <div className="space-y-6 animate-fadeIn flex flex-col h-full">
+                                        <h3 className="text-lg font-black text-slate-800 flex items-center gap-2 px-2"><Calendar size={18}/> Past Class Sessions</h3>
+                                        
+                                        <div className="flex-1 overflow-y-auto pr-2 space-y-4 custom-scrollbar max-h-[600px] pb-10">
+                                            {classSessions.filter(s => !s.teacher_summary?.includes('Auto-synced')).length === 0 ? (
+                                                <div className="text-center py-16 bg-white rounded-3xl border border-dashed border-slate-200">
+                                                    <Calendar size={48} className="mx-auto text-slate-200 mb-4" />
+                                                    <p className="text-slate-400 font-medium italic">No manual class sessions recorded yet for this batch.</p>
+                                                </div>
+                                            ) : (
+                                                <div className="space-y-4">
+                                                    {[...classSessions]
+                                                        .filter(s => !s.teacher_summary?.includes('Auto-synced'))
+                                                        .sort((a, b) => new Date(b.date) - new Date(a.date))
+                                                        .map(session => (
+                                                        <div key={session.id} className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
+                                                            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
+                                                                <div className="flex items-center gap-3">
+                                                                     <div className="bg-indigo-50 text-indigo-600 p-2 rounded-xl">
+                                                                        <Calendar size={20} />
                                                                     </div>
-                                                                ))}
+                                                                    <div>
+                                                                        <h4 className="font-black text-slate-800">
+                                                                            {new Date(session.date).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                                                                        </h4>
+                                                                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Session Log ID: #{session.id}</p>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="flex items-center gap-4">
+                                                                    <div className="px-3 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-xs font-black uppercase tracking-widest flex items-center gap-1.5">
+                                                                        <Users size={12}/> {session.attendances?.filter(a => a.is_present).length || 0} Present
+                                                                    </div>
+                                                                    <div className="px-3 py-1 bg-rose-50 text-rose-600 rounded-lg text-xs font-black uppercase tracking-widest flex items-center gap-1.5">
+                                                                        <Users size={12}/> {session.attendances?.filter(a => !a.is_present).length || 0} Absent
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            
+                                                            <div className="bg-slate-50 rounded-xl p-4 border border-slate-100 mb-4">
+                                                                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Teacher's Summary</p>
+                                                                <p className="text-sm text-slate-700 font-medium leading-relaxed whitespace-pre-wrap">{session.teacher_summary}</p>
+                                                            </div>
+    
+                                                            <div>
+                                                                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Attendance Detailed List</p>
+                                                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                                                                    {session.attendances?.map(att => (
+                                                                        <div key={att.id} className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-[11px] font-bold ${att.is_present ? 'border-emerald-100 bg-emerald-50/20 text-emerald-700' : 'border-rose-100 bg-rose-50/20 text-rose-700'}`}>
+                                                                            <div className={`w-1.5 h-1.5 rounded-full ${att.is_present ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                                                                            <span className="truncate">{att.student_name}</span>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
                                                             </div>
                                                         </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 )}
 

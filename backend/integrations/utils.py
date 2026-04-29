@@ -250,26 +250,32 @@ class WiseService:
             return None
 
     def get_all_courses(self, class_type="LIVE"):
+        # Wrapper for get_course_list
+        return self.get_course_list(class_type)
+
+    def get_course_list(self, type="LIVE"):
         """
-        Fetches all courses (classes) in the institute.
-        URL: https://api.wiseapp.live/institutes/{institute_id}/classes?classType={class_type}
+        Fetches all courses (classes) in the institute using V2.
+        URL: https://api.wiseapp.live/institutes/{institute_id}/classes?classType={type}
         """
         if not self.api_key:
             return []
         try:
-            url = f"https://{self.host}/institutes/{self.institute_id}/classes?classType={class_type}&showCoTeachers=true"
-            response = requests.get(url, headers=self.get_headers(), timeout=10)
+            # Use V2 as primary for this account
+            url = f"https://{self.host}/institutes/{self.institute_id}/classes"
+            params = {"classType": type} if type else {}
+            
+            response = requests.get(url, headers=self.get_headers(), params=params, timeout=10)
             if response.status_code == 200:
                 data = response.json()
-                if data.get('status') == 200:
-                    # Depending on API structure, it might be in 'data' or 'data.classes'
-                    result = data.get('data') or {}
-                    if isinstance(result, list):
-                        return result
-                    return result.get('classes') or []
+                # V2 structure: { data: { classes: [...] } }
+                result_data = data.get('data') or {}
+                if isinstance(result_data, list):
+                    return result_data
+                return result_data.get('classes') or []
             return []
         except Exception as e:
-            print(f"Wise API Get Courses Error: {e}")
+            print(f"Wise API Course List Error (V2): {e}")
             return []
 
     def get_course_details(self, class_id):
@@ -312,3 +318,63 @@ class WiseService:
         except Exception as e:
             print(f"Wise API Get Participants Error: {e}")
             return []
+    def get_session_logs(self, class_id):
+        """
+        Fetches all live session logs for a specific class (Zoom meetings history).
+        URL: https://api.wiseapp.live/institutes/{institute_id}/sessions?classId={class_id}&paginateBy=COUNT&page_number=1&page_size=100
+        """
+        if not self.api_key or not class_id:
+            return []
+        try:
+            url = f"https://{self.host}/institutes/{self.institute_id}/sessions?classId={class_id}&paginateBy=COUNT&page_number=1&page_size=100"
+            response = requests.get(url, headers=self.get_headers(), timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('status') == 200:
+                    result_data = data.get('data') or {}
+                    return result_data.get('sessions') or []
+            return []
+        except Exception as e:
+            print(f"Wise API Session Logs Error: {e}")
+            return []
+
+    def get_all_teachers(self):
+        """
+        Fetches all teachers/instructors from Wise LMS by scanning class details (V2 coTeachers).
+        """
+        if not self.api_key:
+            return []
+            
+        try:
+            unique_teachers = {}
+            # Scan LIVE classes to find active teachers
+            classes = self.get_course_list(type="LIVE")
+            
+            # Since we have many classes, we scan them to find unique teachers
+            # To avoid too many API calls, we scan the first 50 or those with recent activity
+            for cls in classes[:50]: 
+                cls_id = cls.get('_id') or cls.get('id')
+                if not cls_id: continue
+                
+                details = self.get_course_details(cls_id)
+                if not details: continue
+                
+                # Check co-teachers (this is where the data is on this account)
+                co_teachers = details.get('coTeachers') or details.get('co_teachers') or []
+                # Also check primary instructor just in case
+                instructor = details.get('instructor')
+                
+                staff_list = co_teachers + ([instructor] if instructor else [])
+                
+                for staff in staff_list:
+                    if not staff: continue
+                    s_id = str(staff.get('_id') or staff.get('id'))
+                    if s_id and s_id not in unique_teachers:
+                        unique_teachers[s_id] = staff
+
+            if unique_teachers:
+                return list(unique_teachers.values())
+        except Exception as e:
+            print(f"V2 Detail Scan Error: {e}")
+            
+        return []

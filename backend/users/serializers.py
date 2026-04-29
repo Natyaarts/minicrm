@@ -11,7 +11,17 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ('id', 'username', 'email', 'first_name', 'last_name', 'role', 'phone_number', 'password', 'permissions')
+        fields = ('id', 'username', 'email', 'first_name', 'last_name', 'role', 'phone_number', 'password', 'permissions', 'teacher_batches_details', 'total_classes_conducted', 'lms_teacher_id')
+
+    teacher_batches_details = serializers.SerializerMethodField()
+    total_classes_conducted = serializers.SerializerMethodField()
+
+    def get_teacher_batches_details(self, obj):
+        return [{"id": b.id, "name": b.name} for b in obj.teacher_batches.all()]
+    
+    def get_total_classes_conducted(self, obj):
+        from core.models import ClassSession
+        return ClassSession.objects.filter(batch__teacher=obj).count()
 
     def get_permissions(self, obj):
         # Super Admins get all permissions implicitely, but for frontend simplicity

@@ -905,6 +905,34 @@ const AdminModule = () => {
                                 >
                                     Fetch Wise Courses
                                 </button>
+
+                                {wiseCourses.length > 0 && (
+                                    <button
+                                        onClick={async () => {
+                                            if (!window.confirm(`This will sync all ${wiseCourses.length} courses and their students. Continue?`)) return;
+                                            setIsSyncing(true);
+                                            let count = 0;
+                                            for (const course of wiseCourses) {
+                                                setSyncStatus(`Syncing (${++count}/${wiseCourses.length}): ${course.name}...`);
+                                                try {
+                                                    await api.post('integrations/sync-batch/', { 
+                                                        class_id: course.id,
+                                                        class_name: course.name 
+                                                    });
+                                                } catch (err) {
+                                                    console.error(`Failed to sync ${course.name}`, err);
+                                                }
+                                            }
+                                            setIsSyncing(false);
+                                            setSyncStatus(`Successfully processed all ${wiseCourses.length} courses!`);
+                                        }}
+                                        disabled={isSyncing}
+                                        className={`px-8 py-4 rounded-xl font-bold text-white shadow-lg transition-all 
+                                            ${isSyncing ? 'bg-slate-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700 transform hover:-translate-y-1'}`}
+                                    >
+                                        {isSyncing ? 'Syncing All...' : 'Sync All Batches'}
+                                    </button>
+                                )}
                             </div>
 
                             {syncStatus && (
@@ -924,7 +952,7 @@ const AdminModule = () => {
                                             <div key={course.id || course.itemId} className="p-4 bg-slate-50 rounded-xl border border-slate-200">
                                                 <div className="font-bold text-slate-900">{course.name || course.title}</div>
                                                 <div className="text-xs text-slate-500 mt-1 uppercase tracking-wider font-bold">
-                                                    ID: {course.id || course.itemId} | Sessions: {course.sessionsCount || 0}
+                                                    ID: {course.id || course.itemId} | Learners: {course.sessionsCount || 0}
                                                 </div>
                                                 <div className="mt-2 flex gap-2">
                                                     <span className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-bold">
@@ -935,6 +963,26 @@ const AdminModule = () => {
                                                             Fee Configured
                                                         </span>
                                                     )}
+                                                </div>
+                                                <div className="mt-4">
+                                                    <button
+                                                        onClick={async () => {
+                                                            if (!window.confirm(`Sync all students from "${course.name}" into the CRM?`)) return;
+                                                            setSyncStatus(`Syncing students for ${course.name}...`);
+                                                            try {
+                                                                const res = await api.post('integrations/sync-batch/', { 
+                                                                    class_id: course.id,
+                                                                    class_name: course.name 
+                                                                });
+                                                                setSyncStatus(res.data.message);
+                                                            } catch (err) {
+                                                                setSyncStatus("Sync Failed: " + (err.response?.data?.error || err.message));
+                                                            }
+                                                        }}
+                                                        className="w-full py-2 bg-indigo-600 text-white rounded-lg text-xs font-black uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-md active:scale-95"
+                                                    >
+                                                        Sync Students
+                                                    </button>
                                                 </div>
                                             </div>
                                         ))}

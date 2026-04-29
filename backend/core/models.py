@@ -38,6 +38,7 @@ class Batch(models.Model):
     primary_mentor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='primary_batches')
     secondary_mentors = models.ManyToManyField(settings.AUTH_USER_MODEL, blank=True, related_name='secondary_batches')
     teacher = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='teacher_batches')
+    lms_batch_id = models.CharField(max_length=100, null=True, blank=True, help_text="Wise LMS Class ID")
 
     def __str__(self):
         return self.name
@@ -120,6 +121,7 @@ class SyllabusPart(models.Model):
 
 class ClassSession(models.Model):
     batch = models.ForeignKey(Batch, on_delete=models.CASCADE, related_name='class_sessions')
+    teacher = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='conducted_sessions')
     date = models.DateField()
     teacher_summary = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)

@@ -622,7 +622,7 @@ class AnalyticsDetailView(APIView):
 
     def get(self, request):
         User = get_user_model()
-        teachers = User.objects.filter(role='MENTOR').count()
+        teachers = User.objects.filter(role__in=['TEACHER', 'MENTOR'])
         
         batches = Batch.objects.annotate(student_count=Count('students'))
         batch_stats = batches.values('id', 'name', 'course__name', 'student_count')
@@ -631,11 +631,54 @@ class AnalyticsDetailView(APIView):
         total_collected = Transaction.objects.all().aggregate(sum=Sum('amount'))['sum'] or 0
         total_due = total_potential - total_collected
 
+        from core.models import ClassSession
+        import re
+        
+        month = request.query_params.get('month')
+        year = request.query_params.get('year')
+        
+        # Annotate teachers with their session counts, batch counts, and calculated hours
+        teacher_stats = []
+        for teacher in teachers:
+            b_count = Batch.objects.filter(Q(teacher=teacher) | Q(primary_mentor=teacher)).distinct().count()
+            
+            sessions = ClassSession.objects.filter(teacher=teacher)
+            if month and year:
+                sessions = sessions.filter(date__month=month, date__year=year)
+                
+            s_count = sessions.count()
+            
+            total_milliseconds = 0
+            for session in sessions:
+                if session.teacher_summary:
+                    match = re.search(r'Duration:\s*(\d+)', session.teacher_summary)
+                    if match:
+                        total_milliseconds += int(match.group(1))
+            
+            # The Wise LMS API returned duration in milliseconds
+            total_minutes = total_milliseconds / (1000 * 60)
+            full_hours = int(total_minutes // 60)
+            rem_minutes = int(total_minutes % 60)
+            
+            if b_count > 0 or s_count > 0:
+                teacher_stats.append({
+                    'id': teacher.id,
+                    'name': f"{teacher.first_name} {teacher.last_name}".strip() or teacher.username,
+                    'courses': b_count,
+                    'sessions': s_count,
+                    'hours': round(total_minutes / 60, 2), # Keep for sorting
+                    'formatted_time': f"{full_hours}h {rem_minutes}m"
+                })
+
+        # sort by hours
+        teacher_stats = sorted(teacher_stats, key=lambda x: x['hours'], reverse=True)
+
         return Response({
-            'teachers_count': teachers,
+            'teachers_count': teachers.count(),
             'students_count': Student.objects.count(),
             'batches_count': Batch.objects.count(),
             'batch_details': batch_stats,
+            'teacher_performance': teacher_stats,
             'revenue_metrics': {
                 'potential': total_potential,
                 'collected': total_collected,
