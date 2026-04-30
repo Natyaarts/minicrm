@@ -110,6 +110,16 @@ const AnalyticsModule = () => {
         );
     }
 
+    if (!data) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[400px] text-slate-500">
+                <AlertCircle size={48} className="text-rose-500 mb-4" />
+                <h3 className="text-xl font-bold text-slate-800">No Data Available</h3>
+                <p>There was an error fetching the analytics data. Please try refreshing.</p>
+            </div>
+        );
+    }
+
     const StatCard = ({ title, value, icon: Icon, color, trend, trendValue }) => (
         <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm hover:shadow-xl transition-all group">
             <div className="flex justify-between items-start mb-4">
@@ -434,15 +444,39 @@ const AnalyticsModule = () => {
                                                                         </div>
                                                                     </div>
                                                                     {expandedBatch === `${t.id}-${c.batch_name}` && c.dates && (
-                                                                        <div className="bg-slate-50/50 p-4 border-t border-slate-100 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                                                                        <div className="bg-slate-50/50 p-4 border-t border-slate-100 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                                                             {c.dates.map((d, didx) => (
-                                                                                <div key={didx} className="flex justify-between items-center bg-white border border-slate-100 px-3 py-2 rounded-lg shadow-sm">
-                                                                                    <span className="text-xs font-bold text-slate-600">{d.date}</span>
-                                                                                    <span className="text-[10px] font-black text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-md">{d.duration}</span>
+                                                                                <div key={didx} className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 hover:shadow-md hover:border-indigo-200 transition-all">
+                                                                                    <div className="flex justify-between items-center mb-4 border-b border-slate-50 pb-3">
+                                                                                        <span className="text-sm font-black text-slate-800">{d.date}</span>
+                                                                                        <span className="text-xs font-black text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100">Time: {d.duration}</span>
+                                                                                    </div>
+                                                                                    
+                                                                                    <div className="grid grid-cols-2 gap-3">
+                                                                                        <div className="bg-emerald-50/50 p-3 rounded-xl border border-emerald-100/50 flex flex-col h-full">
+                                                                                            <div className="flex justify-between items-center mb-2">
+                                                                                                <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Present</span>
+                                                                                                <span className="text-xs font-black text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md">{d.present_count ?? 0}</span>
+                                                                                            </div>
+                                                                                            <div className="text-[11px] text-emerald-700/80 font-medium leading-relaxed max-h-24 overflow-y-auto custom-scrollbar flex-grow">
+                                                                                                {d.present_students?.length > 0 ? d.present_students.join(', ') : 'None'}
+                                                                                            </div>
+                                                                                        </div>
+                                                                                        
+                                                                                        <div className="bg-rose-50/50 p-3 rounded-xl border border-rose-100/50 flex flex-col h-full">
+                                                                                            <div className="flex justify-between items-center mb-2">
+                                                                                                <span className="text-[10px] font-black text-rose-600 uppercase tracking-widest">Absent</span>
+                                                                                                <span className="text-xs font-black text-rose-700 bg-rose-100 px-2 py-0.5 rounded-md">{d.absent_count ?? 0}</span>
+                                                                                            </div>
+                                                                                            <div className="text-[11px] text-rose-700/80 font-medium leading-relaxed max-h-24 overflow-y-auto custom-scrollbar flex-grow">
+                                                                                                {d.absent_students?.length > 0 ? d.absent_students.join(', ') : 'None'}
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    </div>
                                                                                 </div>
                                                                             ))}
                                                                             {c.dates.length === 0 && (
-                                                                                <div className="col-span-full text-xs text-slate-400 italic text-center py-2">No detailed date records available</div>
+                                                                                <div className="col-span-full text-xs text-slate-400 italic text-center py-4">No detailed date records available</div>
                                                                             )}
                                                                         </div>
                                                                     )}

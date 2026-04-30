@@ -674,10 +674,26 @@ class AnalyticsDetailView(APIView):
                         s_m = s_mins % 60
                         s_duration = f"{s_h}h {s_m}m" if s_h > 0 else f"{s_m}m"
                         
+                        attendances = session.attendances.select_related('student').all()
+                        present_students = []
+                        absent_students = []
+                        for a in attendances:
+                            name = f"{a.student.first_name} {a.student.last_name}".strip()
+                            if not name: name = a.student.username
+                            if a.is_present:
+                                present_students.append(name)
+                            else:
+                                absent_students.append(name)
+                        
                         batch_breakdown[b_id]['dates'].append({
                             'date': session.date.strftime("%d %b %Y"),
-                            'duration': s_duration
+                            'duration': s_duration,
+                            'present_count': len(present_students),
+                            'absent_count': len(absent_students),
+                            'present_students': present_students,
+                            'absent_students': absent_students
                         })
+
             
             # format batch breakdown
             classes_breakdown = []
