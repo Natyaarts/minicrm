@@ -198,118 +198,131 @@ class SyncWiseStudentsView(views.APIView):
         if not wise.api_key:
             return response.Response({"error": "Wise API not configured"}, status=503)
             
-        from core.models import Program, Student
-        from django.contrib.auth import get_user_model
-        from django.db import transaction
-        User = get_user_model()
-        
-        # Ensure a default program exists for imports
-        fallback_program, _ = Program.objects.get_or_create(name="Wise Import", defaults={"slug": "wise-import"})
-        
-        stats = {"scanned": 0, "created": 0, "linked": 0, "updated": 0, "errors": 0}
-        
-        try:
-            # OPTIMIZATION: Load existing data once to avoid 1000s of database queries
-            crm_students = {}
-            for s in Student.objects.all():
-                if s.mobile:
-                    crm_students[str(s.mobile).replace(" ", "")[-10:]] = s
-            
-            existing_usernames = set(User.objects.values_list('username', flat=True))
-            
-            # Use atomic transaction to make database writes 10x faster
-            for wise_student in wise.get_all_students():
-                stats["scanned"] += 1
-                
-                try:
-                    with transaction.atomic():
-                        # Extract Data
-                        wise_id = wise_student.get('_id') or wise_student.get('id')
-                        raw_mobile = wise_student.get('phoneNumber') or wise_student.get('mobile') or ''
-                        mobile = str(raw_mobile).replace(" ", "")
-                        
-                        if not mobile or len(mobile) < 10:
-                            continue
-                            
-                        mobile_suffix = mobile[-10:]
-                        email = wise_student.get('email') or wise_student.get('emailAddress')
-                        fname = wise_student.get('first_name')
-                        lname = wise_student.get('last_name')
-                        
-                        if not fname and not lname:
-                            full_name = wise_student.get('name', '').strip()
-                            if full_name:
-                                parts = full_name.split(' ', 1)
-                                fname = parts[0]
-                                lname = parts[1] if len(parts) > 1 else ''
+        import threading
+        from django.db import connection
 
-                        # Memory Lookup instead of DB Query
-                        student = crm_students.get(mobile_suffix)
-                        
-                        if student:
-                            # Only save if changed to save time
-                            changed = False
-                            if student.lms_student_id != wise_id:
-                                student.lms_student_id = wise_id
-                                changed = True
-                                stats["linked"] += 1
+        def run_sync():
+            try:
+                from core.models import Program, Student
+                from django.contrib.auth import get_user_model
+                from django.db import transaction
+                User = get_user_model()
+                
+                # Ensure a default program exists for imports
+                fallback_program, _ = Program.objects.get_or_create(name="Wise Import", defaults={"slug": "wise-import"})
+                
+                stats = {"scanned": 0, "created": 0, "linked": 0, "updated": 0, "errors": 0}
+                
+                # OPTIMIZATION: Load existing data once
+                crm_students = {}
+                for s in Student.objects.all():
+                    if s.mobile:
+                        crm_students[str(s.mobile).replace(" ", "")[-10:]] = s
+                
+                existing_usernames = set(User.objects.values_list('username', flat=True))
+                
+                for wise_student in wise.get_all_students():
+                    stats["scanned"] += 1
+                    
+                    try:
+                        with transaction.atomic():
+                            # Extract Data
+                            wise_id = wise_student.get('_id') or wise_student.get('id')
+                            raw_mobile = wise_student.get('phoneNumber') or wise_student.get('mobile') or ''
+                            mobile = str(raw_mobile).replace(" ", "")
                             
-                            if email and student.email != email:
-                                student.email = email
-                                changed = True
-                            
-                            if not student.first_name and fname:
-                                student.first_name = fname
-                                changed = True
-                            if not student.last_name and lname:
-                                student.last_name = lname
-                                changed = True
+                            if not mobile or len(mobile) < 10:
+                                continue
                                 
-                            if changed:
-                                student.save()
-                                stats["updated"] += 1
-                        else:
-                            # New Student creation
-                            username = f"wise_{mobile_suffix}"
-                            if username in existing_usernames:
-                                import uuid
-                                username = f"wise_{mobile_suffix}_{str(uuid.uuid4())[:4]}"
+                            mobile_suffix = mobile[-10:]
+                            email = wise_student.get('email') or wise_student.get('emailAddress')
+                            fname = wise_student.get('first_name')
+                            lname = wise_student.get('last_name')
+                            
+                            # Improved Name Parsing: Avoid using email as name
+                            if not fname and not lname:
+                                full_name = wise_student.get('name', '').strip()
+                                if full_name and "@" not in full_name:
+                                    parts = full_name.split(' ', 1)
+                                    fname = parts[0]
+                                    lname = parts[1] if len(parts) > 1 else ''
+                                else:
+                                    # If name is email or empty, leave as None to use defaults
+                                    fname = None
+                                    lname = None
+
+                            # Memory Lookup instead of DB Query
+                            student = crm_students.get(mobile_suffix)
+                            
+                            if student:
+                                changed = False
+                                if student.lms_student_id != wise_id:
+                                    student.lms_student_id = wise_id
+                                    changed = True
+                                    stats["linked"] += 1
                                 
-                            user = User.objects.create_user(
-                                username=username,
-                                email=email or f"{username}@example.com",
-                                password="Changeme@123",
-                                role='STUDENT',
-                                first_name=fname or "Wise",
-                                last_name=lname or "Student"
-                            )
-                            existing_usernames.add(username)
-                            
-                            new_student = Student.objects.create(
-                                user=user,
-                                crm_student_id=f"WISE-{mobile_suffix}",
-                                first_name=fname or "Wise",
-                                last_name=lname or "Student",
-                                mobile=mobile,
-                                email=email,
-                                lms_student_id=wise_id,
-                                program_type=fallback_program
-                            )
-                            crm_students[mobile_suffix] = new_student
-                            stats["created"] += 1
-                except Exception as e:
-                    print(f"Sync error for student: {e}")
-                    stats["errors"] += 1
-                            
-            return response.Response({
-                "success": True,
-                "message": "Sync completed successfully",
-                "stats": stats
-            })
+                                if email and student.email != email:
+                                    student.email = email
+                                    changed = True
+                                
+                                if not student.first_name and fname:
+                                    student.first_name = fname
+                                    changed = True
+                                if not student.last_name and lname:
+                                    student.last_name = lname
+                                    changed = True
+                                    
+                                if changed:
+                                    student.save()
+                                    stats["updated"] += 1
+                            else:
+                                # New Student creation
+                                username = f"wise_{mobile_suffix}"
+                                if username in existing_usernames:
+                                    import uuid
+                                    username = f"wise_{mobile_suffix}_{str(uuid.uuid4())[:4]}"
+                                    
+                                user = User.objects.create_user(
+                                    username=username,
+                                    email=email or f"{username}@example.com",
+                                    password="Changeme@123",
+                                    role='STUDENT',
+                                    first_name=fname or "Wise",
+                                    last_name=lname or "Student"
+                                )
+                                existing_usernames.add(username)
+                                
+                                new_student = Student.objects.create(
+                                    user=user,
+                                    crm_student_id=f"WISE-{mobile_suffix}",
+                                    first_name=fname or "Wise",
+                                    last_name=lname or "Student",
+                                    mobile=mobile,
+                                    email=email,
+                                    lms_student_id=wise_id,
+                                    program_type=fallback_program
+                                )
+                                crm_students[mobile_suffix] = new_student
+                                stats["created"] += 1
+                    except Exception as e:
+                        print(f"Sync error for student: {e}")
+                        stats["errors"] += 1
+                
+                print(f"Background Sync Finished: {stats}")
+            except Exception as e:
+                print(f"Background Sync Fatal Error: {e}")
+            finally:
+                connection.close()
+
+        thread = threading.Thread(target=run_sync)
+        thread.daemon = True
+        thread.start()
             
-        except Exception as e:
-            print(f"Sync Final Error: {e}")
-            return response.Response({"error": str(e)}, status=500)
+        return response.Response({
+            "success": True,
+            "message": "Full student synchronization has been started in the background. It will process all records from Wise LMS.",
+            "stats": {"scanned": "In progress..."}
+        })
 
 class WiseCourseListView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -451,13 +464,23 @@ class SyncWiseBatchView(views.APIView):
                              import uuid
                              username = f"wise_{clean_phone[-10:]}_{str(uuid.uuid4())[:4]}"
 
+                        # Improved Name Parsing
+                        p_name = p.get('name', '').strip()
+                        if not p_name or "@" in p_name:
+                            first_name = "Wise"
+                            last_name = "Student"
+                        else:
+                            name_parts = p_name.split(' ')
+                            first_name = name_parts[0]
+                            last_name = ' '.join(name_parts[1:]) if len(name_parts) > 1 else 'Student'
+
                         user, u_created = User.objects.get_or_create(
                             username=username,
                             defaults={
                                 "email": email,
                                 "role": "STUDENT",
-                                "first_name": p_name.split(' ')[0],
-                                "last_name": ' '.join(p_name.split(' ')[1:]) if ' ' in p_name else 'Student'
+                                "first_name": first_name,
+                                "last_name": last_name
                             }
                         )
                         if u_created:
