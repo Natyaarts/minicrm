@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: minicrm-backend
+    env: python
+    buildCommand: "cd backend && pip install -r requirements.txt && python manage.py migrate"
+    startCommand: "cd backend && gunicorn config.wsgi:application"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10.0
+      - key: DATABASE_URL
+        fromDatabase:
+          name: minicrm-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: "False"
+
+  - type: web
+    name: minicrm-frontend
+    env: static
+    buildCommand: "cd frontend && npm install && npm run build"
+    staticPublishPath: "./frontend/dist"
+    envVars:
+      - key: VITE_API_BASE_URL
+        fromService:
+          type: web
+          name: minicrm-backend
+          property: url
+
+databases:
+  - name: minicrm-db
+    databaseName: minicrm
+    user: minicrm_user
