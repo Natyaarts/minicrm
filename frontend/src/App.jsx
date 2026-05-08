@@ -12,7 +12,13 @@ import CoursesModule from './pages/CoursesModule';
 import AdminModule from './pages/AdminModule';
 import PublicApplicationForm from './pages/PublicApplicationForm';
 import UsersModule from './pages/UsersModule';
+import HRMSModule from './pages/HRMSModule';
+import AttendanceModule from './pages/AttendanceModule';
+import PayrollModule from './pages/PayrollModule';
+import LeaveModule from './pages/LeaveModule';
 import AnalyticsModule from './pages/AnalyticsModule';
+import TasksModule from './pages/TasksModule';
+import FinanceModule from './pages/FinanceModule';
 import Login from './pages/Login';
 
 function App() {
@@ -30,6 +36,11 @@ function App() {
           </PrivateRoute>
         }>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/hrms" element={<HRMSModule />} />
+          <Route path="/hrms/attendance" element={<AttendanceModule />} />
+          <Route path="/hrms/payroll" element={<PayrollModule />} />
+          <Route path="/hrms/leaves" element={<LeaveModule />} />
+          <Route path="/hrms/tasks" element={<TasksModule />} />
           <Route path="/sales" element={<SalesModule />} /> {/* Internal Sales View (with Sidebar) */}
           <Route path="/mentor" element={<MentorModule />} />
           <Route path="/student" element={<StudentPortal />} />
@@ -40,6 +51,7 @@ function App() {
           <Route path="/admin" element={<AdminModule />} />
           <Route path="/users" element={<UsersModule />} />
           <Route path="/analytics" element={<AnalyticsModule />} />
+          <Route path="/finance" element={<FinanceModule />} />
         </Route>
       </Routes>
     </Router>

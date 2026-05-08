@@ -4,6 +4,7 @@ import { TrendingUp, Users, GraduationCap, DollarSign, ArrowUpRight, ArrowDownRi
 import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
+import EmployeeSelfService from '../components/EmployeeSelfService';
 
 function Dashboard() {
     const { user } = useAuth();
@@ -71,6 +72,8 @@ function Dashboard() {
         { title: 'Total Students', value: stats.students.toLocaleString(), icon: Users, color: 'from-blue-500 to-blue-600', show: true },
         { title: 'Active Batches', value: stats.batches.toLocaleString(), icon: GraduationCap, color: 'from-indigo-500 to-indigo-600', show: true },
         { title: 'Total Revenue', value: `₹${stats.revenue.toLocaleString()}`, icon: DollarSign, color: 'from-emerald-500 to-emerald-600', show: canViewAnalytics },
+        { title: 'Monthly Expenses', value: `₹${(stats.expenses || 0).toLocaleString()}`, icon: TrendingUp, color: 'from-rose-500 to-rose-600', show: canViewAnalytics },
+        { title: 'Net Profit', value: `₹${(stats.revenue - (stats.expenses || 0)).toLocaleString()}`, icon: DollarSign, color: 'from-indigo-500 to-indigo-600', show: canViewAnalytics },
         { title: 'New Leads', value: (stats.leads || 0).toLocaleString(), icon: TrendingUp, color: 'from-pink-500 to-pink-600', show: canViewSales },
     ].filter(card => card.show);
 
@@ -84,6 +87,7 @@ function Dashboard() {
 
     return (
         <div className="space-y-8 animate-fadeIn">
+            {user?.role !== 'STUDENT' && <EmployeeSelfService />}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm">
                 <div>
                     <h1 className="text-3xl font-black text-slate-900 tracking-tight">System <span className="text-indigo-600">Overview</span></h1>

@@ -24,6 +24,7 @@ const UsersModule = () => {
         { label: 'Sales Management', role: 'SALES', icon: Briefcase, color: 'text-indigo-600', bg: 'bg-indigo-50' },
         { label: 'Mentors & Faculty', role: 'MENTOR', icon: GraduationCap, color: 'text-emerald-600', bg: 'bg-emerald-50' },
         { label: 'Teacher Staff', role: 'TEACHER', icon: BookOpen, color: 'text-teal-600', bg: 'bg-teal-50' },
+        { label: 'General Staff', role: 'EMPLOYEE', icon: Users, color: 'text-amber-600', bg: 'bg-amber-50' },
         { label: 'Student Accounts', role: 'STUDENT', icon: UserCircle, color: 'text-blue-600', bg: 'bg-blue-50' },
     ];
 
@@ -210,7 +211,8 @@ const UsersModule = () => {
                                                 user.role === 'MENTOR' ? 'bg-emerald-50 border border-emerald-100 text-emerald-600' :
                                                     user.role === 'TEACHER' ? 'bg-teal-50 border border-teal-100 text-teal-600' :
                                                         user.role === 'ACADEMIC_COORDINATOR' ? 'bg-amber-50 border border-amber-100 text-amber-600' :
-                                                            'bg-blue-50 border border-blue-100 text-blue-600'
+                                                            user.role === 'EMPLOYEE' ? 'bg-orange-50 border border-orange-100 text-orange-600' :
+                                                                'bg-blue-50 border border-blue-100 text-blue-600'
                                             }`}>
                                             {user.role.replace('_', ' ')}
                                         </span>
@@ -373,15 +375,28 @@ const UsersModule = () => {
                                                                 <option value="ACADEMIC">Academic Manager</option>
                                                                 <option value="ACADEMIC_COORDINATOR">Academic Coordinator</option>
                                                                 <option value="TEACHER">Staff Teacher</option>
+                                                                <option value="EMPLOYEE">General Employee</option>
                                                             </>
                                                         ) : activeTab === 'SALES' ? (
-                                                            <option value="SALES">Sales Associate</option>
+                                                            <>
+                                                                <option value="SALES">Sales Associate</option>
+                                                                <option value="EMPLOYEE">General Employee</option>
+                                                            </>
                                                         ) : activeTab === 'MENTOR' ? (
-                                                            <option value="MENTOR">Faculty / Mentor</option>
+                                                            <>
+                                                                <option value="MENTOR">Faculty / Mentor</option>
+                                                                <option value="EMPLOYEE">General Employee</option>
+                                                            </>
                                                         ) : activeTab === 'TEACHER' ? (
-                                                            <option value="TEACHER">Staff Teacher</option>
+                                                            <>
+                                                                <option value="TEACHER">Staff Teacher</option>
+                                                                <option value="EMPLOYEE">General Employee</option>
+                                                            </>
                                                         ) : (
-                                                            <option value="STUDENT">Student Scholar</option>
+                                                            <>
+                                                                <option value="STUDENT">Student Scholar</option>
+                                                                <option value="EMPLOYEE">General Employee</option>
+                                                            </>
                                                         )}
                                                     </select>
                                                     <ChevronDown className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />

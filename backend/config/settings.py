@@ -59,6 +59,10 @@ INSTALLED_APPS = [
     'forms_builder',
     'integrations',
     'notifications',
+    'hrms',
+    'payroll',
+    'leaves',
+    'finance',
 ]
 
 MIDDLEWARE = [

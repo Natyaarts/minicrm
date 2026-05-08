@@ -25,6 +25,10 @@ urlpatterns = [
     path('api/forms/', include('forms_builder.urls')),
     path('api/integrations/', include('integrations.urls')),
     path('api/notifications/', include('notifications.urls')),
+    path('api/hrms/', include('hrms.urls')),
+    path('api/payroll/', include('payroll.urls')),
+    path('api/leaves/', include('leaves.urls')),
+    path('api/finance/', include('finance.urls')),
     path('api/', include('core.urls')),
 ]
 

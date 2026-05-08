@@ -606,13 +606,24 @@ class DashboardStatsView(APIView):
             # Students are redirected, but for safety: 
             return Response({'error': 'Unauthorized'}, status=status.HTTP_403_FORBIDDEN)
 
+        # Finance Integration
+        from finance.models import Expense
+        from datetime import datetime
+        today = datetime.now()
+        first_day = today.replace(day=1)
+        
+        monthly_expenses = Expense.objects.filter(date__gte=first_day).aggregate(total=Sum('amount'))['total'] or 0
+        total_expenses = Expense.objects.aggregate(total=Sum('amount'))['total'] or 0
+
         stats = {
             "students": student_qs.count(),
             "batches": batch_qs.count(),
             "revenue": trans_qs.aggregate(total=Sum('amount'))['total'] or 0,
             "leads": Student.objects.filter(is_active=True, batch__isnull=True).count(),
             "distribution": list(student_qs.values(name=F('program_type__name')).annotate(value=Count('id'))),
-            "revenue_distribution": list(trans_qs.values(name=F('student__program_type__name')).annotate(value=Sum('amount')))
+            "revenue_distribution": list(trans_qs.values(name=F('student__program_type__name')).annotate(value=Sum('amount'))),
+            "expenses": float(monthly_expenses),
+            "total_expenses": float(total_expenses),
         }
         return Response(stats)
 

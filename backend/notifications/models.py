@@ -10,6 +10,8 @@ class Notification(models.Model):
         ('APPLICATION', 'New Application'),
         ('PAYMENT', 'Payment Received'),
         ('BATCH', 'Batch Update'),
+        ('TASK', 'New Task'),
+        ('LEAVE', 'Leave Update'),
     )
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='notifications')

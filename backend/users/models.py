@@ -11,6 +11,7 @@ class User(AbstractUser):
         ('ACADEMIC_COORDINATOR', 'Academic Coordinator'),
         ('TEACHER', 'Teacher'),
         ('STUDENT', 'Student'),
+        ('EMPLOYEE', 'General Employee'),
     )
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='STUDENT')
     phone_number = models.CharField(max_length=15, blank=True, null=True)
@@ -24,13 +25,19 @@ class User(AbstractUser):
 
 class RolePermission(models.Model):
     MODULE_CHOICES = (
-        ('SALES', 'Sales Module'),
+        ('SALES', 'Sales & Leads'),
         ('MENTOR', 'Mentor Module'),
         ('STUDENT', 'Student Portal'),
-        ('ACADEMIC', 'Academic Module'),
-        ('ADMIN', 'Admin Module'),
-        ('ANALYTICS', 'Analytics & Reports'),
+        ('ACADEMIC_HIERARCHY', 'Academic Hierarchy'),
+        ('COORDINATOR', 'Coordinator Module'),
         ('TEACHER', 'Teacher Module'),
+        ('COURSES', 'Courses & Batches'),
+        ('ANALYTICS', 'Analytics & Reports'),
+        ('WORKFORCE', 'HRMS: Workforce Hub'),
+        ('ATTENDANCE', 'HRMS: Attendance'),
+        ('PAYROLL', 'HRMS: Payroll'),
+        ('STAFF_DIRECTORY', 'Staff Directory'),
+        ('ADMIN', 'Administrator Portal'),
     )
     role = models.CharField(max_length=20, choices=User.ROLE_CHOICES)
     module = models.CharField(max_length=20, choices=MODULE_CHOICES)

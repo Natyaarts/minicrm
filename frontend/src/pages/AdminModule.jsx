@@ -44,13 +44,19 @@ const AdminModule = () => {
     const [selectedRoleForPerms, setSelectedRoleForPerms] = useState('SALES');
     const [rolePermissions, setRolePermissions] = useState([]);
     const modules = [
-        { id: 'SALES', name: 'Sales Module' },
+        { id: 'SALES', name: 'Sales & Leads' },
         { id: 'MENTOR', name: 'Mentor Module' },
         { id: 'STUDENT', name: 'Student Portal' },
-        { id: 'ACADEMIC', name: 'Academic Module' },
-        { id: 'ANALYTICS', name: 'Analytics & Reports' },
+        { id: 'ACADEMIC_HIERARCHY', name: 'Academic Hierarchy' },
+        { id: 'COORDINATOR', name: 'Coordinator Module' },
         { id: 'TEACHER', name: 'Teacher Module' },
-        { id: 'ADMIN', name: 'Admin Module' },
+        { id: 'COURSES', name: 'Courses & Batches' },
+        { id: 'ANALYTICS', name: 'Analytics & Reports' },
+        { id: 'WORKFORCE', name: 'HRMS: Workforce Hub' },
+        { id: 'ATTENDANCE', name: 'HRMS: Attendance' },
+        { id: 'PAYROLL', name: 'HRMS: Payroll' },
+        { id: 'STAFF_DIRECTORY', name: 'Staff Directory' },
+        { id: 'ADMIN', name: 'Administrator Portal' },
     ];
 
     // Razorpay Integration State
@@ -270,15 +276,16 @@ const AdminModule = () => {
                     module: moduleCode,
                     [key]: !currentVal
                 });
-                setRolePermissions([...rolePermissions, res.data]);
+                setRolePermissions(prev => [...prev, res.data]);
             } else {
                 const res = await api.patch(`auth/management/permissions/${permObj.id}/`, {
                     [key]: !currentVal
                 });
-                setRolePermissions(rolePermissions.map(p => p.id === permObj.id ? res.data : p));
+                setRolePermissions(prev => prev.map(p => p.id === permObj.id ? res.data : p));
             }
         } catch (err) {
             console.error(err);
+            alert("Failed to save permission. Check console for details.");
         }
     };
 
@@ -778,7 +785,7 @@ const AdminModule = () => {
                     <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm">
                         <label className="block text-sm mb-4 text-slate-500 font-bold uppercase tracking-wider">Configure Permissions for Role:</label>
                         <div className="flex gap-3 flex-wrap">
-                            {['ADMIN', 'SALES', 'MENTOR', 'ACADEMIC', 'ACADEMIC_COORDINATOR', 'TEACHER', 'STUDENT'].map(role => (
+                            {['ADMIN', 'SALES', 'MENTOR', 'ACADEMIC', 'ACADEMIC_COORDINATOR', 'TEACHER', 'STUDENT', 'EMPLOYEE'].map(role => (
                                 <button
                                     key={role}
                                     onClick={() => setSelectedRoleForPerms(role)}

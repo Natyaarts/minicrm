@@ -551,7 +551,7 @@ const MentorModule = () => {
                     ) : null}
                 </div>
 
-                {!selectedBatch && viewTab === 'batches' && (
+                {!selectedBatch && viewTab === 'batches' && (authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.MENTOR?.add) && (
                     <button
                         onClick={() => {
                             setNewBatch({ name: '', course: '', start_date: '', end_date: '', secondary_mentors: [] });
@@ -853,18 +853,22 @@ const MentorModule = () => {
                                     <h2 className="text-3xl font-bold text-slate-900 mb-2">{selectedBatch.name}</h2>
                                     <p className="text-slate-500 text-lg">{selectedBatch.course_name}</p>
                                 </div>
-                                <button
-                                    onClick={openAddStudentModal}
-                                    className="px-5 py-2.5 bg-green-50 text-green-700 hover:bg-green-100 border border-green-200 rounded-xl text-sm font-semibold transition-colors flex items-center gap-2"
-                                >
-                                    <span className="text-lg">+</span> Add Student
-                                </button>
-                                <button
-                                    onClick={handleEditBatch}
-                                    className="px-5 py-2.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-xl text-sm font-semibold transition-colors flex items-center gap-2"
-                                >
-                                    <Edit size={16} /> Edit Batch
-                                </button>
+                                {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.MENTOR?.add) && (
+                                    <button
+                                        onClick={openAddStudentModal}
+                                        className="px-5 py-2.5 bg-green-50 text-green-700 hover:bg-green-100 border border-green-200 rounded-xl text-sm font-semibold transition-colors flex items-center gap-2"
+                                    >
+                                        <span className="text-lg">+</span> Add Student
+                                    </button>
+                                )}
+                                {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.MENTOR?.edit) && (
+                                    <button
+                                        onClick={handleEditBatch}
+                                        className="px-5 py-2.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-xl text-sm font-semibold transition-colors flex items-center gap-2"
+                                    >
+                                        <Edit size={16} /> Edit Batch
+                                    </button>
+                                )}
                             </div>
                             <div className="flex gap-8 pt-6 border-t border-slate-100">
                                 <div>
@@ -880,12 +884,14 @@ const MentorModule = () => {
                                     <span className={`text-sm font-bold ${selectedBatch.teacher_details ? 'text-indigo-600' : 'text-slate-400 italic'}`}>
                                         {selectedBatch.teacher_details ? `${selectedBatch.teacher_details.first_name || ''} ${selectedBatch.teacher_details.last_name || ''} (@${selectedBatch.teacher_details.username})` : 'Not Assigned'}
                                     </span>
-                                    <button 
-                                        onClick={() => setIsAssignTeacherModalOpen(true)}
-                                        className="ml-3 text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-widest border-b border-indigo-200"
-                                    >
-                                        Edit
-                                    </button>
+                                    {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.MENTOR?.edit) && (
+                                        <button 
+                                            onClick={() => setIsAssignTeacherModalOpen(true)}
+                                            className="ml-3 text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-widest border-b border-indigo-200"
+                                        >
+                                            Edit
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -910,12 +916,14 @@ const MentorModule = () => {
                                             <td className="p-5 text-slate-500">{student.email}</td>
                                             <td className="p-5 text-slate-500">{student.mobile}</td>
                                             <td className="p-5 text-right flex items-center justify-end gap-3">
-                                                <button
-                                                    onClick={() => handleWiseLinkClick(student)}
-                                                    className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${student.lms_student_id ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-slate-100 text-slate-600'}`}
-                                                >
-                                                    {student.lms_student_id ? 'Linked' : 'Link Wise'}
-                                                </button>
+                                                {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.MENTOR?.edit) && (
+                                                    <button
+                                                        onClick={() => handleWiseLinkClick(student)}
+                                                        className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${student.lms_student_id ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-slate-100 text-slate-600'}`}
+                                                    >
+                                                        {student.lms_student_id ? 'Linked' : 'Link Wise'}
+                                                    </button>
+                                                )}
                                                 <button
                                                     onClick={() => setSelectedStudentProfile(student)}
                                                     className="px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl text-xs font-bold hover:bg-indigo-100 transition-all flex items-center gap-2"
@@ -923,23 +931,27 @@ const MentorModule = () => {
                                                     <FileText size={14} />
                                                     Profile
                                                 </button>
-                                                <button
-                                                    onClick={() => {
-                                                        setCredentialStudent(student);
-                                                        setCredentialForm({ username: student.username || '', password: '' });
-                                                        setIsCredentialsModalOpen(true);
-                                                    }}
-                                                    className="px-4 py-2 bg-amber-50 text-amber-600 rounded-xl text-xs font-bold hover:bg-amber-100 transition-all flex items-center gap-2"
-                                                >
-                                                    <Key size={14} />
-                                                    Set Login
-                                                </button>
-                                                <button
-                                                    onClick={(e) => { e.stopPropagation(); removeStudentFromBatch(student.id); }}
-                                                    className="text-red-500 hover:text-red-700 text-sm font-medium px-4 py-2 rounded-xl hover:bg-red-50 transition-colors"
-                                                >
-                                                    Remove
-                                                </button>
+                                                {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.MENTOR?.edit) && (
+                                                    <button
+                                                        onClick={() => {
+                                                            setCredentialStudent(student);
+                                                            setCredentialForm({ username: student.username || '', password: '' });
+                                                            setIsCredentialsModalOpen(true);
+                                                        }}
+                                                        className="px-4 py-2 bg-amber-50 text-amber-600 rounded-xl text-xs font-bold hover:bg-amber-100 transition-all flex items-center gap-2"
+                                                    >
+                                                        <Key size={14} />
+                                                        Set Login
+                                                    </button>
+                                                )}
+                                                {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.MENTOR?.delete) && (
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); removeStudentFromBatch(student.id); }}
+                                                        className="text-red-500 hover:text-red-700 text-sm font-medium px-4 py-2 rounded-xl hover:bg-red-50 transition-colors"
+                                                    >
+                                                        Remove
+                                                    </button>
+                                                )}
                                             </td>
                                         </tr>
                                     ))}

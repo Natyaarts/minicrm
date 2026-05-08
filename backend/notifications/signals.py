@@ -2,6 +2,8 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.contrib.auth import get_user_model
 from core.models import Student, Transaction, Document, Batch
+from hrms.models import Task
+from leaves.models import LeaveRequest
 from .models import Notification
 
 User = get_user_model()
@@ -45,3 +47,36 @@ def batch_update_notification(sender, instance, created, **kwargs):
             notification_type='BATCH',
             target_url=f"/academic"
         )
+
+@receiver(post_save, sender=Task)
+def task_notification(sender, instance, created, **kwargs):
+    if created:
+        Notification.objects.create(
+            user=instance.assignee.user,
+            title="New Task Assigned",
+            message=f"You have been assigned a new task: {instance.title}",
+            notification_type='TASK',
+            target_url="/hrms/tasks"
+        )
+
+@receiver(post_save, sender=LeaveRequest)
+def leave_notification(sender, instance, created, **kwargs):
+    if not created: # On update (approval/rejection)
+        Notification.objects.create(
+            user=instance.employee.user,
+            title=f"Leave Request {instance.status}",
+            message=f"Your leave request for {instance.start_date} has been {instance.status.lower()}.",
+            notification_type='LEAVE',
+            target_url="/hrms/leaves"
+        )
+    elif created:
+        # Notify Admins about new leave request
+        admins = User.objects.filter(role__in=['ADMIN', 'SUPER_ADMIN'])
+        for admin in admins:
+            Notification.objects.create(
+                user=admin,
+                title="New Leave Request",
+                message=f"{instance.employee.user.get_full_name()} has requested leave.",
+                notification_type='LEAVE',
+                target_url="/hrms/leaves"
+            )

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useLocation } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Copy, Check, Search, FileText, User, Trash2, Edit2, RotateCcw, Trash, X } from 'lucide-react';
@@ -7,6 +8,7 @@ import { copyToClipboard } from '../utils/clipboard';
 import { compressImage } from '../utils/fileCompressor';
 
 const SalesModule = () => {
+    const { user: authUser } = useAuth();
     // URL Params
     const [searchParams, setSearchParams] = useSearchParams();
     const location = useLocation();
@@ -675,12 +677,14 @@ const SalesModule = () => {
                             >
                                 Single Application
                             </button>
-                            <button
-                                onClick={() => setActiveTab('bulk')}
-                                className={`px-4 sm:px-6 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'bulk' ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                            >
-                                Bulk Upload
-                            </button>
+                            {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.SALES?.add) && (
+                                <button
+                                    onClick={() => setActiveTab('bulk')}
+                                    className={`px-4 sm:px-6 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'bulk' ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                >
+                                    Bulk Upload
+                                </button>
+                            )}
                             <button
                                 onClick={() => setActiveTab('list')}
                                 className={`px-4 sm:px-6 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'list' ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
@@ -892,37 +896,45 @@ const SalesModule = () => {
 
                                                             {!isTrashView ? (
                                                                 <>
-                                                                    <button
-                                                                        onClick={() => handleEditClick(student)}
-                                                                        className="p-2 bg-amber-50 text-amber-600 rounded-lg hover:bg-amber-100 transition-all"
-                                                                        title="Edit"
-                                                                    >
-                                                                        <Edit2 size={16} />
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={() => handleDelete(student.id)}
-                                                                        className="p-2 bg-rose-50 text-rose-600 rounded-lg hover:bg-rose-100 transition-all"
-                                                                        title="Move to Trash"
-                                                                    >
-                                                                        <Trash2 size={16} />
-                                                                    </button>
+                                                                    {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.SALES?.edit) && (
+                                                                        <button
+                                                                            onClick={() => handleEditClick(student)}
+                                                                            className="p-2 bg-amber-50 text-amber-600 rounded-lg hover:bg-amber-100 transition-all"
+                                                                            title="Edit"
+                                                                        >
+                                                                            <Edit2 size={16} />
+                                                                        </button>
+                                                                    )}
+                                                                    {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.SALES?.delete) && (
+                                                                        <button
+                                                                            onClick={() => handleDelete(student.id)}
+                                                                            className="p-2 bg-rose-50 text-rose-600 rounded-lg hover:bg-rose-100 transition-all"
+                                                                            title="Move to Trash"
+                                                                        >
+                                                                            <Trash2 size={16} />
+                                                                        </button>
+                                                                    )}
                                                                 </>
                                                             ) : (
                                                                 <>
-                                                                    <button
-                                                                        onClick={() => handleRestore(student.id)}
-                                                                        className="p-2 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-all"
-                                                                        title="Restore"
-                                                                    >
-                                                                        <RotateCcw size={16} />
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={() => handlePermanentDelete(student.id)}
-                                                                        className="p-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all"
-                                                                        title="Delete Permanently"
-                                                                    >
-                                                                        <Trash size={16} />
-                                                                    </button>
+                                                                    {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.SALES?.edit) && (
+                                                                        <button
+                                                                            onClick={() => handleRestore(student.id)}
+                                                                            className="p-2 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-all"
+                                                                            title="Restore"
+                                                                        >
+                                                                            <RotateCcw size={16} />
+                                                                        </button>
+                                                                    )}
+                                                                    {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.SALES?.delete) && (
+                                                                        <button
+                                                                            onClick={() => handlePermanentDelete(student.id)}
+                                                                            className="p-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all"
+                                                                            title="Delete Permanently"
+                                                                        >
+                                                                            <Trash size={16} />
+                                                                        </button>
+                                                                    )}
                                                                 </>
                                                             )}
                                                         </div>

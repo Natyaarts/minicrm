@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api/axios';
-import { Bell, X, Check, CheckCheck, Info, AlertTriangle, AlertCircle, Sparkles } from 'lucide-react';
+import { Bell, X, Check, CheckCheck, Info, AlertTriangle, AlertCircle, Sparkles, CheckSquare, Calendar } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const NotificationCenter = () => {
     const [notifications, setNotifications] = useState([]);
     const [unreadCount, setUnreadCount] = useState(0);
     const [isOpen, setIsOpen] = useState(false);
+    const navigate = useNavigate();
 
     useEffect(() => {
         fetchNotifications();
@@ -51,6 +53,8 @@ const NotificationCenter = () => {
             case 'WARNING': return 'bg-amber-50 text-amber-600 border-amber-100';
             case 'ERROR': return 'bg-rose-50 text-rose-600 border-rose-100';
             case 'APPLICATION': return 'bg-indigo-50 text-indigo-600 border-indigo-100';
+            case 'TASK': return 'bg-blue-50 text-blue-600 border-blue-100';
+            case 'LEAVE': return 'bg-orange-50 text-orange-600 border-orange-100';
             default: return 'bg-slate-50 text-slate-600 border-slate-100';
         }
     };
@@ -61,6 +65,8 @@ const NotificationCenter = () => {
             case 'WARNING': return <AlertTriangle size={14} />;
             case 'ERROR': return <AlertCircle size={14} />;
             case 'APPLICATION': return <Sparkles size={14} />;
+            case 'TASK': return <CheckSquare size={14} />;
+            case 'LEAVE': return <Calendar size={14} />;
             default: return <Info size={14} />;
         }
     };
@@ -115,7 +121,13 @@ const NotificationCenter = () => {
                                     notifications.map(n => (
                                         <div
                                             key={n.id}
-                                            onClick={() => !n.is_read && markAsRead(n.id)}
+                                            onClick={() => {
+                                                if (!n.is_read) markAsRead(n.id);
+                                                if (n.target_url) {
+                                                    navigate(n.target_url);
+                                                    setIsOpen(false);
+                                                }
+                                            }}
                                             className={`p-4 rounded-2xl border transition-all cursor-pointer ${n.is_read
                                                     ? 'bg-white border-slate-50 opacity-60'
                                                     : 'bg-white border-indigo-50 shadow-sm hover:translate-x-1 ring-1 ring-indigo-500/5'
