@@ -10,4 +10,4 @@ requests
 pandas
 openpyxl
 watchdog
-xhtml2pdf
+fpdf2
