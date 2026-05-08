@@ -265,11 +265,16 @@ class SyncWiseStudentsView(views.APIView):
                                     student.email = email
                                     changed = True
                                 
-                                if not student.first_name and fname:
-                                    student.first_name = fname
+                                # FORCE Update names if they are currently blank or email-like
+                                current_fname = (student.first_name or '').strip()
+                                current_lname = (student.last_name or '').strip()
+                                
+                                # If current name is empty or contains @, try to update it
+                                if not current_fname or "@" in current_fname:
+                                    student.first_name = fname or "Wise"
                                     changed = True
-                                if not student.last_name and lname:
-                                    student.last_name = lname
+                                if not current_lname or "@" in current_lname:
+                                    student.last_name = lname or "Student"
                                     changed = True
                                     
                                 if changed:
@@ -501,7 +506,15 @@ class SyncWiseBatchView(views.APIView):
                         )
                         stats["new"] += 1
                     else:
-                        # Update existing student with Wise details if empty
+                        # Update existing student with Wise details if empty or email
+                        current_fname = (student.first_name or '').strip()
+                        if not current_fname or "@" in current_fname:
+                            student.first_name = first_name
+                        
+                        current_lname = (student.last_name or '').strip()
+                        if not current_lname or "@" in current_lname:
+                            student.last_name = last_name
+
                         if not student.lms_student_id:
                             student.lms_student_id = str(p_id)
                         if not student.course:
