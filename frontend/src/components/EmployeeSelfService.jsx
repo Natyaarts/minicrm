@@ -94,8 +94,9 @@ const EmployeeSelfService = () => {
     const isClockedOut = attendance && attendance.clock_out;
 
     return (
-        <div className="bg-gradient-to-r from-slate-900 to-indigo-900 rounded-[2.5rem] p-8 text-white shadow-2xl mb-8 relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/20 rounded-full blur-3xl"></div>
+        <div className="max-h-[85vh] overflow-y-auto scrollbar-hide px-2">
+            <div className="bg-gradient-to-r from-slate-900 to-indigo-900 rounded-[2.5rem] p-6 md:p-8 text-white shadow-2xl mb-8 relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/20 rounded-full blur-3xl"></div>
             
             <div className="relative z-10 grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {/* Clock Section */}
@@ -183,6 +184,7 @@ const EmployeeSelfService = () => {
                         {payslips.length === 0 && <p className="text-sm text-slate-400 italic bg-white/5 p-4 rounded-xl">No payslips generated yet.</p>}
                     </div>
                 </div>
+            </div>
             </div>
         </div>
     );
