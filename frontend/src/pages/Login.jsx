@@ -54,21 +54,25 @@ function Login() {
             {/* Right Side - Login Form Section */}
             <div className="w-full lg:w-1/2 flex items-center justify-center p-8 md:p-20 bg-white">
                 <div className="w-full max-w-md space-y-10">
-                    {/* Mobile Logo Container (Enlarged & Refined) */}
+                    {/* Mobile Logo Container (Maximum Visibility) */}
                     <div className="lg:hidden flex flex-col items-center mb-10">
                         <motion.div 
-                            initial={{ scale: 0.8, opacity: 0 }}
-                            animate={{ scale: 1, opacity: 1 }}
-                            transition={{ type: "spring", stiffness: 100 }}
-                            className="w-40 h-40 bg-gradient-to-br from-[#FFD700] to-[#FFB300] rounded-[3rem] shadow-2xl shadow-amber-200/50 flex items-center justify-center p-6 mb-8 relative overflow-hidden"
+                            initial={{ y: -20, opacity: 0 }}
+                            animate={{ y: 0, opacity: 1 }}
+                            className="w-full h-44 bg-gradient-to-br from-[#FFD700] via-[#FFC107] to-[#FFB300] rounded-[2.5rem] shadow-2xl shadow-amber-200/60 flex items-center justify-center relative overflow-hidden"
                         >
-                            {/* Inner glow effect */}
-                            <div className="absolute inset-0 bg-white/20 rounded-full blur-2xl transform -translate-x-1/2 -translate-y-1/2" />
-                            <img src="/logo.png" alt="Logo" className="w-full h-auto max-h-full object-contain relative z-10" />
+                            {/* Decorative background circle */}
+                            <div className="absolute -top-10 -right-10 w-32 h-32 bg-white/20 rounded-full blur-2xl" />
+                            
+                            <img 
+                                src="/logo.png" 
+                                alt="Logo" 
+                                className="w-[85%] h-auto max-h-[85%] object-contain relative z-10 drop-shadow-md" 
+                            />
                         </motion.div>
-                        <h2 className="text-4xl font-black text-slate-900 tracking-tight">Welcome Back</h2>
-                        <div className="h-1 w-12 bg-rose-600 rounded-full mt-3 mb-1" />
-                        <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">Premium ERP System</p>
+                        <h2 className="text-4xl font-black text-slate-900 tracking-tight mt-8">Welcome Back</h2>
+                        <div className="h-1.5 w-16 bg-rose-600 rounded-full mt-4 mb-2" />
+                        <p className="text-slate-400 font-black text-[10px] uppercase tracking-[0.4em]">Premium ERP Portal</p>
                     </div>
 
                     <div className="hidden lg:block">
