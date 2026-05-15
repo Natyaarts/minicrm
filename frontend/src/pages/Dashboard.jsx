@@ -86,28 +86,28 @@ function Dashboard() {
     }
 
     return (
-        <div className="space-y-8 animate-fadeIn">
+        <div className="space-y-6 md:space-y-8 animate-fadeIn px-2 md:px-0">
             {user?.role !== 'STUDENT' && <EmployeeSelfService />}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm">
-                <div>
-                    <h1 className="text-3xl font-black text-slate-900 tracking-tight">System <span className="text-indigo-600">Overview</span></h1>
-                    <p className="text-slate-500 mt-1 font-medium italic">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 bg-white p-6 md:p-8 rounded-[2rem] border border-slate-100 shadow-sm">
+                <div className="w-full">
+                    <h1 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">System <span className="text-indigo-600">Overview</span></h1>
+                    <p className="text-slate-500 mt-1 text-sm md:text-base font-medium italic">
                         {user?.first_name ? `Welcome back, ${user.first_name}!` : "Performance metrics and active records."}
                     </p>
                 </div>
-                <div className="flex flex-wrap gap-3 w-full md:w-auto">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full md:w-auto">
                     {canViewSales && (
                         <button
                             onClick={handleExport}
-                            className="flex-1 md:flex-none px-4 py-2 bg-white border border-slate-200 rounded-xl text-slate-600 text-sm font-semibold shadow-sm hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
+                            className="px-4 py-3 md:py-2 bg-white border border-slate-200 rounded-2xl text-slate-600 text-xs md:text-sm font-black shadow-sm hover:bg-slate-50 transition-colors flex items-center justify-center gap-2 uppercase tracking-widest"
                         >
-                            <Download size={16} /> Export Report
+                            <Download size={14} /> Export
                         </button>
                     )}
                     {canViewSales && (
                         <button
                             onClick={() => navigate('/sales')}
-                            className="flex-1 md:flex-none px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold shadow-lg shadow-indigo-200 transition-all"
+                            className="px-4 py-3 md:py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs md:text-sm font-black shadow-lg shadow-indigo-200 transition-all uppercase tracking-widest"
                         >
                             + New Admission
                         </button>

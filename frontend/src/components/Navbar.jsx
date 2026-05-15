@@ -47,13 +47,13 @@ function Navbar({ onMenuClick }) {
     return (
         <header className="h-20 md:h-20 pt-6 md:pt-0 bg-white/90 backdrop-blur-xl border-b border-slate-100 flex items-center justify-between px-4 md:px-8 z-10 sticky top-0 transition-all">
             <div className="flex items-center gap-2 md:gap-4 flex-1">
-                {/* Mobile Menu Toggle (Enlarged for touch) */}
+                {/* Mobile Menu Toggle (Premium FAB Style) */}
                 <button
-                    className="md:hidden p-4 -ml-2 text-slate-700 hover:bg-amber-100 rounded-2xl transition-all active:scale-95 flex items-center justify-center"
+                    className="md:hidden w-12 h-12 -ml-2 bg-slate-900 text-white rounded-full shadow-lg shadow-slate-900/20 flex items-center justify-center transition-all active:scale-90 hover:bg-indigo-600"
                     onClick={onMenuClick}
                     title="Open Menu"
                 >
-                    <Menu size={32} strokeWidth={3} />
+                    <Menu size={24} strokeWidth={2.5} />
                 </button>
 
                 <div className="relative w-full max-w-lg group hidden sm:block">
