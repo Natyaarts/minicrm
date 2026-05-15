@@ -52,67 +52,73 @@ function Login() {
             </div>
 
             {/* Right Side - Login Form Section */}
-            <div className="w-full lg:w-1/2 flex items-center justify-center p-6 md:p-12 bg-slate-50 lg:bg-white">
-                <div className="w-full max-w-md space-y-8">
-                    {/* Mobile Logo (Hidden on desktop) */}
-                    <div className="lg:hidden text-center mb-8">
-                        <div className="inline-block p-4 bg-amber-400 rounded-3xl shadow-lg mb-4">
-                            <img src="/logo.png" alt="Logo" className="h-16 w-auto object-contain" />
-                        </div>
+            <div className="w-full lg:w-1/2 flex items-center justify-center p-8 md:p-20 bg-white">
+                <div className="w-full max-w-md space-y-10">
+                    {/* Mobile Logo Container (Redesigned) */}
+                    <div className="lg:hidden flex flex-col items-center mb-12">
+                        <motion.div 
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            className="w-24 h-24 bg-gradient-to-br from-amber-400 to-yellow-500 rounded-[2rem] shadow-xl shadow-amber-100 flex items-center justify-center p-4 mb-6"
+                        >
+                            <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" />
+                        </motion.div>
+                        <h2 className="text-3xl font-black text-slate-900 tracking-tight">Welcome Back</h2>
+                        <p className="text-slate-400 font-bold text-sm mt-1">Natya Arts Academy ERP</p>
                     </div>
 
-                    <div className="text-left">
-                        <h2 className="text-4xl font-black text-slate-900 tracking-tight mb-2">Welcome Back</h2>
-                        <p className="text-slate-500 font-bold">Sign in to access your dashboard</p>
+                    <div className="hidden lg:block">
+                        <h2 className="text-5xl font-black text-slate-900 tracking-tight mb-3">Welcome Back</h2>
+                        <p className="text-slate-500 font-bold text-lg">Sign in to access your dashboard</p>
                     </div>
 
                     {error && (
                         <motion.div 
                             initial={{ opacity: 0, x: -20 }}
                             animate={{ opacity: 1, x: 0 }}
-                            className="p-4 bg-rose-50 border border-rose-100 rounded-2xl text-rose-600 text-xs font-black flex items-center gap-3"
+                            className="p-5 bg-rose-50 border border-rose-100 rounded-2xl text-rose-600 text-xs font-black flex items-center gap-3 shadow-sm"
                         >
-                            <span className="w-6 h-6 bg-rose-600 text-white rounded-full flex items-center justify-center shrink-0">!</span>
+                            <div className="w-8 h-8 bg-rose-600 text-white rounded-full flex items-center justify-center shrink-0 shadow-md shadow-rose-200">!</div>
                             {error}
                         </motion.div>
                     )}
 
-                    <form onSubmit={handleLogin} className="space-y-6">
-                        <div className="space-y-2">
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Username</label>
+                    <form onSubmit={handleLogin} className="space-y-8">
+                        <div className="space-y-3">
+                            <label className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Username</label>
                             <input
                                 type="text"
                                 value={username}
                                 onChange={(e) => setUsername(e.target.value)}
-                                className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-amber-100 focus:border-amber-400 text-slate-900 outline-none transition-all font-bold placeholder-slate-300"
-                                placeholder="e.g. admin_natya"
+                                className="w-full px-8 py-5 bg-slate-50 border border-slate-100 rounded-[1.5rem] focus:ring-4 focus:ring-amber-100 focus:border-amber-400 text-slate-900 outline-none transition-all duration-300 font-bold placeholder-slate-300"
+                                placeholder="Your username"
                             />
                         </div>
 
-                        <div className="space-y-2">
+                        <div className="space-y-3">
                             <div className="flex justify-between items-center px-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Password</label>
+                                <label className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">Password</label>
                             </div>
                             <input
                                 type="password"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
-                                className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-amber-100 focus:border-amber-400 text-slate-900 outline-none transition-all font-bold placeholder-slate-300"
+                                className="w-full px-8 py-5 bg-slate-50 border border-slate-100 rounded-[1.5rem] focus:ring-4 focus:ring-amber-100 focus:border-amber-400 text-slate-900 outline-none transition-all duration-300 font-bold placeholder-slate-300"
                                 placeholder="••••••••"
                             />
                         </div>
 
                         <button
                             type="submit"
-                            className="w-full py-5 bg-slate-900 text-white font-black rounded-2xl shadow-xl shadow-slate-200 hover:bg-rose-600 hover:shadow-rose-200 transition-all duration-300 transform hover:-translate-y-1 active:translate-y-0"
+                            className="w-full py-5 bg-slate-900 text-white font-black text-lg rounded-[1.5rem] shadow-2xl shadow-slate-200 hover:bg-rose-600 hover:shadow-rose-200 transition-all duration-500 transform hover:-translate-y-1 active:translate-y-0"
                         >
                             Log In to System
                         </button>
                     </form>
 
-                    <div className="pt-8 text-center">
-                        <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">
-                            &copy; 2026 Natya Arts ERP System
+                    <div className="pt-12 text-center">
+                        <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.4em]">
+                            &copy; 2026 Natya Arts &bull; Premium ERP
                         </p>
                     </div>
                 </div>
