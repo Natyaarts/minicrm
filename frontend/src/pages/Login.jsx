@@ -54,17 +54,21 @@ function Login() {
             {/* Right Side - Login Form Section */}
             <div className="w-full lg:w-1/2 flex items-center justify-center p-8 md:p-20 bg-white">
                 <div className="w-full max-w-md space-y-10">
-                    {/* Mobile Logo Container (Redesigned) */}
-                    <div className="lg:hidden flex flex-col items-center mb-12">
+                    {/* Mobile Logo Container (Enlarged & Refined) */}
+                    <div className="lg:hidden flex flex-col items-center mb-10">
                         <motion.div 
-                            initial={{ scale: 0.9, opacity: 0 }}
+                            initial={{ scale: 0.8, opacity: 0 }}
                             animate={{ scale: 1, opacity: 1 }}
-                            className="w-24 h-24 bg-gradient-to-br from-amber-400 to-yellow-500 rounded-[2rem] shadow-xl shadow-amber-100 flex items-center justify-center p-4 mb-6"
+                            transition={{ type: "spring", stiffness: 100 }}
+                            className="w-40 h-40 bg-gradient-to-br from-[#FFD700] to-[#FFB300] rounded-[3rem] shadow-2xl shadow-amber-200/50 flex items-center justify-center p-6 mb-8 relative overflow-hidden"
                         >
-                            <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" />
+                            {/* Inner glow effect */}
+                            <div className="absolute inset-0 bg-white/20 rounded-full blur-2xl transform -translate-x-1/2 -translate-y-1/2" />
+                            <img src="/logo.png" alt="Logo" className="w-full h-auto max-h-full object-contain relative z-10" />
                         </motion.div>
-                        <h2 className="text-3xl font-black text-slate-900 tracking-tight">Welcome Back</h2>
-                        <p className="text-slate-400 font-bold text-sm mt-1">Natya Arts Academy ERP</p>
+                        <h2 className="text-4xl font-black text-slate-900 tracking-tight">Welcome Back</h2>
+                        <div className="h-1 w-12 bg-rose-600 rounded-full mt-3 mb-1" />
+                        <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">Premium ERP System</p>
                     </div>
 
                     <div className="hidden lg:block">
