@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export const loginUser = async (username, password) => {
   try {
-    const response = await client.post('/login/', { username, password });
+    const response = await client.post('/auth/login/', { username, password });
     
     if (response.data.token) {
       // Store token and user info

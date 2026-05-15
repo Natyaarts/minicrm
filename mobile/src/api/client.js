@@ -1,7 +1,7 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_URL = 'https://natyaarts.org/api';
+const API_URL = 'https://natyaarts.org/api/';
 
 const client = axios.create({
   baseURL: API_URL,

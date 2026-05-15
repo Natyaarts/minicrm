@@ -45,7 +45,7 @@ function Navbar({ onMenuClick }) {
     }, [searchQuery]);
 
     return (
-        <header className="h-16 md:h-20 bg-white/90 backdrop-blur-xl border-b border-slate-100 flex items-center justify-between px-4 md:px-8 z-10 sticky top-0 transition-all">
+        <header className="h-20 md:h-20 pt-6 md:pt-0 bg-white/90 backdrop-blur-xl border-b border-slate-100 flex items-center justify-between px-4 md:px-8 z-10 sticky top-0 transition-all">
             <div className="flex items-center gap-2 md:gap-4 flex-1">
                 {/* Mobile Menu Toggle (Enlarged for touch) */}
                 <button
