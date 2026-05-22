@@ -88,31 +88,29 @@ const EmployeeSelfService = () => {
         }
     };
 
-    if (loading) return <div className="h-32 flex justify-center items-center bg-slate-900 rounded-[2.5rem] mb-8 text-white"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div></div>;
+    if (loading) return <div className="h-28 flex justify-center items-center bg-slate-900 rounded-xl mb-6 text-white border border-slate-800"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-500"></div></div>;
 
     const isClockedIn = attendance && attendance.clock_in && !attendance.clock_out;
     const isClockedOut = attendance && attendance.clock_out;
 
     return (
-        <div className="bg-gradient-to-r from-slate-900 to-indigo-900 rounded-[2.5rem] p-6 md:p-8 text-white shadow-2xl mb-8 relative">
-            <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/20 rounded-full blur-3xl"></div>
-            
-            <div className="relative z-10 grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="bg-slate-900 rounded-xl p-5 text-white shadow-sm mb-6 relative border border-slate-800">
+            <div className="relative z-10 grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Clock Section */}
-                <div className="flex flex-col justify-center items-start lg:border-r border-white/10 lg:pr-8">
-                    <h2 className="text-sm font-black uppercase tracking-widest text-indigo-300 mb-2">Your Work Hub</h2>
-                    <h3 className="text-4xl font-black tabular-nums tracking-tight mb-1">
+                <div className="flex flex-col justify-center items-start lg:border-r border-slate-800 lg:pr-6">
+                    <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Your Work Hub</h2>
+                    <h3 className="text-2xl font-bold tabular-nums tracking-tight mb-0.5">
                         {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                     </h3>
-                    <p className="text-slate-300 font-bold mb-6">{currentTime.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}</p>
+                    <p className="text-xs text-slate-400 font-medium mb-4">{currentTime.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}</p>
                     
                     {isClockedIn && attendance?.clock_in && (
-                        <div className="mb-6 p-4 bg-white/5 rounded-2xl border border-white/10 w-full md:w-auto">
-                            <p className="text-[10px] font-black text-indigo-300 uppercase tracking-widest mb-1">Session Duration</p>
-                            <div className="flex items-center gap-4">
-                                <div className="text-xl font-black text-white">{attendance.clock_in.split('.')[0]}</div>
-                                <div className="h-4 w-[1px] bg-white/20"></div>
-                                <div className="text-xl font-black text-emerald-400 tabular-nums">
+                        <div className="mb-4 p-3 bg-slate-800/50 rounded-lg border border-slate-700/50 w-full">
+                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">Session Duration</p>
+                            <div className="flex items-center gap-3">
+                                <div className="text-base font-bold text-white">{attendance.clock_in.split('.')[0]}</div>
+                                <div className="h-3 w-[1px] bg-slate-700"></div>
+                                <div className="text-base font-bold text-emerald-400 tabular-nums">
                                     {(() => {
                                         const now = new Date();
                                         const [h, m, s] = attendance.clock_in.split(':');
@@ -130,57 +128,57 @@ const EmployeeSelfService = () => {
                     )}
 
                     {isClockedOut ? (
-                        <div className="flex items-center gap-2 text-emerald-400 font-black bg-emerald-400/10 px-4 py-2 rounded-xl border border-emerald-400/20">
-                            <Clock size={18} /> Shift Completed for Today
+                        <div className="flex items-center gap-1.5 text-emerald-400 font-semibold bg-emerald-500/10 px-3 py-1.5 rounded-lg border border-emerald-500/20 text-xs">
+                            <Clock size={16} /> Shift Completed for Today
                         </div>
                     ) : (
                         <button 
                             onClick={() => handleClock(isClockedIn ? 'out' : 'in')}
-                            className={`flex items-center justify-center w-full md:w-auto gap-3 px-8 py-4 rounded-2xl font-black text-lg transition-all shadow-xl hover:-translate-y-1 ${
+                            className={`flex items-center justify-center w-full md:w-auto gap-2 px-4 py-2 rounded-lg font-semibold text-sm transition-colors shadow-sm ${
                                 isClockedIn 
-                                    ? 'bg-rose-500 hover:bg-rose-600 text-white shadow-rose-500/30' 
-                                    : 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-emerald-500/30'
+                                    ? 'bg-rose-600 hover:bg-rose-700 text-white' 
+                                    : 'bg-emerald-600 hover:bg-emerald-700 text-white'
                             }`}
                         >
-                            {isClockedIn ? <Square fill="currentColor" size={20} /> : <Play fill="currentColor" size={20} />}
+                            {isClockedIn ? <Square fill="currentColor" size={14} /> : <Play fill="currentColor" size={14} />}
                             {isClockedIn ? 'Clock Out' : 'Clock In Now'}
                         </button>
                     )}
                 </div>
 
                 {/* Balances Section */}
-                <div className="flex flex-col justify-center lg:border-r border-white/10 lg:pr-8">
-                    <h3 className="text-sm font-black uppercase tracking-widest text-indigo-300 mb-4 flex items-center gap-2"><Coffee size={16}/> Leave Balances</h3>
-                    <div className="space-y-3">
+                <div className="flex flex-col justify-center lg:border-r border-slate-800 lg:pr-6">
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-1.5"><Coffee size={14}/> Leave Balances</h3>
+                    <div className="space-y-2">
                         {balances.map((bal, idx) => (
-                            <div key={idx} className="bg-white/10 p-3 rounded-xl flex justify-between items-center backdrop-blur-sm">
-                                <span className="font-bold text-sm text-slate-200">{bal.leave_type_name}</span>
-                                <span className="font-black text-white px-2 py-1 bg-white/20 rounded-lg">{bal.remaining_days} left</span>
+                            <div key={idx} className="bg-slate-800/40 p-2.5 rounded-lg flex justify-between items-center border border-slate-800/60">
+                                <span className="font-medium text-xs text-slate-300">{bal.leave_type_name}</span>
+                                <span className="font-semibold text-white text-[10px] px-2 py-0.5 bg-slate-700 rounded-md">{bal.remaining_days} left</span>
                             </div>
                         ))}
-                        {balances.length === 0 && <p className="text-sm text-slate-400 italic bg-white/5 p-4 rounded-xl">No balances setup.</p>}
+                        {balances.length === 0 && <p className="text-xs text-slate-500 italic bg-slate-800/20 p-3 rounded-lg border border-slate-800/40">No balances setup.</p>}
                     </div>
                 </div>
 
                 {/* Payslips Section */}
                 <div className="flex flex-col justify-center">
-                    <h3 className="text-sm font-black uppercase tracking-widest text-indigo-300 mb-4 flex items-center gap-2"><CalIcon size={16}/> Recent Payslips</h3>
-                    <div className="space-y-3">
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-1.5"><CalIcon size={14}/> Recent Payslips</h3>
+                    <div className="space-y-2">
                         {payslips.map((slip, idx) => (
-                            <div key={idx} className="bg-white/5 border border-white/10 p-3 rounded-xl flex justify-between items-center hover:bg-white/10 transition-colors">
+                            <div key={idx} className="bg-slate-800/40 border border-slate-800/60 p-2.5 rounded-lg flex justify-between items-center hover:bg-slate-800/80 transition-colors">
                                 <div>
-                                    <p className="font-black text-sm text-white">Month {slip.month}, {slip.year}</p>
-                                    <p className="text-xs text-indigo-200 font-bold">Net: ₹{Number(slip.net_salary).toLocaleString()}</p>
+                                    <p className="font-semibold text-xs text-white">Month {slip.month}, {slip.year}</p>
+                                    <p className="text-[10px] text-slate-400 font-medium mt-0.5">Net: ₹{Number(slip.net_salary).toLocaleString()}</p>
                                 </div>
                                 <button 
                                     onClick={() => downloadPayslip(slip.id, slip.employee, slip.month, slip.year)}
-                                    className="p-2.5 bg-indigo-500 text-white hover:bg-indigo-400 rounded-lg transition-colors shadow-lg"
+                                    className="p-1.5 bg-indigo-600 text-white hover:bg-indigo-500 rounded-md transition-colors shadow-sm"
                                 >
-                                    <Download size={16} />
+                                    <Download size={14} />
                                 </button>
                             </div>
                         ))}
-                        {payslips.length === 0 && <p className="text-sm text-slate-400 italic bg-white/5 p-4 rounded-xl">No payslips generated yet.</p>}
+                        {payslips.length === 0 && <p className="text-xs text-slate-500 italic bg-slate-800/20 p-3 rounded-lg border border-slate-800/40">No payslips generated yet.</p>}
                     </div>
                 </div>
             </div>

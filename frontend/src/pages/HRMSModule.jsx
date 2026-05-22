@@ -170,20 +170,18 @@ const HRMSModule = () => {
     };
 
     const renderStats = () => (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-2">
             <motion.div 
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="bg-white/70 backdrop-blur-md p-6 rounded-3xl border border-white shadow-sm"
+                className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all flex items-center gap-4"
             >
-                <div className="flex items-center gap-4">
-                    <div className="p-3 bg-rose-50 text-rose-600 rounded-2xl">
-                        <Users size={24} />
-                    </div>
-                    <div>
-                        <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Total Workforce</p>
-                        <h3 className="text-3xl font-black text-slate-900">{stats.totalEmployees}</h3>
-                    </div>
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-rose-500 to-rose-600 flex items-center justify-center text-white shrink-0 shadow-sm">
+                    <Users size={20} />
+                </div>
+                <div>
+                    <p className="text-slate-400 text-[10px] font-semibold uppercase tracking-wider mb-0.5">Total Workforce</p>
+                    <h3 className="text-lg font-bold text-slate-800">{stats.totalEmployees}</h3>
                 </div>
             </motion.div>
 
@@ -191,16 +189,14 @@ const HRMSModule = () => {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.1 }}
-                className="bg-white/70 backdrop-blur-md p-6 rounded-3xl border border-white shadow-sm"
+                className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all flex items-center gap-4"
             >
-                <div className="flex items-center gap-4">
-                    <div className="p-3 bg-amber-50 text-amber-600 rounded-2xl">
-                        <Building2 size={24} />
-                    </div>
-                    <div>
-                        <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Departments</p>
-                        <h3 className="text-3xl font-black text-slate-900">{stats.totalDepts}</h3>
-                    </div>
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center text-white shrink-0 shadow-sm">
+                    <Building2 size={20} />
+                </div>
+                <div>
+                    <p className="text-slate-400 text-[10px] font-semibold uppercase tracking-wider mb-0.5">Departments</p>
+                    <h3 className="text-lg font-bold text-slate-800">{stats.totalDepts}</h3>
                 </div>
             </motion.div>
 
@@ -208,40 +204,38 @@ const HRMSModule = () => {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
-                className="bg-white/70 backdrop-blur-md p-6 rounded-3xl border border-white shadow-sm"
+                className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all flex items-center gap-4"
             >
-                <div className="flex items-center gap-4">
-                    <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl">
-                        <CheckCircle2 size={24} />
-                    </div>
-                    <div>
-                        <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Active Staff</p>
-                        <h3 className="text-3xl font-black text-slate-900">{stats.activeStaff}</h3>
-                    </div>
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center text-white shrink-0 shadow-sm">
+                    <CheckCircle2 size={20} />
+                </div>
+                <div>
+                    <p className="text-slate-400 text-[10px] font-semibold uppercase tracking-wider mb-0.5">Active Staff</p>
+                    <h3 className="text-lg font-bold text-slate-800">{stats.activeStaff}</h3>
                 </div>
             </motion.div>
         </div>
     );
 
     return (
-        <div className="min-h-screen bg-[#FDFCFB] pb-20 px-4 md:px-8">
+        <div className="space-y-6 animate-fadeIn px-2 md:px-0 pb-20">
             {authUser?.role === 'SUPER_ADMIN' ? renderStats() : null}
             
             {/* Header Area */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 mt-8">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
                 <div>
-                    <h1 className="text-4xl font-black text-slate-900 tracking-tight">
+                    <h1 className="text-xl md:text-2xl font-bold text-slate-800 tracking-tight">
                         {authUser?.role === 'SUPER_ADMIN' ? 'Workforce ' : 'My '}
-                        <span className="text-rose-600">Hub.</span>
+                        <span className="text-indigo-600">Hub</span>
                     </h1>
-                    <p className="text-slate-500 font-medium mt-1">
+                    <p className="text-slate-500 mt-1 text-xs font-normal">
                         {authUser?.role === 'SUPER_ADMIN' 
                             ? 'Manage departments, designations, and employee profiles.' 
                             : 'View and manage your personal employee profile.'}
                     </p>
                 </div>
 
-                <div className="flex bg-white/80 backdrop-blur-md p-1.5 rounded-2xl border border-white shadow-sm overflow-x-auto">
+                <div className="flex flex-wrap gap-2 w-full sm:w-auto">
                     {['employees', 'departments', 'designations', 'form builder'].map((tab) => {
                         // Permissions check for tabs
                         if (authUser?.role !== 'SUPER_ADMIN') {
@@ -253,10 +247,10 @@ const HRMSModule = () => {
                             <button
                                 key={tab}
                                 onClick={() => setActiveTab(tab)}
-                                className={`px-6 py-2.5 rounded-xl text-sm font-bold capitalize transition-all whitespace-nowrap ${
+                                className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-all ${
                                     activeTab === tab 
-                                    ? 'bg-rose-600 text-white shadow-lg shadow-rose-200' 
-                                    : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+                                    ? 'bg-indigo-600 text-white shadow-sm' 
+                                    : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 shadow-sm'
                                 }`}
                             >
                                 {tab === 'employees' && authUser?.role !== 'SUPER_ADMIN' ? 'My Profile' : tab}
@@ -266,54 +260,49 @@ const HRMSModule = () => {
                 </div>
             </div>
 
-            {renderStats()}
-
             {/* Action Bar */}
-            <div className="flex flex-col md:flex-row justify-between items-center bg-white/70 backdrop-blur-md p-4 rounded-3xl border border-white shadow-sm mb-8 gap-4">
-                <div className="relative w-full md:w-96">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+            <div className="flex flex-col sm:flex-row justify-between items-center bg-white p-4 rounded-xl border border-slate-200 shadow-sm gap-4">
+                <div className="relative w-full sm:w-96">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                     <input 
                         type="text" 
                         placeholder={`Search ${activeTab}...`}
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full pl-12 pr-4 py-3 bg-white/50 border border-slate-100 rounded-2xl outline-none focus:border-rose-300 focus:ring-4 focus:ring-rose-50 transition-all font-medium text-slate-700"
+                        className="w-full pl-9 pr-4 py-1.5 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 transition-all text-xs font-medium text-slate-700"
                     />
                 </div>
 
-                <div className="flex gap-3 w-full md:w-auto">
+                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                     <button 
                         onClick={fetchData}
-                        className="p-3 bg-white border border-slate-100 text-slate-600 rounded-2xl hover:bg-rose-50 hover:text-rose-600 transition-all shadow-sm"
+                        className="flex items-center justify-center p-1.5 bg-white border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 shadow-sm transition-colors"
                     >
-                        <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />
+                        <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
                     </button>
                     
                     {activeTab === 'employees' && (authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.WORKFORCE?.add) && (
                         <button 
                             onClick={() => setShowAddEmployee(true)}
-                            className="flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 transition-all shadow-lg shadow-slate-200"
+                            className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold shadow-sm hover:bg-indigo-700 transition-colors"
                         >
-                            <UserPlus size={20} />
-                            Add Employee
+                            <UserPlus size={14} /> Add Employee
                         </button>
                     )}
                     {activeTab === 'departments' && (authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.WORKFORCE?.add) && (
                         <button 
                             onClick={() => setShowAddDept(true)}
-                            className="flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-3 bg-rose-600 text-white rounded-2xl font-bold hover:bg-rose-700 transition-all shadow-lg shadow-rose-200"
+                            className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold shadow-sm hover:bg-indigo-700 transition-colors"
                         >
-                            <Plus size={20} />
-                            New Department
+                            <Plus size={14} /> New Department
                         </button>
                     )}
                     {activeTab === 'designations' && (authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.WORKFORCE?.add) && (
                         <button 
                             onClick={() => setShowAddDesignation(true)}
-                            className="flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-3 bg-amber-500 text-white rounded-2xl font-bold hover:bg-amber-600 transition-all shadow-lg shadow-amber-200"
+                            className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold shadow-sm hover:bg-indigo-700 transition-colors"
                         >
-                            <Plus size={20} />
-                            New Designation
+                            <Plus size={14} /> New Designation
                         </button>
                     )}
                 </div>
@@ -331,30 +320,30 @@ const HRMSModule = () => {
                     {activeTab === 'employees' && (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             {employees.length > 0 ? employees.map((emp) => (
-                                <div key={emp.id} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all group">
-                                    <div className="flex items-center gap-4 mb-6">
-                                        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-rose-100 to-rose-50 flex items-center justify-center text-rose-600 font-black text-2xl border border-rose-100">
+                                <div key={emp.id} className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all group">
+                                    <div className="flex items-center gap-4 mb-5">
+                                        <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-indigo-100 to-indigo-50 flex items-center justify-center text-indigo-600 font-bold text-lg border border-indigo-100 shadow-sm">
                                             {emp.full_name?.[0] || emp.display_username?.[0].toUpperCase()}
                                         </div>
                                         <div>
-                                            <h4 className="font-black text-slate-900 group-hover:text-rose-600 transition-colors">{emp.full_name || emp.display_username}</h4>
-                                            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{emp.designation_name || 'No Designation'}</p>
+                                            <h4 className="font-bold text-slate-800 group-hover:text-indigo-600 transition-colors">{emp.full_name || emp.display_username}</h4>
+                                            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">{emp.designation_name || 'No Designation'}</p>
                                         </div>
                                     </div>
                                     
-                                    <div className="space-y-3 mb-6">
-                                        <div className="flex justify-between items-center text-sm">
-                                            <span className="text-slate-400 font-bold">Department</span>
-                                            <span className="text-slate-700 font-bold">{emp.department_name || 'Unassigned'}</span>
+                                    <div className="space-y-2 mb-5">
+                                        <div className="flex justify-between items-center text-xs">
+                                            <span className="text-slate-500">Department</span>
+                                            <span className="text-slate-700 font-medium">{emp.department_name || 'Unassigned'}</span>
                                         </div>
-                                        <div className="flex justify-between items-center text-sm">
-                                            <span className="text-slate-400 font-bold">ID</span>
-                                            <span className="text-rose-600 font-black font-mono">{emp.employee_id}</span>
+                                        <div className="flex justify-between items-center text-xs">
+                                            <span className="text-slate-500">ID</span>
+                                            <span className="text-indigo-600 font-semibold font-mono">{emp.employee_id}</span>
                                         </div>
-                                        <div className="flex justify-between items-center text-sm">
-                                            <span className="text-slate-400 font-bold">Status</span>
-                                            <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter ${
-                                                emp.status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'
+                                        <div className="flex justify-between items-center text-xs">
+                                            <span className="text-slate-500">Status</span>
+                                            <span className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider ${
+                                                emp.status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-slate-50 text-slate-500 border border-slate-200'
                                             }`}>
                                                 {emp.status}
                                             </span>
@@ -366,18 +355,18 @@ const HRMSModule = () => {
                                             setSelectedEmployee(emp);
                                             setShowViewProfile(true);
                                         }}
-                                        className="w-full py-3 bg-slate-50 hover:bg-rose-50 text-slate-600 hover:text-rose-600 rounded-2xl font-bold text-sm transition-all border border-transparent hover:border-rose-100"
+                                        className="w-full py-2 bg-slate-50 hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 rounded-lg font-semibold text-xs transition-colors border border-slate-200 hover:border-indigo-200"
                                     >
                                         View Full Profile
                                     </button>
                                 </div>
                             )) : (
-                                <div className="col-span-full py-20 text-center">
-                                    <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                                        <Users className="text-slate-300" size={32} />
+                                <div className="col-span-full py-16 text-center bg-white rounded-xl border border-slate-200 shadow-sm">
+                                    <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-3 shadow-sm border border-slate-100">
+                                        <Users className="text-slate-400" size={24} />
                                     </div>
-                                    <h3 className="text-xl font-bold text-slate-900">No employees found</h3>
-                                    <p className="text-slate-500">Start by adding your first workforce member.</p>
+                                    <h3 className="text-base font-bold text-slate-800">No employees found</h3>
+                                    <p className="text-xs text-slate-500 mt-1">Start by adding your first workforce member.</p>
                                 </div>
                             )}
                         </div>
@@ -386,19 +375,19 @@ const HRMSModule = () => {
                     {activeTab === 'departments' && (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                             {departments.map((dept) => (
-                                <div key={dept.id} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition-all">
-                                    <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mb-4">
-                                        <Building2 size={24} />
+                                <div key={dept.id} className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all">
+                                    <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-lg flex items-center justify-center mb-3 border border-indigo-100 shadow-sm">
+                                        <Building2 size={20} />
                                     </div>
-                                    <h4 className="font-black text-slate-900 mb-2">{dept.name}</h4>
-                                    <p className="text-xs text-slate-500 font-medium line-clamp-2 mb-4">{dept.description || 'No description provided.'}</p>
-                                    <div className="flex justify-between items-center pt-4 border-t border-slate-50">
-                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                    <h4 className="font-bold text-slate-800 mb-1">{dept.name}</h4>
+                                    <p className="text-[10px] text-slate-500 font-medium line-clamp-2 mb-4">{dept.description || 'No description provided.'}</p>
+                                    <div className="flex justify-between items-center pt-3 border-t border-slate-100">
+                                        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
                                             {employees.filter(e => e.department === dept.id).length} Members
                                         </span>
                                         {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.WORKFORCE?.edit) && (
-                                            <button className="p-2 text-slate-400 hover:text-rose-600 transition-colors">
-                                                <Edit2 size={16} />
+                                            <button className="p-1.5 text-slate-400 hover:text-indigo-600 transition-colors bg-slate-50 hover:bg-indigo-50 rounded border border-transparent hover:border-indigo-100">
+                                                <Edit2 size={14} />
                                             </button>
                                         )}
                                     </div>
@@ -408,38 +397,38 @@ const HRMSModule = () => {
                     )}
 
                     {activeTab === 'designations' && (
-                        <div className="overflow-hidden bg-white/70 backdrop-blur-md rounded-3xl border border-white shadow-sm">
+                        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                             <table className="w-full text-left">
-                                <thead className="bg-slate-50/50 border-b border-slate-100">
+                                <thead className="bg-slate-50 border-b border-slate-200">
                                     <tr>
-                                        <th className="px-8 py-5 text-xs font-black text-slate-400 uppercase tracking-widest">Designation Name</th>
-                                        <th className="px-8 py-5 text-xs font-black text-slate-400 uppercase tracking-widest">Department</th>
-                                        <th className="px-8 py-5 text-xs font-black text-slate-400 uppercase tracking-widest">Staff Count</th>
-                                        <th className="px-8 py-5 text-xs font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
+                                        <th className="px-5 py-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Designation Name</th>
+                                        <th className="px-5 py-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Department</th>
+                                        <th className="px-5 py-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Staff Count</th>
+                                        <th className="px-5 py-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider text-right">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
                                     {designations.map((desig) => (
                                         <tr key={desig.id} className="hover:bg-slate-50/50 transition-colors">
-                                            <td className="px-8 py-5">
-                                                <span className="font-bold text-slate-900">{desig.name}</span>
+                                            <td className="px-5 py-3">
+                                                <span className="text-sm font-semibold text-slate-800">{desig.name}</span>
                                             </td>
-                                            <td className="px-8 py-5">
-                                                <span className="px-3 py-1 bg-amber-50 text-amber-600 rounded-lg text-xs font-bold border border-amber-100">
+                                            <td className="px-5 py-3">
+                                                <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 border border-indigo-100 rounded text-[10px] font-semibold">
                                                     {desig.department_name}
                                                 </span>
                                             </td>
-                                            <td className="px-8 py-5">
-                                                <span className="text-sm font-bold text-slate-500">
+                                            <td className="px-5 py-3">
+                                                <span className="text-xs font-semibold text-slate-600">
                                                     {employees.filter(e => e.designation === desig.id).length}
                                                 </span>
                                             </td>
-                                            <td className="px-8 py-5 text-right space-x-2">
+                                            <td className="px-5 py-3 text-right space-x-1">
                                                 {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.WORKFORCE?.edit) && (
-                                                    <button className="p-2 text-slate-400 hover:text-rose-600 transition-colors"><Edit2 size={18} /></button>
+                                                    <button className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded border border-transparent hover:border-indigo-100 transition-colors"><Edit2 size={14} /></button>
                                                 )}
                                                 {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.WORKFORCE?.delete) && (
-                                                    <button className="p-2 text-slate-400 hover:text-rose-600 transition-colors"><Trash2 size={18} /></button>
+                                                    <button className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded border border-transparent hover:border-red-100 transition-colors"><Trash2 size={14} /></button>
                                                 )}
                                             </td>
                                         </tr>

@@ -218,33 +218,34 @@ const AcademicCoordinatorModule = () => {
                 <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="mb-8 flex flex-col md:flex-row justify-between items-center"
+                    className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white p-5 rounded-2xl border border-slate-200 shadow-sm gap-4 mb-6"
                 >
                     <div>
-                        <h1 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 to-teal-600 mb-2">
-                            Academic Coordinator
+                        <h1 className="text-2xl font-bold text-slate-900 mb-0.5">
+                            <span className="text-emerald-600">Academic</span>{" "}
+                            <span className="text-teal-600">Coordinator</span>
                         </h1>
-                        <p className="text-sm text-slate-500 max-w-2xl">
+                        <p className="text-xs text-slate-500 font-medium">
                             Review applications from Sales and enter Post-Admission Academic details.
                         </p>
                     </div>
-                    <div className="flex gap-2 mt-4 md:mt-0">
-                        <div className="relative">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                    <div className="flex flex-col sm:flex-row gap-2.5 w-full sm:w-auto">
+                        <div className="relative w-full sm:w-64">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                             <input
                                 type="text"
                                 placeholder="Search students..."
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
-                                className="pl-10 pr-4 py-2 rounded-xl border border-slate-200 focus:border-teal-500 outline-none text-sm w-64 shadow-sm"
+                                className="pl-9 pr-4 py-1.5 rounded-md border border-slate-200 focus:border-slate-350 outline-none text-xs w-full bg-slate-50/50"
                             />
                         </div>
                         <button
                             onClick={handleExport}
-                            className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-xl text-sm font-bold hover:bg-slate-800 transition-all shadow-lg active:scale-95"
+                            className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 text-slate-650 hover:bg-slate-50 rounded-md text-xs font-medium transition-colors shadow-sm"
                             title="Export Current Page to CSV"
                         >
-                            <Download size={18} /> Export
+                            <Download size={14} /> Export
                         </button>
                     </div>
                 </motion.div>
@@ -265,109 +266,111 @@ const AcademicCoordinatorModule = () => {
                     )}
                 </AnimatePresence>
 
-                <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-100 p-6 md:p-8 animate-fadeIn">
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden p-6 animate-fadeIn">
                     <div className="overflow-x-auto">
                         <table className="w-full text-left text-sm">
-                            <thead className="bg-slate-50 border-b border-slate-200">
+                            <thead className="bg-slate-50/75 border-b border-slate-200">
                                 <tr>
-                                    <th className="p-4 font-bold text-slate-500 uppercase text-xs">CRM ID</th>
-                                    <th className="p-4 font-bold text-slate-500 uppercase text-xs">Name</th>
-                                    <th className="p-4 font-bold text-slate-500 uppercase text-xs">Program</th>
-                                    <th className="p-4 font-bold text-slate-500 uppercase text-xs">Initial Details</th>
-                                    <th className="p-4 font-bold text-slate-500 uppercase text-xs">Academic Details</th>
-                                    <th className="p-4 font-bold text-slate-500 uppercase text-xs">Mobile</th>
-                                    <th className="p-4 font-bold text-slate-500 uppercase text-xs text-right">Action</th>
+                                    <th className="p-3.5 font-semibold text-slate-500 uppercase text-[10px] tracking-wider">CRM ID</th>
+                                    <th className="p-3.5 font-semibold text-slate-500 uppercase text-[10px] tracking-wider">Name</th>
+                                    <th className="p-3.5 font-semibold text-slate-500 uppercase text-[10px] tracking-wider">Program</th>
+                                    <th className="p-3.5 font-semibold text-slate-500 uppercase text-[10px] tracking-wider">Initial Details</th>
+                                    <th className="p-3.5 font-semibold text-slate-500 uppercase text-[10px] tracking-wider">Academic Details</th>
+                                    <th className="p-3.5 font-semibold text-slate-500 uppercase text-[10px] tracking-wider">Mobile</th>
+                                    <th className="p-3.5 font-semibold text-slate-500 uppercase text-[10px] tracking-wider text-right">Action</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 bg-white">
                                 {loading ? (
-                                    <tr><td colSpan="6" className="p-10 text-center text-slate-500 font-medium animate-pulse">Loading students...</td></tr>
+                                    <tr><td colSpan="7" className="p-10 text-center text-slate-400 font-medium animate-pulse">Loading students...</td></tr>
                                 ) : students.length > 0 ? (
                                     students.map(student => (
-                                        <tr key={student.id} className="hover:bg-slate-50 transition-colors">
-                                            <td className="p-4 font-mono text-xs font-bold text-teal-600">{student.crm_student_id}</td>
-                                            <td className="p-4 font-bold text-slate-800 cursor-pointer hover:text-teal-600 transition-colors" onClick={() => setViewingProfile(student)}>
+                                        <tr key={student.id} className="hover:bg-slate-50/50 transition-colors">
+                                            <td className="p-3.5 font-mono text-xs font-semibold text-teal-600 bg-teal-50/20 w-24 text-center rounded-lg">{student.crm_student_id}</td>
+                                            <td className="p-3.5 font-semibold text-slate-800 cursor-pointer hover:text-teal-600 transition-colors text-sm" onClick={() => setViewingProfile(student)}>
                                                 {student.first_name} {student.last_name}
                                             </td>
-                                            <td className="p-4 text-slate-600 text-xs">{student.program_name}</td>
-                                            <td className="p-4">
+                                            <td className="p-3.5 text-slate-500 text-xs font-normal">{student.program_name}</td>
+                                            <td className="p-3.5">
                                                 <div className="max-w-[150px] space-y-1">
                                                     {student.dynamic_values_list?.filter(v => v.field_group === 'INITIAL' && v.value && v.value.trim() !== '').slice(0, 2).map(val => (
-                                                        <div key={val.id} className="text-[10px] leading-tight flex gap-1 truncate text-slate-500">
-                                                            <span className="font-bold opacity-70 shrink-0">{val.field_label}:</span>
-                                                            <span className="truncate">{val.value}</span>
+                                                        <div key={val.id} className="text-[10px] leading-tight flex gap-1 truncate text-slate-450">
+                                                            <span className="font-semibold opacity-70 shrink-0">{val.field_label}:</span>
+                                                            <span className="truncate text-slate-600">{val.value}</span>
                                                         </div>
                                                     ))}
                                                     {student.dynamic_values_list?.filter(v => v.field_group === 'INITIAL' && v.value && v.value.trim() !== '').length === 0 && (
-                                                        <span className="text-[10px] text-slate-300 italic">No Initial Data</span>
+                                                        <span className="text-[10px] text-slate-400 italic">No Initial Data</span>
                                                     )}
                                                 </div>
                                             </td>
-                                            <td className="p-4">
-                                                <div className="max-w-[150px] space-y-1 border-l-2 border-teal-100 pl-2">
+                                            <td className="p-3.5">
+                                                <div className="max-w-[150px] space-y-1 border-l border-slate-200 pl-2">
                                                     {student.dynamic_values_list?.filter(v => v.field_group === 'ACADEMIC' && v.value && v.value.trim() !== '').map(val => (
                                                         <div key={val.id} className="text-[10px] leading-tight flex gap-1 truncate text-teal-700">
-                                                            <span className="font-bold shrink-0">{val.field_label}:</span>
+                                                            <span className="font-semibold shrink-0">{val.field_label}:</span>
                                                             <span className="truncate">{val.value}</span>
                                                         </div>
                                                     ))}
                                                     {student.dynamic_values_list?.filter(v => v.field_group === 'ACADEMIC' && v.value && v.value.trim() !== '').length === 0 && (
-                                                        <span className="text-[10px] text-slate-300 italic">Pending...</span>
+                                                        <span className="text-[10px] text-slate-405 italic">Pending...</span>
                                                     )}
                                                 </div>
                                             </td>
-                                            <td className="p-4 text-slate-600 font-mono text-xs">{student.mobile}</td>
-                                            <td className="p-4 text-right flex gap-2 justify-end">
-                                                <button
-                                                    onClick={() => {
-                                                        const progId = student.program_type_id || (student.program_name ? student.program_name : '');
-                                                        const slug = student.program_slug || progId;
-                                                        
-                                                        let link = `${window.location.origin}/apply/${slug}?group=ACADEMIC&sid=${student.id}`;
-                                                        if (student.sub_program_id) link += `&sp=${student.sub_program_id}`;
-                                                        if (student.course_id) link += `&c=${student.course_id}`;
-                                                        
-                                                        copyToClipboard(link);
-                                                        setToast({ message: `Direct Link Copied for ${student.first_name}!` });
-                                                        setTimeout(() => setToast(null), 3000);
-                                                    }}
-                                                    className="px-3 py-1.5 bg-indigo-50 text-indigo-600 hover:bg-white border border-indigo-100 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
-                                                >
-                                                    Copy Link
-                                                </button>
-                                                <button
-                                                    onClick={() => handleCompleteProfile(student)}
-                                                    className="px-4 py-2 bg-teal-50 text-teal-600 hover:bg-teal-100 rounded-xl text-xs font-bold transition-colors"
-                                                >
-                                                    Enter Data
-                                                </button>
+                                            <td className="p-3.5 text-slate-500 font-mono text-xs font-normal">{student.mobile}</td>
+                                            <td className="p-3.5 text-right">
+                                                <div className="flex justify-end gap-2">
+                                                    <button
+                                                        onClick={() => {
+                                                            const progId = student.program_type_id || (student.program_name ? student.program_name : '');
+                                                            const slug = student.program_slug || progId;
+                                                            
+                                                            let link = `${window.location.origin}/apply/${slug}?group=ACADEMIC&sid=${student.id}`;
+                                                            if (student.sub_program_id) link += `&sp=${student.sub_program_id}`;
+                                                            if (student.course_id) link += `&c=${student.course_id}`;
+                                                            
+                                                            copyToClipboard(link);
+                                                            setToast({ message: `Direct Link Copied for ${student.first_name}!` });
+                                                            setTimeout(() => setToast(null), 3000);
+                                                        }}
+                                                        className="px-2.5 py-1 bg-white border border-slate-200 text-slate-650 hover:bg-slate-50 rounded-md text-xs font-semibold transition-colors shadow-sm"
+                                                    >
+                                                        Copy Link
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleCompleteProfile(student)}
+                                                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-xs font-semibold transition-colors shadow-sm"
+                                                    >
+                                                        Enter Data
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     ))
                                 ) : (
-                                    <tr><td colSpan="6" className="p-10 text-center text-slate-500 font-medium">No students found matching your search.</td></tr>
+                                    <tr><td colSpan="7" className="p-10 text-center text-slate-400 font-medium">No students found matching your search.</td></tr>
                                 )}
                             </tbody>
                         </table>
                     </div>
 
                     {/* Pagination */}
-                    <div className="flex items-center justify-between bg-white pt-6 mt-4 border-t border-slate-100">
-                        <span className="text-sm text-slate-500">
-                            Showing <span className="font-bold text-slate-900">{students.length}</span> of <span className="font-bold text-slate-900">{studentPagination.count}</span> students
+                    <div className="flex items-center justify-between bg-white pt-6 mt-4 border-t border-slate-200">
+                        <span className="text-xs text-slate-500 font-medium">
+                            Showing <span className="font-semibold text-slate-700">{students.length}</span> of <span className="font-semibold text-slate-700">{studentPagination.count}</span> students
                         </span>
                         <div className="flex gap-2">
                             <button
                                 onClick={() => setStudentPage(p => Math.max(1, p - 1))}
                                 disabled={!studentPagination.previous || loading}
-                                className="px-4 py-2 rounded-lg bg-slate-50 border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-100 disabled:opacity-50 transition-all"
+                                className="px-3 py-1.5 rounded-md bg-white border border-slate-200 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition-all"
                             >
                                 Previous
                             </button>
                             <button
                                 onClick={() => setStudentPage(p => p + 1)}
                                 disabled={!studentPagination.next || loading}
-                                className="px-4 py-2 rounded-lg bg-teal-600 text-white text-sm font-bold hover:bg-teal-700 disabled:opacity-50 transition-all shadow-sm"
+                                className="px-3 py-1.5 rounded-md bg-emerald-600 text-white text-xs font-medium hover:bg-emerald-700 disabled:opacity-50 transition-all shadow-sm"
                             >
                                 Next
                             </button>
@@ -378,32 +381,32 @@ const AcademicCoordinatorModule = () => {
                 {/* Profile Completion Modal */}
                 {completingProfile && (
                     <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn">
-                        <div className="bg-white rounded-3xl p-8 w-full max-w-lg shadow-2xl relative max-h-[90vh] overflow-y-auto custom-scrollbar">
+                        <div className="bg-white rounded-2xl p-6 shadow-xl border border-slate-100 relative max-h-[95vh] overflow-y-auto w-full max-w-lg">
                             <button
                                 onClick={() => setCompletingProfile(null)}
-                                className="absolute top-6 right-6 text-slate-400 hover:text-slate-700 transition-colors"
+                                className="absolute top-5 right-5 text-slate-450 hover:text-slate-650 transition-colors"
                             >
-                                <X size={24} />
+                                <X size={20} />
                             </button>
 
-                            <h2 className="text-2xl font-bold mb-1 text-slate-900 text-transparent bg-clip-text bg-gradient-to-r from-teal-500 to-blue-600">Academic Details</h2>
-                            <p className="text-slate-500 text-sm mb-6">Entering details for <span className="text-teal-600 font-bold">{completingProfile.first_name} {completingProfile.last_name}</span></p>
+                            <h2 className="text-xl font-bold text-slate-900 mb-1">Academic Details</h2>
+                            <p className="text-xs text-slate-500 font-medium mb-6">Entering details for <span className="text-emerald-600 font-semibold">{completingProfile.first_name} {completingProfile.last_name}</span></p>
 
-                            <form onSubmit={handleSaveCompletion} className="space-y-6">
+                            <form onSubmit={handleSaveCompletion} className="space-y-4">
                                 {academicFields.length === 0 ? (
-                                    <div className="py-10 text-center bg-slate-50 rounded-2xl border-2 border-dashed border-slate-100">
-                                        <p className="text-slate-400 text-sm italic">No additional academic fields defined for this program.</p>
+                                    <div className="py-10 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                                        <p className="text-slate-400 text-xs italic">No additional academic fields defined for this program.</p>
                                     </div>
                                 ) : (
                                     <div className="space-y-4">
                                         {academicFields.map(field => (
-                                            <div key={field.id} className="space-y-2">
-                                                <label className="text-xs font-black uppercase tracking-widest text-slate-400 ml-1">
+                                            <div key={field.id} className="space-y-1.5">
+                                                <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider ml-0.5">
                                                     {field.label} {field.is_required && <span className="text-red-500">*</span>}
                                                 </label>
                                                 {field.field_type === 'dropdown' ? (
                                                     <select
-                                                        className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:border-teal-500 transition-all font-bold"
+                                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:border-emerald-500 outline-none transition-all font-medium text-slate-700"
                                                         value={academicValues[field.id] || ''}
                                                         onChange={e => setAcademicValues({ ...academicValues, [field.id]: e.target.value })}
                                                         required={field.is_required}
@@ -414,7 +417,7 @@ const AcademicCoordinatorModule = () => {
                                                         ))}
                                                     </select>
                                                 ) : field.field_type === 'file' ? (
-                                                    <div className="p-4 border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50 hover:bg-white transition-all cursor-pointer group">
+                                                    <div className="p-4 border border-dashed border-slate-200 rounded-lg bg-slate-50 hover:bg-slate-100/50 transition-all cursor-pointer group">
                                                         <input 
                                                             type="file" 
                                                             className="hidden" 
@@ -438,19 +441,19 @@ const AcademicCoordinatorModule = () => {
                                                             required={field.is_required && !academicValues[field.id]}
                                                         />
                                                         <label htmlFor={`file-${field.id}`} className="flex flex-col items-center justify-center cursor-pointer">
-                                                            <div className="w-10 h-10 rounded-full bg-teal-50 text-teal-600 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
-                                                                <FileText size={20} />
+                                                            <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center mb-2 group-hover:scale-105 transition-transform">
+                                                                <FileText size={16} />
                                                             </div>
-                                                            <p className="text-xs font-bold text-slate-600">
+                                                            <p className="text-xs font-semibold text-slate-655">
                                                                 {academicFiles[field.id] ? academicFiles[field.id].name : `Upload ${field.label}`}
                                                             </p>
-                                                            {field.is_required && <p className="text-[10px] text-rose-500 mt-1">Required</p>}
+                                                            {field.is_required && <p className="text-[9px] font-medium text-rose-500 mt-1">Required</p>}
                                                         </label>
                                                     </div>
                                                 ) : (
                                                     <input
                                                         type={field.field_type}
-                                                        className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:border-teal-500 transition-all font-bold"
+                                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:border-emerald-500 outline-none transition-all font-medium text-slate-700"
                                                         placeholder={`Enter ${field.label}`}
                                                         value={academicValues[field.id] || ''}
                                                         onChange={e => setAcademicValues({ ...academicValues, [field.id]: e.target.value })}
@@ -462,12 +465,12 @@ const AcademicCoordinatorModule = () => {
                                     </div>
                                 )}
 
-                                <div className="flex gap-4 pt-4">
-                                    <button type="button" onClick={() => setCompletingProfile(null)} className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold hover:bg-slate-200 transition-colors">Cancel</button>
+                                <div className="flex gap-3 pt-4">
+                                    <button type="button" onClick={() => setCompletingProfile(null)} className="flex-1 py-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-600 rounded-lg text-sm font-semibold transition-colors">Cancel</button>
                                     <button
                                         type="submit"
                                         disabled={savingCompletion || academicFields.length === 0}
-                                        className="flex-1 py-4 bg-gradient-to-r from-teal-500 to-blue-600 text-white rounded-2xl font-bold hover:shadow-lg transition-all disabled:opacity-50"
+                                        className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold shadow-sm transition-colors disabled:opacity-50"
                                     >
                                         {savingCompletion ? 'Saving...' : 'Save Details'}
                                     </button>
@@ -479,73 +482,71 @@ const AcademicCoordinatorModule = () => {
                 {/* Profile View Modal */}
                 {viewingProfile && (
                     <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn">
-                        <div className="bg-white rounded-3xl p-8 w-full max-w-2xl shadow-2xl relative max-h-[90vh] overflow-y-auto custom-scrollbar">
+                        <div className="bg-white rounded-2xl p-6 md:p-8 w-full max-w-2xl shadow-xl border border-slate-100 relative max-h-[95vh] overflow-y-auto">
                             <button
                                 onClick={() => setViewingProfile(null)}
-                                className="absolute top-6 right-6 p-2 bg-slate-100 hover:bg-rose-100 hover:text-rose-600 rounded-full transition-colors text-slate-400"
+                                className="absolute top-5 right-5 p-1.5 hover:bg-slate-50 rounded-lg text-slate-400 hover:text-slate-655 transition-all"
                             >
-                                <X size={20} />
+                                <X size={18} />
                             </button>
 
-                            <div className="flex items-start gap-4 mb-8">
-                                <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-teal-500 to-blue-500 p-0.5 shadow-lg shadow-teal-500/20">
-                                    <div className="w-full h-full bg-white rounded-full flex items-center justify-center font-black text-2xl text-teal-600">
-                                        {viewingProfile.first_name[0]}{viewingProfile.last_name?.[0]}
-                                    </div>
+                            <div className="flex items-start gap-4 mb-6">
+                                <div className="w-14 h-14 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center font-bold text-xl border border-emerald-100">
+                                    {viewingProfile.first_name[0]}{viewingProfile.last_name?.[0]}
                                 </div>
                                 <div>
-                                    <h2 className="text-2xl font-black text-slate-900">{viewingProfile.first_name} {viewingProfile.last_name}</h2>
-                                    <p className="text-sm font-bold text-slate-500 font-mono mt-1">{viewingProfile.crm_student_id}</p>
-                                    <p className="text-xs font-bold text-teal-600 mt-0.5">{viewingProfile.program_name}</p>
+                                    <h2 className="text-xl font-bold text-slate-900">{viewingProfile.first_name} {viewingProfile.last_name}</h2>
+                                    <p className="text-xs font-mono text-slate-400 font-semibold mt-0.5">{viewingProfile.crm_student_id}</p>
+                                    <p className="text-xs font-semibold text-emerald-600 mt-0.5">{viewingProfile.program_name}</p>
                                 </div>
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 {/* Academic Data */}
-                                <div className="bg-teal-50/50 rounded-2xl p-6 border border-teal-100">
-                                    <h3 className="text-sm font-black text-teal-800 uppercase tracking-widest mb-4 flex items-center gap-2">
-                                        <FileText size={16} /> Academic Data
+                                <div className="bg-slate-50/50 rounded-xl p-5 border border-slate-200/60">
+                                    <h3 className="text-xs font-bold text-emerald-700 uppercase tracking-wider mb-4 flex items-center gap-1.5">
+                                        <FileText size={14} /> Academic Data
                                     </h3>
                                     <div className="space-y-4">
                                         {viewingProfile.dynamic_values_list?.filter(v => v.field_group === 'ACADEMIC' && v.value && v.value.trim() !== '').length > 0 ? (
                                             viewingProfile.dynamic_values_list.filter(v => v.field_group === 'ACADEMIC' && v.value && v.value.trim() !== '').map(val => (
-                                                <div key={val.id} className="border-b border-teal-100/50 pb-3 last:border-0 last:pb-0">
-                                                    <p className="text-[10px] font-bold text-teal-600/70 uppercase tracking-widest mb-1">{val.field_label}</p>
-                                                    <p className="text-sm font-medium text-slate-800 break-words">{val.value}</p>
+                                                <div key={val.id} className="border-b border-slate-100 pb-3 last:border-0 last:pb-0">
+                                                    <p className="text-[9px] font-semibold text-slate-450 uppercase tracking-wider mb-0.5">{val.field_label}</p>
+                                                    <p className="text-xs font-medium text-slate-700 break-words">{val.value}</p>
                                                 </div>
                                             ))
                                         ) : (
-                                            <p className="text-sm text-slate-400 italic">No Academic Data found.</p>
+                                            <p className="text-xs text-slate-400 italic">No Academic Data found.</p>
                                         )}
                                     </div>
                                 </div>
 
                                 {/* Initial Data */}
-                                <div className="bg-slate-50 rounded-2xl p-6 border border-slate-200">
-                                    <h3 className="text-sm font-black text-slate-700 uppercase tracking-widest mb-4 flex items-center gap-2">
-                                        <FileText size={16} /> Initial Sales Data
+                                <div className="bg-slate-50/50 rounded-xl p-5 border border-slate-200/60">
+                                    <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-4 flex items-center gap-1.5">
+                                        <FileText size={14} /> Initial Sales Data
                                     </h3>
                                     <div className="space-y-4">
-                                        <div className="border-b border-slate-200/50 pb-3">
-                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Mobile</p>
-                                            <p className="text-sm font-medium text-slate-800 break-words">{viewingProfile.mobile || '-'}</p>
+                                        <div className="border-b border-slate-100 pb-3">
+                                            <p className="text-[9px] font-semibold text-slate-455 uppercase tracking-wider mb-0.5">Mobile</p>
+                                            <p className="text-xs font-medium text-slate-700 break-words">{viewingProfile.mobile || '-'}</p>
                                         </div>
-                                        <div className="border-b border-slate-200/50 pb-3">
-                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Email</p>
-                                            <p className="text-sm font-medium text-slate-800 break-words">{viewingProfile.email || '-'}</p>
+                                        <div className="border-b border-slate-100 pb-3">
+                                            <p className="text-[9px] font-semibold text-slate-455 uppercase tracking-wider mb-0.5">Email</p>
+                                            <p className="text-xs font-medium text-slate-700 break-words">{viewingProfile.email || '-'}</p>
                                         </div>
                                         {viewingProfile.dynamic_values_list?.filter(v => v.field_group === 'INITIAL' && v.value && v.value.trim() !== '').map(val => (
-                                            <div key={val.id} className="border-b border-slate-200/50 pb-3 last:border-0 last:pb-0">
-                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">{val.field_label}</p>
-                                                <p className="text-sm font-medium text-slate-800 break-words">{val.value}</p>
+                                            <div key={val.id} className="border-b border-slate-100 pb-3 last:border-0 last:pb-0">
+                                                <p className="text-[9px] font-semibold text-slate-455 uppercase tracking-wider mb-0.5">{val.field_label}</p>
+                                                <p className="text-xs font-medium text-slate-700 break-words">{val.value}</p>
                                             </div>
                                         ))}
                                     </div>
                                 </div>
                                 {/* Documents Section */}
                                 <div className="md:col-span-2">
-                                    <h3 className="text-sm font-black text-slate-700 uppercase tracking-widest mb-4 flex items-center gap-2">
-                                        <FileText size={16} /> Uploaded Documents
+                                    <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                                        <FileText size={14} /> Uploaded Documents
                                     </h3>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                         {viewingProfile.documents_list?.length > 0 ? (
@@ -555,20 +556,20 @@ const AcademicCoordinatorModule = () => {
                                                     href={doc.file.startsWith('http') ? doc.file : `${api.defaults.baseURL.split('/api')[0]}${doc.file}`}
                                                     target="_blank"
                                                     rel="noreferrer"
-                                                    className="flex items-center gap-3 p-4 bg-slate-50 border border-slate-200 rounded-2xl hover:border-teal-300 hover:bg-teal-50 transition-all group"
+                                                    className="flex items-center gap-3 p-3 bg-white border border-slate-200 hover:border-emerald-350 hover:bg-emerald-50/30 rounded-xl transition-all group shadow-sm"
                                                 >
-                                                    <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-slate-400 group-hover:text-teal-600 shadow-sm transition-colors">
-                                                        <FileText size={20} />
+                                                    <div className="w-9 h-9 rounded-lg bg-slate-50 border border-slate-150 flex items-center justify-center text-slate-400 group-hover:text-emerald-600 transition-colors shadow-sm">
+                                                        <FileText size={18} />
                                                     </div>
                                                     <div className="flex-1 overflow-hidden">
-                                                        <p className="text-sm font-bold text-slate-800 truncate">{doc.document_type}</p>
-                                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Click to view</p>
+                                                        <p className="text-xs font-semibold text-slate-700 truncate">{doc.document_type}</p>
+                                                        <p className="text-[9px] font-medium text-slate-400 uppercase tracking-wider">Click to view</p>
                                                     </div>
                                                 </a>
                                             ))
                                         ) : (
-                                            <div className="md:col-span-2 py-6 text-center bg-slate-50 rounded-2xl border-2 border-dashed border-slate-100">
-                                                <p className="text-sm text-slate-400 italic">No documents uploaded yet.</p>
+                                            <div className="md:col-span-2 py-6 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                                                <p className="text-xs text-slate-400 italic">No documents uploaded yet.</p>
                                             </div>
                                         )}
                                     </div>

@@ -376,17 +376,17 @@ const AdminModule = () => {
             </div>
 
             {/* Tabs */}
-            <div className="flex gap-2 p-1 bg-slate-100/50 rounded-2xl w-fit">
+            <div className="flex gap-2 p-1 bg-slate-100/50 rounded-lg w-fit">
                 {[
-                    { id: 'fields', label: 'Form Builder', icon: <Database size={18} /> },
-                    { id: 'permissions', label: 'Permissions', icon: <Shield size={18} /> },
-                    { id: 'integrations', label: 'Integrations', icon: <Globe size={18} /> },
+                    { id: 'fields', label: 'Form Builder', icon: <Database size={16} /> },
+                    { id: 'permissions', label: 'Permissions', icon: <Shield size={16} /> },
+                    { id: 'integrations', label: 'Integrations', icon: <Globe size={16} /> },
                 ].map(tab => (
                     <button
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id)}
-                        className={`flex items-center gap-2 py-2.5 px-6 font-black text-xs uppercase tracking-widest transition-all rounded-xl ${activeTab === tab.id
-                            ? 'bg-white text-pink-600 shadow-sm ring-1 ring-slate-200'
+                        className={`flex items-center gap-2 py-2 px-4 font-semibold text-sm transition-all rounded-md ${activeTab === tab.id
+                            ? 'bg-white text-slate-800 shadow-sm ring-1 ring-slate-200'
                             : 'text-slate-500 hover:text-slate-800'
                             }`}
                     >
@@ -402,26 +402,26 @@ const AdminModule = () => {
             {activeTab === 'fields' && (
                 <div className="flex-1 flex gap-6 overflow-hidden animate-fadeIn h-[700px]">
                     {/* Explorer Sidebar */}
-                    <div className="w-80 flex flex-col bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-                        <div className="p-6 border-b border-slate-100 bg-slate-50/30 flex justify-between items-center">
-                            <h3 className="font-black text-slate-800 text-sm uppercase tracking-[0.2em] flex items-center gap-3">
-                                <Database size={16} className="text-pink-500" />
+                    <div className="w-80 flex flex-col bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div className="p-4 border-b border-slate-100 bg-slate-50/30 flex justify-between items-center">
+                            <h3 className="font-semibold text-slate-800 text-sm flex items-center gap-2">
+                                <Database size={16} className="text-slate-500" />
                                 Brands
                             </h3>
                             <button
                                 onClick={() => setProgramModalOpen(true)}
-                                className="p-2 bg-pink-50 text-pink-600 rounded-xl hover:bg-pink-100 transition shadow-sm"
+                                className="p-1.5 bg-slate-100 text-slate-600 rounded-md hover:bg-slate-200 transition shadow-sm"
                                 title="Add New Brand"
                             >
                                 <Plus size={16} />
                             </button>
                         </div>
-                        <div className="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-3">
+                        <div className="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-2">
                             {hierarchy.map(program => (
                                 <div key={program.id} className="space-y-1">
                                     <div
-                                        className={`group relative flex items-center gap-3 p-3 rounded-2xl transition-all cursor-pointer ${selectedNode?.id === program.id && selectedNode?.type === 'program'
-                                            ? 'bg-pink-600 text-white shadow-lg shadow-pink-100'
+                                        className={`group relative flex items-center gap-2 p-2 rounded-lg transition-all cursor-pointer ${selectedNode?.id === program.id && selectedNode?.type === 'program'
+                                            ? 'bg-slate-800 text-white shadow-sm'
                                             : 'hover:bg-slate-50 text-slate-700'
                                             }`}
                                         onClick={() => {
@@ -432,21 +432,21 @@ const AdminModule = () => {
                                             setExpandedNodes(newExpanded);
                                         }}
                                     >
-                                        <div className={`p-2 rounded-xl border ${selectedNode?.id === program.id && selectedNode?.type === 'program' ? 'bg-pink-500/50 border-white/20' : 'bg-white border-slate-100'}`}>
+                                        <div className={`p-1.5 rounded-md border ${selectedNode?.id === program.id && selectedNode?.type === 'program' ? 'bg-slate-700 border-slate-600' : 'bg-white border-slate-200'}`}>
                                             <GraduationCap size={16} />
                                         </div>
-                                        <span className="font-black text-xs uppercase tracking-tight truncate flex-1">{program.name}</span>
+                                        <span className="font-semibold text-sm truncate flex-1">{program.name}</span>
 
                                         <div className="flex items-center gap-1">
                                             <button
                                                 onClick={(e) => { e.stopPropagation(); setSelectedNode({ type: 'program', id: program.id }); setSubProgramModalOpen(true); }}
-                                                className={`p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all ${selectedNode?.id === program.id && selectedNode?.type === 'program' ? 'hover:bg-pink-500 text-white' : 'hover:bg-slate-200 text-slate-400'}`}
+                                                className={`p-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-all ${selectedNode?.id === program.id && selectedNode?.type === 'program' ? 'hover:bg-slate-600 text-slate-200' : 'hover:bg-slate-200 text-slate-500'}`}
                                             >
                                                 <ListPlus size={14} />
                                             </button>
                                             <button
                                                 onClick={(e) => { e.stopPropagation(); handleDeleteProgram(program.id); }}
-                                                className={`p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all ${selectedNode?.id === program.id && selectedNode?.type === 'program' ? 'hover:bg-pink-500 text-white' : 'hover:bg-rose-50 text-rose-400'}`}
+                                                className={`p-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-all ${selectedNode?.id === program.id && selectedNode?.type === 'program' ? 'hover:bg-rose-500 hover:text-white text-slate-200' : 'hover:bg-rose-50 hover:text-rose-500 text-slate-300'}`}
                                             >
                                                 <Trash2 size={14} />
                                             </button>
@@ -536,14 +536,14 @@ const AdminModule = () => {
                     </div>
 
                     {/* Canvas Area */}
-                    <div className="flex-1 flex flex-col bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-                        <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white">
+                    <div className="flex-1 flex flex-col bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-white">
                             <div>
-                                <h3 className="font-black text-slate-800 flex items-center gap-2 text-xl tracking-tight">
-                                    {selectedNode?.type === 'program' ? <ListPlus className="text-pink-500" /> : selectedNode?.type === 'subprogram' ? <Layers className="text-indigo-500" /> : <Settings2 className="text-slate-400" />}
+                                <h3 className="font-semibold text-slate-800 flex items-center gap-2 text-lg">
+                                    {selectedNode?.type === 'program' ? <ListPlus size={18} className="text-slate-500" /> : selectedNode?.type === 'subprogram' ? <Layers size={18} className="text-slate-500" /> : <Settings2 size={18} className="text-slate-400" />}
                                     {selectedNode?.name || 'Explorer Canvas'}
                                 </h3>
-                                {selectedNode?.type === 'program' && <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Brand-Level Custom Fields</p>}
+                                {selectedNode?.type === 'program' && <p className="text-xs text-slate-500 mt-0.5">Brand-Level Custom Fields</p>}
                             </div>
 
                             <div className="flex gap-2">
@@ -580,183 +580,181 @@ const AdminModule = () => {
                                             window.prompt("Automatic copy blocked by browser. Please manually copy this:", link);
                                         }
                                     }}
-                                    className="bg-emerald-50 text-emerald-600 font-black text-[10px] uppercase tracking-widest px-4 py-3 rounded-2xl border border-emerald-100 flex items-center gap-2 hover:bg-emerald-100 transition-all active:scale-95"
+                                    className="bg-emerald-50 text-emerald-700 font-semibold text-sm px-3 py-1.5 rounded-lg border border-emerald-200 flex items-center gap-1.5 hover:bg-emerald-100 transition-all"
                                 >
                                     <ExternalLink size={14} /> Copy Share Link
                                 </button>
                                 <button
                                     onClick={() => setShowPreview(!showPreview)}
-                                    className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-xl hover:shadow-2xl transform hover:-translate-y-0.5 active:scale-95 ${showPreview ? 'bg-slate-800 text-white shadow-slate-200' : 'bg-indigo-600 text-white shadow-indigo-200'}`}
+                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold text-sm transition-all shadow-sm border ${showPreview ? 'bg-slate-800 text-white border-slate-800' : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'}`}
                                 >
-                                    <Eye size={16} />
+                                    <Eye size={14} />
                                     {showPreview ? 'Back to Editor' : 'Live Preview'}
                                 </button>
                                 {!showPreview && (
                                     <button
                                         onClick={() => setFieldModalOpen(true)}
-                                        className="bg-pink-600 hover:bg-pink-700 text-white font-black text-xs uppercase tracking-widest px-6 py-3 rounded-2xl transition-all shadow-xl shadow-pink-500/20 transform hover:-translate-y-0.5 active:scale-95"
+                                        className="bg-slate-800 hover:bg-slate-900 text-white font-semibold text-sm px-3 py-1.5 rounded-lg transition-all shadow-sm flex items-center gap-1.5"
                                     >
-                                        + Create Field
+                                        <Plus size={14} /> Create Field
                                     </button>
                                 )}
                             </div>
                         </div>
 
-                        <div className="flex-1 overflow-y-auto p-10 custom-scrollbar bg-slate-50/20">
+                        <div className="flex-1 overflow-y-auto p-8 custom-scrollbar bg-slate-50/50">
                             {!selectedNode ? (
                                 <div className="h-full flex flex-col items-center justify-center text-center">
-                                    <div className="w-24 h-24 bg-white rounded-[40px] flex items-center justify-center mb-8 border border-slate-100 shadow-2xl shadow-slate-200">
-                                        <Database size={40} className="text-slate-200" />
+                                    <div className="w-20 h-20 bg-white rounded-2xl flex items-center justify-center mb-6 border border-slate-200 shadow-sm">
+                                        <Database size={32} className="text-slate-300" />
                                     </div>
-                                    <h4 className="text-2xl font-black text-slate-800 tracking-tight">Central Control Engine</h4>
-                                    <p className="text-slate-400 max-w-sm mt-3 leading-relaxed text-sm">Use the hierarchy explorer on the left to navigate between brands, and manage their associated forms or settings.</p>
+                                    <h4 className="text-xl font-bold text-slate-800">Central Control Engine</h4>
+                                    <p className="text-slate-500 max-w-sm mt-2 text-sm">Use the hierarchy explorer on the left to navigate between brands, and manage their associated forms or settings.</p>
                                 </div>
                             ) : showPreview ? (
                                 <div className="max-w-2xl mx-auto animate-fadeIn">
                                     {/* Preview Steps Indicator */}
-                                    <div className="flex justify-center gap-2 mb-10">
+                                    <div className="flex justify-center gap-2 mb-8">
                                         {[1, 2, 3].map(i => (
-                                            <div key={i} className={`h-1.5 w-16 rounded-full transition-all ${previewStep >= i ? 'bg-indigo-600' : 'bg-slate-200'}`} />
+                                            <div key={i} className={`h-1.5 w-16 rounded-full transition-all ${previewStep >= i ? 'bg-slate-800' : 'bg-slate-200'}`} />
                                         ))}
                                     </div>
 
-                                    <div className="bg-white p-10 rounded-[40px] border border-slate-100 shadow-2xl relative overflow-hidden">
-                                        <div className="absolute top-0 right-0 px-4 py-1.5 bg-indigo-600 text-white text-[10px] font-black uppercase tracking-[0.2em] rounded-bl-2xl">
+                                    <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
+                                        <div className="absolute top-0 right-0 px-3 py-1 bg-slate-800 text-white text-[10px] font-semibold uppercase tracking-wider rounded-bl-lg">
                                             Preview Mode
                                         </div>
 
                                         <AnimatePresence mode="wait">
                                             {previewStep === 1 && (
-                                                <motion.div key="step1" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
+                                                <motion.div key="step1" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-5">
                                                     <div>
-                                                        <h4 className="text-3xl font-black text-slate-900 tracking-tight mb-2">Basic Info</h4>
-                                                        <p className="text-slate-400 font-medium text-sm">Step 1: Identity & Contact</p>
+                                                        <h4 className="text-xl font-bold text-slate-800 mb-1">Basic Info</h4>
+                                                        <p className="text-slate-500 text-sm">Step 1: Identity & Contact</p>
                                                     </div>
                                                     <div className="grid grid-cols-2 gap-4">
-                                                        <div className="space-y-2">
-                                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">First Name</label>
-                                                            <div className="w-full h-14 bg-slate-50 rounded-2xl border border-slate-100" />
+                                                        <div className="space-y-1.5">
+                                                            <label className="text-xs font-semibold text-slate-500 uppercase">First Name</label>
+                                                            <div className="w-full h-10 bg-slate-50 rounded-lg border border-slate-200" />
                                                         </div>
-                                                        <div className="space-y-2">
-                                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Last Name</label>
-                                                            <div className="w-full h-14 bg-slate-50 rounded-2xl border border-slate-100" />
+                                                        <div className="space-y-1.5">
+                                                            <label className="text-xs font-semibold text-slate-500 uppercase">Last Name</label>
+                                                            <div className="w-full h-10 bg-slate-50 rounded-lg border border-slate-200" />
                                                         </div>
                                                     </div>
-                                                    <div className="space-y-2">
-                                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email Address</label>
-                                                        <div className="w-full h-14 bg-slate-50 rounded-2xl border border-slate-100" />
+                                                    <div className="space-y-1.5">
+                                                        <label className="text-xs font-semibold text-slate-500 uppercase">Email Address</label>
+                                                        <div className="w-full h-10 bg-slate-50 rounded-lg border border-slate-200" />
                                                     </div>
-                                                    <button onClick={() => setPreviewStep(2)} className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black shadow-lg shadow-indigo-100 flex items-center justify-center gap-2">
-                                                        Next Step <ArrowRight size={18} />
+                                                    <button onClick={() => setPreviewStep(2)} className="w-full py-2.5 bg-slate-800 text-white rounded-lg font-semibold shadow-sm flex items-center justify-center gap-2 hover:bg-slate-900 transition-colors">
+                                                        Next Step <ArrowRight size={16} />
                                                     </button>
                                                 </motion.div>
                                             )}
 
                                             {previewStep === 2 && (
-                                                <motion.div key="step2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
+                                                <motion.div key="step2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-5">
                                                     <div>
-                                                        <h4 className="text-3xl font-black text-slate-900 tracking-tight mb-2">Track Selection</h4>
-                                                        <p className="text-slate-400 font-medium text-sm">Step 2: Choose Course</p>
+                                                        <h4 className="text-xl font-bold text-slate-800 mb-1">Track Selection</h4>
+                                                        <p className="text-slate-500 text-sm">Step 2: Choose Course</p>
                                                     </div>
                                                     <div className="space-y-3">
-                                                        <div className="p-4 bg-indigo-50 border-2 border-indigo-500 rounded-2xl">
-                                                            <p className="font-bold text-indigo-700">Sample Category</p>
+                                                        <div className="p-3 bg-slate-100 border border-slate-300 rounded-lg">
+                                                            <p className="font-semibold text-slate-800">Sample Category</p>
                                                         </div>
-                                                        <div className="p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl">
-                                                            <p className="font-bold text-slate-400">Other Track</p>
+                                                        <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                                                            <p className="font-semibold text-slate-500">Other Track</p>
                                                         </div>
                                                     </div>
-                                                    <div className="flex gap-4">
-                                                        <button onClick={() => setPreviewStep(1)} className="px-6 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black">Back</button>
-                                                        <button onClick={() => setPreviewStep(3)} className="flex-1 py-4 bg-indigo-600 text-white rounded-2xl font-black shadow-lg shadow-indigo-100">Continue</button>
+                                                    <div className="flex gap-3">
+                                                        <button onClick={() => setPreviewStep(1)} className="px-6 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-lg font-semibold hover:bg-slate-50 transition-colors">Back</button>
+                                                        <button onClick={() => setPreviewStep(3)} className="flex-1 py-2.5 bg-slate-800 text-white rounded-lg font-semibold shadow-sm hover:bg-slate-900 transition-colors">Continue</button>
                                                     </div>
                                                 </motion.div>
                                             )}
 
                                             {previewStep === 3 && (
-                                                <motion.div key="step3" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
+                                                <motion.div key="step3" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-5">
                                                     <div>
-                                                        <h4 className="text-3xl font-black text-slate-900 tracking-tight mb-2">Additional Info</h4>
-                                                        <p className="text-slate-400 font-medium text-sm">Step 3: Custom Data for {selectedNode.name}</p>
+                                                        <h4 className="text-xl font-bold text-slate-800 mb-1">Additional Info</h4>
+                                                        <p className="text-slate-500 text-sm">Step 3: Custom Data for {selectedNode.name}</p>
                                                     </div>
-                                                    <div className="space-y-5">
+                                                    <div className="space-y-4">
                                                         {fields.map(field => (
-                                                            <div key={field.id} className="space-y-2">
-                                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                                                                    {field.label} {field.is_required && <span className="text-red-500">*</span>}
+                                                            <div key={field.id} className="space-y-1.5">
+                                                                <label className="text-xs font-semibold text-slate-500 uppercase">
+                                                                    {field.label} {field.is_required && <span className="text-rose-500">*</span>}
                                                                 </label>
                                                                 {field.field_type === 'dropdown' ? (
-                                                                    <div className="w-full h-14 bg-slate-50 rounded-2xl border border-slate-100 px-4 flex items-center justify-between">
-                                                                        <span className="text-slate-300 font-bold">Select {field.label}...</span>
-                                                                        <ChevronDown size={18} className="text-slate-300" />
+                                                                    <div className="w-full h-10 bg-slate-50 rounded-lg border border-slate-200 px-3 flex items-center justify-between">
+                                                                        <span className="text-slate-400 font-medium text-sm">Select {field.label}...</span>
+                                                                        <ChevronDown size={16} className="text-slate-400" />
                                                                     </div>
                                                                 ) : field.field_type === 'file' ? (
-                                                                    <div className="w-full py-8 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center gap-2">
-                                                                        <FileText size={24} className="text-slate-300" />
-                                                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Upload Required</span>
+                                                                    <div className="w-full py-6 bg-slate-50 rounded-lg border border-dashed border-slate-300 flex flex-col items-center justify-center gap-2">
+                                                                        <FileText size={20} className="text-slate-400" />
+                                                                        <span className="text-[10px] font-semibold text-slate-500 uppercase">Upload Required</span>
                                                                     </div>
                                                                 ) : (
-                                                                    <div className="w-full h-14 bg-slate-50 rounded-2xl border border-slate-100 px-4 flex items-center">
-                                                                        <span className="text-slate-300 font-bold">Enter {field.label}...</span>
+                                                                    <div className="w-full h-10 bg-slate-50 rounded-lg border border-slate-200 px-3 flex items-center">
+                                                                        <span className="text-slate-400 font-medium text-sm">Enter {field.label}...</span>
                                                                     </div>
                                                                 )}
                                                             </div>
                                                         ))}
                                                     </div>
-                                                    <div className="flex gap-4">
-                                                        <button onClick={() => setPreviewStep(2)} className="px-6 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black">Back</button>
-                                                        <div className="flex-1 py-4 bg-emerald-600 text-white rounded-2xl font-black shadow-lg shadow-emerald-100 flex items-center justify-center gap-2">
-                                                            Submit Application <Send size={18} />
+                                                    <div className="flex gap-3">
+                                                        <button onClick={() => setPreviewStep(2)} className="px-6 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-lg font-semibold hover:bg-slate-50 transition-colors">Back</button>
+                                                        <div className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold shadow-sm flex items-center justify-center gap-2 transition-colors cursor-pointer">
+                                                            Submit Application <Send size={16} />
                                                         </div>
                                                     </div>
                                                 </motion.div>
                                             )}
                                         </AnimatePresence>
                                     </div>
-                                    <p className="text-center mt-8 text-slate-400 text-[10px] font-black uppercase tracking-[0.2em] animate-pulse">
+                                    <p className="text-center mt-6 text-slate-500 text-xs italic">
                                         This is a simulated preview of the student application link
                                     </p>
                                 </div>
                             ) : fields.length === 0 ? (
-                                <div className="h-full flex flex-col items-center justify-center text-center border-2 border-dashed border-slate-100 rounded-[40px] bg-white/40 p-12">
-                                    <div className="w-20 h-20 bg-white rounded-3xl flex items-center justify-center mb-6 border border-slate-100 shadow-sm relative overflow-hidden">
-                                        <div className="absolute inset-0 bg-pink-500/5 pulse" />
-                                        <ListPlus size={28} className="text-pink-300 relative z-10" />
+                                <div className="h-full flex flex-col items-center justify-center text-center border border-dashed border-slate-200 rounded-2xl bg-white/50 p-10">
+                                    <div className="w-16 h-16 bg-slate-50 rounded-xl flex items-center justify-center mb-5 border border-slate-200 shadow-sm relative overflow-hidden">
+                                        <ListPlus size={24} className="text-slate-400 relative z-10" />
                                     </div>
-                                    <h4 className="font-black text-xl text-slate-800">Ready for construction</h4>
-                                    <p className="text-slate-500 text-sm mt-2 max-w-xs">Define the data model for your brand. Add fields like "Education Background", "Referral Source", etc.</p>
+                                    <h4 className="font-bold text-lg text-slate-800">Ready for construction</h4>
+                                    <p className="text-slate-500 text-sm mt-1.5 max-w-xs">Define the data model for your brand. Add fields like "Education Background", "Referral Source", etc.</p>
                                     <button
                                         onClick={() => setFieldModalOpen(true)}
-                                        className="mt-8 px-8 py-3 bg-white border border-slate-200 text-slate-700 font-black text-xs uppercase tracking-widest rounded-xl hover:bg-slate-50 transition"
+                                        className="mt-6 px-6 py-2.5 bg-white border border-slate-200 text-slate-700 font-semibold text-sm rounded-lg hover:bg-slate-50 transition-colors shadow-sm"
                                     >
                                         Start Building +
                                     </button>
                                 </div>
                             ) : (
-                                <div className="space-y-4 max-w-3xl mx-auto">
+                                <div className="space-y-3 max-w-3xl mx-auto">
                                     {fields.map(field => (
                                         <motion.div
                                             initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
                                             key={field.id}
-                                            className="group flex justify-between items-center p-6 bg-white border border-slate-100 rounded-[28px] hover:border-pink-200 hover:shadow-2xl hover:shadow-pink-500/5 transition-all relative overflow-hidden"
+                                            className="group flex justify-between items-center p-4 bg-white border border-slate-200 rounded-xl hover:shadow-md transition-all relative overflow-hidden"
                                         >
-                                            <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-pink-600 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                            <div className="flex items-center gap-6">
-                                                <div className="w-14 h-14 bg-slate-50 rounded-2xl flex flex-col items-center justify-center border border-slate-100 font-black text-[9px] text-pink-600 uppercase tracking-tighter shrink-0 group-hover:bg-pink-50 group-hover:border-pink-100 transition-colors">
-                                                    <span className="opacity-40 text-[7px] mb-0.5 mt-1">TYPE</span>
+                                            <div className="flex items-center gap-4">
+                                                <div className="w-12 h-12 bg-slate-50 rounded-lg flex flex-col items-center justify-center border border-slate-200 font-bold text-[10px] text-slate-600 uppercase tracking-tighter shrink-0 transition-colors">
+                                                    <span className="opacity-50 text-[8px] mb-0.5 mt-0.5">TYPE</span>
                                                     {field.field_type.substring(0, 3)}
                                                 </div>
                                                 <div>
-                                                    <p className="font-black text-slate-800 text-xl tracking-tight leading-none">{field.label}</p>
-                                                    <div className="flex items-center gap-3 mt-3">
-                                                        <div className="flex items-center gap-1.5 bg-slate-100/50 px-2.5 py-1 rounded-lg">
+                                                    <p className="font-bold text-slate-800 text-base">{field.label}</p>
+                                                    <div className="flex items-center gap-2 mt-1.5">
+                                                        <div className="flex items-center gap-1 bg-slate-100 px-2 py-0.5 rounded text-[10px] font-semibold text-slate-500 uppercase">
                                                             <Settings size={10} className="text-slate-400" />
-                                                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Order: {field.order}</span>
+                                                            Order: {field.order}
                                                         </div>
                                                         {field.is_required && (
-                                                            <div className="flex items-center gap-1.5 bg-rose-50 px-2.5 py-1 rounded-lg">
-                                                                <AlertCircle size={10} className="text-rose-400" />
-                                                                <span className="text-[10px] font-black text-rose-500 uppercase tracking-widest">Required</span>
+                                                            <div className="flex items-center gap-1 bg-rose-50 px-2 py-0.5 rounded text-[10px] font-semibold text-rose-600 uppercase border border-rose-100">
+                                                                <AlertCircle size={10} className="text-rose-500" />
+                                                                Required
                                                             </div>
                                                         )}
                                                     </div>
@@ -765,9 +763,9 @@ const AdminModule = () => {
                                             <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all">
                                                 <button
                                                     onClick={() => handleDeleteField(field.id)}
-                                                    className="text-slate-400 hover:text-rose-500 p-4 bg-slate-50 hover:bg-rose-50 rounded-2xl transition-colors"
+                                                    className="text-slate-400 hover:text-rose-600 p-2 hover:bg-rose-50 rounded-lg transition-colors"
                                                 >
-                                                    <Trash2 size={20} />
+                                                    <Trash2 size={16} />
                                                 </button>
                                             </div>
                                         </motion.div>
@@ -782,14 +780,14 @@ const AdminModule = () => {
             {/* Permissions Tab Content */}
             {activeTab === 'permissions' && (
                 <div className="space-y-6 animate-fadeIn">
-                    <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm">
-                        <label className="block text-sm mb-4 text-slate-500 font-bold uppercase tracking-wider">Configure Permissions for Role:</label>
-                        <div className="flex gap-3 flex-wrap">
+                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                        <label className="block text-xs mb-3 text-slate-500 font-semibold uppercase tracking-wider">Configure Permissions for Role:</label>
+                        <div className="flex gap-2 flex-wrap">
                             {['ADMIN', 'SALES', 'MENTOR', 'ACADEMIC', 'ACADEMIC_COORDINATOR', 'TEACHER', 'STUDENT', 'EMPLOYEE'].map(role => (
                                 <button
                                     key={role}
                                     onClick={() => setSelectedRoleForPerms(role)}
-                                    className={`px-5 py-2 rounded-full text-xs font-bold transition-all shadow-sm ${selectedRoleForPerms === role ? 'bg-orange-500 text-white shadow-orange-200' : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700'}`}
+                                    className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all shadow-sm border border-transparent ${selectedRoleForPerms === role ? 'bg-slate-800 text-white' : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border-slate-200'}`}
                                 >
                                     {role}
                                 </button>
@@ -797,15 +795,15 @@ const AdminModule = () => {
                         </div>
                     </div>
 
-                    <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-xl">
+                    <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
                         <table className="w-full text-left">
-                            <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-widest font-bold border-b border-slate-200">
+                            <thead className="bg-slate-50 text-slate-500 text-[10px] uppercase tracking-wider font-semibold border-b border-slate-200">
                                 <tr>
-                                    <th className="p-5">Module / Section</th>
-                                    <th className="p-5 text-center">View</th>
-                                    <th className="p-5 text-center">Add</th>
-                                    <th className="p-5 text-center">Edit</th>
-                                    <th className="p-5 text-center">Delete</th>
+                                    <th className="p-4">Module / Section</th>
+                                    <th className="p-4 text-center">View</th>
+                                    <th className="p-4 text-center">Add</th>
+                                    <th className="p-4 text-center">Edit</th>
+                                    <th className="p-4 text-center">Delete</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
@@ -813,17 +811,17 @@ const AdminModule = () => {
                                     const p = Array.isArray(rolePermissions) ? rolePermissions.find(x => x.module === mod.id) || {} : {};
                                     return (
                                         <tr key={mod.id} className="hover:bg-slate-50 transition-colors">
-                                            <td className="p-5">
-                                                <div className="font-bold text-slate-800 text-lg">{mod.name}</div>
-                                                <div className="text-[10px] text-slate-400 uppercase font-bold tracking-wider mt-1">{mod.id}</div>
+                                            <td className="p-4">
+                                                <div className="font-semibold text-slate-800 text-sm">{mod.name}</div>
+                                                <div className="text-[10px] text-slate-400 uppercase tracking-wider mt-0.5">{mod.id}</div>
                                             </td>
                                             {['can_view', 'can_add', 'can_edit', 'can_delete'].map(key => (
-                                                <td key={key} className="p-5 text-center">
+                                                <td key={key} className="p-4 text-center">
                                                     <button
                                                         onClick={() => handleTogglePermission(mod.id, key, p[key] || false)}
-                                                        className={`w-14 h-8 rounded-full transition-all relative shadow-inner ${p[key] ? 'bg-green-500' : 'bg-slate-200'}`}
+                                                        className={`w-10 h-6 rounded-full transition-all relative border border-slate-200 ${p[key] ? 'bg-slate-800 border-slate-800' : 'bg-slate-100'}`}
                                                     >
-                                                        <div className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow-md transition-all transform ${p[key] ? 'translate-x-7' : 'translate-x-1'}`}></div>
+                                                        <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-all transform ${p[key] ? 'translate-x-5' : 'translate-x-1'}`}></div>
                                                     </button>
                                                 </td>
                                             ))}
@@ -840,63 +838,62 @@ const AdminModule = () => {
             {activeTab === 'integrations' && (
                 <div className="space-y-6 animate-fadeIn">
                     {/* Razorpay Integration Card */}
-                    <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm">
+                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
                         <div className="flex justify-between items-start mb-6">
                             <div>
-                                <h3 className="text-xl font-black tracking-tight text-slate-800">Payment Gateway</h3>
-                                <p className="text-slate-500 font-medium text-sm mt-1">Receive learner payments directly into your account</p>
+                                <h3 className="text-lg font-bold text-slate-800">Payment Gateway</h3>
+                                <p className="text-slate-500 text-sm mt-0.5">Receive learner payments directly into your account</p>
                             </div>
                             <button
                                 onClick={() => setRazorpayModalOpen(true)}
-                                className="px-6 py-2.5 bg-white border border-slate-200 text-slate-700 font-black text-xs uppercase tracking-widest rounded-xl hover:bg-slate-50 transition shadow-sm"
+                                className="px-4 py-2 bg-white border border-slate-200 text-slate-700 font-semibold text-xs uppercase tracking-wider rounded-lg hover:bg-slate-50 transition shadow-sm"
                             >
                                 {razorpayConfig.key_id && razorpayConfig.key_secret ? 'Change' : 'Connect'}
                             </button>
                         </div>
 
-                        <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between">
+                        <div className="p-4 bg-slate-50 rounded-lg border border-slate-200 flex items-center justify-between">
                             <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 bg-white rounded-xl border border-slate-200 flex items-center justify-center p-2 shadow-sm">
+                                <div className="w-10 h-10 bg-white rounded-lg border border-slate-200 flex items-center justify-center p-1.5 shadow-sm">
                                     <img src="https://razorpay.com/favicon.png" alt="Razorpay" className="w-full h-full object-contain" />
                                 </div>
                                 <div>
-                                    <p className="font-black text-slate-900">Razorpay</p>
-                                    <p className={`text-[10px] font-black uppercase tracking-widest mt-0.5 ${(razorpayConfig.key_id && razorpayConfig.key_secret) ? 'text-emerald-500' : 'text-slate-400'}`}>
+                                    <p className="font-semibold text-slate-800 text-sm">Razorpay</p>
+                                    <p className={`text-[10px] font-semibold uppercase tracking-wider mt-0.5 ${(razorpayConfig.key_id && razorpayConfig.key_secret) ? 'text-emerald-600' : 'text-slate-400'}`}>
                                         {(razorpayConfig.key_id && razorpayConfig.key_secret) ? 'Connected' : 'Not Configured'}
                                     </p>
                                 </div>
                             </div>
                             {razorpayConfig.key_id && razorpayConfig.key_secret && (
-                                <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-lg text-[10px] font-black uppercase tracking-widest">
+                                <div className="flex items-center gap-1.5 px-2 py-1 bg-emerald-50 text-emerald-700 rounded text-[10px] font-semibold uppercase tracking-wider border border-emerald-100">
                                     <Check size={12} /> Active
                                 </div>
                             )}
                         </div>
-                        <p className="mt-4 text-[10px] text-slate-400 font-medium italic underline cursor-pointer hover:text-slate-600">Check how to connect your payment gateway</p>
                     </div>
 
-                    <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm">
-                        <h2 className="text-xl font-bold text-slate-800 mb-6">Wise LMS Integration</h2>
+                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                        <h2 className="text-lg font-bold text-slate-800 mb-4">Wise LMS Integration</h2>
 
                         <div className="space-y-4">
-                            <p className="text-slate-600">
+                            <p className="text-slate-600 text-sm">
                                 Sync all students from the configured Wise LMS account. This process will:
                             </p>
-                            <ul className="list-disc pl-5 text-sm text-slate-500 space-y-2">
+                            <ul className="list-disc pl-5 text-sm text-slate-500 space-y-1.5">
                                 <li>Scan all students in Wise (this may take time depending on the count).</li>
                                 <li>Match students by their <b>mobile number</b> (last 10 digits).</li>
                                 <li><b>Link</b> existing CRM students to their Wise profiles if not already linked.</li>
-                                <li><b>Create</b> new student profiles in CRM for any Wise student not found here (marked as 'Wise Import' program).</li>
+                                <li><b>Create</b> new student profiles in CRM for any Wise student not found here.</li>
                             </ul>
 
-                            <div className="pt-6 flex gap-4">
+                            <div className="pt-4 flex gap-3">
                                 <button
                                     onClick={handleSyncWise}
                                     disabled={isSyncing}
-                                    className={`px-8 py-4 rounded-xl font-bold text-white shadow-lg transition-all 
-                                        ${isSyncing ? 'bg-slate-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 hover:shadow-indigo-200 transform hover:-translate-y-1'}`}
+                                    className={`px-6 py-2.5 rounded-lg font-semibold text-sm transition-all shadow-sm 
+                                        ${isSyncing ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-slate-800 text-white hover:bg-slate-900'}`}
                                 >
-                                    {isSyncing ? 'Syncing in Progress...' : 'Start Full Sync'}
+                                    {isSyncing ? 'Syncing...' : 'Start Full Sync'}
                                 </button>
 
                                 <button
@@ -908,7 +905,7 @@ const AdminModule = () => {
                                             alert("Failed to fetch Wise courses");
                                         }
                                     }}
-                                    className="px-8 py-4 rounded-xl font-bold text-indigo-600 border-2 border-indigo-600 hover:bg-indigo-50 transition-all"
+                                    className="px-6 py-2.5 rounded-lg font-semibold text-sm text-slate-700 border border-slate-200 hover:bg-slate-50 transition-all shadow-sm"
                                 >
                                     Fetch Wise Courses
                                 </button>
@@ -934,8 +931,8 @@ const AdminModule = () => {
                                             setSyncStatus(`Successfully processed all ${wiseCourses.length} courses!`);
                                         }}
                                         disabled={isSyncing}
-                                        className={`px-8 py-4 rounded-xl font-bold text-white shadow-lg transition-all 
-                                            ${isSyncing ? 'bg-slate-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700 transform hover:-translate-y-1'}`}
+                                        className={`px-6 py-2.5 rounded-lg font-semibold text-sm transition-all shadow-sm 
+                                            ${isSyncing ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}
                                     >
                                         {isSyncing ? 'Syncing All...' : 'Sync All Batches'}
                                     </button>
@@ -943,11 +940,12 @@ const AdminModule = () => {
                             </div>
 
                             {syncStatus && (
-                                <div className={`mt-6 p-4 rounded-xl border font-bold text-sm
-                                    ${syncStatus.includes('Failed') ? 'bg-red-50 text-red-600 border-red-100' : 'bg-green-50 text-green-700 border-green-100'}
+                                <div className={`mt-4 p-3 rounded-lg border font-semibold text-xs
+                                    ${syncStatus.includes('Failed') ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-emerald-50 text-emerald-700 border-emerald-100'}
                                 `}>
                                     {syncStatus}
                                 </div>
+
                             )}
 
                             {/* Wise Courses Display */}

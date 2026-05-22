@@ -618,76 +618,76 @@ const SalesModule = () => {
     // UI Components
     const InputField = ({ label, name, type = "text", required = false, value, onChange, className }) => (
         <div className={`flex flex-col ${className}`}>
-            <label className="text-sm font-semibold text-slate-700 mb-2">{label} {required && <span className="text-red-500">*</span>}</label>
+            <label className="text-xs font-semibold text-slate-600 mb-1.5">{label} {required && <span className="text-red-500">*</span>}</label>
             <input
                 type={type}
                 name={name}
                 value={value}
                 onChange={onChange}
                 required={required}
-                className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition-all placeholder:text-slate-400 text-slate-700 shadow-sm"
+                className="w-full px-3 py-1.5 rounded-lg bg-white border border-slate-200 focus:border-indigo-500 outline-none text-xs text-slate-700 shadow-sm placeholder:text-slate-400"
             />
         </div>
     );
 
     const SelectField = ({ label, value, onChange, options, required = false, defaultText = "-- Select --" }) => (
         <div className="flex flex-col">
-            <label className="text-sm font-semibold text-slate-700 mb-2">{label} {required && <span className="text-red-500">*</span>}</label>
+            <label className="text-xs font-semibold text-slate-600 mb-1.5">{label} {required && <span className="text-red-500">*</span>}</label>
             <div className="relative">
                 <select
                     value={value}
                     onChange={onChange}
                     required={required}
-                    className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition-all text-slate-700 shadow-sm appearance-none"
+                    className="w-full px-3 py-1.5 rounded-lg bg-white border border-slate-200 focus:border-indigo-500 outline-none text-xs text-slate-700 shadow-sm appearance-none"
                 >
                     <option value="">{defaultText}</option>
                     {options.map(opt => (
                         <option key={opt.id || opt} value={opt.id || opt}>{opt.name || opt}</option>
-                    ))}
+                     ))}
                 </select>
-                <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-slate-500">
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-slate-400">
+                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
                 </div>
             </div>
         </div>
     );
 
     return (
-        <div className="min-h-screen w-full bg-slate-50 py-12 px-4 sm:px-6 lg:px-8 font-sans">
-            <div className="max-w-5xl mx-auto w-full">
+        <div className="min-h-screen w-full bg-slate-50 py-6 px-4 sm:px-6 lg:px-8 font-sans">
+            <div className="max-w-6xl mx-auto w-full">
                 <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="text-center mb-12"
+                    className="text-center mb-8"
                 >
-                    <h1 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-violet-600 mb-4">
+                    <h1 className="text-2xl md:text-3xl font-bold text-slate-800 tracking-tight mb-2">
                         Student Enrollment
                     </h1>
-                    <p className="text-lg text-slate-500 max-w-2xl mx-auto">
+                    <p className="text-xs text-slate-500 max-w-xl mx-auto">
                         Join our community of learners and achievers. Please fill out the form below to begin your journey.
                     </p>
                 </motion.div>
 
                 {isAuthenticated && !isPublicView && (
-                    <div className="flex mb-8 overflow-x-auto custom-scrollbar pb-2 max-w-full justify-start md:justify-center">
+                    <div className="flex mb-6 overflow-x-auto pb-1 justify-start sm:justify-center">
                         <div className="bg-white p-1 rounded-xl shadow-sm border border-slate-200 flex flex-nowrap whitespace-nowrap min-w-min mx-auto">
                             <button
                                 onClick={() => setActiveTab('single')}
-                                className={`px-4 sm:px-6 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'single' ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${activeTab === 'single' ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                             >
                                 Single Application
                             </button>
                             {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.SALES?.add) && (
                                 <button
                                     onClick={() => setActiveTab('bulk')}
-                                    className={`px-4 sm:px-6 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'bulk' ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                    className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${activeTab === 'bulk' ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                                 >
                                     Bulk Upload
                                 </button>
                             )}
                             <button
                                 onClick={() => setActiveTab('list')}
-                                className={`px-4 sm:px-6 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'list' ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${activeTab === 'list' ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                             >
                                 View Applications
                             </button>
@@ -701,10 +701,10 @@ const SalesModule = () => {
                             initial={{ opacity: 0, y: -20 }}
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, y: -20 }}
-                            className="fixed top-8 left-1/2 -translate-x-1/2 z-[100] px-6 py-3 rounded-2xl bg-slate-900 text-white shadow-2xl flex items-center gap-3 font-bold text-sm whitespace-nowrap border border-slate-700/50 backdrop-blur-md"
+                            className="fixed top-8 left-1/2 -translate-x-1/2 z-[100] px-4 py-2 rounded-lg bg-slate-900 text-white shadow-md flex items-center gap-2 font-semibold text-xs whitespace-nowrap border border-slate-800 backdrop-blur-md"
                         >
-                            <div className="w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center">
-                                <Check size={14} />
+                            <div className="w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center">
+                                <Check size={12} />
                             </div>
                             {toast.message}
                         </motion.div>
@@ -715,38 +715,39 @@ const SalesModule = () => {
                             initial={{ opacity: 0, height: 0 }}
                             animate={{ opacity: 1, height: 'auto' }}
                             exit={{ opacity: 0, height: 0 }}
-                            className={`mb-8 p-4 rounded-xl border ${message.type === 'success' ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'} flex items-center justify-center`}
+                            className={`mb-6 p-3 rounded-lg border text-xs ${message.type === 'success' ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'} flex items-center justify-center`}
                         >
                             {message.text}
                         </motion.div>
                     )}
                 </AnimatePresence>
 
-                <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-100">
+                <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-slate-200">
                     {activeTab === 'list' && isAuthenticated ? (
-                        <div className="p-8">
-                            <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
-                                <h3 className="text-2xl font-bold text-slate-900">
+                        <div>
+                            {/* Card Header with padding and border */}
+                            <div className="p-4 sm:p-6 pb-4 flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-4 border-b border-slate-200">
+                                <h3 className="text-lg font-semibold text-slate-900">
                                     {isTrashView ? 'Trash Section' : 'Submitted Applications'}
                                 </h3>
-                                <div className="flex flex-wrap items-center gap-3">
+                                <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3">
                                     {/* Program Logic Filters */}
-                                    <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-2xl border border-slate-200 shadow-inner">
+                                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 bg-slate-50 p-2 sm:p-1.5 rounded-xl border border-slate-200 w-full sm:w-auto">
                                         <select 
                                             value={selectedProgram}
                                             onChange={handleProgramChange}
-                                            className="bg-transparent text-xs font-bold text-slate-700 px-3 py-1 outline-none min-w-[120px] cursor-pointer"
+                                            className="bg-transparent text-xs font-semibold text-slate-700 px-2 py-1 sm:py-0.5 outline-none min-w-[120px] cursor-pointer w-full sm:w-auto"
                                         >
                                             <option value="">All Brands/Programs</option>
                                             {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                                         </select>
                                         
                                         {selectedProgram && (
-                                            <div className="flex items-center gap-2 border-l border-slate-300 pl-2">
+                                            <div className="flex flex-col sm:flex-row sm:items-center gap-2 border-t sm:border-t-0 sm:border-l border-slate-200 pt-2 sm:pt-0 sm:pl-2 w-full sm:w-auto">
                                                 <select 
                                                     value={selectedSubProgram}
                                                     onChange={handleSubProgramChange}
-                                                    className="bg-transparent text-xs font-bold text-indigo-600 px-3 py-1 outline-none min-w-[120px] cursor-pointer"
+                                                    className="bg-transparent text-xs font-semibold text-indigo-600 px-2 py-1 sm:py-0.5 outline-none min-w-[120px] cursor-pointer w-full sm:w-auto"
                                                 >
                                                     <option value="">All Categories</option>
                                                     {subPrograms.map(sp => <option key={sp.id} value={sp.id}>{sp.name}</option>)}
@@ -756,7 +757,7 @@ const SalesModule = () => {
                                                     <select 
                                                         value={selectedCourse}
                                                         onChange={handleCourseChange}
-                                                        className="bg-transparent text-xs font-bold text-emerald-600 px-3 py-1 outline-none min-w-[120px] border-l border-slate-300 pl-2 cursor-pointer"
+                                                        className="bg-transparent text-xs font-semibold text-emerald-600 px-2 py-1 sm:py-0.5 outline-none min-w-[120px] border-t sm:border-t-0 sm:border-l border-slate-200 pt-2 sm:pt-0 sm:pl-2 cursor-pointer w-full sm:w-auto"
                                                     >
                                                         <option value="">All Courses</option>
                                                         {courses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -774,89 +775,92 @@ const SalesModule = () => {
                                                     setSubPrograms([]);
                                                     setCourses([]);
                                                 }}
-                                                className="p-1 text-slate-400 hover:text-rose-500 transition-colors"
+                                                className="p-1 text-slate-400 hover:text-rose-500 transition-colors self-end sm:self-center"
                                                 title="Clear Filters"
                                             >
-                                                <X size={14} />
+                                                <X size={12} />
                                             </button>
                                         )}
                                     </div>
 
-                                    <button
-                                        onClick={() => setIsTrashView(!isTrashView)}
-                                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${isTrashView ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-                                    >
-                                        <Trash2 size={16} />
-                                        {isTrashView ? 'View Active' : 'View Trash'}
-                                    </button>
-                                    <div className="relative">
-                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                                        <input
-                                            type="text"
-                                            placeholder="Search students..."
-                                            value={searchTerm}
-                                            onChange={(e) => setSearchTerm(e.target.value)}
-                                            className="pl-10 pr-4 py-2 rounded-xl border border-slate-200 focus:border-indigo-500 outline-none text-sm w-48 md:w-64"
-                                        />
+                                    <div className="flex items-center gap-3 w-full sm:w-auto">
+                                        <button
+                                            onClick={() => setIsTrashView(!isTrashView)}
+                                            className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex-1 sm:flex-initial ${isTrashView ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-50 border border-slate-200 text-slate-600 hover:bg-slate-100'}`}
+                                        >
+                                            <Trash2 size={14} />
+                                            {isTrashView ? 'View Active' : 'View Trash'}
+                                        </button>
+                                        <div className="relative flex-1 sm:flex-initial">
+                                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                                            <input
+                                                type="text"
+                                                placeholder="Search students..."
+                                                value={searchTerm}
+                                                onChange={(e) => setSearchTerm(e.target.value)}
+                                                className="pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 focus:border-indigo-500 outline-none text-xs w-full sm:w-48 md:w-56"
+                                            />
+                                        </div>
                                     </div>
                                 </div>
                             </div>
 
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-left border-collapse">
+                            {/* Desktop View Table (hidden on mobile) */}
+                            <div className="hidden md:block overflow-x-auto">
+                                <table className="w-full text-left border-collapse min-w-[1000px]">
                                     <thead>
-                                        <tr className="border-b border-slate-100 text-slate-500 text-xs uppercase tracking-wider bg-slate-50/50">
-                                            <th className="p-4 font-bold">Student</th>
-                                            <th className="p-4 font-bold">Contact</th>
-                                            <th className="p-4 font-bold">Program</th>
-                                            <th className="p-4 font-bold">Application Info</th>
-                                            <th className="p-4 font-bold">Amount</th>
-                                            <th className="p-4 font-bold">Transaction ID</th>
-                                            <th className="p-4 font-bold">Status</th>
-                                            <th className="p-4 font-bold text-right">Action</th>
+                                        <tr className="bg-slate-50 border-b border-slate-200">
+                                            <th className="px-6 py-3 text-xs font-semibold uppercase text-slate-500 tracking-wider">Student</th>
+                                            <th className="px-6 py-3 text-xs font-semibold uppercase text-slate-500 tracking-wider">Contact</th>
+                                            <th className="px-6 py-3 text-xs font-semibold uppercase text-slate-500 tracking-wider">Program</th>
+                                            <th className="px-6 py-3 text-xs font-semibold uppercase text-slate-500 tracking-wider">Application Info</th>
+                                            <th className="px-6 py-3 text-xs font-semibold uppercase text-slate-500 tracking-wider">Amount</th>
+                                            <th className="px-6 py-3 text-xs font-semibold uppercase text-slate-500 tracking-wider">Transaction ID</th>
+                                            <th className="px-6 py-3 text-xs font-semibold uppercase text-slate-500 tracking-wider">Status</th>
+                                            <th className="px-6 py-3 text-xs font-semibold uppercase text-slate-500 tracking-wider text-right">Action</th>
                                         </tr>
                                     </thead>
-                                    <tbody className="text-sm">
+                                    <tbody className="text-xs divide-y divide-slate-100">
                                         {loading ? (
-                                            <tr><td colSpan="5" className="p-8 text-center text-slate-400">Loading records...</td></tr>
+                                            <tr><td colSpan="8" className="px-6 py-8 text-center text-slate-400 font-medium">Loading records...</td></tr>
                                         ) : filteredStudents.length > 0 ? (
                                             filteredStudents.map((student) => (
-                                                <tr key={student.id} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
-                                                    <td className="p-4">
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs">
+                                                <tr key={student.id} className="hover:bg-slate-50/50 transition-colors">
+                                                    <td className="px-6 py-3.5">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-7 h-7 shrink-0 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-700 font-semibold text-[10px]">
                                                                 {(student.first_name?.[0] || '')}{(student.last_name?.[0] || '')}
                                                             </div>
                                                             <div>
                                                                 <div 
-                                                                    className="font-bold text-slate-900 hover:text-indigo-600 cursor-pointer transition-colors"
+                                                                    className="font-semibold text-slate-900 hover:text-indigo-600 cursor-pointer transition-colors"
                                                                     onClick={() => setSelectedStudentProfile(student)}
                                                                 >
                                                                     {student.first_name} {student.last_name}
                                                                 </div>
-                                                                <div className="text-xs text-slate-400">ID: {student.crm_student_id || student.id}</div>
+                                                                <div className="text-[10px] text-slate-400">ID: {student.crm_student_id || student.id}</div>
                                                             </div>
                                                         </div>
                                                     </td>
-                                                    <td className="p-4">
-                                                        <div className="text-slate-600">{student.mobile}</div>
-                                                        <div className="text-xs text-slate-400">{student.email}</div>
+                                                    <td className="px-6 py-3.5">
+                                                        <div className="text-slate-700 font-medium">{student.mobile}</div>
+                                                        <div className="text-[10px] text-slate-400">{student.email}</div>
                                                     </td>
-                                                    <td className="p-4">
-                                                        <div className="font-medium text-slate-800">{student.program_name}</div>
-                                                        <div className="text-xs text-slate-500">{student.sub_program_name || student.course_name || '-'}</div>
+                                                    <td className="px-6 py-3.5">
+                                                        <div className="font-semibold text-slate-800">{student.program_name}</div>
+                                                        <div className="text-[10px] text-slate-500">{student.sub_program_name || student.course_name || '-'}</div>
                                                     </td>
-                                                    <td className="p-4">
+                                                    <td className="px-6 py-3.5">
                                                         <div className="max-w-[200px] space-y-1">
                                                             {student.dynamic_values_list?.filter(v => v.value && v.value.trim() !== '').slice(0, 3).map(val => (
                                                                 <div key={val.id} className="text-[10px] leading-tight flex gap-1 truncate">
-                                                                    <span className="font-bold text-slate-400 shrink-0">{val.field_label}:</span>
+                                                                    <span className="font-semibold text-slate-400 shrink-0">{val.field_label}:</span>
                                                                     <span className="text-slate-600 truncate">{val.value}</span>
                                                                 </div>
                                                             ))}
                                                             {student.dynamic_values_list?.filter(v => v.value && v.value.trim() !== '').length > 3 && (
-                                                                <div className="text-[10px] text-indigo-500 font-bold italic">
-                                                                    +{student.dynamic_values_list.filter(v => v.value && v.value.trim() !== '').length - 3} more details...
+                                                                <div className="text-[10px] text-indigo-500 font-semibold italic">
+                                                                    +{student.dynamic_values_list.filter(v => v.value && v.value.trim() !== '').length - 3} more...
                                                                 </div>
                                                             )}
                                                             {!student.dynamic_values_list?.filter(v => v.value && v.value.trim() !== '').length && (
@@ -864,34 +868,34 @@ const SalesModule = () => {
                                                             )}
                                                         </div>
                                                     </td>
-                                                    <td className="p-4">
-                                                        <div className="font-bold text-slate-900">₹{student.total_paid || 0}</div>
+                                                    <td className="px-6 py-3.5">
+                                                        <div className="font-semibold text-slate-900">₹{student.total_paid || 0}</div>
                                                     </td>
-                                                    <td className="p-4">
+                                                    <td className="px-6 py-3.5">
                                                         <div className="font-medium text-slate-800">{student.transactions_list?.[0]?.transaction_id || '-'}</div>
                                                         {student.transactions_list?.length > 1 && (
-                                                            <div className="text-[10px] text-indigo-500 font-bold mt-1">+{student.transactions_list.length - 1} more</div>
+                                                            <div className="text-[10px] text-indigo-500 font-semibold mt-1">+{student.transactions_list.length - 1} more</div>
                                                         )}
                                                     </td>
-                                                    <td className="p-4">
+                                                    <td className="px-6 py-3.5">
                                                         {student.transactions_list?.length > 0 || student.is_paid ? (
-                                                            <span className="inline-flex items-center px-2 py-1 rounded bg-green-50 text-green-700 text-xs font-medium">
+                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-green-50 text-green-700 text-[10px] font-medium">
                                                                 Paid
                                                             </span>
                                                         ) : (
-                                                            <span className="inline-flex items-center px-2 py-1 rounded bg-slate-100 text-slate-600 text-xs font-medium">
+                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-medium">
                                                                 Pending
                                                             </span>
                                                         )}
                                                     </td>
-                                                    <td className="p-4 text-right">
-                                                        <div className="flex items-center justify-end gap-2">
+                                                    <td className="px-6 py-3.5 text-right">
+                                                        <div className="flex items-center justify-end gap-1.5">
                                                             <button
                                                                 onClick={() => setSelectedStudentProfile(student)}
-                                                                className="p-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-all"
+                                                                className="p-1.5 bg-indigo-50 text-indigo-600 rounded-md hover:bg-indigo-100 transition-all"
                                                                 title="View Profile"
                                                             >
-                                                                <FileText size={16} />
+                                                                <FileText size={14} />
                                                             </button>
 
                                                             {!isTrashView ? (
@@ -899,19 +903,19 @@ const SalesModule = () => {
                                                                     {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.SALES?.edit) && (
                                                                         <button
                                                                             onClick={() => handleEditClick(student)}
-                                                                            className="p-2 bg-amber-50 text-amber-600 rounded-lg hover:bg-amber-100 transition-all"
+                                                                            className="p-1.5 bg-amber-50 text-amber-600 rounded-md hover:bg-amber-100 transition-all"
                                                                             title="Edit"
                                                                         >
-                                                                            <Edit2 size={16} />
+                                                                            <Edit2 size={14} />
                                                                         </button>
                                                                     )}
                                                                     {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.SALES?.delete) && (
                                                                         <button
                                                                             onClick={() => handleDelete(student.id)}
-                                                                            className="p-2 bg-rose-50 text-rose-600 rounded-lg hover:bg-rose-100 transition-all"
+                                                                            className="p-1.5 bg-rose-50 text-rose-600 rounded-md hover:bg-rose-100 transition-all"
                                                                             title="Move to Trash"
                                                                         >
-                                                                            <Trash2 size={16} />
+                                                                            <Trash2 size={14} />
                                                                         </button>
                                                                     )}
                                                                 </>
@@ -920,19 +924,19 @@ const SalesModule = () => {
                                                                     {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.SALES?.edit) && (
                                                                         <button
                                                                             onClick={() => handleRestore(student.id)}
-                                                                            className="p-2 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-all"
+                                                                            className="p-1.5 bg-green-50 text-green-600 rounded-md hover:bg-green-100 transition-all"
                                                                             title="Restore"
                                                                         >
-                                                                            <RotateCcw size={16} />
+                                                                            <RotateCcw size={14} />
                                                                         </button>
                                                                     )}
                                                                     {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.SALES?.delete) && (
                                                                         <button
                                                                             onClick={() => handlePermanentDelete(student.id)}
-                                                                            className="p-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all"
+                                                                            className="p-1.5 bg-red-600 text-white rounded-md hover:bg-red-700 transition-all"
                                                                             title="Delete Permanently"
                                                                         >
-                                                                            <Trash size={16} />
+                                                                            <Trash size={14} />
                                                                         </button>
                                                                     )}
                                                                 </>
@@ -942,29 +946,170 @@ const SalesModule = () => {
                                                 </tr>
                                             ))
                                         ) : (
-                                            <tr><td colSpan="6" className="p-8 text-center text-slate-400">No applications found.</td></tr>
+                                            <tr><td colSpan="8" className="px-6 py-8 text-center text-slate-400 font-medium">No applications found.</td></tr>
                                         )}
                                     </tbody>
                                 </table>
                             </div>
 
-                            {/* Pagination Controls */}
-                            <div className="mt-8 flex items-center justify-between bg-white p-4 border-t border-slate-100">
-                                <span className="text-sm text-slate-500 font-medium">
-                                    Showing <span className="text-slate-900 font-bold">{filteredStudents.length}</span> of <span className="text-slate-900 font-bold">{studentPagination.count}</span> applications
-                                </span>
-                                <div className="flex gap-2">
+                            {/* Mobile Card View (shown only on small screens) */}
+                            <div className="md:hidden divide-y divide-slate-100">
+                                {loading ? (
+                                    <div className="p-6 text-center text-slate-400 font-medium">Loading records...</div>
+                                ) : filteredStudents.length > 0 ? (
+                                    filteredStudents.map((student) => (
+                                        <div key={student.id} className="p-4 hover:bg-slate-50/50 transition-colors">
+                                            {/* Top Header Row: Avatar, Name, Status */}
+                                            <div className="flex items-start justify-between gap-3 mb-3">
+                                                <div className="flex items-center gap-2.5">
+                                                    <div className="w-9 h-9 shrink-0 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-700 font-semibold text-xs">
+                                                        {(student.first_name?.[0] || '')}{(student.last_name?.[0] || '')}
+                                                    </div>
+                                                    <div>
+                                                        <div 
+                                                            className="font-semibold text-slate-900 hover:text-indigo-600 cursor-pointer transition-colors text-sm"
+                                                            onClick={() => setSelectedStudentProfile(student)}
+                                                        >
+                                                            {student.first_name} {student.last_name}
+                                                        </div>
+                                                        <div className="text-[10px] text-slate-400 font-medium">ID: {student.crm_student_id || student.id}</div>
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    {student.transactions_list?.length > 0 || student.is_paid ? (
+                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-green-50 text-green-700 text-[10px] font-semibold">
+                                                            Paid
+                                                        </span>
+                                                    ) : (
+                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-semibold">
+                                                            Pending
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {/* Details Grid */}
+                                            <div className="grid grid-cols-2 gap-3 text-xs mb-4 bg-slate-50/60 p-3 rounded-lg border border-slate-100">
+                                                <div>
+                                                    <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mb-0.5">Contact</div>
+                                                    <div className="text-slate-700 font-semibold">{student.mobile}</div>
+                                                    <div className="text-[10px] text-slate-500 break-all">{student.email}</div>
+                                                </div>
+                                                <div>
+                                                    <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mb-0.5">Program</div>
+                                                    <div className="text-slate-800 font-semibold truncate">{student.program_name}</div>
+                                                    <div className="text-[10px] text-slate-500 truncate">{student.sub_program_name || student.course_name || '-'}</div>
+                                                </div>
+                                                <div>
+                                                    <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mb-0.5">Payment</div>
+                                                    <div className="text-slate-900 font-semibold">₹{student.total_paid || 0}</div>
+                                                    <div className="text-[10px] text-slate-500 truncate" title={student.transactions_list?.[0]?.transaction_id}>
+                                                        Txn: {student.transactions_list?.[0]?.transaction_id || '-'}
+                                                        {student.transactions_list?.length > 1 && ` (+${student.transactions_list.length - 1})`}
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mb-0.5">Custom Fields</div>
+                                                    <div className="space-y-0.5 max-w-full">
+                                                        {student.dynamic_values_list?.filter(v => v.value && v.value.trim() !== '').slice(0, 2).map(val => (
+                                                            <div key={val.id} className="text-[10px] leading-tight flex gap-1 truncate">
+                                                                <span className="font-semibold text-slate-400 shrink-0">{val.field_label}:</span>
+                                                                <span className="text-slate-600 truncate">{val.value}</span>
+                                                            </div>
+                                                        ))}
+                                                        {student.dynamic_values_list?.filter(v => v.value && v.value.trim() !== '').length > 2 && (
+                                                            <div className="text-[10px] text-indigo-500 font-semibold italic">
+                                                                +{student.dynamic_values_list.filter(v => v.value && v.value.trim() !== '').length - 2} more...
+                                                            </div>
+                                                        )}
+                                                        {!student.dynamic_values_list?.filter(v => v.value && v.value.trim() !== '').length && (
+                                                            <span className="text-[10px] text-slate-400 italic">No custom data</span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Action Buttons Row */}
+                                            <div className="flex items-center justify-end gap-2">
+                                                <button
+                                                    onClick={() => setSelectedStudentProfile(student)}
+                                                    className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-all text-xs font-semibold flex-1"
+                                                >
+                                                    <FileText size={14} />
+                                                    Profile
+                                                </button>
+
+                                                {!isTrashView ? (
+                                                    <>
+                                                        {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.SALES?.edit) && (
+                                                            <button
+                                                                onClick={() => handleEditClick(student)}
+                                                                className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-600 rounded-lg hover:bg-amber-100 transition-all text-xs font-semibold flex-1"
+                                                            >
+                                                                <Edit2 size={14} />
+                                                                Edit
+                                                            </button>
+                                                        )}
+                                                        {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.SALES?.delete) && (
+                                                            <button
+                                                                onClick={() => handleDelete(student.id)}
+                                                                className="p-2 bg-rose-50 text-rose-600 rounded-lg hover:bg-rose-100 transition-all"
+                                                                title="Move to Trash"
+                                                            >
+                                                                <Trash2 size={14} />
+                                                            </button>
+                                                        )}
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.SALES?.edit) && (
+                                                            <button
+                                                                onClick={() => handleRestore(student.id)}
+                                                                className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-all text-xs font-semibold flex-1"
+                                                            >
+                                                                <RotateCcw size={14} />
+                                                                Restore
+                                                            </button>
+                                                        )}
+                                                        {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.SALES?.delete) && (
+                                                            <button
+                                                                onClick={() => handlePermanentDelete(student.id)}
+                                                                className="p-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all"
+                                                                title="Delete Permanently"
+                                                            >
+                                                                <Trash size={14} />
+                                                            </button>
+                                                        )}
+                                                    </>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div className="p-6 text-center text-slate-400 font-medium">No applications found.</div>
+                                )}
+                            </div>
+
+                            {/* Footer / Pagination Toolbar */}
+                            <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+                                <div className="flex items-center gap-2">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                                    <p className="text-xs text-slate-500 font-medium">
+                                        Showing <span className="text-slate-900 font-semibold">{filteredStudents.length}</span> of <span className="text-slate-900 font-semibold">{studentPagination.count}</span> applications
+                                    </p>
+                                </div>
+                                <div className="flex gap-2 w-full sm:w-auto">
                                     <button
                                         onClick={() => setStudentPage(p => Math.max(1, p - 1))}
                                         disabled={!studentPagination.previous || loading}
-                                        className="px-4 py-2 rounded-xl bg-slate-100 border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-200 disabled:opacity-50 transition-all font-sans"
+                                        className="px-3.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 disabled:opacity-50 transition-colors hover:bg-slate-50 shadow-sm flex-1 sm:flex-initial"
                                     >
                                         Previous
                                     </button>
                                     <button
                                         onClick={() => setStudentPage(p => p + 1)}
                                         disabled={!studentPagination.next || loading}
-                                        className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 shadow-md shadow-indigo-100 disabled:opacity-50 transition-all font-sans"
+                                        className="px-3.5 py-1.5 bg-indigo-600 border border-indigo-600 rounded-lg text-xs font-semibold text-white disabled:opacity-50 transition-colors hover:bg-indigo-700 shadow-sm flex-1 sm:flex-initial"
                                     >
                                         Next
                                     </button>
@@ -972,16 +1117,16 @@ const SalesModule = () => {
                             </div>
                         </div>
                     ) : activeTab === 'bulk' && isAuthenticated ? (
-                        <div className="p-8 md:p-12">
-                            <div className="max-w-xl mx-auto text-center">
-                                <div className="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-6">
-                                    <svg className="w-10 h-10 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
+                        <div className="p-6">
+                            <div className="max-w-md mx-auto text-center">
+                                <div className="w-12 h-12 bg-indigo-50 rounded-lg flex items-center justify-center mx-auto mb-4">
+                                    <svg className="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
                                 </div>
-                                <h3 className="text-2xl font-bold text-slate-900 mb-2">Upload Student Data</h3>
-                                <p className="text-slate-500 mb-8">Upload your CSV or Excel file to process multiple student records at once.</p>
+                                <h3 className="text-base font-semibold text-slate-900 mb-1">Upload Student Data</h3>
+                                <p className="text-xs text-slate-500 mb-6">Upload your CSV or Excel file to process multiple student records at once.</p>
 
-                                <form onSubmit={handleBulkUpload} className="space-y-6">
-                                    <div className="relative border-2 border-dashed border-slate-300 rounded-2xl p-8 hover:border-indigo-500 transition-colors bg-slate-50/50">
+                                <form onSubmit={handleBulkUpload} className="space-y-4">
+                                    <div className="relative border border-dashed border-slate-200 rounded-xl p-6 hover:border-indigo-500 transition-colors bg-slate-50/50">
                                         <input
                                             type="file"
                                             onChange={handleBulkFileChange}
@@ -990,30 +1135,30 @@ const SalesModule = () => {
                                             required
                                         />
                                         <div className="text-center">
-                                            <p className="text-sm font-medium text-slate-900">
+                                            <p className="text-xs font-semibold text-slate-700">
                                                 {bulkFile ? bulkFile.name : "Click to upload or drag and drop"}
                                             </p>
-                                            <p className="text-xs text-slate-500 mt-1">XLSX, CSV up to 10MB</p>
+                                            <p className="text-[10px] text-slate-500 mt-1">XLSX, CSV up to 10MB</p>
                                         </div>
                                     </div>
 
                                     <button
                                         type="submit"
                                         disabled={loading || !bulkFile}
-                                        className="w-full py-4 bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 hover:shadow-indigo-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed transform hover:-translate-y-0.5"
+                                        className="w-full py-2 bg-indigo-600 text-white rounded-lg text-xs font-semibold hover:bg-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                         {loading ? 'Processing...' : 'Start Upload'}
                                     </button>
                                 </form>
 
                                 {bulkResponse && (
-                                    <div className="mt-8 text-left bg-slate-50 rounded-xl p-6 border border-slate-200">
-                                        <h4 className="font-semibold text-slate-900 mb-2">Results</h4>
-                                        <p className="text-sm text-green-600">✓ {bulkResponse.success_count} records processed successfully</p>
+                                    <div className="mt-6 text-left bg-slate-50 rounded-lg p-4 border border-slate-200">
+                                        <h4 className="text-xs font-bold text-slate-900 mb-1.5 font-sans">Results</h4>
+                                        <p className="text-xs text-green-600 font-semibold">✓ {bulkResponse.success_count} records processed successfully</p>
                                         {bulkResponse.errors?.length > 0 && (
-                                            <div className="mt-4">
-                                                <p className="text-sm text-red-600 font-medium mb-2">Errors ({bulkResponse.errors.length})</p>
-                                                <ul className="list-disc list-inside text-xs text-red-500 space-y-1 max-h-40 overflow-y-auto">
+                                            <div className="mt-3">
+                                                <p className="text-xs text-red-600 font-bold mb-1.5">Errors ({bulkResponse.errors.length})</p>
+                                                <ul className="list-disc list-inside text-[10px] text-red-500 space-y-1 max-h-32 overflow-y-auto">
                                                     {bulkResponse.errors.map((err, i) => <li key={i}>{err}</li>)}
                                                 </ul>
                                             </div>
@@ -1023,14 +1168,14 @@ const SalesModule = () => {
                             </div>
                         </div>
                     ) : (
-                        <form onSubmit={handleSubmit} className="p-8 md:p-12">
+                        <form onSubmit={handleSubmit} className="p-6">
                             {/* Step 1: Program Selection */}
-                            <div className="mb-10">
-                                <h3 className="text-lg font-bold text-slate-900 mb-6 flex items-center">
-                                    <span className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center mr-3 text-sm">1</span>
+                            <div className="mb-6">
+                                <h3 className="text-sm font-semibold text-slate-800 mb-4 flex items-center">
+                                    <span className="w-6 h-6 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center mr-2 text-xs font-bold">1</span>
                                     Program Selection
                                 </h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-end">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
                                     {(!isPublicView || !selectedProgram) ? (
                                         <SelectField
                                             label="Select Program"
@@ -1041,8 +1186,8 @@ const SalesModule = () => {
                                         />
                                     ) : (
                                         <div className="flex flex-col">
-                                            <label className="text-sm font-semibold text-slate-700 mb-2">Selected Program</label>
-                                            <div className="px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-bold">
+                                            <label className="text-xs font-semibold text-slate-600 mb-1.5">Selected Program</label>
+                                            <div className="px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-800 font-semibold text-xs">
                                                 {programs.find(p => p.id === parseInt(selectedProgram))?.name}
                                             </div>
                                         </div>
@@ -1076,27 +1221,27 @@ const SalesModule = () => {
                                 <motion.div
                                     initial={{ opacity: 0 }}
                                     animate={{ opacity: 1 }}
-                                    className="space-y-10"
+                                    className="space-y-6"
                                 >
                                     <hr className="border-slate-100" />
 
                                     {/* Application Form (Fully Dynamic) */}
                                     <div>
-                                        <h3 className="text-lg font-bold text-slate-900 mb-6 flex items-center">
-                                            <span className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center mr-3 text-sm">2</span>
+                                        <h3 className="text-sm font-semibold text-slate-800 mb-4 flex items-center">
+                                            <span className="w-6 h-6 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center mr-2 text-xs font-bold">2</span>
                                             Application Details
                                         </h3>
 
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             {dynamicFields.map(field => (
                                                 <div key={field.id} className={field.field_type === 'file' ? 'md:col-span-2' : ''}>
-                                                    <label className="text-sm font-semibold text-slate-700 mb-2 block">
+                                                    <label className="text-xs font-semibold text-slate-600 mb-1.5 block">
                                                         {field.label} {field.is_required && <span className="text-red-500">*</span>}
                                                     </label>
                                                     {field.field_type === 'dropdown' ? (
                                                         <div className="relative">
                                                             <select
-                                                                className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition-all text-slate-700 shadow-sm appearance-none"
+                                                                className="w-full px-3 py-1.5 rounded-lg bg-white border border-slate-200 focus:border-indigo-500 outline-none text-xs text-slate-700 shadow-sm appearance-none"
                                                                 value={dynamicValues[field.id] || ''}
                                                                 onChange={(e) => handleDynamicChange(e, field.id)}
                                                                 required={field.is_required}
@@ -1104,24 +1249,24 @@ const SalesModule = () => {
                                                                 <option value="">Select {field.label}</option>
                                                                 {field.options?.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                                                             </select>
-                                                            <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-slate-500">
-                                                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                                                            <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-slate-400">
+                                                                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
                                                             </div>
                                                         </div>
                                                     ) : field.field_type === 'file' ? (
-                                                        <div className="p-4 border-2 border-dashed border-slate-200 rounded-xl hover:border-indigo-400 transition-colors bg-slate-50">
+                                                        <div className="p-3 border border-dashed border-slate-200 rounded-lg hover:border-indigo-400 transition-colors bg-slate-50">
                                                             <input
                                                                 type="file"
                                                                 onChange={(e) => handleDynamicFileChange(e, field.id)}
                                                                 required={field.is_required}
-                                                                className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+                                                                className="block w-full text-xs text-slate-500 file:mr-3 file:py-1 file:px-2.5 file:rounded-md file:border-0 file:text-[10px] file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
                                                             />
                                                         </div>
                                                     ) : (
                                                         <input
                                                             type={field.field_type}
                                                             placeholder={`Enter ${field.label}`}
-                                                            className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition-all placeholder:text-slate-400 text-slate-700 shadow-sm"
+                                                            className="w-full px-3 py-1.5 rounded-lg bg-white border border-slate-200 focus:border-indigo-500 outline-none text-xs text-slate-700 shadow-sm placeholder:text-slate-400"
                                                             value={dynamicValues[field.id] || ''}
                                                             onChange={(e) => handleDynamicChange(e, field.id)}
                                                             required={field.is_required}
@@ -1133,15 +1278,15 @@ const SalesModule = () => {
                                     </div>
 
 
-                                    <div className="pt-6">
+                                    <div className="pt-4">
                                         <button
                                             type="submit"
                                             disabled={loading}
-                                            className="w-full py-4 bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-xl font-bold text-lg shadow-lg shadow-indigo-200 hover:shadow-indigo-300 transition-all disabled:opacity-50 transform hover:-translate-y-0.5"
+                                            className="w-full py-2 bg-indigo-600 text-white rounded-lg font-semibold text-xs hover:bg-indigo-700 transition-all disabled:opacity-50"
                                         >
-                                            {loading ? <span className="flex items-center justify-center"><svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Submission in progress...</span> : "Submit Application"}
+                                            {loading ? <span className="flex items-center justify-center"><svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Submission in progress...</span> : "Submit Application"}
                                         </button>
-                                        <p className="text-center text-xs text-slate-400 mt-4">By submitting this form, you agree to our terms and conditions.</p>
+                                        <p className="text-center text-[10px] text-slate-400 mt-3">By submitting this form, you agree to our terms and conditions.</p>
                                     </div>
                                 </motion.div>
                             )}
@@ -1155,150 +1300,150 @@ const SalesModule = () => {
                     <motion.div
                         initial={{ scale: 0.95, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
-                        className="bg-white rounded-3xl p-8 w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto custom-scrollbar"
+                        className="bg-white rounded-xl p-4 sm:p-6 border border-slate-200 w-full max-w-xl shadow-lg max-h-[90vh] overflow-y-auto custom-scrollbar"
                     >
-                        <div className="flex justify-between items-start mb-8">
-                            <div className="flex items-center gap-4">
-                                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-500 flex items-center justify-center text-white text-2xl font-bold shadow-lg shadow-indigo-100">
+                        <div className="flex justify-between items-start mb-6">
+                            <div className="flex items-center gap-3 text-left">
+                                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-500 flex items-center justify-center text-white text-sm font-bold">
                                     {(selectedStudentProfile.first_name?.[0] || '')}{(selectedStudentProfile.last_name?.[0] || '')}
                                 </div>
                                 <div>
-                                    <h2 className="text-2xl font-bold text-slate-900">{selectedStudentProfile.first_name} {selectedStudentProfile.last_name}</h2>
-                                    <p className="text-slate-500 font-medium">{selectedStudentProfile.crm_student_id}</p>
+                                    <h2 className="text-base font-bold text-slate-900">{selectedStudentProfile.first_name} {selectedStudentProfile.last_name}</h2>
+                                    <p className="text-xs text-slate-500 font-medium">{selectedStudentProfile.crm_student_id}</p>
                                 </div>
                             </div>
-                            <div className="flex gap-2">
+                            <div className="flex gap-1.5">
                                 <button
                                     onClick={() => {
                                         handleEditClick(selectedStudentProfile);
                                         setSelectedStudentProfile(null);
                                     }}
-                                    className="p-2 bg-amber-50 text-amber-600 rounded-xl hover:bg-amber-100 transition-all"
+                                    className="p-1.5 bg-amber-50 text-amber-600 rounded-lg hover:bg-amber-100 transition-all"
                                     title="Edit Profile"
                                 >
-                                    <Edit2 size={24} />
+                                    <Edit2 size={14} />
                                 </button>
                                 <button
                                     onClick={() => setSelectedStudentProfile(null)}
-                                    className="p-2 hover:bg-slate-100 rounded-xl transition-colors text-slate-400"
+                                    className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors text-slate-400"
                                 >
-                                    <X size={24} />
+                                    <X size={14} />
                                 </button>
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             {/* Live Wise LMS Data */}
-                            <div className="md:col-span-2 bg-indigo-50 p-6 rounded-2xl border border-indigo-200 shadow-sm">
-                                <div className="flex justify-between items-center mb-6">
-                                    <h3 className="text-xs font-black text-indigo-600 uppercase tracking-[0.2em] flex items-center gap-2">
-                                        <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+                            <div className="md:col-span-2 bg-slate-50 p-4 rounded-xl border border-slate-200 text-left">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                                        <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
                                         Live Wise LMS Status
                                     </h3>
                                     {loadingWise ? (
-                                        <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+                                        <div className="w-3.5 h-3.5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
                                     ) : (
-                                        <span className="text-[10px] font-bold text-indigo-300 uppercase tracking-widest">Real-time Connection</span>
+                                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Real-time Connection</span>
                                     )}
                                 </div>
 
                                 {wiseData && !wiseData.error_message ? (
-                                    <div className="space-y-6">
+                                    <div className="space-y-4">
                                         {/* Fees */}
-                                        <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
-                                            <div className="bg-white p-3 rounded-xl border border-indigo-100 shadow-sm">
-                                                <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider mb-1">Due Balance</p>
-                                                <p className="font-black text-rose-600 text-xl">₹{wiseData.fee_details?.due_fee || 0}</p>
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                            <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+                                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Due Balance</p>
+                                                <p className="font-bold text-rose-600 text-sm">₹{wiseData.fee_details?.due_fee || 0}</p>
                                             </div>
-                                            <div className="bg-white p-3 rounded-xl border border-indigo-100 shadow-sm">
-                                                <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider mb-1">Total Paid</p>
-                                                <p className="font-black text-emerald-600 text-xl">₹{wiseData.fee_details?.paid_fee || 0}</p>
+                                            <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+                                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Total Paid</p>
+                                                <p className="font-bold text-emerald-600 text-sm">₹{wiseData.fee_details?.paid_fee || 0}</p>
                                             </div>
-                                            <div className="bg-white p-3 rounded-xl border border-indigo-100 shadow-sm">
-                                                <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider mb-1">Attendance</p>
-                                                <p className="font-black text-indigo-900 text-xl">{wiseData.attendance || 0} Sessions</p>
+                                            <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+                                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Attendance</p>
+                                                <p className="font-bold text-slate-700 text-sm">{wiseData.attendance || 0} Sessions</p>
                                             </div>
                                         </div>
 
                                         {/* Enrolled Courses */}
-                                        <div>
-                                            <p className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.1em] mb-3 ml-1">Currently Enrolled Wise Batches</p>
-                                            <div className="flex flex-wrap gap-2">
+                                        <div className="text-left">
+                                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2 ml-0.5">Currently Enrolled Wise Batches</p>
+                                            <div className="flex flex-wrap gap-1.5">
                                                 {wiseData.enrolled_courses?.length > 0 ? (
                                                     wiseData.enrolled_courses.map(course => (
-                                                        <div key={course.id} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-100 flex items-center gap-2">
-                                                            <div className="w-1.5 h-1.5 bg-indigo-300 rounded-full" />
+                                                        <div key={course.id} className="px-2.5 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-medium flex items-center gap-1.5">
+                                                            <div className="w-1 h-1 bg-indigo-400 rounded-full" />
                                                             {course.name}
                                                         </div>
                                                     ))
                                                 ) : (
-                                                    <p className="text-indigo-400 text-xs italic ml-1">No active enrollments found in Wise.</p>
+                                                    <p className="text-slate-400 text-xs italic ml-0.5">No active enrollments found in Wise.</p>
                                                 )}
                                             </div>
                                         </div>
                                     </div>
                                 ) : !loadingWise ? (
-                                    <div className="text-center py-6 bg-white/50 rounded-xl border border-dashed border-indigo-200">
-                                        <p className="text-indigo-400 text-sm font-bold italic">No Live Wise Data for this profile yet.</p>
-                                        <p className="text-[10px] text-indigo-300 uppercase tracking-widest mt-1">Sync might be required or profile is missing LMS ID</p>
+                                    <div className="text-center py-4 bg-white/50 rounded-lg border border-dashed border-slate-200">
+                                        <p className="text-slate-400 text-xs font-semibold italic">No Live Wise Data for this profile yet.</p>
+                                        <p className="text-[9px] text-slate-400 uppercase tracking-wider mt-0.5">Sync might be required or profile is missing LMS ID</p>
                                     </div>
                                 ) : (
-                                    <div className="h-24 flex items-center justify-center">
-                                        <div className="w-8 h-8 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin" />
+                                    <div className="h-16 flex items-center justify-center">
+                                        <div className="w-6 h-6 border-2 border-indigo-100 border-t-indigo-600 rounded-full animate-spin" />
                                     </div>
                                 )}
                             </div>
 
                             {/* Program Info */}
-                            <div className="md:col-span-2 bg-slate-50 p-6 rounded-2xl border border-slate-100">
-                                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Enrollment Details</h3>
-                                <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+                            <div className="md:col-span-2 bg-slate-50 p-4 rounded-xl border border-slate-200 text-left">
+                                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Enrollment Details</h3>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
                                     <div>
-                                        <p className="text-xs text-slate-500 mb-1">Program</p>
-                                        <p className="font-bold text-slate-800">{selectedStudentProfile.program_name}</p>
+                                        <p className="text-[10px] text-slate-500 mb-0.5">Program</p>
+                                        <p className="font-semibold text-xs text-slate-800">{selectedStudentProfile.program_name}</p>
                                     </div>
                                     <div>
-                                        <p className="text-xs text-slate-500 mb-1">Sub-Program</p>
-                                        <p className="font-bold text-slate-800">{selectedStudentProfile.sub_program_name || '-'}</p>
+                                        <p className="text-[10px] text-slate-500 mb-0.5">Sub-Program</p>
+                                        <p className="font-semibold text-xs text-slate-800">{selectedStudentProfile.sub_program_name || '-'}</p>
                                     </div>
                                     <div>
-                                        <p className="text-xs text-slate-500 mb-1">Course</p>
-                                        <p className="font-bold text-slate-800">{selectedStudentProfile.course_name || '-'}</p>
+                                        <p className="text-[10px] text-slate-500 mb-0.5">Course</p>
+                                        <p className="font-semibold text-xs text-slate-800">{selectedStudentProfile.course_name || '-'}</p>
                                     </div>
                                 </div>
                             </div>
 
                             {/* Base Contact Info */}
-                            <div>
-                                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Contact Info</h3>
-                                <div className="space-y-4">
+                            <div className="md:col-span-2 bg-slate-50 p-4 rounded-xl border border-slate-200 text-left">
+                                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Contact Info</h3>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                                     <div>
-                                        <p className="text-xs text-slate-500 mb-1">Mobile</p>
-                                        <p className="font-medium text-slate-800">{selectedStudentProfile.mobile || '-'}</p>
+                                        <p className="text-[10px] text-slate-500 mb-0.5">Mobile</p>
+                                        <p className="font-semibold text-xs text-slate-800">{selectedStudentProfile.mobile || '-'}</p>
                                     </div>
                                     <div>
-                                        <p className="text-xs text-slate-500 mb-1">Email</p>
-                                        <p className="font-medium text-slate-800">{selectedStudentProfile.email || '-'}</p>
+                                        <p className="text-[10px] text-slate-500 mb-0.5">Email</p>
+                                        <p className="font-semibold text-xs text-slate-800">{selectedStudentProfile.email || '-'}</p>
                                     </div>
                                 </div>
                             </div>
 
                             {/* Dynamic Fields Groups */}
-                            <div className="md:col-span-2 space-y-8">
+                            <div className="md:col-span-2 space-y-4">
                                 {['INITIAL', 'ACADEMIC'].map(group => {
                                     const groupFields = selectedStudentProfile.dynamic_values_list?.filter(val => val.field_group === group);
                                     if (!groupFields || groupFields.length === 0) return null;
 
                                     return (
-                                        <div key={group}>
-                                            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">
+                                        <div key={group} className="text-left">
+                                            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
                                                 {group === 'INITIAL' ? 'Initial Application (Sales)' : 'Academic/Post-Admission Details'}
                                             </h3>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white border border-slate-100 p-6 rounded-2xl shadow-sm">
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 bg-slate-50 border border-slate-200 p-3 sm:p-4 rounded-xl">
                                                 {groupFields.map((val) => (
                                                     <div key={val.id}>
-                                                        <p className="text-xs text-slate-500 mb-1">{val.field_label}</p>
-                                                        <p className="font-medium text-slate-800">{val.value || '-'}</p>
+                                                        <p className="text-[10px] text-slate-500 mb-0.5">{val.field_label}</p>
+                                                        <p className="font-semibold text-xs text-slate-800">{val.value || '-'}</p>
                                                     </div>
                                                 ))}
                                             </div>
@@ -1306,19 +1451,19 @@ const SalesModule = () => {
                                     );
                                 })}
                                 {!selectedStudentProfile.dynamic_values_list?.length && (
-                                    <div>
-                                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Form Details</h3>
-                                        <div className="bg-white border border-slate-100 p-6 rounded-2xl">
-                                            <p className="text-slate-400 text-sm italic">No custom fields filled.</p>
+                                    <div className="text-left">
+                                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Form Details</h3>
+                                        <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl">
+                                            <p className="text-slate-400 text-xs italic">No custom fields filled.</p>
                                         </div>
                                     </div>
                                 )}
                             </div>
 
                             {/* Documents */}
-                            <div className="md:col-span-2">
-                                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Uploaded Documents</h3>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="md:col-span-2 text-left">
+                                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Uploaded Documents</h3>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     {selectedStudentProfile.documents_list?.length > 0 ? (
                                         selectedStudentProfile.documents_list.map((doc) => (
                                             <a
@@ -1326,57 +1471,57 @@ const SalesModule = () => {
                                                 href={doc.file.startsWith('http') ? doc.file : `${api.defaults.baseURL.split('/api')[0]}${doc.file}`}
                                                 target="_blank"
                                                 rel="noreferrer"
-                                                className="flex items-center gap-3 p-4 bg-slate-50 border border-slate-100 rounded-xl hover:border-indigo-300 hover:bg-indigo-50 transition-all group"
+                                                className="flex items-center gap-2.5 p-2 bg-slate-50 border border-slate-200 rounded-lg hover:border-indigo-300 hover:bg-indigo-50/50 transition-all group"
                                             >
-                                                <div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center text-slate-400 group-hover:text-indigo-600 shadow-sm">
-                                                    <FileText size={20} />
+                                                <div className="w-8 h-8 rounded bg-white flex items-center justify-center text-slate-400 group-hover:text-indigo-600 border border-slate-200 shadow-sm">
+                                                    <FileText size={16} />
                                                 </div>
                                                 <div className="flex-1 overflow-hidden">
-                                                    <p className="text-sm font-bold text-slate-800 truncate">{doc.document_type}</p>
-                                                    <p className="text-xs text-slate-400">Click to view</p>
+                                                    <p className="text-xs font-semibold text-slate-800 truncate">{doc.document_type}</p>
+                                                    <p className="text-[10px] text-slate-400">Click to view</p>
                                                 </div>
                                             </a>
                                         ))
                                     ) : (
-                                        <p className="text-slate-400 text-sm italic">No documents uploaded.</p>
+                                        <p className="text-slate-400 text-xs italic">No documents uploaded.</p>
                                     )}
                                 </div>
                             </div>
 
                             {/* Transactions */}
-                            <div className="md:col-span-2">
-                                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Payment Information</h3>
+                            <div className="md:col-span-2 text-left">
+                                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Payment Information</h3>
                                 {selectedStudentProfile.transactions_list?.length > 0 ? (
-                                    <div className="bg-green-50/50 border border-green-100 p-6 rounded-2xl">
+                                    <div className="bg-emerald-50/30 border border-emerald-200 p-4 rounded-xl">
                                         {selectedStudentProfile.transactions_list.map((txn) => (
-                                            <div key={txn.id} className="grid grid-cols-2 md:grid-cols-3 gap-6">
+                                            <div key={txn.id} className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 border-b border-emerald-100 last:border-b-0 pb-3 last:pb-0 mb-3 last:mb-0">
                                                 <div>
-                                                    <p className="text-xs text-green-600/70 mb-1">Transaction ID</p>
-                                                    <p className="font-bold text-green-800">{txn.transaction_id || '-'}</p>
+                                                    <p className="text-[10px] text-emerald-700/80 mb-0.5">Transaction ID</p>
+                                                    <p className="font-semibold text-xs text-emerald-900 truncate">{txn.transaction_id || '-'}</p>
                                                 </div>
                                                 <div>
-                                                    <p className="text-xs text-green-600/70 mb-1">Amount</p>
-                                                    <p className="font-bold text-green-800">₹{txn.amount || '-'}</p>
+                                                    <p className="text-[10px] text-emerald-700/80 mb-0.5">Amount</p>
+                                                    <p className="font-semibold text-xs text-emerald-900">₹{txn.amount || '-'}</p>
                                                 </div>
                                                 <div>
-                                                    <p className="text-xs text-green-600/70 mb-1">Date</p>
-                                                    <p className="font-bold text-green-800">{new Date(txn.date).toLocaleDateString()}</p>
+                                                    <p className="text-[10px] text-emerald-700/80 mb-0.5">Date</p>
+                                                    <p className="font-semibold text-xs text-emerald-900">{new Date(txn.date).toLocaleDateString()}</p>
                                                 </div>
                                             </div>
                                         ))}
                                     </div>
                                 ) : (
-                                    <div className="bg-amber-50 border border-amber-100 p-4 rounded-xl text-center">
-                                        <p className="text-amber-700 text-sm font-medium">No payment record found.</p>
+                                    <div className="bg-amber-50/50 border border-amber-200 p-3 rounded-lg text-center">
+                                        <p className="text-amber-800 text-xs font-medium">No payment record found.</p>
                                     </div>
                                 )}
                             </div>
                         </div>
 
-                        <div className="mt-10 pt-8 border-t border-slate-100">
+                        <div className="mt-6 pt-4 border-t border-slate-100">
                             <button
                                 onClick={() => setSelectedStudentProfile(null)}
-                                className="w-full py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold hover:bg-slate-200 transition-all"
+                                className="w-full py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-semibold hover:bg-slate-200 transition-all"
                             >
                                 Close Profile
                             </button>
@@ -1391,62 +1536,77 @@ const SalesModule = () => {
                     <motion.div
                         initial={{ scale: 0.95, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
-                        className="bg-white rounded-3xl p-8 w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto custom-scrollbar"
+                        className="bg-white rounded-xl p-4 sm:p-6 border border-slate-200 w-full max-w-xl shadow-lg max-h-[90vh] overflow-y-auto custom-scrollbar"
                     >
-                        <div className="flex justify-between items-center mb-6">
-                            <h2 className="text-xl font-bold text-slate-900 flex items-center gap-3">
-                                <Edit2 className="text-indigo-600" size={24} />
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                                <Edit2 className="text-indigo-600" size={16} />
                                 Edit Application
                             </h2>
                             <button onClick={() => setEditingStudent(null)} className="text-slate-400 hover:text-slate-600 transition-colors">
-                                <X size={24} />
+                                <X size={16} />
                             </button>
                         </div>
 
-                        <form onSubmit={handleUpdateStudent} className="space-y-6">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div className="md:col-span-2 bg-slate-50/50 p-6 rounded-2xl border border-slate-100">
-                                    <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Program Selection</h4>
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-left">
+                        <form onSubmit={handleUpdateStudent} className="space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+                                <div className="md:col-span-2 bg-slate-50 p-4 rounded-xl border border-slate-200 text-left">
+                                    <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Program Selection</h4>
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-left">
                                         <div>
-                                            <label className="text-xs font-semibold text-slate-700 mb-1 block">Program <span className="text-red-500">*</span></label>
-                                            <select
-                                                className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-sm outline-none focus:border-indigo-500 shadow-sm"
-                                                value={editFormData.program_type || ''}
-                                                onChange={handleEditProgramChange}
-                                                required
-                                            >
-                                                <option value="">Select Program</option>
-                                                {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                                            </select>
+                                            <label className="text-[10px] font-semibold text-slate-600 mb-1 block">Program <span className="text-red-500">*</span></label>
+                                            <div className="relative">
+                                                <select
+                                                    className="w-full px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs outline-none focus:border-indigo-500 shadow-sm appearance-none"
+                                                    value={editFormData.program_type || ''}
+                                                    onChange={handleEditProgramChange}
+                                                    required
+                                                >
+                                                    <option value="">Select Program</option>
+                                                    {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                                </select>
+                                                <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-slate-400">
+                                                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                                                </div>
+                                            </div>
                                         </div>
                                         <div>
-                                            <label className="text-xs font-semibold text-slate-700 mb-1 block">Sub-Program</label>
-                                            <select
-                                                className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-sm outline-none focus:border-indigo-500 shadow-sm"
-                                                value={editFormData.sub_program || ''}
-                                                onChange={handleEditSubProgramChange}
-                                            >
-                                                <option value="">Select Sub-Program</option>
-                                                {editSubPrograms.map(sp => <option key={sp.id} value={sp.id}>{sp.name}</option>)}
-                                            </select>
+                                            <label className="text-[10px] font-semibold text-slate-600 mb-1 block">Sub-Program</label>
+                                            <div className="relative">
+                                                <select
+                                                    className="w-full px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs outline-none focus:border-indigo-500 shadow-sm appearance-none"
+                                                    value={editFormData.sub_program || ''}
+                                                    onChange={handleEditSubProgramChange}
+                                                >
+                                                    <option value="">Select Sub-Program</option>
+                                                    {editSubPrograms.map(sp => <option key={sp.id} value={sp.id}>{sp.name}</option>)}
+                                                </select>
+                                                <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-slate-400">
+                                                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                                                </div>
+                                            </div>
                                         </div>
                                         <div>
-                                            <label className="text-xs font-semibold text-slate-700 mb-1 block">Course</label>
-                                            <select
-                                                className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-sm outline-none focus:border-indigo-500 shadow-sm"
-                                                value={editFormData.course || ''}
-                                                onChange={(e) => setEditFormData(prev => ({ ...prev, course: e.target.value }))}
-                                            >
-                                                <option value="">Select Course</option>
-                                                {editCourses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                                            </select>
+                                            <label className="text-[10px] font-semibold text-slate-600 mb-1 block">Course</label>
+                                            <div className="relative">
+                                                <select
+                                                    className="w-full px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs outline-none focus:border-indigo-500 shadow-sm appearance-none"
+                                                    value={editFormData.course || ''}
+                                                    onChange={(e) => setEditFormData(prev => ({ ...prev, course: e.target.value }))}
+                                                >
+                                                    <option value="">Select Course</option>
+                                                    {editCourses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                                </select>
+                                                <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-slate-400">
+                                                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
 
-                                <div className="md:col-span-2 border-b border-slate-100 pb-2">
-                                    <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Core Information</h4>
+                                <div className="md:col-span-2 border-b border-slate-100 pb-1.5 text-left">
+                                    <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Core Information</h4>
                                 </div>
 
                                 <InputField
@@ -1455,12 +1615,14 @@ const SalesModule = () => {
                                     value={editFormData.first_name || ''}
                                     onChange={(e) => setEditFormData({ ...editFormData, first_name: e.target.value })}
                                     required
+                                    className="text-left"
                                 />
                                 <InputField
                                     label="Last Name"
                                     name="last_name"
                                     value={editFormData.last_name || ''}
                                     onChange={(e) => setEditFormData({ ...editFormData, last_name: e.target.value })}
+                                    className="text-left"
                                 />
                                 <InputField
                                     label="Mobile Number"
@@ -1468,12 +1630,14 @@ const SalesModule = () => {
                                     value={editFormData.mobile || ''}
                                     onChange={(e) => setEditFormData({ ...editFormData, mobile: e.target.value })}
                                     required
+                                    className="text-left"
                                 />
                                 <InputField
                                     label="Email Address"
                                     name="email"
                                     value={editFormData.email || ''}
                                     onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
+                                    className="text-left"
                                 />
 
                                 {['INITIAL', 'ACADEMIC'].map(group => {
@@ -1482,33 +1646,38 @@ const SalesModule = () => {
 
                                     return (
                                         <React.Fragment key={group}>
-                                            <div className="md:col-span-2 border-b border-slate-100 pt-4 pb-2">
-                                                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">
+                                            <div className="md:col-span-2 border-b border-slate-100 pt-3 pb-1.5 text-left">
+                                                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">
                                                     {group === 'INITIAL' ? 'Initial Application Details' : 'Academic Coordinator Data Entry'}
                                                 </h4>
                                             </div>
                                             {groupFields.map(field => (
-                                                <div key={field.id} className={field.field_type === 'file' ? 'md:col-span-2' : ''}>
-                                                    <label className="text-xs font-semibold text-slate-700 mb-1.5 block">{field.label}</label>
+                                                <div key={field.id} className={field.field_type === 'file' ? 'md:col-span-2 text-left' : 'text-left'}>
+                                                    <label className="text-[10px] font-semibold text-slate-600 mb-1 block">{field.label}</label>
                                                     {field.field_type === 'dropdown' ? (
-                                                        <select
-                                                            className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-sm outline-none focus:border-indigo-500 shadow-sm"
-                                                            value={editFormData.dynamic_values?.[field.id] || ''}
-                                                            onChange={(e) => handleEditDynamicChange(field.id, e.target.value)}
-                                                        >
-                                                            <option value="">Select {field.label}</option>
-                                                            {field.options?.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                                                        </select>
+                                                        <div className="relative">
+                                                            <select
+                                                                className="w-full px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs outline-none focus:border-indigo-500 shadow-sm appearance-none"
+                                                                value={editFormData.dynamic_values?.[field.id] || ''}
+                                                                onChange={(e) => handleEditDynamicChange(field.id, e.target.value)}
+                                                            >
+                                                                <option value="">Select {field.label}</option>
+                                                                {field.options?.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                                            </select>
+                                                            <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-slate-400">
+                                                                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                                                            </div>
+                                                        </div>
                                                     ) : field.field_type !== 'file' ? (
                                                         <input
                                                             type={field.field_type}
-                                                            className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-sm outline-none focus:border-indigo-500 shadow-sm"
+                                                            className="w-full px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs outline-none focus:border-indigo-500 shadow-sm"
                                                             value={editFormData.dynamic_values?.[field.id] || ''}
                                                             onChange={(e) => handleEditDynamicChange(field.id, e.target.value)}
                                                         />
                                                     ) : (
-                                                        <div className="p-3 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-center">
-                                                            <p className="text-xs text-slate-400 italic font-medium">File uploads (like {field.label}) can only be added via the application form.</p>
+                                                        <div className="p-3 bg-slate-50 rounded-lg border border-dashed border-slate-200 text-center">
+                                                            <p className="text-[10px] text-slate-400 italic font-medium">File uploads (like {field.label}) can only be added via the application form.</p>
                                                         </div>
                                                     )}
                                                 </div>
@@ -1518,22 +1687,22 @@ const SalesModule = () => {
                                 })}
                             </div>
 
-                            <div className="pt-6 flex gap-3">
+                            <div className="pt-4 flex gap-3">
                                 <button
                                     type="button"
                                     onClick={() => setEditingStudent(null)}
-                                    className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-all"
+                                    className="flex-1 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-semibold hover:bg-slate-200 transition-all"
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     type="submit"
                                     disabled={loading}
-                                    className="flex-1 py-3 bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-100 hover:shadow-indigo-200 transition-all disabled:opacity-50"
+                                    className="flex-1 py-2 bg-indigo-600 text-white rounded-lg text-xs font-semibold hover:bg-indigo-700 transition-all disabled:opacity-50"
                                 >
                                     {loading ? (
-                                        <div className="flex items-center justify-center gap-2">
-                                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                        <div className="flex items-center justify-center gap-1.5">
+                                            <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                                             <span>Saving...</span>
                                         </div>
                                     ) : 'Update Details'}

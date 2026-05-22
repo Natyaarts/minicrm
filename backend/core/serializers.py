@@ -61,7 +61,6 @@ class StudentSubmissionSerializer(serializers.ModelSerializer):
     class Meta:
         model = StudentSubmission
         fields = ['id', 'exam', 'student', 'start_time', 'end_time', 'is_submitted', 'answers_json', 'score']
-        read_only_fields = ['score']
 
 class QuestionOptionSerializer(serializers.ModelSerializer):
     class Meta:

@@ -113,66 +113,67 @@ const UsersModule = () => {
     const currentTab = tabs.find(t => t.role === activeTab);
 
     return (
-        <div className="p-8 max-w-7xl mx-auto space-y-8 animate-fadeIn">
+        <div className="p-6 max-w-6xl mx-auto space-y-6 animate-fadeIn">
             {/* Context Header */}
-            <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
+            <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
-                    <h1 className="text-5xl font-black text-slate-900 tracking-tight">
-                        {currentTab?.label || 'Identity'} <span className="text-indigo-600">Hub</span>
+                    <h1 className="text-2xl font-bold text-slate-800 tracking-tight">
+                        {currentTab?.label || 'Identity'} Hub
                     </h1>
-                    <p className="text-slate-500 font-medium mt-3 text-lg">Manage access, security profiles and activity for all {activeTab.toLowerCase()}s</p>
+                    <p className="text-slate-500 mt-1 text-xs">Manage access, security profiles and activity for all {activeTab.toLowerCase()}s</p>
                 </div>
                 <button
                     onClick={openCreateUser}
-                    className={`flex items-center gap-3 px-8 py-4 ${currentTab?.bg || 'bg-indigo-600'} ${currentTab?.color || 'text-white'} font-black rounded-2xl shadow-xl transition-all hover:-translate-y-1 active:scale-95 text-sm uppercase tracking-widest border border-transparent hover:border-white/20`}
+                    className={`flex items-center gap-1.5 px-4 py-2 ${currentTab?.bg || 'bg-indigo-600'} ${currentTab?.color || 'text-white'} font-semibold rounded-lg shadow-sm transition-colors hover:opacity-90 active:scale-95 text-xs border border-slate-200/10`}
                 >
-                    <UserPlus size={20} />
+                    <UserPlus size={15} />
                     Add {activeTab.replace('_', ' ')}
                 </button>
             </header>
 
             {/* Enhanced Tabs System */}
-            <div className="flex flex-wrap items-center gap-4 bg-white p-4 rounded-[32px] border border-slate-100 shadow-sm overflow-x-auto custom-scrollbar no-scrollbar">
+            <div className="flex flex-wrap items-center gap-2 bg-white p-2 rounded-xl border border-slate-200 shadow-sm overflow-x-auto no-scrollbar">
                 {tabs.map((tab) => (
                     <button
                         key={tab.role}
                         onClick={() => { setActiveTab(tab.role); setUserPage(1); }}
-                        className={`flex items-center gap-3 px-6 py-4 rounded-2xl font-black text-sm transition-all whitespace-nowrap ${activeTab === tab.role
-                            ? `${tab.bg} ${tab.color} shadow-lg shadow-slate-100 scale-105`
-                            : 'bg-white text-slate-400 hover:text-slate-600 hover:bg-slate-50'
+                        className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg font-semibold text-xs transition-colors whitespace-nowrap ${activeTab === tab.role
+                            ? `${tab.bg} ${tab.color} border border-slate-100 shadow-sm`
+                            : 'bg-white text-slate-500 hover:text-slate-700 hover:bg-slate-50'
                             }`}
                     >
-                        <tab.icon size={20} />
+                        <tab.icon size={15} />
                         {tab.label}
                     </button>
                 ))}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 {/* Stats for Active Section */}
-                <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm relative overflow-hidden group">
-                    <div className={`absolute top-0 right-0 w-24 h-24 ${tabs.find(t => t.role === activeTab)?.bg} rounded-bl-[60px] opacity-20 -z-10 group-hover:w-full group-hover:h-full group-hover:rounded-none transition-all duration-500`} />
-                    <div className={`w-12 h-12 bg-white rounded-2xl shadow-sm border border-slate-50 flex items-center justify-center ${tabs.find(t => t.role === activeTab)?.color} mb-4`}>
-                        {activeTab === 'ADMIN' ? <Shield size={24} /> : activeTab === 'MENTOR' ? <GraduationCap size={24} /> : activeTab === 'TEACHER' ? <BookOpen size={24} /> : <Users size={24} />}
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${tabs.find(t => t.role === activeTab)?.bg || 'bg-indigo-50'} ${tabs.find(t => t.role === activeTab)?.color || 'text-indigo-600'}`}>
+                        {activeTab === 'ADMIN' ? <Shield size={20} /> : activeTab === 'MENTOR' ? <GraduationCap size={20} /> : activeTab === 'TEACHER' ? <BookOpen size={20} /> : <Users size={20} />}
                     </div>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Active {activeTab.replace('_', ' ')}s</p>
-                    <h3 className="text-3xl font-black text-slate-900">{userPagination.count}</h3>
+                    <div>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Active {activeTab.replace('_', ' ')}s</p>
+                        <h3 className="text-xl font-bold text-slate-800">{userPagination.count}</h3>
+                    </div>
                 </div>
 
                 {/* Internal Search */}
-                <div className="md:col-span-3 bg-white p-4 rounded-[32px] border border-slate-100 shadow-sm flex items-center gap-4 px-8">
-                    <Search className="text-slate-400" size={24} />
+                <div className="md:col-span-3 bg-white p-2 rounded-xl border border-slate-200 shadow-sm flex items-center gap-3 px-4">
+                    <Search className="text-slate-400" size={18} />
                     <input
                         type="text"
                         placeholder={`Search ${activeTab.toLowerCase()} names, emails, or usernames...`}
-                        className="bg-transparent border-none outline-none w-full font-bold text-lg text-slate-700 placeholder-slate-300"
+                        className="bg-transparent border-none outline-none w-full text-sm text-slate-700 placeholder-slate-400"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && fetchUsers()}
                     />
                     <button
                         onClick={fetchUsers}
-                        className="px-6 py-3 bg-slate-900 text-white font-black rounded-2xl text-[10px] uppercase tracking-widest hover:bg-black transition-all"
+                        className="px-4 py-2 bg-slate-800 text-white font-semibold rounded-lg text-xs hover:bg-slate-900 transition-colors"
                     >
                         Search
                     </button>
@@ -180,33 +181,33 @@ const UsersModule = () => {
             </div>
 
             {/* User List Panel */}
-            <div className="bg-white rounded-[48px] border border-slate-100 shadow-2xl shadow-slate-200/50 overflow-hidden">
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                 <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse min-w-[800px]">
                         <thead>
-                            <tr className="bg-slate-50/50 border-b border-slate-100">
-                                <th className="p-8 text-[10px] font-black uppercase text-slate-400 tracking-widest">Identity & Profile</th>
-                                <th className="p-8 text-[10px] font-black uppercase text-slate-400 tracking-widest text-center">Security Role</th>
-                                <th className="p-8 text-[10px] font-black uppercase text-slate-400 tracking-widest">Status</th>
-                                <th className="p-8 text-[10px] font-black uppercase text-slate-400 tracking-widest text-right">Control</th>
+                            <tr className="bg-slate-50 border-b border-slate-200">
+                                <th className="px-6 py-3 text-xs font-semibold uppercase text-slate-500 tracking-wider">Identity & Profile</th>
+                                <th className="px-6 py-3 text-xs font-semibold uppercase text-slate-500 tracking-wider text-center">Security Role</th>
+                                <th className="px-6 py-3 text-xs font-semibold uppercase text-slate-500 tracking-wider">Status</th>
+                                <th className="px-6 py-3 text-xs font-semibold uppercase text-slate-500 tracking-wider text-right">Control</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-50">
+                        <tbody className="divide-y divide-slate-100">
                             {users.map(user => (
-                                <tr key={user.id} className="group hover:bg-slate-50/30 transition-colors">
-                                    <td className="p-8">
-                                        <div className="flex items-center gap-5">
-                                            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center text-slate-500 font-black text-xl group-hover:scale-105 transition-all shadow-sm">
+                                <tr key={user.id} className="hover:bg-slate-50/50 transition-colors">
+                                    <td className="px-6 py-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center text-slate-600 font-bold text-sm border border-slate-200 shadow-sm">
                                                 {user.first_name ? user.first_name[0] : user.username[0].toUpperCase()}
                                             </div>
                                             <div>
-                                                <p className="font-black text-slate-900 text-lg leading-tight">{user.first_name || user.username} {user.last_name || ''}</p>
-                                                <p className="text-sm font-medium text-slate-400 tracking-tight mt-1">{user.email}</p>
+                                                <p className="font-semibold text-slate-800 text-sm leading-none">{user.first_name || user.username} {user.last_name || ''}</p>
+                                                <p className="text-xs text-slate-400 mt-1.5">{user.email}</p>
                                             </div>
                                         </div>
                                     </td>
-                                    <td className="p-8 text-center">
-                                        <span className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm inline-block ${user.role === 'SUPER_ADMIN' ? 'bg-indigo-600 text-white' :
+                                    <td className="px-6 py-4 text-center">
+                                        <span className={`px-2.5 py-1 rounded-md text-xs font-semibold tracking-wide inline-block ${user.role === 'SUPER_ADMIN' ? 'bg-indigo-600 text-white' :
                                             user.role === 'ADMIN' ? 'bg-rose-50 border border-rose-100 text-rose-600' :
                                                 user.role === 'MENTOR' ? 'bg-emerald-50 border border-emerald-100 text-emerald-600' :
                                                     user.role === 'TEACHER' ? 'bg-teal-50 border border-teal-100 text-teal-600' :
@@ -217,27 +218,27 @@ const UsersModule = () => {
                                             {user.role.replace('_', ' ')}
                                         </span>
                                     </td>
-                                    <td className="p-8">
-                                        <div className="flex items-center gap-3">
-                                            <div className="relative">
-                                                <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                                                <div className="absolute inset-0 w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping opacity-40" />
+                                    <td className="px-6 py-4">
+                                        <div className="flex items-center gap-2">
+                                            <div className="relative flex h-2 w-2">
+                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                                             </div>
-                                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Operational</span>
+                                            <span className="text-xs text-slate-600 font-medium">Operational</span>
                                         </div>
                                     </td>
-                                    <td className="p-8 text-right space-x-3">
+                                    <td className="px-6 py-4 text-right space-x-2">
                                         <button
                                             onClick={() => openEditUser(user)}
-                                            className="inline-flex items-center justify-center w-12 h-12 bg-white border border-slate-100 text-slate-400 rounded-2xl hover:text-indigo-600 hover:border-indigo-100 transition-all shadow-sm hover:shadow-md"
+                                            className="inline-flex items-center justify-center w-8 h-8 bg-white border border-slate-200 text-slate-500 rounded-lg hover:text-indigo-600 hover:border-indigo-300 transition-colors shadow-sm"
                                         >
-                                            <Edit2 size={18} />
+                                            <Edit2 size={14} />
                                         </button>
                                         <button
                                             onClick={() => handleDeleteUser(user.id, user.role)}
-                                            className="inline-flex items-center justify-center w-12 h-12 bg-white border border-slate-100 text-slate-400 rounded-2xl hover:text-rose-600 hover:border-rose-100 transition-all shadow-sm hover:shadow-md"
+                                            className="inline-flex items-center justify-center w-8 h-8 bg-white border border-slate-200 text-slate-500 rounded-lg hover:text-rose-600 hover:border-rose-300 transition-colors shadow-sm"
                                         >
-                                            <Trash2 size={18} />
+                                            <Trash2 size={14} />
                                         </button>
                                     </td>
                                 </tr>
@@ -246,179 +247,188 @@ const UsersModule = () => {
                     </table>
 
                     {/* Footer / Pagination Toolbar */}
-                    <div className="p-8 bg-slate-50/40 border-t border-slate-100 flex flex-col md:flex-row items-center justify-between gap-6">
+                    <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex flex-col md:flex-row items-center justify-between gap-4">
                         <div className="flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full bg-indigo-500" />
-                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
-                                Page {userPage} &bull; Rendering {users.length} of {userPagination.count} Records
+                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                            <p className="text-xs text-slate-500 font-medium">
+                                Page {userPage} &bull; Showing {users.length} of {userPagination.count} records
                             </p>
                         </div>
-                        <div className="flex gap-3">
+                        <div className="flex gap-2">
                             <button
                                 onClick={() => setUserPage(p => Math.max(1, p - 1))}
                                 disabled={!userPagination.previous || loading}
-                                className="px-8 py-3 bg-white border border-slate-200 rounded-2xl font-black text-[10px] uppercase tracking-widest text-slate-600 disabled:opacity-50 transition-all hover:bg-slate-50 shadow-sm"
+                                className="px-3.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 disabled:opacity-50 transition-colors hover:bg-slate-50 shadow-sm"
                             >
                                 Previous
                             </button>
                             <button
                                 onClick={() => setUserPage(p => p + 1)}
                                 disabled={!userPagination.next || loading}
-                                className="px-8 py-3 bg-indigo-600 border border-indigo-600 rounded-2xl font-black text-[10px] uppercase tracking-widest text-white disabled:opacity-50 transition-all hover:bg-indigo-700 shadow-xl shadow-indigo-100"
+                                className="px-3.5 py-1.5 bg-indigo-600 border border-indigo-600 rounded-lg text-xs font-semibold text-white disabled:opacity-50 transition-colors hover:bg-indigo-700 shadow-sm"
                             >
-                                Next Page
+                                Next
                             </button>
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* Interactive User Modal */}
+            {/* User Modal */}
             <AnimatePresence>
                 {userModalOpen && (
-                    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xl z-[100] flex items-center justify-center p-4">
+                    <div className="fixed inset-0 bg-black/40 z-[100] flex items-center justify-center p-4">
                         <motion.div
-                            initial={{ scale: 0.95, opacity: 0, y: 30 }}
+                            initial={{ scale: 0.96, opacity: 0, y: 16 }}
                             animate={{ scale: 1, opacity: 1, y: 0 }}
-                            exit={{ scale: 0.95, opacity: 0, y: 30 }}
-                            className="bg-white rounded-[48px] shadow-2xl w-full max-w-2xl overflow-hidden border border-white"
+                            exit={{ scale: 0.96, opacity: 0, y: 16 }}
+                            transition={{ duration: 0.18 }}
+                            className="bg-white rounded-xl shadow-lg w-full max-w-lg border border-slate-200"
                         >
-                            <div className="relative">
-                                {/* Decorative elements */}
-                                <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50/50 rounded-bl-[100px] -z-10" />
-
-                                <div className="p-12">
-                                    <div className="flex justify-between items-center mb-10">
-                                        <div>
-                                            <h2 className="text-4xl font-black text-slate-900 tracking-tight">
-                                                {userModalMode === 'create' ? 'Provision Staff' : 'Modify Account'}
-                                            </h2>
-                                            <p className="text-slate-400 font-medium text-base mt-2">Configure system access and security credentials</p>
-                                        </div>
-                                        <button onClick={() => setUserModalOpen(false)} className="p-4 bg-slate-50 rounded-2xl text-slate-400 hover:text-slate-900 transition-colors shadow-sm">
-                                            <X size={24} />
-                                        </button>
-                                    </div>
-
-                                    <form onSubmit={handleSaveUser} className="space-y-8">
-                                        <div className="grid grid-cols-2 gap-8">
-                                            <div className="space-y-2">
-                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Username / UID</label>
-                                                <input
-                                                    className="w-full px-6 py-5 bg-slate-50 border border-transparent rounded-2xl focus:bg-white focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none font-bold transition-all text-lg"
-                                                    value={userModalMode === 'create' ? newUser.username : editUser?.username}
-                                                    onChange={e => userModalMode === 'create' ? setNewUser({ ...newUser, username: e.target.value }) : setEditUser({ ...editUser, username: e.target.value })}
-                                                    disabled={userModalMode === 'edit'}
-                                                    placeholder="john_doe"
-                                                    required
-                                                />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Official Email</label>
-                                                <input
-                                                    className="w-full px-6 py-5 bg-slate-50 border border-transparent rounded-2xl focus:bg-white focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none font-bold transition-all text-lg"
-                                                    type="email"
-                                                    placeholder="john@natyaarts.com"
-                                                    value={userModalMode === 'create' ? newUser.email : editUser?.email}
-                                                    onChange={e => userModalMode === 'create' ? setNewUser({ ...newUser, email: e.target.value }) : setEditUser({ ...editUser, email: e.target.value })}
-                                                    required
-                                                />
-                                            </div>
-                                        </div>
-
-                                        <div className="grid grid-cols-2 gap-8">
-                                            <div className="space-y-2">
-                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">First Name</label>
-                                                <input
-                                                    className="w-full px-6 py-5 bg-slate-50 border border-transparent rounded-2xl focus:bg-white focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none font-bold transition-all text-lg"
-                                                    value={userModalMode === 'create' ? newUser.first_name : editUser?.first_name || ''}
-                                                    onChange={e => userModalMode === 'create' ? setNewUser({ ...newUser, first_name: e.target.value }) : setEditUser({ ...editUser, first_name: e.target.value })}
-                                                    required
-                                                />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Last Name</label>
-                                                <input
-                                                    className="w-full px-6 py-5 bg-slate-50 border border-transparent rounded-2xl focus:bg-white focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none font-bold transition-all text-lg"
-                                                    value={userModalMode === 'create' ? newUser.last_name || '' : editUser?.last_name || ''}
-                                                    onChange={e => userModalMode === 'create' ? setNewUser({ ...newUser, last_name: e.target.value }) : setEditUser({ ...editUser, last_name: e.target.value })}
-                                                />
-                                            </div>
-                                        </div>
-
-                                        {userModalMode === 'create' && (
-                                            <div className="space-y-2">
-                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Access Password</label>
-                                                <input
-                                                    className="w-full px-6 py-5 bg-slate-50 border border-transparent rounded-2xl focus:bg-white focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none font-bold transition-all text-lg"
-                                                    type="password"
-                                                    value={newUser.password}
-                                                    onChange={e => setNewUser({ ...newUser, password: e.target.value })}
-                                                    required
-                                                />
-                                            </div>
-                                        )}
-
-                                        <div className="grid grid-cols-2 gap-8">
-                                            <div className="space-y-2">
-                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">System Profile</label>
-                                                <div className="relative">
-                                                    <select
-                                                        className="w-full px-6 py-5 bg-slate-50 border border-transparent rounded-2xl focus:bg-white focus:border-indigo-500 outline-none font-black transition-all appearance-none text-lg"
-                                                        value={userModalMode === 'create' ? newUser.role : editUser?.role}
-                                                        onChange={e => userModalMode === 'create' ? setNewUser({ ...newUser, role: e.target.value }) : setEditUser({ ...editUser, role: e.target.value })}
-                                                    >
-                                                        {activeTab === 'ADMIN' ? (
-                                                            <>
-                                                                <option value="ADMIN">Lead Administrator</option>
-                                                                <option value="SUPER_ADMIN">System Owner / Super Admin</option>
-                                                                <option value="ACADEMIC">Academic Manager</option>
-                                                                <option value="ACADEMIC_COORDINATOR">Academic Coordinator</option>
-                                                                <option value="TEACHER">Staff Teacher</option>
-                                                                <option value="EMPLOYEE">General Employee</option>
-                                                            </>
-                                                        ) : activeTab === 'SALES' ? (
-                                                            <>
-                                                                <option value="SALES">Sales Associate</option>
-                                                                <option value="EMPLOYEE">General Employee</option>
-                                                            </>
-                                                        ) : activeTab === 'MENTOR' ? (
-                                                            <>
-                                                                <option value="MENTOR">Faculty / Mentor</option>
-                                                                <option value="EMPLOYEE">General Employee</option>
-                                                            </>
-                                                        ) : activeTab === 'TEACHER' ? (
-                                                            <>
-                                                                <option value="TEACHER">Staff Teacher</option>
-                                                                <option value="EMPLOYEE">General Employee</option>
-                                                            </>
-                                                        ) : (
-                                                            <>
-                                                                <option value="STUDENT">Student Scholar</option>
-                                                                <option value="EMPLOYEE">General Employee</option>
-                                                            </>
-                                                        )}
-                                                    </select>
-                                                    <ChevronDown className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                                                </div>
-                                            </div>
-                                            <div className="space-y-2">
-                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Contact Phone</label>
-                                                <input
-                                                    className="w-full px-6 py-5 bg-slate-50 border border-transparent rounded-2xl focus:bg-white focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none font-bold transition-all text-lg"
-                                                    value={userModalMode === 'create' ? newUser.phone_number : editUser?.phone_number || ''}
-                                                    placeholder="+91"
-                                                    onChange={e => userModalMode === 'create' ? setNewUser({ ...newUser, phone_number: e.target.value }) : setEditUser({ ...editUser, phone_number: e.target.value })}
-                                                />
-                                            </div>
-                                        </div>
-
-                                        <button className="w-full py-6 bg-indigo-600 text-white rounded-[28px] font-black text-xl transition-all hover:bg-indigo-700 shadow-[0_25px_50px_-12px_rgba(79,70,229,0.4)] transform hover:-translate-y-1 active:scale-95 flex items-center justify-center gap-3">
-                                            {userModalMode === 'create' ? <><UserPlus size={24} /> Confirm Account Provision</> : 'Apply Account Modifications'}
-                                        </button>
-                                    </form>
+                            {/* Modal Header */}
+                            <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100">
+                                <div>
+                                    <h2 className="text-base font-bold text-slate-800">
+                                        {userModalMode === 'create' ? 'Add New User' : 'Edit User'}
+                                    </h2>
+                                    <p className="text-xs text-slate-400 mt-0.5">Configure system access credentials</p>
                                 </div>
+                                <button onClick={() => setUserModalOpen(false)} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors">
+                                    <X size={18} />
+                                </button>
                             </div>
+
+                            {/* Modal Body */}
+                            <form onSubmit={handleSaveUser} className="px-6 py-5 space-y-4">
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-500 mb-1">Username</label>
+                                        <input
+                                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 outline-none text-sm text-slate-700 transition-all"
+                                            value={userModalMode === 'create' ? newUser.username : editUser?.username}
+                                            onChange={e => userModalMode === 'create' ? setNewUser({ ...newUser, username: e.target.value }) : setEditUser({ ...editUser, username: e.target.value })}
+                                            disabled={userModalMode === 'edit'}
+                                            placeholder="john_doe"
+                                            required
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-500 mb-1">Email</label>
+                                        <input
+                                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 outline-none text-sm text-slate-700 transition-all"
+                                            type="email"
+                                            placeholder="john@natyaarts.com"
+                                            value={userModalMode === 'create' ? newUser.email : editUser?.email}
+                                            onChange={e => userModalMode === 'create' ? setNewUser({ ...newUser, email: e.target.value }) : setEditUser({ ...editUser, email: e.target.value })}
+                                            required
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-500 mb-1">First Name</label>
+                                        <input
+                                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 outline-none text-sm text-slate-700 transition-all"
+                                            value={userModalMode === 'create' ? newUser.first_name : editUser?.first_name || ''}
+                                            onChange={e => userModalMode === 'create' ? setNewUser({ ...newUser, first_name: e.target.value }) : setEditUser({ ...editUser, first_name: e.target.value })}
+                                            required
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-500 mb-1">Last Name</label>
+                                        <input
+                                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 outline-none text-sm text-slate-700 transition-all"
+                                            value={userModalMode === 'create' ? newUser.last_name || '' : editUser?.last_name || ''}
+                                            onChange={e => userModalMode === 'create' ? setNewUser({ ...newUser, last_name: e.target.value }) : setEditUser({ ...editUser, last_name: e.target.value })}
+                                        />
+                                    </div>
+                                </div>
+
+                                {userModalMode === 'create' && (
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-500 mb-1">Password</label>
+                                        <input
+                                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 outline-none text-sm text-slate-700 transition-all"
+                                            type="password"
+                                            value={newUser.password}
+                                            onChange={e => setNewUser({ ...newUser, password: e.target.value })}
+                                            required
+                                        />
+                                    </div>
+                                )}
+
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-500 mb-1">Role</label>
+                                        <div className="relative">
+                                            <select
+                                                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:border-indigo-400 outline-none text-sm text-slate-700 transition-all appearance-none"
+                                                value={userModalMode === 'create' ? newUser.role : editUser?.role}
+                                                onChange={e => userModalMode === 'create' ? setNewUser({ ...newUser, role: e.target.value }) : setEditUser({ ...editUser, role: e.target.value })}
+                                            >
+                                                {activeTab === 'ADMIN' ? (
+                                                    <>
+                                                        <option value="ADMIN">Administrator</option>
+                                                        <option value="SUPER_ADMIN">Super Admin</option>
+                                                        <option value="ACADEMIC">Academic Manager</option>
+                                                        <option value="ACADEMIC_COORDINATOR">Academic Coordinator</option>
+                                                        <option value="TEACHER">Teacher</option>
+                                                        <option value="EMPLOYEE">General Employee</option>
+                                                    </>
+                                                ) : activeTab === 'SALES' ? (
+                                                    <>
+                                                        <option value="SALES">Sales</option>
+                                                        <option value="EMPLOYEE">General Employee</option>
+                                                    </>
+                                                ) : activeTab === 'MENTOR' ? (
+                                                    <>
+                                                        <option value="MENTOR">Mentor</option>
+                                                        <option value="EMPLOYEE">General Employee</option>
+                                                    </>
+                                                ) : activeTab === 'TEACHER' ? (
+                                                    <>
+                                                        <option value="TEACHER">Teacher</option>
+                                                        <option value="EMPLOYEE">General Employee</option>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <option value="STUDENT">Student</option>
+                                                        <option value="EMPLOYEE">General Employee</option>
+                                                    </>
+                                                )}
+                                            </select>
+                                            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14} />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-500 mb-1">Phone</label>
+                                        <input
+                                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 outline-none text-sm text-slate-700 transition-all"
+                                            value={userModalMode === 'create' ? newUser.phone_number : editUser?.phone_number || ''}
+                                            placeholder="+91"
+                                            onChange={e => userModalMode === 'create' ? setNewUser({ ...newUser, phone_number: e.target.value }) : setEditUser({ ...editUser, phone_number: e.target.value })}
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Footer Buttons */}
+                                <div className="flex justify-end gap-2 pt-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setUserModalOpen(false)}
+                                        className="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        className="px-5 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors flex items-center gap-2"
+                                    >
+                                        {userModalMode === 'create' ? <><UserPlus size={15} /> Add User</> : 'Save Changes'}
+                                    </button>
+                                </div>
+                            </form>
                         </motion.div>
                     </div>
                 )}

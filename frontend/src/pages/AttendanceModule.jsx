@@ -109,62 +109,75 @@ const AttendanceModule = () => {
     const isAdmin = authUser?.role === 'SUPER_ADMIN';
 
     return (
-        <div className="min-h-screen bg-[#F8FAFC] p-4 md:p-8 font-sans">
-            <div className="max-w-7xl mx-auto">
-                {/* Header */}
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10">
-                    <div>
-                        <h2 className="text-4xl font-black text-slate-900 tracking-tight mb-2">Attendance Hub</h2>
-                        <p className="text-slate-500 font-bold flex items-center gap-2">
-                            <Calendar size={16} className="text-rose-600" />
-                            {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-                        </p>
-                    </div>
-
-                    <div className="flex bg-white p-1.5 rounded-2xl border border-slate-200 shadow-sm">
-                        <button 
-                            onClick={() => setActiveTab('personal')}
-                            className={`px-6 py-2.5 rounded-xl text-sm font-black transition-all ${activeTab === 'personal' ? 'bg-rose-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-900'}`}
-                        >
-                            My Logs
-                        </button>
-                        {isAdmin && (
-                            <>
-                                <button 
-                                    onClick={() => setActiveTab('master')}
-                                    className={`px-6 py-2.5 rounded-xl text-sm font-black transition-all ${activeTab === 'master' ? 'bg-rose-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-900'}`}
-                                >
-                                    Master Sheet
-                                </button>
-                                <button 
-                                    onClick={() => setActiveTab('settings')}
-                                    className={`px-6 py-2.5 rounded-xl text-sm font-black transition-all ${activeTab === 'settings' ? 'bg-rose-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-900'}`}
-                                >
-                                    Settings
-                                </button>
-                            </>
-                        )}
-                    </div>
+        <div className="space-y-6 animate-fadeIn px-2 md:px-0 pb-20">
+            {/* Header Area */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                <div>
+                    <h1 className="text-xl md:text-2xl font-bold text-slate-800 tracking-tight">
+                        Attendance <span className="text-indigo-600">Hub</span>
+                    </h1>
+                    <p className="text-slate-500 mt-1 text-xs font-normal flex items-center gap-2">
+                        <Calendar size={14} className="text-indigo-600" />
+                        {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                    </p>
                 </div>
+
+                <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+                    <button 
+                        onClick={() => setActiveTab('personal')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                            activeTab === 'personal' 
+                            ? 'bg-indigo-600 text-white shadow-sm' 
+                            : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 shadow-sm'
+                        }`}
+                    >
+                        My Logs
+                    </button>
+                    {isAdmin && (
+                        <>
+                            <button 
+                                onClick={() => setActiveTab('master')}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                                    activeTab === 'master' 
+                                    ? 'bg-indigo-600 text-white shadow-sm' 
+                                    : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 shadow-sm'
+                                }`}
+                            >
+                                Master Sheet
+                            </button>
+                            <button 
+                                onClick={() => setActiveTab('settings')}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                                    activeTab === 'settings' 
+                                    ? 'bg-indigo-600 text-white shadow-sm' 
+                                    : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 shadow-sm'
+                                }`}
+                            >
+                                Settings
+                            </button>
+                        </>
+                    )}
+                </div>
+            </div>
 
                 {activeTab === 'settings' && isAdmin ? (
                     <SettingsView location={location} requestLocation={requestLocation} />
                 ) : (
-                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     {/* Clock In/Out Card */}
-                    <div className="lg:col-span-4 space-y-6">
-                        <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-xl shadow-slate-200/50 relative overflow-hidden group">
-                            <div className="absolute top-0 right-0 w-32 h-32 bg-rose-50 rounded-full -mr-16 -mt-16 group-hover:scale-110 transition-transform duration-500" />
+                    <div className="lg:col-span-1 space-y-4">
+                        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden group">
+                            <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-50 rounded-full -mr-12 -mt-12 group-hover:scale-110 transition-transform duration-500" />
                             
                             <div className="relative z-10">
-                                <div className="w-16 h-16 bg-rose-600 rounded-2xl flex items-center justify-center text-white mb-6 shadow-lg shadow-rose-200">
-                                    <Clock size={32} />
+                                <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-lg flex items-center justify-center text-white mb-4 shadow-sm">
+                                    <Clock size={20} />
                                 </div>
                                 
-                                <h3 className="text-2xl font-black text-slate-900 mb-2">
+                                <h3 className="text-lg font-bold text-slate-800 mb-1">
                                     {todayRecord?.clock_out ? "Work Completed" : todayRecord?.clock_in ? "You're Logged In" : "Ready to Start?"}
                                 </h3>
-                                <p className="text-slate-500 font-bold text-sm mb-8">
+                                <p className="text-slate-500 text-xs mb-6">
                                     {todayRecord?.clock_out 
                                         ? "Great job today! See you tomorrow." 
                                         : todayRecord?.clock_in 
@@ -173,12 +186,12 @@ const AttendanceModule = () => {
                                     }
                                 </p>
 
-                                <div className="space-y-4">
+                                <div className="space-y-3">
                                     {!todayRecord?.clock_in && (
                                         <button 
                                             onClick={handleClockIn}
                                             disabled={loading || location.status !== 'granted'}
-                                            className="w-full py-5 bg-slate-900 text-white rounded-3xl font-black hover:bg-rose-600 transition-all shadow-xl hover:-translate-y-1 disabled:opacity-50 disabled:translate-y-0"
+                                            className="w-full py-2 bg-slate-800 text-white rounded-lg text-sm font-semibold hover:bg-indigo-600 transition-all shadow-sm hover:shadow-md disabled:opacity-50"
                                         >
                                             {loading ? "Processing..." : "Clock In Now"}
                                         </button>
@@ -188,42 +201,42 @@ const AttendanceModule = () => {
                                         <button 
                                             onClick={handleClockOut}
                                             disabled={loading || location.status !== 'granted'}
-                                            className="w-full py-5 bg-rose-600 text-white rounded-3xl font-black hover:bg-rose-700 transition-all shadow-xl hover:-translate-y-1 disabled:opacity-50 disabled:translate-y-0"
+                                            className="w-full py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-all shadow-sm hover:shadow-md disabled:opacity-50"
                                         >
                                             {loading ? "Processing..." : "Clock Out"}
                                         </button>
                                     )}
 
                                     {todayRecord?.clock_out && (
-                                        <div className="p-4 bg-emerald-50 rounded-2xl flex items-center gap-3 border border-emerald-100">
-                                            <CheckCircle2 className="text-emerald-500" />
-                                            <span className="text-emerald-700 font-black text-sm uppercase tracking-tight">Shift Ended</span>
+                                        <div className="p-3 bg-emerald-50 rounded-lg flex items-center gap-2 border border-emerald-100">
+                                            <CheckCircle2 size={16} className="text-emerald-500" />
+                                            <span className="text-emerald-700 font-semibold text-xs uppercase tracking-wider">Shift Ended</span>
                                         </div>
                                     )}
                                 </div>
 
                                 {/* Location Status */}
-                                <div className="mt-8 flex items-center gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${location.status === 'granted' ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
-                                        <MapPin size={20} />
+                                <div className="mt-6 flex items-center gap-3 p-3 bg-slate-50 rounded-lg border border-slate-100">
+                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${location.status === 'granted' ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'}`}>
+                                        <MapPin size={16} />
                                     </div>
                                     <div className="flex-1">
-                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Geo-Fence Status</p>
-                                        <p className="text-xs font-black text-slate-700">
+                                        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Geo-Fence Status</p>
+                                        <p className="text-xs font-semibold text-slate-700">
                                             {location.status === 'granted' ? 'Location Secured' : 'Location Required'}
                                         </p>
                                     </div>
                                     {location.status !== 'granted' && (
-                                        <button onClick={requestLocation} className="text-[10px] font-black text-rose-600 uppercase underline">Retry</button>
+                                        <button onClick={requestLocation} className="text-[10px] font-bold text-red-600 uppercase underline">Retry</button>
                                     )}
                                 </div>
                             </div>
                         </div>
 
                         {/* Working Stats */}
-                        <div className="bg-slate-900 p-8 rounded-[2.5rem] text-white">
-                            <Timer className="text-rose-500 mb-4" size={24} />
-                            <h4 className="text-slate-400 font-black text-[10px] uppercase tracking-widest mb-1">Weekly Progress</h4>
+                        <div className="bg-slate-900 p-5 rounded-xl border border-slate-800 text-white shadow-sm">
+                            <Timer className="text-indigo-400 mb-3" size={20} />
+                            <h4 className="text-slate-400 font-semibold text-[10px] uppercase tracking-wider mb-1">Weekly Progress</h4>
                             {(() => {
                                 const now = new Date();
                                 const startOfWeek = new Date(now);
@@ -247,10 +260,10 @@ const AttendanceModule = () => {
 
                                 return (
                                     <>
-                                        <p className="text-2xl font-black mb-4">{totalHrs}h / 40h</p>
-                                        <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                                        <p className="text-lg font-bold mb-3">{totalHrs}h / 40h</p>
+                                        <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
                                             <div 
-                                                className="h-full bg-rose-500 transition-all duration-1000" 
+                                                className="h-full bg-indigo-500 transition-all duration-1000" 
                                                 style={{ width: `${progress}%` }} 
                                             />
                                         </div>
@@ -261,26 +274,26 @@ const AttendanceModule = () => {
                     </div>
 
                     {/* Data Table Area */}
-                    <div className="lg:col-span-8">
-                        <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-xl overflow-hidden">
-                            <div className="p-8 border-b border-slate-100 flex flex-col md:flex-row justify-between items-center gap-4">
-                                <h3 className="text-xl font-black text-slate-900">
+                    <div className="lg:col-span-2">
+                        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden h-full">
+                            <div className="p-4 border-b border-slate-200 flex flex-col md:flex-row justify-between items-center gap-4">
+                                <h3 className="text-base font-bold text-slate-800">
                                     {activeTab === 'master' ? "Master Attendance Sheet" : "Your Recent Logs"}
                                 </h3>
                                 
-                                <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-2">
                                     <div className="relative">
-                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
                                         <input 
                                             type="text" 
-                                            placeholder="Search by name or date..." 
+                                            placeholder="Search logs..." 
                                             value={searchTerm}
                                             onChange={(e) => setSearchTerm(e.target.value)}
-                                            className="pl-10 pr-4 py-2 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold outline-none focus:border-rose-300 transition-all w-48 md:w-64"
+                                            className="pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 transition-all w-48"
                                         />
                                     </div>
-                                    <button className="p-2 bg-slate-50 text-slate-400 hover:text-rose-600 transition-colors rounded-xl border border-slate-100">
-                                        <Download size={20} />
+                                    <button className="p-1.5 bg-white border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 shadow-sm transition-colors">
+                                        <Download size={14} />
                                     </button>
                                 </div>
                             </div>
@@ -288,18 +301,18 @@ const AttendanceModule = () => {
                             <div className="overflow-x-auto">
                                 <table className="w-full">
                                     <thead>
-                                        <tr className="bg-slate-50/50">
+                                        <tr className="bg-slate-50">
                                             {activeTab === 'master' && (
-                                                <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Employee</th>
+                                                <th className="px-5 py-3 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200">Employee</th>
                                             )}
-                                            <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Date</th>
-                                            <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Punch In</th>
-                                            <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Punch Out</th>
-                                            <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Duration</th>
-                                            <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Compliance</th>
+                                            <th className="px-5 py-3 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200">Date</th>
+                                            <th className="px-5 py-3 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200">Punch In</th>
+                                            <th className="px-5 py-3 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200">Punch Out</th>
+                                            <th className="px-5 py-3 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200">Duration</th>
+                                            <th className="px-5 py-3 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200">Compliance</th>
                                         </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-slate-50">
+                                    <tbody className="divide-y divide-slate-100">
                                         {attendanceLogs
                                             .filter(log => 
                                                 log.employee_name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -308,38 +321,38 @@ const AttendanceModule = () => {
                                             .map((log) => (
                                             <tr key={log.id} className="hover:bg-slate-50/50 transition-colors">
                                                 {activeTab === 'master' && (
-                                                    <td className="px-8 py-5">
+                                                    <td className="px-5 py-3">
                                                         <div className="flex items-center gap-3">
-                                                            <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center font-black text-xs">
+                                                            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-100 flex items-center justify-center font-bold text-xs shadow-sm">
                                                                 {log.employee_name?.[0]}
                                                             </div>
                                                             <div>
-                                                                <p className="font-black text-slate-900 text-sm">{log.employee_name}</p>
-                                                                <p className="text-[10px] font-bold text-slate-400 uppercase">{log.employee_id_display}</p>
+                                                                <p className="font-semibold text-slate-800 text-sm">{log.employee_name}</p>
+                                                                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">{log.employee_id_display}</p>
                                                             </div>
                                                         </div>
                                                     </td>
                                                 )}
-                                                <td className="px-8 py-5">
-                                                    <span className="text-sm font-bold text-slate-600">{log.date}</span>
+                                                <td className="px-5 py-3">
+                                                    <span className="text-xs font-semibold text-slate-600">{log.date}</span>
                                                 </td>
-                                                <td className="px-8 py-5">
+                                                <td className="px-5 py-3">
                                                     <div className="flex flex-col">
-                                                        <span className="text-sm font-black text-slate-900">
+                                                        <span className="text-xs font-bold text-slate-800">
                                                             {log.clock_in ? new Date(`2000-01-01T${log.clock_in}`).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'}
                                                         </span>
-                                                        <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1">
+                                                        <span className="text-[10px] font-semibold text-emerald-600 flex items-center gap-1 mt-0.5">
                                                             <MapPin size={10} /> Verified
                                                         </span>
                                                     </div>
                                                 </td>
-                                                <td className="px-8 py-5">
-                                                    <span className="text-sm font-black text-slate-900">
+                                                <td className="px-5 py-3">
+                                                    <span className="text-xs font-bold text-slate-800">
                                                         {log.clock_out ? new Date(`2000-01-01T${log.clock_out}`).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'}
                                                     </span>
                                                 </td>
-                                                <td className="px-8 py-5">
-                                                    <span className="text-sm font-black text-slate-700">
+                                                <td className="px-5 py-3">
+                                                    <span className="text-xs font-semibold text-slate-600">
                                                         {(() => {
                                                             if (!log.clock_in || !log.clock_out) return '--';
                                                             const start = new Date(`2000-01-01T${log.clock_in}`);
@@ -351,11 +364,11 @@ const AttendanceModule = () => {
                                                         })()}
                                                     </span>
                                                 </td>
-                                                <td className="px-8 py-5">
-                                                    <span className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-tight shadow-sm border ${
+                                                <td className="px-5 py-3">
+                                                    <span className={`px-2.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider border ${
                                                         log.status === 'PRESENT' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
                                                         log.status === 'LATE' ? 'bg-amber-50 text-amber-600 border-amber-100' :
-                                                        'bg-rose-50 text-rose-600 border-rose-100'
+                                                        'bg-red-50 text-red-600 border-red-100'
                                                     }`}>
                                                         {log.status}
                                                     </span>
@@ -364,7 +377,7 @@ const AttendanceModule = () => {
                                         ))}
                                         {attendanceLogs.length === 0 && (
                                             <tr>
-                                                <td colSpan="6" className="px-8 py-12 text-center text-slate-400 font-bold italic">
+                                                <td colSpan="6" className="px-5 py-8 text-center text-slate-400 font-semibold text-sm">
                                                     No attendance logs found for this period.
                                                 </td>
                                             </tr>
@@ -374,9 +387,8 @@ const AttendanceModule = () => {
                             </div>
                         </div>
                     </div>
-                    </div>
-                )}
-            </div>
+                </div>
+            )}
         </div>
     );
 };
@@ -466,31 +478,31 @@ const SettingsView = ({ location, requestLocation }) => {
             animate={{ opacity: 1, y: 0 }}
             className="grid grid-cols-1 lg:grid-cols-12 gap-8"
         >
-            <div className="lg:col-span-5">
-                <form onSubmit={handleSave} className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-xl space-y-6">
-                    <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-2xl font-black text-slate-900">Shift Settings</h3>
-                        <div className="w-10 h-10 bg-slate-900 rounded-xl flex items-center justify-center text-white">
-                            <MapPin size={20} />
+            <div className="lg:col-span-4">
+                <form onSubmit={handleSave} className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-5">
+                    <div className="flex items-center justify-between mb-2">
+                        <h3 className="text-lg font-bold text-slate-800">Shift Settings</h3>
+                        <div className="w-8 h-8 bg-slate-800 rounded-lg flex items-center justify-center text-white shadow-sm">
+                            <MapPin size={16} />
                         </div>
                     </div>
 
                     <div className="space-y-4">
                         {/* Address Search Helper */}
-                        <div className="p-4 bg-indigo-50 rounded-2xl border border-indigo-100 mb-6">
-                            <label className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-2 block">Locate Office by Address</label>
+                        <div className="p-3 bg-indigo-50 rounded-lg border border-indigo-100 mb-4">
+                            <label className="text-[10px] font-semibold text-indigo-500 uppercase tracking-wider mb-2 block">Locate Office by Address</label>
                             <div className="flex gap-2">
                                 <input 
                                     type="text" 
                                     placeholder="Enter office address..."
                                     value={addressSearch}
                                     onChange={(e) => setAddressSearch(e.target.value)}
-                                    className="flex-1 px-4 py-2 bg-white border border-indigo-200 rounded-xl font-bold text-sm outline-none focus:border-indigo-500"
+                                    className="flex-1 px-3 py-1.5 bg-white border border-indigo-200 rounded-lg font-medium text-xs outline-none focus:border-indigo-400"
                                 />
                                 <button 
                                     type="button"
                                     onClick={handleAddressSearch}
-                                    className="px-4 py-2 bg-indigo-600 text-white rounded-xl font-black text-xs hover:bg-indigo-700 transition-all"
+                                    className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg font-semibold text-xs hover:bg-indigo-700 transition-all shadow-sm"
                                 >
                                     Locate
                                 </button>
@@ -499,43 +511,43 @@ const SettingsView = ({ location, requestLocation }) => {
 
                         <div className="grid grid-cols-2 gap-4">
                             <div>
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Shift Start</label>
+                                <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1 block">Shift Start</label>
                                 <input 
                                     type="time" 
                                     value={shift.start_time}
                                     onChange={(e) => setShift({ ...shift, start_time: e.target.value })}
-                                    className="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none"
+                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-medium text-sm outline-none focus:border-indigo-400"
                                 />
                             </div>
                             <div>
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Shift End</label>
+                                <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1 block">Shift End</label>
                                 <input 
                                     type="time" 
                                     value={shift.end_time}
                                     onChange={(e) => setShift({ ...shift, end_time: e.target.value })}
-                                    className="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none"
+                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-medium text-sm outline-none focus:border-indigo-400"
                                 />
                             </div>
                         </div>
 
-                        <div className="pt-4 border-t border-slate-50">
+                        <div className="pt-4 border-t border-slate-100">
                             <div className="grid grid-cols-2 gap-4 mb-4">
                                 <div>
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Office Latitude</label>
+                                    <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1 block">Office Latitude</label>
                                     <input 
                                         type="number" step="any"
                                         value={shift.office_latitude}
                                         onChange={(e) => setShift({ ...shift, office_latitude: e.target.value })}
-                                        className="w-full px-4 py-2 bg-slate-50 border border-slate-100 rounded-xl font-bold outline-none text-sm"
+                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-medium outline-none text-sm focus:border-indigo-400"
                                     />
                                 </div>
                                 <div>
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Office Longitude</label>
+                                    <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1 block">Office Longitude</label>
                                     <input 
                                         type="number" step="any"
                                         value={shift.office_longitude}
                                         onChange={(e) => setShift({ ...shift, office_longitude: e.target.value })}
-                                        className="w-full px-4 py-2 bg-slate-50 border border-slate-100 rounded-xl font-bold outline-none text-sm"
+                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-medium outline-none text-sm focus:border-indigo-400"
                                     />
                                 </div>
                             </div>
@@ -543,19 +555,19 @@ const SettingsView = ({ location, requestLocation }) => {
                             <button 
                                 type="button"
                                 onClick={setOfficeToCurrent}
-                                className="w-full py-4 bg-rose-600 text-white rounded-2xl font-black text-sm hover:bg-rose-700 transition-all shadow-lg shadow-rose-200 mb-4 flex items-center justify-center gap-2"
+                                className="w-full py-2 bg-indigo-600 text-white rounded-lg font-semibold text-xs hover:bg-indigo-700 transition-all shadow-sm mb-4 flex items-center justify-center gap-2"
                             >
-                                <MapPin size={18} />
+                                <MapPin size={14} />
                                 Use My Current Location
                             </button>
 
                             <div>
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Allowed Geofence Radius (Meters)</label>
+                                <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1 block">Allowed Geofence Radius (Meters)</label>
                                 <input 
                                     type="number" 
                                     value={shift.allowed_radius_meters}
                                     onChange={(e) => setShift({ ...shift, allowed_radius_meters: e.target.value })}
-                                    className="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none"
+                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-medium outline-none text-sm focus:border-indigo-400"
                                 />
                             </div>
                         </div>
@@ -564,20 +576,20 @@ const SettingsView = ({ location, requestLocation }) => {
                     <button 
                         type="submit"
                         disabled={loading}
-                        className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black shadow-xl hover:bg-rose-600 transition-all transform hover:-translate-y-1"
+                        className="w-full py-2.5 bg-slate-800 text-white rounded-lg font-semibold text-sm shadow-sm hover:bg-slate-900 transition-all disabled:opacity-50"
                     >
                         {loading ? "Saving..." : "Save Geofence Configuration"}
                     </button>
                 </form>
             </div>
 
-            <div className="lg:col-span-7">
-                <div className="bg-white p-4 rounded-[2.5rem] border border-slate-100 shadow-xl h-full min-h-[500px] overflow-hidden relative group">
+            <div className="lg:col-span-8">
+                <div className="bg-slate-50 rounded-xl border border-slate-200 shadow-sm h-full min-h-[500px] overflow-hidden relative group">
                     <iframe 
                         width="100%" 
                         height="100%" 
                         frameBorder="0" 
-                        style={{ border: 0, borderRadius: '1.5rem' }}
+                        style={{ border: 0 }}
                         src={addressSearch 
                             ? `https://maps.google.com/maps?q=${encodeURIComponent(addressSearch)}&t=&z=15&ie=UTF8&iwloc=&output=embed`
                             : `https://maps.google.com/maps?q=${shift.office_latitude},${shift.office_longitude}&t=&z=15&ie=UTF8&iwloc=&output=embed`
@@ -586,21 +598,21 @@ const SettingsView = ({ location, requestLocation }) => {
                     ></iframe>
                     
                     {/* Floating Info Overlay */}
-                    <div className="absolute bottom-8 left-8 right-8 bg-white/95 backdrop-blur-xl p-6 rounded-3xl border border-white shadow-2xl transform translate-y-2 group-hover:translate-y-0 transition-all duration-500">
+                    <div className="absolute bottom-4 left-4 right-4 bg-white/95 backdrop-blur-xl p-4 rounded-xl border border-slate-200 shadow-lg transform translate-y-2 group-hover:translate-y-0 transition-all duration-500">
                         <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 bg-rose-100 text-rose-600 rounded-2xl flex items-center justify-center">
-                                    <MapPin size={24} />
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-lg flex items-center justify-center">
+                                    <MapPin size={20} />
                                 </div>
                                 <div>
-                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Office Boundary Preview</p>
-                                    <p className="text-lg font-black text-slate-900">Radius: {shift.allowed_radius_meters}m</p>
+                                    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Office Boundary Preview</p>
+                                    <p className="text-sm font-bold text-slate-800">Radius: {shift.allowed_radius_meters}m</p>
                                 </div>
                             </div>
                             <div className="text-right">
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Live Status</p>
-                                <p className="text-xs font-black text-emerald-600 flex items-center gap-1 justify-end">
-                                    <CheckCircle2 size={12} /> Active Geofence
+                                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Live Status</p>
+                                <p className="text-[10px] font-bold text-emerald-600 flex items-center gap-1 justify-end">
+                                    <CheckCircle2 size={10} /> Active Geofence
                                 </p>
                             </div>
                         </div>

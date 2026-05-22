@@ -110,35 +110,31 @@ function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }) {
             )}
 
             <aside className={clsx(
-                "w-72 bg-[#FFFBF7]/90 backdrop-blur-2xl border-r border-white/50 flex flex-col h-full shadow-[4px_0_24px_-12px_rgba(0,0,0,0.1)] z-50 font-sans relative overflow-hidden transition-transform duration-300 ease-in-out",
+                "w-60 bg-slate-50 border-r border-slate-200 flex flex-col h-full z-50 font-sans transition-transform duration-300 ease-in-out",
                 "fixed inset-y-0 left-0 md:relative md:translate-x-0",
                 isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"
             )}>
-                {/* Subtle Gradient Orbs */}
-                <div className="absolute -top-20 -left-20 w-64 h-64 bg-rose-200/40 rounded-full blur-3xl pointer-events-none" />
-                <div className="absolute -bottom-20 -right-20 w-64 h-64 bg-amber-200/40 rounded-full blur-3xl pointer-events-none" />
-
-                <div className="p-8 relative z-10 flex justify-between items-center">
-                    <Link to="/" onClick={() => setIsMobileMenuOpen(false)} className="flex items-center gap-5 mb-2 group">
-                        <div className="h-16 w-auto flex items-center justify-center group-hover:scale-105 transition-transform duration-300 shrink-0">
+                <div className="px-5 py-4 border-b border-slate-200/60 flex justify-between items-center bg-white relative z-10">
+                    <Link to="/" onClick={() => setIsMobileMenuOpen(false)} className="flex items-center gap-3">
+                        <div className="h-10 w-auto flex items-center justify-center shrink-0">
                             <img src="/logo.png" alt="Logo" className="h-full w-auto object-contain" />
                         </div>
                         <div>
-                            <h1 className="text-2xl font-black text-slate-900 tracking-tight leading-none group-hover:text-rose-600 transition-colors">
+                            <h1 className="text-base font-bold text-slate-800 tracking-tight leading-none">
                                 Natya<span className="text-rose-600">.</span>
                             </h1>
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1 group-hover:text-amber-500 transition-colors">ERP</p>
+                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">ERP</p>
                         </div>
                     </Link>
                     <button
-                        className="md:hidden p-2 text-slate-400 hover:text-slate-700 hover:bg-white rounded-xl transition-colors"
+                        className="md:hidden p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
                         onClick={() => setIsMobileMenuOpen(false)}
                     >
-                        <X size={24} />
+                        <X size={18} />
                     </button>
                 </div>
 
-                <nav className="flex-1 px-4 py-4 space-y-4 overflow-y-auto custom-scrollbar relative z-10">
+                <nav className="flex-1 px-3 py-3 space-y-3 overflow-y-auto custom-scrollbar relative z-10">
                     {sidebarSections.map((section) => {
                         const filteredItems = section.items.filter(checkPermission);
                         if (filteredItems.length === 0) return null;
@@ -149,10 +145,10 @@ function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }) {
                             <div key={section.title} className="space-y-1">
                                 <button
                                     onClick={() => toggleSection(section.title)}
-                                    className="w-full flex items-center justify-between px-4 py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-rose-600 transition-colors group"
+                                    className="w-full flex items-center justify-between px-3 py-1.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider hover:text-rose-600 transition-colors group"
                                 >
                                     <span>{section.title}</span>
-                                    {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                    {isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                                 </button>
 
                                 <AnimatePresence initial={false}>
@@ -162,7 +158,7 @@ function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }) {
                                             animate={{ height: 'auto', opacity: 1 }}
                                             exit={{ height: 0, opacity: 0 }}
                                             transition={{ duration: 0.2, ease: "easeInOut" }}
-                                            className="overflow-hidden space-y-1"
+                                            className="overflow-hidden space-y-0.5"
                                         >
                                             {filteredItems.map((item) => {
                                                 const isActive = item.path === '/'
@@ -181,31 +177,31 @@ function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }) {
                                                     >
                                                         <div className={twMerge(
                                                             clsx(
-                                                                "flex items-center gap-4 px-4 py-2.5 rounded-xl transition-all duration-300 group font-bold text-sm relative z-10",
+                                                                "flex items-center gap-3 px-3 py-2 rounded-lg transition-colors duration-200 group font-semibold text-xs relative z-10",
                                                                 isActive
-                                                                    ? "text-white shadow-lg shadow-rose-200"
-                                                                    : "text-slate-500 hover:bg-white/60 hover:text-rose-700"
+                                                                    ? "text-white shadow-sm"
+                                                                    : "text-slate-600 hover:bg-slate-200/50 hover:text-rose-700"
                                                             )
                                                         )}>
                                                             {isActive && (
                                                                 <motion.div
                                                                     layoutId="sidebar-active-bg"
-                                                                    className="absolute inset-0 bg-gradient-to-r from-rose-600 to-rose-500 rounded-xl -z-10"
+                                                                    className="absolute inset-0 bg-rose-600 rounded-lg -z-10"
                                                                     initial={false}
                                                                     transition={{ type: "spring", stiffness: 300, damping: 30 }}
                                                                 />
                                                             )}
 
                                                             <item.icon
-                                                                size={18}
+                                                                size={16}
                                                                 className={clsx(
-                                                                    "transition-colors duration-300",
+                                                                    "transition-colors duration-200",
                                                                     isActive ? "text-white" : "text-slate-400 group-hover:text-rose-500"
                                                                 )}
                                                             />
                                                             <span className={isActive ? "text-white" : ""}>{item.label}</span>
                                                             {item.disabled && (
-                                                                <span className="ml-auto text-[8px] font-black bg-slate-100 text-slate-400 px-1.5 py-0.5 rounded uppercase">Soon</span>
+                                                                <span className="ml-auto text-[8px] font-bold bg-slate-100 text-slate-400 px-1 py-0.5 rounded uppercase">Soon</span>
                                                             )}
                                                         </div>
                                                     </Link>
@@ -219,31 +215,29 @@ function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }) {
                     })}
                 </nav>
 
-                <div className="p-4 relative z-10">
-                    <div className="bg-white/60 backdrop-blur-md p-4 rounded-3xl border border-white shadow-sm hover:shadow-md transition-all duration-300 group">
-                        <div className="flex items-center gap-3 mb-4">
-                            <div className="w-10 h-10 rounded-full p-0.5 bg-gradient-to-tr from-rose-500 to-amber-500 shadow-sm">
-                                <img
-                                    src={`https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=ffffff&color=be123c&bold=true`}
-                                    className="w-full h-full rounded-full border-2 border-white"
-                                    alt="Profile"
-                                />
-                            </div >
-                            <div className="overflow-hidden">
-                                <h4 className="text-sm font-black text-slate-800 truncate">{displayName}</h4>
-                                <p className="text-[10px] font-bold text-slate-400 truncate uppercase tracking-widest mt-0.5">{userRole.replace('_', ' ')}</p>
-                            </div>
+                <div className="p-3 border-t border-slate-200 bg-white relative z-10 space-y-3">
+                    <div className="flex items-center gap-2.5 px-2">
+                        <div className="w-8 h-8 rounded-full bg-rose-500 shrink-0">
+                            <img
+                                src={`https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=ffffff&color=be123c&bold=true`}
+                                className="w-full h-full rounded-full"
+                                alt="Profile"
+                            />
                         </div >
-                        <button
-                            onClick={logout}
-                            className="flex items-center justify-center gap-2 w-full py-2.5 bg-slate-100 hover:bg-rose-50 hover:text-rose-600 border border-transparent hover:border-rose-100 rounded-xl text-xs font-bold text-slate-600 transition-all duration-200 shadow-sm"
-                        >
-                            <LogOut size={14} strokeWidth={2.5} />
-                            Disconnect
-                        </button>
+                        <div className="overflow-hidden">
+                            <h4 className="text-xs font-bold text-slate-800 truncate leading-none">{displayName}</h4>
+                            <p className="text-[9px] font-semibold text-slate-400 truncate uppercase tracking-wider mt-1">{userRole.replace('_', ' ')}</p>
+                        </div>
                     </div >
-                </div >
-            </aside >
+                    <button
+                        onClick={logout}
+                        className="flex items-center justify-center gap-1.5 w-full py-1.5 bg-slate-50 hover:bg-rose-50 hover:text-rose-600 border border-slate-100 hover:border-rose-100 rounded-lg text-[10px] font-semibold text-slate-600 transition-colors shadow-sm"
+                    >
+                        <LogOut size={12} />
+                        Disconnect
+                    </button>
+                </div>
+            </aside>
         </>
     );
 }

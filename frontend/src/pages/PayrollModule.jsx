@@ -237,26 +237,26 @@ const PayrollModule = () => {
     };
 
     const renderStats = () => (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             {[
-                { label: 'Total Disbursed', value: `₹${stats.totalDisbursed.toLocaleString()}`, icon: Wallet, color: 'rose' },
-                { label: 'Pending Slips', value: stats.pendingSlips, icon: Clock, color: 'amber' },
-                { label: 'Average Net Pay', value: `₹${Math.round(stats.avgSalary).toLocaleString()}`, icon: TrendingUp, color: 'emerald' }
+                { label: 'Total Disbursed', value: `₹${stats.totalDisbursed.toLocaleString()}`, icon: Wallet, color: 'indigo' },
+                { label: 'Pending Slips', value: stats.pendingSlips, icon: Clock, color: 'indigo' },
+                { label: 'Average Net Pay', value: `₹${Math.round(stats.avgSalary).toLocaleString()}`, icon: TrendingUp, color: 'indigo' }
             ].map((stat, idx) => (
                 <motion.div 
                     key={idx}
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: idx * 0.1 }}
-                    className="bg-white/70 backdrop-blur-md p-6 rounded-[2rem] border border-white shadow-sm"
+                    className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm"
                 >
                     <div className="flex items-center gap-4">
-                        <div className={`p-4 bg-${stat.color}-50 text-${stat.color}-600 rounded-2xl`}>
-                            <stat.icon size={24} />
+                        <div className={`p-3 bg-${stat.color}-50 text-${stat.color}-600 rounded-lg`}>
+                            <stat.icon size={20} />
                         </div>
                         <div>
-                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{stat.label}</p>
-                            <h3 className="text-2xl font-black text-slate-900">{stat.value}</h3>
+                            <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">{stat.label}</p>
+                            <h3 className="text-xl font-bold text-slate-800">{stat.value}</h3>
                         </div>
                     </div>
                 </motion.div>
@@ -267,34 +267,34 @@ const PayrollModule = () => {
     return (
         <div className="min-h-screen bg-[#FDFCFB] pb-20 px-4 md:px-8">
             {/* Header */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 mt-8">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                 <div>
-                    <h1 className="text-4xl font-black text-slate-900 tracking-tight">Payroll <span className="text-rose-600">Engine.</span></h1>
-                    <p className="text-slate-500 font-bold mt-1">Manage employee compensation and payslips.</p>
+                    <h1 className="text-2xl font-bold text-slate-800">Payroll Engine</h1>
+                    <p className="text-slate-500 text-sm mt-1">Manage employee compensation and payslips.</p>
                 </div>
 
                 {authUser?.role === 'SUPER_ADMIN' && (
-                    <div className="flex gap-3">
+                    <div className="flex gap-2">
                         <button 
                             onClick={() => setGenModal({ ...genModal, show: true })}
-                            className="flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-2xl font-black text-sm hover:bg-rose-600 transition-all shadow-xl hover:-translate-y-1"
+                            className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white rounded-lg font-semibold text-xs hover:bg-slate-900 transition-all shadow-sm"
                         >
-                            <Plus size={18} /> Generate Slips
+                            <Plus size={14} /> Generate Slips
                         </button>
                         {activeTab === 'adjustments' && (
                             <button 
                                 onClick={() => setAdjModal({ ...adjModal, show: true })}
-                                className="flex items-center gap-2 px-6 py-3 bg-emerald-600 text-white rounded-2xl font-black text-sm hover:bg-emerald-700 transition-all shadow-xl hover:-translate-y-1"
+                                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg font-semibold text-xs hover:bg-indigo-700 transition-all shadow-sm"
                             >
-                                <Plus size={18} /> Add Incentive/Adj
+                                <Plus size={14} /> Add Incentive/Adj
                             </button>
                         )}
                         {activeTab === 'loans' && (
                             <button 
                                 onClick={() => setLoanModal({ ...loanModal, show: true })}
-                                className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-2xl font-black text-sm hover:bg-indigo-700 transition-all shadow-xl hover:-translate-y-1"
+                                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg font-semibold text-xs hover:bg-indigo-700 transition-all shadow-sm"
                             >
-                                <Plus size={18} /> Record Loan
+                                <Plus size={14} /> Record Loan
                             </button>
                         )}
                     </div>
@@ -304,7 +304,7 @@ const PayrollModule = () => {
             {authUser?.role === 'SUPER_ADMIN' && renderStats()}
 
             {/* Tabs */}
-            <div className="flex gap-2 mb-8 bg-slate-100/50 p-1.5 rounded-2xl w-fit border border-slate-200">
+            <div className="flex gap-1 mb-6 bg-slate-100 p-1 rounded-lg w-fit">
                 {[
                     { id: 'payslips', label: 'Monthly Slips', icon: FileText },
                     { id: 'structures', label: 'Salary Structures', icon: Settings, adminOnly: true },
@@ -314,22 +314,22 @@ const PayrollModule = () => {
                     <button
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id)}
-                        className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-black transition-all ${
+                        className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-semibold transition-all ${
                             activeTab === tab.id 
-                                ? 'bg-white text-slate-900 shadow-sm' 
-                                : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'
+                                ? 'bg-white text-slate-800 shadow-sm' 
+                                : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
                         }`}
                     >
-                        <tab.icon size={16} />
+                        <tab.icon size={14} />
                         {tab.label}
                     </button>
                 ))}
             </div>
 
             {/* Table Area */}
-            <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-xl overflow-hidden">
-                <div className="p-8 border-b border-slate-100 flex flex-col md:flex-row justify-between items-center gap-4">
-                    <h3 className="text-xl font-black text-slate-900">
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="p-5 border-b border-slate-200 flex flex-col md:flex-row justify-between items-center gap-4">
+                    <h3 className="text-lg font-bold text-slate-800">
                         {activeTab === 'payslips' ? "Historical Payslips" : 
                          activeTab === 'structures' ? "Configured Salary Components" : 
                          activeTab === 'adjustments' ? "Monthly Adjustments & Incentives" : 
@@ -338,19 +338,19 @@ const PayrollModule = () => {
                     <div className="flex items-center gap-3">
                         <button 
                             onClick={fetchData}
-                            className="p-2.5 bg-slate-50 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all border border-slate-100"
+                            className="p-2 bg-slate-50 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all border border-slate-200"
                             title="Refresh Data"
                         >
                             <motion.div whileTap={{ rotate: 180 }}>
-                                <Settings size={18} />
+                                <Settings size={16} />
                             </motion.div>
                         </button>
                         <div className="relative">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
                             <input 
                                 type="text" 
                                 placeholder="Search..." 
-                                className="pl-10 pr-4 py-2 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold outline-none focus:border-rose-300 transition-all w-64"
+                                className="pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:border-indigo-400 transition-all w-64"
                             />
                         </div>
                     </div>
@@ -359,89 +359,88 @@ const PayrollModule = () => {
                 <div className="overflow-x-auto">
                     <table className="w-full border-collapse">
                         <thead>
-                            <tr className="bg-slate-50/50">
-                                <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Employee</th>
+                            <tr className="bg-slate-50 border-b border-slate-200">
+                                <th className="px-5 py-3 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Employee</th>
                                 {activeTab === 'payslips' ? (
                                     <>
-                                        <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Period</th>
-                                        <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Paid Days</th>
-                                        <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">LOP</th>
-                                        <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Net Salary</th>
-                                        <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Status</th>
-                                        <th className="px-8 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Actions</th>
+                                        <th className="px-5 py-3 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Period</th>
+                                        <th className="px-5 py-3 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Paid Days</th>
+                                        <th className="px-5 py-3 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider">LOP</th>
+                                        <th className="px-5 py-3 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Net Salary</th>
+                                        <th className="px-5 py-3 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+                                        <th className="px-5 py-3 text-right text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
                                     </>
                                 ) : activeTab === 'structures' ? (
                                     <>
-                                        <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Base Salary</th>
-                                        <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Total Allowances</th>
-                                        <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">PF / Tax</th>
-                                        <th className="px-8 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Edit</th>
+                                        <th className="px-5 py-3 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Base Salary</th>
+                                        <th className="px-5 py-3 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Total Allowances</th>
+                                        <th className="px-5 py-3 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider">PF / Tax</th>
+                                        <th className="px-5 py-3 text-right text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Edit</th>
                                     </>
                                 ) : activeTab === 'adjustments' ? (
                                     <>
-                                        <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Period</th>
-                                        <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Type</th>
-                                        <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Amount</th>
-                                        <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Reason</th>
+                                        <th className="px-5 py-3 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Period</th>
+                                        <th className="px-5 py-3 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Type</th>
+                                        <th className="px-5 py-3 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Amount</th>
+                                        <th className="px-5 py-3 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Reason</th>
                                     </>
                                 ) : (
                                     <>
-                                        <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Loan Amount</th>
-                                        <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Monthly EMI</th>
-                                        <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Balance</th>
-                                        <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Status</th>
-                                        <th className="px-8 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Actions</th>
+                                        <th className="px-5 py-3 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Loan Amount</th>
+                                        <th className="px-5 py-3 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Monthly EMI</th>
+                                        <th className="px-5 py-3 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Balance</th>
+                                        <th className="px-5 py-3 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+                                        <th className="px-5 py-3 text-right text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
                                     </>
                                 )}
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-50">
+                        <tbody className="divide-y divide-slate-100">
                             {activeTab === 'payslips' ? (
                                 payslips.map((slip) => (
-                                    // ... existing slip row code ...
                                     <tr key={slip.id} className="hover:bg-slate-50/50 transition-colors">
-                                        <td className="px-8 py-5">
+                                        <td className="px-5 py-3">
                                             <div className="flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center text-xs font-bold">
+                                                <div className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-xs font-bold">
                                                     {slip.employee_name?.[0]}
                                                 </div>
                                                 <div>
-                                                    <p className="text-sm font-bold text-slate-900">{slip.employee_name}</p>
-                                                    <p className="text-[10px] font-bold text-slate-400 uppercase">{slip.employee_id}</p>
+                                                    <p className="text-sm font-semibold text-slate-800">{slip.employee_name}</p>
+                                                    <p className="text-[10px] font-medium text-slate-500 uppercase">{slip.employee_id}</p>
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="px-8 py-5">
-                                            <span className="text-sm font-bold text-slate-600">{new Date(slip.year, slip.month - 1).toLocaleString('default', { month: 'long', year: 'numeric' })}</span>
+                                        <td className="px-5 py-3">
+                                            <span className="text-sm font-medium text-slate-600">{new Date(slip.year, slip.month - 1).toLocaleString('default', { month: 'short', year: 'numeric' })}</span>
                                         </td>
-                                        <td className="px-8 py-5 text-sm font-bold text-slate-600">{slip.paid_days} / {slip.total_working_days}</td>
-                                        <td className={`px-8 py-5 text-sm font-bold ${Number(slip.lop_deduction) > 0 ? 'text-rose-600' : 'text-slate-400'}`}>
+                                        <td className="px-5 py-3 text-sm font-medium text-slate-600">{slip.paid_days} / {slip.total_working_days}</td>
+                                        <td className={`px-5 py-3 text-sm font-medium ${Number(slip.lop_deduction) > 0 ? 'text-rose-600' : 'text-slate-400'}`}>
                                             -₹{Number(slip.lop_deduction).toLocaleString()}
                                         </td>
-                                        <td className="px-8 py-5 text-sm font-black text-slate-900">₹{Number(slip.net_salary).toLocaleString()}</td>
-                                        <td className="px-8 py-5">
-                                            <span className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-tight shadow-sm border ${
+                                        <td className="px-5 py-3 text-sm font-semibold text-slate-800">₹{Number(slip.net_salary).toLocaleString()}</td>
+                                        <td className="px-5 py-3">
+                                            <span className={`px-2.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider border ${
                                                 slip.status === 'PAID' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-amber-50 text-amber-600 border-amber-100'
                                             }`}>
                                                 {slip.status}
                                             </span>
                                         </td>
-                                        <td className="px-8 py-5 text-right">
+                                        <td className="px-5 py-3 text-right">
                                             <div className="flex justify-end gap-2">
                                                 {slip.status === 'PENDING' && authUser?.role === 'SUPER_ADMIN' && (
                                                     <button 
                                                         onClick={() => markAsPaid(slip.id)}
-                                                        className="p-2 bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-100 transition-colors"
+                                                        className="p-1.5 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-100 transition-colors"
                                                         title="Mark as Paid"
                                                     >
-                                                        <CheckCircle2 size={16} />
+                                                        <CheckCircle2 size={14} />
                                                     </button>
                                                 )}
                                                 <button 
                                                     onClick={() => downloadPayslip(slip.id, slip.employee_id, slip.month, slip.year)}
-                                                    className="p-2 bg-slate-50 text-slate-600 rounded-xl hover:bg-slate-100 transition-colors"
+                                                    className="p-1.5 bg-slate-50 text-slate-600 rounded-lg hover:bg-slate-100 transition-colors border border-slate-200"
                                                 >
-                                                    <Download size={16} />
+                                                    <Download size={14} />
                                                 </button>
                                             </div>
                                         </td>
@@ -450,30 +449,30 @@ const PayrollModule = () => {
                             ) : activeTab === 'structures' ? (
                                 salaryStructures.map((struct) => (
                                     <tr key={struct.id} className="hover:bg-slate-50/50 transition-colors">
-                                        <td className="px-8 py-5 text-sm font-bold text-slate-900">
+                                        <td className="px-5 py-3 text-sm font-semibold text-slate-800">
                                             <div className="flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center text-xs font-bold">
+                                                <div className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-xs font-bold">
                                                     {struct.employee_name?.[0]}
                                                 </div>
                                                 <div>
-                                                    <p className="text-sm font-bold text-slate-900">{struct.employee_name}</p>
-                                                    <p className="text-[10px] font-bold text-slate-400 uppercase">Policy Configured</p>
+                                                    <p className="text-sm font-semibold text-slate-800">{struct.employee_name}</p>
+                                                    <p className="text-[10px] font-medium text-slate-500 uppercase">Policy Configured</p>
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="px-8 py-5 text-sm font-black text-slate-900">₹{Number(struct.base_salary).toLocaleString()}</td>
-                                        <td className="px-8 py-5 text-sm font-bold text-emerald-600">
+                                        <td className="px-5 py-3 text-sm font-semibold text-slate-800">₹{Number(struct.base_salary).toLocaleString()}</td>
+                                        <td className="px-5 py-3 text-sm font-medium text-emerald-600">
                                             +₹{(Number(struct.hra) + Number(struct.conveyance) + Number(struct.medical) + Number(struct.special_allowance)).toLocaleString()}
                                         </td>
-                                        <td className="px-8 py-5 text-sm font-bold text-rose-600">
+                                        <td className="px-5 py-3 text-sm font-medium text-rose-600">
                                             -₹{(Number(struct.provident_fund) + Number(struct.professional_tax)).toLocaleString()}
                                         </td>
-                                        <td className="px-8 py-5 text-right">
+                                        <td className="px-5 py-3 text-right">
                                             <button 
                                                 onClick={() => setEditStruct(struct)}
-                                                className="p-2 bg-slate-50 text-slate-600 rounded-xl hover:bg-slate-100 transition-colors"
+                                                className="p-1.5 bg-slate-50 text-slate-600 rounded-lg hover:bg-slate-100 transition-colors border border-slate-200"
                                             >
-                                                <Settings size={16} />
+                                                <Settings size={14} />
                                             </button>
                                         </td>
                                     </tr>
@@ -481,43 +480,43 @@ const PayrollModule = () => {
                             ) : activeTab === 'adjustments' ? (
                                 adjustments.map((adj) => (
                                     <tr key={adj.id} className="hover:bg-slate-50/50 transition-colors">
-                                        <td className="px-8 py-5 text-sm font-bold text-slate-900">{adj.employee_name}</td>
-                                        <td className="px-8 py-5">
-                                            <span className="text-sm font-bold text-slate-600">{new Date(adj.year, adj.month - 1).toLocaleString('default', { month: 'long', year: 'numeric' })}</span>
+                                        <td className="px-5 py-3 text-sm font-semibold text-slate-800">{adj.employee_name}</td>
+                                        <td className="px-5 py-3">
+                                            <span className="text-sm font-medium text-slate-600">{new Date(adj.year, adj.month - 1).toLocaleString('default', { month: 'short', year: 'numeric' })}</span>
                                         </td>
-                                        <td className="px-8 py-5">
-                                            <span className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-tight ${
-                                                adj.adjustment_type === 'BONUS' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'
+                                        <td className="px-5 py-3">
+                                            <span className={`px-2.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider border ${
+                                                adj.adjustment_type === 'BONUS' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-rose-50 text-rose-600 border-rose-100'
                                             }`}>
                                                 {adj.adjustment_type}
                                             </span>
                                         </td>
-                                        <td className={`px-8 py-5 text-sm font-black ${adj.adjustment_type === 'BONUS' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                        <td className={`px-5 py-3 text-sm font-semibold ${adj.adjustment_type === 'BONUS' ? 'text-emerald-600' : 'text-rose-600'}`}>
                                             {adj.adjustment_type === 'BONUS' ? '+' : '-'}₹{Number(adj.amount).toLocaleString()}
                                         </td>
-                                        <td className="px-8 py-5 text-sm font-bold text-slate-400 italic">"{adj.reason}"</td>
+                                        <td className="px-5 py-3 text-sm font-medium text-slate-500 italic">"{adj.reason}"</td>
                                     </tr>
                                 ))
                             ) : (
                                 loans.map((loan) => (
                                     <tr key={loan.id} className="hover:bg-slate-50/50 transition-colors">
-                                        <td className="px-8 py-5">
+                                        <td className="px-5 py-3">
                                             <div className="flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-bold">
+                                                <div className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-xs font-bold">
                                                     {loan.employee_name?.[0]}
                                                 </div>
                                                 <div>
-                                                    <p className="text-sm font-bold text-slate-900">{loan.employee_name}</p>
-                                                    <p className="text-[10px] font-bold text-slate-400">LOAN-REF-{loan.id}</p>
+                                                    <p className="text-sm font-semibold text-slate-800">{loan.employee_name}</p>
+                                                    <p className="text-[10px] font-medium text-slate-500">LOAN-REF-{loan.id}</p>
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="px-8 py-5 text-sm font-black text-slate-900">₹{Number(loan.loan_amount).toLocaleString()}</td>
-                                        <td className="px-8 py-5 text-sm font-bold text-rose-600">₹{Number(loan.monthly_repayment).toLocaleString()}/mo</td>
-                                        <td className="px-8 py-5">
+                                        <td className="px-5 py-3 text-sm font-semibold text-slate-800">₹{Number(loan.loan_amount).toLocaleString()}</td>
+                                        <td className="px-5 py-3 text-sm font-medium text-rose-600">₹{Number(loan.monthly_repayment).toLocaleString()}/mo</td>
+                                        <td className="px-5 py-3">
                                             <div className="flex flex-col gap-1">
-                                                <p className="text-sm font-black text-indigo-600">₹{Number(loan.balance_amount).toLocaleString()}</p>
-                                                <div className="w-24 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                                <p className="text-xs font-semibold text-indigo-600">₹{Number(loan.balance_amount).toLocaleString()}</p>
+                                                <div className="w-24 h-1.5 bg-slate-200 rounded-full overflow-hidden">
                                                     <div 
                                                         className="h-full bg-indigo-500 transition-all" 
                                                         style={{ width: `${((Number(loan.loan_amount) - Number(loan.balance_amount)) / Number(loan.loan_amount)) * 100}%` }}
@@ -525,27 +524,29 @@ const PayrollModule = () => {
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="px-8 py-5">
-                                            <span className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-tight ${
-                                                loan.is_active ? 'bg-indigo-50 text-indigo-600 border border-indigo-100' : 'bg-slate-50 text-slate-400 border border-slate-100'
+                                        <td className="px-5 py-3">
+                                            <span className={`px-2.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider border ${
+                                                loan.is_active ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-slate-50 text-slate-500 border-slate-200'
                                             }`}>
                                                 {loan.is_active ? 'Active' : 'Cleared'}
                                             </span>
                                         </td>
-                                        <td className="px-8 py-5 text-right">
-                                            <button 
-                                                onClick={() => handleToggleLoanStatus(loan)}
-                                                className={`p-2 rounded-xl transition-colors ${loan.is_active ? 'bg-amber-50 text-amber-600 hover:bg-amber-100' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`}
-                                                title={loan.is_active ? "Deactivate Loan" : "Activate Loan"}
-                                            >
-                                                <Power size={16} />
-                                            </button>
-                                            <button 
-                                                onClick={() => handleDeleteLoan(loan.id)}
-                                                className="p-2 bg-rose-50 text-rose-600 rounded-xl hover:bg-rose-100 transition-colors"
-                                            >
-                                                <Trash2 size={16} />
-                                            </button>
+                                        <td className="px-5 py-3 text-right">
+                                            <div className="flex items-center justify-end gap-2">
+                                                <button 
+                                                    onClick={() => handleToggleLoanStatus(loan)}
+                                                    className={`p-1.5 rounded-lg transition-colors border ${loan.is_active ? 'bg-amber-50 text-amber-600 border-amber-100 hover:bg-amber-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100 hover:bg-emerald-100'}`}
+                                                    title={loan.is_active ? "Deactivate Loan" : "Activate Loan"}
+                                                >
+                                                    <Power size={14} />
+                                                </button>
+                                                <button 
+                                                    onClick={() => handleDeleteLoan(loan.id)}
+                                                    className="p-1.5 bg-rose-50 text-rose-600 border border-rose-100 rounded-lg hover:bg-rose-100 transition-colors"
+                                                >
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                 ))
@@ -566,16 +567,16 @@ const PayrollModule = () => {
                         />
                         <motion.div 
                             initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
-                            className="bg-white rounded-[2.5rem] p-10 w-full max-w-md relative z-10 shadow-2xl"
+                            className="bg-white rounded-xl p-6 w-full max-w-md relative z-10 shadow-2xl"
                         >
-                            <h3 className="text-2xl font-black text-slate-900 mb-6">Add Adjustment</h3>
+                            <h3 className="text-xl font-bold text-slate-800 mb-4">Add Adjustment</h3>
                             <div className="space-y-4">
                                 <div>
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Select Employee</label>
+                                    <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">Select Employee</label>
                                     <select 
                                         value={adjModal.employee}
                                         onChange={(e) => setAdjModal({ ...adjModal, employee: e.target.value })}
-                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none"
+                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-medium outline-none text-sm focus:border-indigo-400"
                                     >
                                         <option value="">Choose Employee...</option>
                                         {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.full_name || emp.display_username} ({emp.employee_id})</option>)}
@@ -583,40 +584,40 @@ const PayrollModule = () => {
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Type</label>
+                                        <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">Type</label>
                                         <select 
                                             value={adjModal.type}
                                             onChange={(e) => setAdjModal({ ...adjModal, type: e.target.value })}
-                                            className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none"
+                                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-medium outline-none text-sm focus:border-indigo-400"
                                         >
                                             <option value="BONUS">Incentive</option>
                                             <option value="DEDUCTION">Deduction</option>
                                         </select>
                                     </div>
                                     <div>
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Amount</label>
+                                        <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">Amount</label>
                                         <input 
                                             type="number" 
                                             value={adjModal.amount}
                                             onChange={(e) => setAdjModal({ ...adjModal, amount: e.target.value })}
-                                            className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none"
+                                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-medium outline-none text-sm focus:border-indigo-400"
                                         />
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Reason</label>
+                                    <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">Reason</label>
                                     <input 
                                         type="text" 
                                         placeholder="Performance Bonus, Fine, etc."
                                         value={adjModal.reason}
                                         onChange={(e) => setAdjModal({ ...adjModal, reason: e.target.value })}
-                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none"
+                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-medium outline-none text-sm focus:border-indigo-400"
                                     />
                                 </div>
                                 <button 
                                     onClick={handleCreateAdjustment}
                                     disabled={loading || !adjModal.employee || !adjModal.amount}
-                                    className="w-full py-5 bg-slate-900 text-white rounded-3xl font-black hover:bg-emerald-600 transition-all shadow-xl mt-4"
+                                    className="w-full py-2.5 bg-slate-800 text-white rounded-lg font-semibold text-sm hover:bg-slate-900 transition-all shadow-sm mt-4 disabled:opacity-50"
                                 >
                                     {loading ? "Adding..." : "Add Adjustment"}
                                 </button>
@@ -641,97 +642,97 @@ const PayrollModule = () => {
                             initial={{ scale: 0.9, y: 20 }}
                             animate={{ scale: 1, y: 0 }}
                             exit={{ scale: 0.9, y: 20 }}
-                            className="bg-white rounded-[2.5rem] p-8 w-full max-w-2xl relative z-10 shadow-2xl max-h-[90vh] overflow-y-auto"
+                            className="bg-white rounded-xl p-6 w-full max-w-2xl relative z-10 shadow-2xl max-h-[90vh] overflow-y-auto"
                         >
-                            <div className="flex justify-between items-center mb-8">
+                            <div className="flex justify-between items-center mb-6">
                                 <div>
-                                    <h3 className="text-2xl font-black text-slate-900">Salary Components</h3>
-                                    <p className="text-sm font-bold text-slate-500">Employee: {editStruct.employee_name}</p>
+                                    <h3 className="text-xl font-bold text-slate-800">Salary Components</h3>
+                                    <p className="text-sm font-medium text-slate-500">Employee: {editStruct.employee_name}</p>
                                 </div>
                                 <div className="text-right">
-                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Net Take Home</p>
-                                    <h4 className="text-2xl font-black text-emerald-600">
+                                    <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Net Take Home</p>
+                                    <h4 className="text-xl font-bold text-emerald-600">
                                         ₹{(Number(editStruct.base_salary) + Number(editStruct.hra) + Number(editStruct.conveyance) + Number(editStruct.medical) + Number(editStruct.special_allowance) - Number(editStruct.provident_fund) - Number(editStruct.professional_tax)).toLocaleString()}
                                     </h4>
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                <div className="space-y-6">
-                                    <h5 className="text-xs font-black text-slate-900 uppercase tracking-widest flex items-center gap-2">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-4">
+                                    <h5 className="text-[10px] font-semibold text-slate-600 uppercase tracking-wider flex items-center gap-2">
                                         <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full" /> Fixed Earnings
                                     </h5>
                                     
                                     <div>
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Basic Salary</label>
+                                        <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">Basic Salary</label>
                                         <input 
                                             type="number" 
                                             value={editStruct.base_salary}
                                             onChange={(e) => setEditStruct({...editStruct, base_salary: e.target.value})}
-                                            className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:border-emerald-300 transition-all"
+                                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-medium outline-none text-sm focus:border-indigo-400"
                                         />
                                     </div>
                                     <div>
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">HRA (House Rent)</label>
+                                        <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">HRA (House Rent)</label>
                                         <input 
                                             type="number" 
                                             value={editStruct.hra}
                                             onChange={(e) => setEditStruct({...editStruct, hra: e.target.value})}
-                                            className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:border-emerald-300 transition-all"
+                                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-medium outline-none text-sm focus:border-indigo-400"
                                         />
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
                                         <div>
-                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Medical</label>
+                                            <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">Medical</label>
                                             <input 
                                                 type="number" 
                                                 value={editStruct.medical}
                                                 onChange={(e) => setEditStruct({...editStruct, medical: e.target.value})}
-                                                className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:border-emerald-300 transition-all"
+                                                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-medium outline-none text-sm focus:border-indigo-400"
                                             />
                                         </div>
                                         <div>
-                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Conveyance</label>
+                                            <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">Conveyance</label>
                                             <input 
                                                 type="number" 
                                                 value={editStruct.conveyance}
                                                 onChange={(e) => setEditStruct({...editStruct, conveyance: e.target.value})}
-                                                className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:border-emerald-300 transition-all"
+                                                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-medium outline-none text-sm focus:border-indigo-400"
                                             />
                                         </div>
                                     </div>
                                     <div>
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Special Allowance</label>
+                                        <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">Special Allowance</label>
                                         <input 
                                             type="number" 
                                             value={editStruct.special_allowance}
                                             onChange={(e) => setEditStruct({...editStruct, special_allowance: e.target.value})}
-                                            className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:border-emerald-300 transition-all"
+                                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-medium outline-none text-sm focus:border-indigo-400"
                                         />
                                     </div>
                                 </div>
 
-                                <div className="space-y-6">
-                                    <h5 className="text-xs font-black text-slate-900 uppercase tracking-widest flex items-center gap-2">
+                                <div className="space-y-4">
+                                    <h5 className="text-[10px] font-semibold text-slate-600 uppercase tracking-wider flex items-center gap-2">
                                         <div className="w-1.5 h-1.5 bg-rose-500 rounded-full" /> Statutory Deductions
                                     </h5>
                                     
                                     <div>
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Provident Fund (PF)</label>
+                                        <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">Provident Fund (PF)</label>
                                         <input 
                                             type="number" 
                                             value={editStruct.provident_fund}
                                             onChange={(e) => setEditStruct({...editStruct, provident_fund: e.target.value})}
-                                            className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:border-rose-300 transition-all"
+                                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-medium outline-none text-sm focus:border-indigo-400"
                                         />
                                     </div>
                                     <div>
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Professional Tax</label>
+                                        <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">Professional Tax</label>
                                         <input 
                                             type="number" 
                                             value={editStruct.professional_tax}
                                             onChange={(e) => setEditStruct({...editStruct, professional_tax: e.target.value})}
-                                            className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:border-rose-300 transition-all"
+                                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-medium outline-none text-sm focus:border-indigo-400"
                                         />
                                     </div>
                                 </div>
@@ -740,9 +741,9 @@ const PayrollModule = () => {
                             <button 
                                 onClick={handleUpdateStruct}
                                 disabled={loading}
-                                className="w-full py-5 bg-slate-900 text-white rounded-3xl font-black hover:bg-rose-600 transition-all shadow-xl mt-12 flex items-center justify-center gap-2"
+                                className="w-full py-2.5 bg-slate-800 text-white rounded-lg font-semibold text-sm hover:bg-slate-900 transition-all shadow-sm mt-6 flex items-center justify-center gap-2 disabled:opacity-50"
                             >
-                                {loading ? "Saving Changes..." : <><CheckCircle2 size={18} /> Update Compensation Policy</>}
+                                {loading ? "Saving Changes..." : <><CheckCircle2 size={16} /> Update Compensation Policy</>}
                             </button>
                         </motion.div>
                     </div>
@@ -764,16 +765,16 @@ const PayrollModule = () => {
                             initial={{ scale: 0.9, opacity: 0 }}
                             animate={{ scale: 1, opacity: 1 }}
                             exit={{ scale: 0.9, opacity: 0 }}
-                            className="bg-white rounded-[2.5rem] p-10 w-full max-w-md relative z-10 shadow-2xl"
+                            className="bg-white rounded-xl p-6 w-full max-w-md relative z-10 shadow-2xl"
                         >
-                            <h3 className="text-2xl font-black text-slate-900 mb-6">Generate Monthly Slips</h3>
+                            <h3 className="text-xl font-bold text-slate-800 mb-4">Generate Monthly Slips</h3>
                             <div className="space-y-4">
                                 <div>
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Select Month</label>
+                                    <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">Select Month</label>
                                     <select 
                                         value={genModal.month}
                                         onChange={(e) => setGenModal({ ...genModal, month: e.target.value })}
-                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none"
+                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-medium outline-none text-sm focus:border-indigo-400"
                                     >
                                         {Array.from({ length: 12 }, (_, i) => (
                                             <option key={i + 1} value={i + 1}>
@@ -783,11 +784,11 @@ const PayrollModule = () => {
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Select Year</label>
+                                    <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">Select Year</label>
                                     <select 
                                         value={genModal.year}
                                         onChange={(e) => setGenModal({ ...genModal, year: e.target.value })}
-                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none"
+                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-medium outline-none text-sm focus:border-indigo-400"
                                     >
                                         {[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
                                     </select>
@@ -795,7 +796,7 @@ const PayrollModule = () => {
                                 <button 
                                     onClick={handleGenerate}
                                     disabled={loading}
-                                    className="w-full py-5 bg-slate-900 text-white rounded-3xl font-black hover:bg-rose-600 transition-all shadow-xl mt-4"
+                                    className="w-full py-2.5 bg-slate-800 text-white rounded-lg font-semibold text-sm hover:bg-slate-900 transition-all shadow-sm mt-4 disabled:opacity-50"
                                 >
                                     {loading ? "Calculating..." : "Start Generation"}
                                 </button>
@@ -816,69 +817,69 @@ const PayrollModule = () => {
                         />
                         <motion.div 
                             initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
-                            className="bg-white rounded-[2.5rem] p-10 w-full max-w-md relative z-10 shadow-2xl"
+                            className="bg-white rounded-xl p-6 w-full max-w-md relative z-10 shadow-2xl"
                         >
-                            <h3 className="text-2xl font-black text-slate-900 mb-6">Record New Loan</h3>
+                            <h3 className="text-xl font-bold text-slate-800 mb-4">Record New Loan</h3>
                             <div className="space-y-4">
                                 <div>
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Select Employee</label>
+                                    <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">Select Employee</label>
                                     <select 
                                         value={loanModal.employee}
                                         onChange={(e) => setLoanModal({ ...loanModal, employee: e.target.value })}
-                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none"
+                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-medium outline-none text-sm focus:border-indigo-400"
                                     >
                                         <option value="">Choose Employee...</option>
                                         {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.full_name || emp.display_username} ({emp.employee_id})</option>)}
                                     </select>
                                 </div>
-                                <div className="flex items-center gap-3 p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100">
+                                <div className="flex items-center gap-3 p-3 bg-indigo-50/50 rounded-lg border border-indigo-100">
                                     <input 
                                         type="checkbox" 
                                         id="isOneTime"
                                         checked={loanModal.isOneTime}
                                         onChange={(e) => setLoanModal({ ...loanModal, isOneTime: e.target.checked })}
-                                        className="w-5 h-5 accent-indigo-600 cursor-pointer"
+                                        className="w-4 h-4 accent-indigo-600 cursor-pointer rounded"
                                     />
-                                    <label htmlFor="isOneTime" className="text-sm font-black text-indigo-900 cursor-pointer">One-time Advance (Deduct fully next month)</label>
+                                    <label htmlFor="isOneTime" className="text-xs font-semibold text-indigo-900 cursor-pointer">One-time Advance (Deduct fully next month)</label>
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Advance Amount</label>
+                                        <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">Advance Amount</label>
                                         <input 
                                             type="number" 
                                             placeholder="20000"
                                             value={loanModal.amount}
                                             onChange={(e) => setLoanModal({ ...loanModal, amount: e.target.value })}
-                                            className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none"
+                                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-medium outline-none text-sm focus:border-indigo-400"
                                         />
                                     </div>
                                     <div>
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Monthly EMI</label>
+                                        <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">Monthly EMI</label>
                                         <input 
                                             type="number" 
                                             placeholder="5000"
                                             disabled={loanModal.isOneTime}
                                             value={loanModal.isOneTime ? loanModal.amount : loanModal.emi}
                                             onChange={(e) => setLoanModal({ ...loanModal, emi: e.target.value })}
-                                            className={`w-full px-4 py-3 border border-slate-100 rounded-2xl font-bold outline-none ${loanModal.isOneTime ? 'bg-indigo-50/50 text-indigo-400' : 'bg-slate-50 text-slate-900'}`}
+                                            className={`w-full px-3 py-2 border border-slate-200 rounded-lg font-medium outline-none text-sm focus:border-indigo-400 ${loanModal.isOneTime ? 'bg-indigo-50/50 text-indigo-400' : 'bg-slate-50 text-slate-800'}`}
                                         />
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Reason / Note</label>
+                                    <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">Reason / Note</label>
                                     <input 
                                         type="text" 
                                         placeholder="Urgent Advance, Medical, etc."
                                         value={loanModal.reason}
                                         onChange={(e) => setLoanModal({ ...loanModal, reason: e.target.value })}
-                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none"
+                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-medium outline-none text-sm focus:border-indigo-400"
                                     />
                                 </div>
                                 <button 
                                     onClick={handleCreateLoan}
                                     disabled={loading || !loanModal.employee || !loanModal.amount || (!loanModal.isOneTime && !loanModal.emi)}
-                                    className="w-full py-5 bg-indigo-600 text-white rounded-3xl font-black hover:bg-indigo-700 transition-all shadow-xl mt-4"
+                                    className="w-full py-2.5 bg-indigo-600 text-white rounded-lg font-semibold text-sm hover:bg-indigo-700 transition-all shadow-sm mt-4 disabled:opacity-50"
                                 >
                                     {loading ? "Processing..." : "Issue Loan"}
                                 </button>

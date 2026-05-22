@@ -72,7 +72,7 @@ class LMSProxyView(views.APIView):
                 for cs in class_summary_list:
                     enrolled_courses.append({
                         "id": cs.get('classId'),
-                        "name": cs.get('className'),
+                        "name": cs.get('className') or cs.get('title') or cs.get('subject') or cs.get('name'),
                         "status": cs.get('status', 'Active'),
                         "attendance": cs.get('joinedRequest', 0),
                         "due_date": cs.get('earliestDueDate', 'N/A')

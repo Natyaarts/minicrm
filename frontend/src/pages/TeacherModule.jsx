@@ -174,53 +174,53 @@ const TeacherModule = () => {
                     <div className="flex justify-between items-center mb-6">
                         <button
                             onClick={() => setSelectedBatch(null)}
-                            className="flex items-center gap-2 text-slate-500 hover:text-indigo-600 font-bold text-sm transition-colors"
+                            className="flex items-center gap-1.5 text-slate-600 hover:text-indigo-650 font-semibold text-sm transition-colors"
                         >
                             <ChevronLeft size={16} /> Back to Batches
                         </button>
                         <button
                             onClick={() => window.print()}
-                            className="flex items-center gap-2 px-4 py-2 bg-white text-slate-600 rounded-xl font-bold text-sm border border-slate-200 hover:bg-slate-50 transition-colors shadow-sm"
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-slate-700 rounded-lg font-semibold text-xs border border-slate-200 hover:bg-slate-50 transition-colors shadow-sm"
                         >
-                            <Clock size={16} /> Download Progress Report
+                            <Clock size={14} /> Download Progress Report
                         </button>
                     </div>
                     
-                    <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-100 flex flex-col md:flex-row">
-                        <div className="w-full md:w-1/3 bg-indigo-600 text-white p-8">
-                            <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center mb-6">
-                                <BookOpen size={24} className="text-white" />
+                    <div className="bg-white rounded-2xl shadow-sm overflow-hidden border border-slate-200 flex flex-col md:flex-row">
+                        <div className="w-full md:w-1/3 bg-slate-50 border-r border-slate-200 p-6 flex flex-col justify-start">
+                            <div className="w-12 h-12 bg-indigo-50 rounded-xl flex items-center justify-center mb-4 text-indigo-600 border border-indigo-100/60 shadow-sm">
+                                <BookOpen size={22} />
                             </div>
-                            <h2 className="text-3xl font-black mb-2">{selectedBatch.name}</h2>
-                            <p className="text-indigo-200 font-medium mb-6">{selectedBatch.course_name}</p>
+                            <h2 className="text-2xl font-extrabold text-slate-800 mb-1">{selectedBatch.name}</h2>
+                            <p className="text-slate-500 font-semibold text-xs uppercase tracking-wider mb-6">{selectedBatch.course_name}</p>
                             
-                            <div className="space-y-4">
-                                <div className="bg-white/10 rounded-2xl p-4">
+                            <div className="space-y-3">
+                                <div className="bg-white border border-slate-200/80 rounded-xl p-4 shadow-sm">
                                     <div className="flex justify-between items-center mb-2">
-                                        <span className="text-xs font-bold text-indigo-200 uppercase tracking-widest">Syllabus Progress</span>
-                                        <span className="text-sm font-black">{progress}%</span>
+                                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Syllabus Progress</span>
+                                        <span className="text-sm font-extrabold text-slate-750">{progress}%</span>
                                     </div>
-                                    <div className="w-full bg-indigo-900/50 rounded-full h-2.5 overflow-hidden">
+                                    <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
                                         <motion.div
                                             initial={{ width: 0 }} animate={{ width: `${progress}%` }}
-                                            className="bg-emerald-400 h-2.5 rounded-full"
+                                            className="bg-emerald-500 h-1.5 rounded-full"
                                         />
                                     </div>
                                 </div>
                                 
-                                <div className="bg-white/10 rounded-2xl p-4 flex justify-between items-center">
-                                    <span className="text-xs font-bold text-indigo-200 uppercase tracking-widest">Students</span>
-                                    <span className="text-xl font-black">{batchStudents.length}</span>
+                                <div className="bg-white border border-slate-200/80 rounded-xl p-4 shadow-sm flex justify-between items-center">
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Students</span>
+                                    <span className="text-lg font-black text-slate-700">{batchStudents.length}</span>
                                 </div>
-                                <div className="bg-white/10 rounded-2xl p-4 flex justify-between items-center">
-                                    <span className="text-xs font-bold text-indigo-200 uppercase tracking-widest">Classes Held</span>
-                                    <span className="text-xl font-black">{classSessions.length}</span>
+                                <div className="bg-white border border-slate-200/80 rounded-xl p-4 shadow-sm flex justify-between items-center">
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Classes Held</span>
+                                    <span className="text-lg font-black text-slate-700">{classSessions.length}</span>
                                 </div>
                             </div>
                         </div>
                         
-                        <div className="w-full md:w-2/3 flex flex-col">
-                            <div className="flex border-b border-slate-100 px-2 pt-2">
+                        <div className="w-full md:w-2/3 flex flex-col bg-white">
+                            <div className="flex border-b border-slate-200 px-4 pt-2 overflow-x-auto scrollbar-none gap-1 bg-white">
                                 {[ 
                                     { id: 'STUDENTS', label: 'Students', icon: Users },
                                     { id: 'SYLLABUS', label: 'Syllabus Planner', icon: Layers },
@@ -232,15 +232,15 @@ const TeacherModule = () => {
                                     <button
                                         key={t.id}
                                         onClick={() => setActiveTab(t.id)}
-                                        className={`flex-1 py-4 px-4 flex justify-center items-center gap-2 text-sm font-bold border-b-2 transition-all ${activeTab === t.id ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+                                        className={`py-3 px-3 flex justify-center items-center gap-1.5 text-xs font-semibold border-b-2 -mb-[2px] transition-all whitespace-nowrap ${activeTab === t.id ? 'border-indigo-600 text-indigo-600 font-bold' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-250'}`}
                                     >
-                                        <t.icon size={16} />
+                                        <t.icon size={14} className={activeTab === t.id ? 'text-indigo-600' : 'text-slate-400'} />
                                         <span>{t.label}</span>
                                     </button>
                                 ))}
                             </div>
                             
-                            <div className="flex-1 p-6 md:p-8 bg-slate-50/50 overflow-y-auto">
+                            <div className="flex-1 p-6 bg-white overflow-y-auto">
                                 <AnimatePresence mode="wait">
                                     {toast && (
                                         <motion.div
@@ -254,14 +254,14 @@ const TeacherModule = () => {
 
                                 {activeTab === 'STUDENTS' && (
                                     <div className="space-y-4 animate-fadeIn">
-                                        <div className="flex justify-between items-center mb-4">
-                                            <h3 className="text-lg font-black text-slate-800">Enrolled Students</h3>
-                                            <div className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                                        <div className="flex justify-between items-center mb-4 px-1">
+                                            <h3 className="text-base font-bold text-slate-800">Enrolled Students</h3>
+                                            <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
                                                 Attendance Performance
                                             </div>
                                         </div>
                                         {batchStudents.length === 0 ? (
-                                            <div className="text-center py-10 bg-white rounded-2xl border border-dashed border-slate-200">
+                                            <div className="text-center py-10 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
                                                 <p className="text-sm text-slate-400 font-medium italic">No students assigned to this batch yet.</p>
                                             </div>
                                         ) : (
@@ -272,19 +272,19 @@ const TeacherModule = () => {
                                                 const isLowAttendance = totalSessions > 3 && percentage < 75;
 
                                                 return (
-                                                    <div key={student.id} className={`bg-white rounded-2xl p-4 border shadow-sm flex justify-between items-center transition-all ${isLowAttendance ? 'border-rose-200 bg-rose-50/20' : 'border-slate-100'}`}>
-                                                        <div className="flex items-center gap-4">
-                                                            <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${isLowAttendance ? 'bg-rose-500 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                                                    <div key={student.id} className={`bg-white rounded-xl p-4 border shadow-sm flex justify-between items-center transition-all ${isLowAttendance ? 'border-rose-200 bg-rose-50/20' : 'border-slate-200/80'}`}>
+                                                        <div className="flex items-center gap-3">
+                                                            <div className={`w-9 h-9 rounded-lg flex items-center justify-center font-bold text-xs ${isLowAttendance ? 'bg-rose-500 text-white shadow-sm' : 'bg-slate-100 text-slate-650'}`}>
                                                                 {student.first_name[0]}
                                                             </div>
                                                             <div>
-                                                                <h4 className="font-bold text-slate-800">{student.first_name} {student.last_name}</h4>
-                                                                <p className="text-xs font-mono text-slate-500 line-clamp-1">{student.crm_student_id}</p>
+                                                                <h4 className="font-semibold text-slate-850 text-sm">{student.first_name} {student.last_name}</h4>
+                                                                <p className="text-[11px] font-mono text-slate-500 line-clamp-1">{student.crm_student_id}</p>
                                                             </div>
                                                         </div>
                                                         <div className="text-right">
                                                             <div className="flex flex-col items-end">
-                                                                <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${isLowAttendance ? 'bg-rose-500 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                                                                <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${isLowAttendance ? 'bg-rose-500 text-white' : 'bg-slate-100 text-slate-550 border border-slate-200/60'}`}>
                                                                     {percentage.toFixed(0)}% Attendance
                                                                 </span>
                                                                 <p className="text-xs text-slate-400 font-medium mt-1">{student.mobile || '-'}</p>
@@ -299,73 +299,73 @@ const TeacherModule = () => {
 
                                 {activeTab === 'SYLLABUS' && (
                                     <div className="space-y-6 animate-fadeIn">
-                                        <div className="flex justify-between items-center mb-6">
-                                            <h3 className="text-xl font-black text-slate-800">Syllabus Parts</h3>
+                                        <div className="flex justify-between items-center mb-4">
+                                            <h3 className="text-base font-bold text-slate-800">Syllabus Parts</h3>
                                             <button 
                                                 onClick={() => {
                                                     setEditingPart(null);
                                                     setSyllabusData({ title: '', weight_percentage: 5, semester: '', module: '', subject: '' });
                                                     setShowSyllabusForm(!showSyllabusForm);
                                                 }}
-                                                className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl font-bold text-sm hover:bg-indigo-100 transition-colors"
+                                                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-650 rounded-lg text-xs font-semibold hover:bg-indigo-100 transition-colors border border-indigo-100"
                                             >
-                                                <Plus size={16} /> {showSyllabusForm ? 'Cancel' : 'Add Part'}
+                                                <Plus size={14} /> {showSyllabusForm ? 'Cancel' : 'Add Part'}
                                             </button>
                                         </div>
 
                                         {showSyllabusForm && (
-                                            <form onSubmit={handleAddSyllabus} className="bg-slate-50 p-6 rounded-3xl border border-slate-200 mb-6 space-y-4 animate-fadeIn shadow-inner">
+                                            <form onSubmit={handleAddSyllabus} className="bg-slate-50/80 p-5 rounded-2xl border border-slate-200 mb-6 space-y-4 animate-fadeIn">
                                                 <div className="flex items-center gap-2 mb-2">
-                                                    <div className="w-2 h-2 bg-indigo-500 rounded-full animate-pulse" />
-                                                    <h4 className="text-xs font-black text-indigo-600 uppercase tracking-widest">{editingPart ? 'Editing Topic' : 'Add New Curriculum Topic'}</h4>
+                                                    <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-pulse" />
+                                                    <h4 className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">{editingPart ? 'Editing Topic' : 'Add New Curriculum Topic'}</h4>
                                                 </div>
                                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                                     <div className="space-y-1">
-                                                        <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Semester</label>
+                                                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Semester</label>
                                                         <input 
                                                             type="text" placeholder="e.g., Semester 1"
                                                             value={syllabusData.semester} onChange={e => setSyllabusData({...syllabusData, semester: e.target.value})}
-                                                            className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl focus:border-indigo-500 outline-none font-medium"
+                                                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:border-indigo-500 outline-none text-sm font-medium transition-all"
                                                         />
                                                     </div>
                                                     <div className="space-y-1">
-                                                        <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Module</label>
+                                                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Module</label>
                                                         <input 
                                                             type="text" placeholder="e.g., Module A"
                                                             value={syllabusData.module} onChange={e => setSyllabusData({...syllabusData, module: e.target.value})}
-                                                            className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl focus:border-indigo-500 outline-none font-medium"
+                                                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:border-indigo-500 outline-none text-sm font-medium transition-all"
                                                         />
                                                     </div>
                                                     <div className="space-y-1">
-                                                        <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Subject</label>
+                                                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Subject</label>
                                                         <input 
                                                             type="text" placeholder="e.g., Carnatic Theory"
                                                             value={syllabusData.subject} onChange={e => setSyllabusData({...syllabusData, subject: e.target.value})}
-                                                            className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl focus:border-indigo-500 outline-none font-medium"
+                                                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:border-indigo-500 outline-none text-sm font-medium transition-all"
                                                         />
                                                     </div>
                                                 </div>
                                                 
                                                 <div className="flex flex-col md:flex-row gap-4 items-end">
-                                                    <div className="flex-1 space-y-1">
-                                                        <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Topic/Part Title</label>
+                                                    <div className="flex-1 space-y-1 w-full">
+                                                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Topic/Part Title</label>
                                                         <input 
                                                             type="text" required placeholder="e.g., Introduction to Adavus"
                                                             value={syllabusData.title} onChange={e => setSyllabusData({...syllabusData, title: e.target.value})}
-                                                            className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl focus:border-indigo-500 outline-none font-medium"
+                                                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:border-indigo-500 outline-none text-sm font-medium transition-all"
                                                         />
                                                     </div>
                                                     <div className="w-full md:w-32 space-y-1">
-                                                        <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Weight %</label>
+                                                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Weight %</label>
                                                         <input 
                                                             type="number" required min="1" max="100" step="0.1" placeholder="5.0"
                                                             value={syllabusData.weight_percentage} onChange={e => setSyllabusData({...syllabusData, weight_percentage: e.target.value})}
-                                                            className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl focus:border-indigo-500 outline-none font-medium"
+                                                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:border-indigo-500 outline-none text-sm font-medium transition-all"
                                                         />
                                                     </div>
                                                     <button 
                                                         type="submit" 
-                                                        className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition shadow-lg shadow-indigo-100"
+                                                        className="px-4 py-2 bg-indigo-650 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition shadow-sm w-full md:w-auto"
                                                     >
                                                         {editingPart ? 'Save Changes' : 'Create Topic'}
                                                     </button>
@@ -373,9 +373,9 @@ const TeacherModule = () => {
                                             </form>
                                         )}
 
-                                        <div className="space-y-6">
+                                        <div className="space-y-4">
                                             {syllabusParts.length === 0 ? (
-                                                <div className="text-center py-10 bg-white rounded-2xl border border-dashed border-slate-200">
+                                                <div className="text-center py-10 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
                                                     <p className="text-sm text-slate-400 font-medium italic">No parts defined. Start adding Semester-wise modules!</p>
                                                 </div>
                                             ) : (
@@ -388,24 +388,24 @@ const TeacherModule = () => {
                                                         return acc;
                                                     }, {})
                                                 ).map(([semester, parts]) => (
-                                                    <div key={semester} className="space-y-3 bg-white/50 p-4 rounded-3xl border border-slate-100">
-                                                        <h4 className="px-4 text-xs font-black text-indigo-600 uppercase tracking-widest mb-1">{semester}</h4>
+                                                    <div key={semester} className="space-y-2.5 bg-slate-50/50 p-4 rounded-2xl border border-slate-200/85">
+                                                        <h4 className="px-1 text-[10px] font-bold text-indigo-650 uppercase tracking-wider mb-1">{semester}</h4>
                                                         {parts.map(part => (
-                                                            <div key={part.id} className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm flex justify-between items-center group/part">
-                                                                <div className="flex items-center gap-4">
-                                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center ${part.is_completed ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
-                                                                        {part.is_completed ? <CheckCircle2 size={16} /> : <BookOpen size={14} />}
+                                                            <div key={part.id} className="bg-white rounded-xl p-3.5 border border-slate-200 shadow-sm flex justify-between items-center group/part">
+                                                                <div className="flex items-center gap-3">
+                                                                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center border transition-colors ${part.is_completed ? 'bg-emerald-55 text-white border-emerald-500 shadow-sm' : 'bg-slate-50 text-slate-400 border-slate-200'}`}>
+                                                                        {part.is_completed ? <CheckCircle2 size={14} /> : <BookOpen size={12} />}
                                                                     </div>
                                                                     <div>
-                                                                        <div className="flex gap-2 mb-0.5">
-                                                                            {part.module && <span className="text-[10px] font-black bg-purple-50 text-purple-600 px-1.5 py-0.5 rounded-md uppercase tracking-tighter">{part.module}</span>}
-                                                                            {part.subject && <span className="text-[10px] font-black bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded-md uppercase tracking-tighter">{part.subject}</span>}
+                                                                        <div className="flex gap-1.5 mb-1.5">
+                                                                            {part.module && <span className="text-[9px] font-bold bg-purple-50 text-purple-650 px-1.5 py-0.5 rounded uppercase tracking-wider border border-purple-100">{part.module}</span>}
+                                                                            {part.subject && <span className="text-[9px] font-bold bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded uppercase tracking-wider border border-amber-100">{part.subject}</span>}
                                                                         </div>
-                                                                        <h4 className={`font-bold ${part.is_completed ? 'text-slate-500 line-through' : 'text-slate-800'}`}>{part.title}</h4>
+                                                                        <h4 className={`text-sm font-semibold ${part.is_completed ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{part.title}</h4>
                                                                     </div>
                                                                 </div>
                                                                 <div className="flex items-center gap-1.5">
-                                                                    <p className="text-xs font-black text-indigo-600 bg-slate-50 px-2 py-1 rounded-lg">
+                                                                    <p className="text-xs font-bold text-indigo-600 bg-slate-50 border border-slate-200/60 px-2 py-0.5 rounded-lg">
                                                                         {part.weight_percentage}%
                                                                     </p>
                                                                     <button 
@@ -421,7 +421,7 @@ const TeacherModule = () => {
                                                                             setShowSyllabusForm(true);
                                                                             window.scrollTo({ top: 0, behavior: 'smooth' });
                                                                         }}
-                                                                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors opacity-0 group-hover/part:opacity-100"
+                                                                        className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors opacity-0 group-hover/part:opacity-100"
                                                                         title="Edit Topic"
                                                                     >
                                                                         <Layers size={14} />
@@ -434,7 +434,7 @@ const TeacherModule = () => {
                                                                                 fetchBatches();
                                                                             }
                                                                         }}
-                                                                        className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors opacity-0 group-hover/part:opacity-100"
+                                                                        className="p-1 text-slate-350 hover:text-rose-500 hover:bg-rose-50 rounded-md transition-colors opacity-0 group-hover/part:opacity-100"
                                                                         title="Delete Topic"
                                                                     >
                                                                         <X size={14} />
@@ -970,26 +970,26 @@ const TeacherModule = () => {
     }
 
     return (
-        <div className="min-h-screen w-full bg-slate-50 py-12 px-4 sm:px-6 lg:px-8 font-sans">
+        <div className="min-h-screen w-full bg-slate-50 py-8 px-4 sm:px-6 lg:px-8 font-sans">
             <div className="max-w-6xl mx-auto w-full">
                 <motion.div
                     initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-                    className="mb-8 flex flex-col md:flex-row justify-between items-center"
+                    className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white p-5 rounded-2xl border border-slate-200 shadow-sm gap-4 mb-6"
                 >
                     <div>
-                        <h1 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600 mb-2">
-                            Teacher Portal
+                        <h1 className="text-2xl font-bold text-slate-900 mb-0.5">
+                            <span className="text-indigo-600">Teacher</span> Portal
                         </h1>
-                        <p className="text-sm text-slate-500 max-w-2xl">
+                        <p className="text-xs text-slate-500 max-w-2xl">
                             Manage your assigned batches, track class attendance, and update syllabus completion.
                         </p>
                     </div>
-                    <div className="relative mt-4 md:mt-0">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                    <div className="relative mt-4 sm:mt-0">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                         <input
                             type="text" placeholder="Search batches..."
                             value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
-                            className="pl-10 pr-4 py-2 rounded-xl border border-slate-200 focus:border-indigo-500 outline-none text-sm w-64"
+                            className="pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:border-indigo-500 outline-none text-sm w-full sm:w-64 transition-all"
                         />
                     </div>
                 </motion.div>
@@ -997,7 +997,7 @@ const TeacherModule = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {loading ? (
                         [1,2,3].map(i => (
-                            <div key={i} className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 h-48 animate-pulse flex flex-col justify-between">
+                            <div key={i} className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 h-48 animate-pulse flex flex-col justify-between">
                                 <div className="w-1/2 h-6 bg-slate-200 rounded-lg"></div>
                                 <div className="space-y-3">
                                     <div className="w-3/4 h-4 bg-slate-100 rounded"></div>
@@ -1009,48 +1009,48 @@ const TeacherModule = () => {
                         batches.map(batch => (
                             <motion.div 
                                 key={batch.id} 
-                                whileHover={{ y: -5, scale: 1.02 }}
+                                whileHover={{ y: -4, scale: 1.01 }}
                                 onClick={() => setSelectedBatch(batch)}
-                                className="bg-white rounded-3xl p-6 shadow-md hover:shadow-xl border border-slate-100 cursor-pointer transition-all duration-300 relative overflow-hidden group"
+                                className="bg-white rounded-2xl p-6 shadow-sm hover:shadow-md border border-slate-200 cursor-pointer transition-all duration-300 relative overflow-hidden group"
                             >
-                                <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-indigo-100 to-transparent opacity-0 group-hover:opacity-100 transition-opacity rounded-bl-full pointer-events-none"></div>
+                                <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-indigo-50/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity rounded-bl-full pointer-events-none"></div>
                                 
                                 <div className="flex justify-between items-start mb-6">
                                     <div>
-                                        <h3 className="text-xl font-black text-slate-800 mb-1">{batch.name}</h3>
-                                        <p className="text-xs font-bold text-indigo-600">{batch.course_name}</p>
+                                        <h3 className="text-lg font-bold text-slate-800 mb-1">{batch.name}</h3>
+                                        <p className="text-xs font-semibold text-indigo-650">{batch.course_name}</p>
                                     </div>
-                                    <div className="w-10 h-10 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-600">
-                                        <BookOpen size={18} />
+                                    <div className="w-9 h-9 bg-indigo-50 border border-indigo-100/60 rounded-xl flex items-center justify-center text-indigo-600">
+                                        <BookOpen size={16} />
                                     </div>
                                 </div>
                                 
                                 <div className="mb-6 space-y-3">
-                                    <div className="flex justify-between items-center text-sm">
-                                        <span className="text-slate-500 font-medium flex items-center gap-2"><Users size={14}/> Students</span>
-                                        <span className="font-bold text-slate-800">{batch.student_count}</span>
+                                    <div className="flex justify-between items-center text-xs">
+                                        <span className="text-slate-500 font-medium flex items-center gap-1.5"><Users size={12}/> Students</span>
+                                        <span className="font-bold text-slate-700">{batch.student_count}</span>
                                     </div>
                                     <div>
-                                        <div className="flex justify-between items-center text-sm mb-1">
-                                            <span className="text-slate-500 font-medium flex items-center gap-2"><CheckCircle2 size={14}/> Progress</span>
-                                            <span className="font-bold text-slate-800">{batch.syllabus_progress || 0}%</span>
+                                        <div className="flex justify-between items-center text-xs mb-1">
+                                            <span className="text-slate-500 font-medium flex items-center gap-1.5"><CheckCircle2 size={12}/> Progress</span>
+                                            <span className="font-bold text-slate-700">{batch.syllabus_progress || 0}%</span>
                                         </div>
-                                        <div className="w-full bg-slate-100 rounded-full h-1.5">
-                                            <div className="bg-indigo-500 h-1.5 rounded-full" style={{ width: `${batch.syllabus_progress || 0}%` }}></div>
+                                        <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                                            <div className="bg-indigo-600 h-1.5 rounded-full" style={{ width: `${batch.syllabus_progress || 0}%` }}></div>
                                         </div>
                                     </div>
                                 </div>
                                 
-                                <div className="pt-4 border-t border-slate-100 flex justify-between items-center text-indigo-600 font-bold text-sm group-hover:text-indigo-700">
-                                    Manage Batch <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform" />
+                                <div className="pt-4 border-t border-slate-200/60 flex justify-between items-center text-indigo-600 font-semibold text-xs uppercase tracking-wider group-hover:text-indigo-700">
+                                    Manage Batch <ChevronRight size={14} className="group-hover:translate-x-0.5 transition-transform" />
                                 </div>
                             </motion.div>
                         ))
                     ) : (
-                        <div className="col-span-full py-16 text-center bg-white rounded-3xl border border-dashed border-slate-300">
-                            <BookOpen size={48} className="mx-auto text-slate-300 mb-4" />
-                            <h3 className="text-xl font-black text-slate-700 mb-2">No Batches Assigned</h3>
-                            <p className="text-slate-500 max-w-md mx-auto">You haven't been assigned to any batches yet, or no batches match your search criteria.</p>
+                        <div className="col-span-full py-16 text-center bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
+                            <BookOpen size={40} className="mx-auto text-slate-350 mb-3" />
+                            <h3 className="text-lg font-bold text-slate-800 mb-1">No Batches Assigned</h3>
+                            <p className="text-sm text-slate-500 max-w-md mx-auto">You haven't been assigned to any batches yet, or no batches match your search criteria.</p>
                         </div>
                     )}
                 </div>

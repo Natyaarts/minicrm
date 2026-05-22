@@ -520,31 +520,31 @@ const MentorModule = () => {
     return (
         <div className="min-h-screen w-full bg-slate-50 font-sans text-slate-900 pb-10">
             {/* Top Minimal Navigation */}
-            <div className="flex flex-col md:flex-row gap-6 justify-between items-start md:items-center bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
+            <div className="flex flex-col lg:flex-row gap-6 justify-between items-start lg:items-center bg-white px-6 py-5 rounded-2xl border border-slate-200 shadow-sm mb-6">
                 <div>
-                    <h1 className="text-3xl font-black bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-violet-600">
+                    <h1 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight">
                         Mentor Dashboard
                     </h1>
-                    <p className="text-slate-500 font-medium text-sm mt-1">Manage your batches and track student progress.</p>
+                    <p className="text-slate-500 font-medium text-xs sm:text-sm mt-1">Manage your batches and track student progress.</p>
                 </div>
 
-                <div className="flex flex-col md:flex-row bg-slate-100 p-1.5 rounded-2xl w-full md:w-auto gap-2 md:gap-0">
+                <div className="flex bg-white border border-slate-200 p-1 rounded-xl w-full lg:w-auto overflow-x-auto scrollbar-none gap-1 shadow-sm">
                     <button
                         onClick={() => { setViewTab('batches'); setSelectedBatch(null); }}
-                        className={`flex-1 md:flex-none px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${viewTab === 'batches' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        className={`flex-1 lg:flex-none whitespace-nowrap px-4 sm:px-5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all ${viewTab === 'batches' ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                     >
                         Batches
                     </button>
                     <button
                         onClick={() => { setViewTab('all-students'); setSelectedBatch(null); }}
-                        className={`flex-1 md:flex-none px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${viewTab === 'all-students' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        className={`flex-1 lg:flex-none whitespace-nowrap px-4 sm:px-5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all ${viewTab === 'all-students' ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                     >
                         Full Student List
                     </button>
                     {authUser?.role === 'ADMIN' || authUser?.role === 'SUPER_ADMIN' ? (
                         <button
                             onClick={() => { setViewTab('wise-courses'); setSelectedBatch(null); setSelectedWiseCourse(null); }}
-                            className={`flex-1 md:flex-none px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${viewTab === 'wise-courses' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                            className={`flex-1 lg:flex-none whitespace-nowrap px-4 sm:px-5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all ${viewTab === 'wise-courses' ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                         >
                             Wise LMS Batches
                         </button>
@@ -558,7 +558,7 @@ const MentorModule = () => {
                             setIsEditMode(false);
                             setIsCreateModalOpen(true);
                         }}
-                        className="w-full md:w-auto px-6 py-3 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all font-bold"
+                        className="w-full lg:w-auto px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-all font-semibold text-xs sm:text-sm text-center shadow-sm"
                     >
                         + Create Batch
                     </button>
@@ -566,7 +566,7 @@ const MentorModule = () => {
                 {selectedBatch && (
                     <button
                         onClick={() => setSelectedBatch(null)}
-                        className="text-slate-500 hover:text-indigo-600 font-bold flex items-center gap-2 transition-colors px-4 py-2 bg-slate-50 rounded-xl"
+                        className="w-full lg:w-auto text-slate-500 hover:text-indigo-600 font-semibold flex items-center justify-center gap-2 transition-colors px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs sm:text-sm shadow-sm"
                     >
                         <span className="text-lg">←</span> Back
                     </button>
@@ -594,7 +594,8 @@ const MentorModule = () => {
                             </div>
                         </div>
 
-                        <div className="overflow-x-auto">
+                        {/* Full Student List - Desktop Table View */}
+                        <div className="hidden md:block overflow-x-auto">
                             <table className="w-full border-separate border-spacing-y-3">
                                 <thead>
                                     <tr className="text-left">
@@ -655,23 +656,75 @@ const MentorModule = () => {
                             </table>
                         </div>
 
+                        {/* Full Student List - Mobile Card View */}
+                        <div className="md:hidden space-y-4">
+                            {allStudents.map((student) => (
+                                <div key={student.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4 animate-fadeIn">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600 font-bold text-sm flex-shrink-0">
+                                            {student.first_name?.[0]}{student.last_name?.[0] || ''}
+                                        </div>
+                                        <div className="min-w-0">
+                                            <div className="font-bold text-slate-900 truncate">{student.first_name} {student.last_name}</div>
+                                            <div className="text-xs text-slate-400 truncate">{student.crm_student_id}</div>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-2 text-xs border-t border-slate-100 pt-3">
+                                        <div>
+                                            <span className="block text-slate-400 font-semibold mb-0.5">Program</span>
+                                            <span className="inline-block px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-[9px] font-black uppercase tracking-tight truncate max-w-full">
+                                                {student.program_name}
+                                            </span>
+                                        </div>
+                                        <div>
+                                            <span className="block text-slate-400 font-semibold mb-0.5">Batch</span>
+                                            <span className="text-slate-700 font-medium truncate block">
+                                                {student.batch_name || <span className="text-slate-400 italic">Unassigned</span>}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-2 pt-3 border-t border-slate-100">
+                                        <button
+                                            onClick={() => handleWiseLinkClick(student)}
+                                            className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all text-center border ${student.lms_student_id ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-100 text-slate-600 border-slate-200'}`}
+                                        >
+                                            {student.lms_student_id ? 'Linked' : 'Link Wise'}
+                                        </button>
+                                        <button
+                                            onClick={() => setSelectedStudentProfile(student)}
+                                            className="w-full py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-indigo-600 transition-all text-center border border-slate-900"
+                                        >
+                                            View Profile
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                            {allStudents.length === 0 && (
+                                <div className="p-8 text-center text-slate-400 bg-white rounded-2xl border border-slate-200 shadow-sm">
+                                    No students found matching your search.
+                                </div>
+                            )}
+                        </div>
+
                         {/* Pagination Controls */}
-                        <div className="mt-8 flex items-center justify-between bg-slate-50 p-4 rounded-2xl border border-slate-200">
-                            <span className="text-sm text-slate-500 font-medium">
+                        <div className="mt-8 flex flex-col sm:flex-row gap-4 items-center justify-between bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                            <span className="text-sm text-slate-500 font-medium text-center sm:text-left">
                                 Showing <span className="text-slate-900 font-bold">{allStudents.length}</span> of <span className="text-slate-900 font-bold">{studentPagination.count}</span> students
                             </span>
-                            <div className="flex gap-2">
+                            <div className="flex gap-2 w-full sm:w-auto">
                                 <button
                                     onClick={() => setStudentPage(p => Math.max(1, p - 1))}
                                     disabled={!studentPagination.previous || loading}
-                                    className="px-4 py-2 rounded-xl bg-white border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition-all"
+                                    className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition-all text-center"
                                 >
                                     Previous
                                 </button>
                                 <button
                                     onClick={() => setStudentPage(p => p + 1)}
                                     disabled={!studentPagination.next || loading}
-                                    className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 shadow-md shadow-indigo-100 disabled:opacity-50 transition-all"
+                                    className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 shadow-md shadow-indigo-100 disabled:opacity-50 transition-all text-center"
                                 >
                                     Next
                                 </button>
@@ -739,7 +792,8 @@ const MentorModule = () => {
                         <h2 className="text-2xl font-bold text-slate-900 mb-2">{selectedWiseCourse.name}</h2>
                         <p className="text-slate-500 mb-6 font-medium">Participants in Wise LMS</p>
 
-                        <div className="overflow-x-auto">
+                        {/* Participants - Desktop Table View */}
+                        <div className="hidden md:block overflow-x-auto">
                             <table className="w-full">
                                 <thead className="text-left border-b border-slate-100">
                                     <tr>
@@ -762,6 +816,28 @@ const MentorModule = () => {
                                 </tbody>
                             </table>
                         </div>
+
+                        {/* Participants - Mobile Card View */}
+                        <div className="md:hidden space-y-3">
+                            {wiseParticipants.map(wp => (
+                                <div key={wp._id || wp.id} className="bg-slate-50 p-4 rounded-xl border border-slate-150 space-y-2">
+                                    <div className="font-bold text-slate-800">{wp.name}</div>
+                                    <div className="grid grid-cols-2 gap-2 text-xs">
+                                        <div>
+                                            <span className="block text-slate-400 font-semibold mb-0.5">Phone</span>
+                                            <span className="text-slate-600 font-medium">{wp.phoneNumber || 'N/A'}</span>
+                                        </div>
+                                        <div>
+                                            <span className="block text-slate-400 font-semibold mb-0.5">Email</span>
+                                            <span className="text-slate-600 font-medium truncate block">{wp.email || 'N/A'}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                            {wiseParticipants.length === 0 && (
+                                <div className="py-8 text-center text-slate-400">No participants found in this Wise class.</div>
+                            )}
+                        </div>
                     </div>
                 </motion.div>
             )}
@@ -770,11 +846,11 @@ const MentorModule = () => {
                 !selectedBatch ? (
                     <div className="space-y-6">
                         <div className="relative w-full md:w-80">
-                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                             <input
                                 type="text"
                                 placeholder="Search batches..."
-                                className="w-full pl-11 pr-4 py-3 rounded-2xl bg-white shadow-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 transition-all text-sm"
+                                className="w-full pl-10 pr-4 py-2 rounded-xl bg-white shadow-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 transition-all text-xs font-medium text-slate-700 placeholder:text-slate-400"
                                 value={batchSearchQuery}
                                 onChange={(e) => setBatchSearchQuery(e.target.value)}
                             />
@@ -782,122 +858,140 @@ const MentorModule = () => {
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             {batches.map(batch => (
                                 <motion.div
-                                whileHover={{ y: -4 }}
-                                key={batch.id}
-                                onClick={() => handleBatchClick(batch)}
-                                className="p-8 bg-white rounded-2xl border border-slate-200 cursor-pointer shadow-sm hover:shadow-xl transition-all group"
-                            >
-                                <div className="flex justify-between items-start mb-4">
-                                    <h3 className="text-xl font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">{batch.name}</h3>
-                                    <div className="bg-indigo-50 text-indigo-700 px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider">
-                                        Active
-                                    </div>
-                                </div>
-
-                                <div className="text-slate-500 text-sm space-y-3">
-                                    <div className="flex items-center gap-2">
-                                        <span className="w-1.5 h-1.5 bg-slate-300 rounded-full"></span>
-                                        <span>Course: <span className="font-medium text-slate-700">{batch.course_name || 'N/A'}</span></span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <span className="w-1.5 h-1.5 bg-slate-300 rounded-full"></span>
-                                        <span>Students: <span className="font-medium text-slate-700">{batch.student_count || 0}</span></span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <span className="w-1.5 h-1.5 bg-slate-300 rounded-full"></span>
-                                        <span>Primary: <span className="font-medium text-slate-700">{batch.primary_mentor_details?.username || 'None'}</span></span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <span className="w-1.5 h-1.5 bg-slate-300 rounded-full"></span>
-                                        <span>Teacher: <span className="font-bold text-indigo-600">{batch.teacher_details?.username || 'Not Assigned'}</span></span>
-                                    </div>
-                                </div>
-                            </motion.div>
-                        ))}
-
-                        {/* Batch Pagination */}
-                        <div className="col-span-full mt-4 flex items-center justify-between bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-                            <span className="text-sm text-slate-500 font-medium">
-                                Showing <span className="text-slate-900 font-bold">{batches.length}</span> of <span className="text-slate-900 font-bold">{batchPagination.count}</span> batches
-                            </span>
-                            <div className="flex gap-2">
-                                <button
-                                    onClick={() => setBatchPage(p => Math.max(1, p - 1))}
-                                    disabled={!batchPagination.previous}
-                                    className="px-4 py-2 rounded-xl bg-slate-50 border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-100 disabled:opacity-50 transition-all"
+                                    whileHover={{ y: -4 }}
+                                    key={batch.id}
+                                    onClick={() => handleBatchClick(batch)}
+                                    className="p-6 bg-white rounded-2xl border border-slate-200 cursor-pointer shadow-sm hover:shadow-md transition-all group"
                                 >
-                                    Previous
-                                </button>
-                                <button
-                                    onClick={() => setBatchPage(p => p + 1)}
-                                    disabled={!batchPagination.next}
-                                    className="px-4 py-2 rounded-xl bg-white border border-slate-200 text-sm font-bold text-indigo-600 hover:bg-indigo-50 disabled:opacity-50 transition-all"
-                                >
-                                    Next
-                                </button>
+                                    <div className="flex justify-between items-start mb-4">
+                                        <h3 className="text-lg font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">{batch.name}</h3>
+                                        <div className="bg-emerald-50 text-emerald-700 px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider">
+                                            Active
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4 text-xs pt-4 border-t border-slate-100">
+                                        <div>
+                                            <span className="block text-slate-400 font-semibold mb-0.5 uppercase tracking-wider text-[10px]">Course</span>
+                                            <span className="text-slate-700 font-medium truncate block" title={batch.course_name}>
+                                                {batch.course_name || 'N/A'}
+                                            </span>
+                                        </div>
+                                        <div>
+                                            <span className="block text-slate-400 font-semibold mb-0.5 uppercase tracking-wider text-[10px]">Students</span>
+                                            <span className="text-slate-700 font-medium block">
+                                                {batch.student_count || 0}
+                                            </span>
+                                        </div>
+                                        <div>
+                                            <span className="block text-slate-400 font-semibold mb-0.5 uppercase tracking-wider text-[10px]">Primary Mentor</span>
+                                            <span className="text-slate-700 font-medium truncate block" title={batch.primary_mentor_details?.username}>
+                                                {batch.primary_mentor_details?.username || 'None'}
+                                            </span>
+                                        </div>
+                                        <div>
+                                            <span className="block text-slate-400 font-semibold mb-0.5 uppercase tracking-wider text-[10px]">Teacher</span>
+                                            <span className="text-indigo-600 font-bold truncate block" title={batch.teacher_details?.username}>
+                                                {batch.teacher_details?.username || 'Not Assigned'}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </motion.div>
+                            ))}
+
+                            {/* Batch Pagination */}
+                            <div className="col-span-full mt-4 flex flex-col sm:flex-row gap-4 items-center justify-between bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                                <span className="text-sm text-slate-500 font-medium text-center sm:text-left">
+                                    Showing <span className="text-slate-900 font-bold">{batches.length}</span> of <span className="text-slate-900 font-bold">{batchPagination.count}</span> batches
+                                </span>
+                                <div className="flex gap-2 w-full sm:w-auto">
+                                    <button
+                                        onClick={() => setBatchPage(p => Math.max(1, p - 1))}
+                                        disabled={!batchPagination.previous}
+                                        className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-100 disabled:opacity-50 transition-all text-center"
+                                    >
+                                        Previous
+                                    </button>
+                                    <button
+                                        onClick={() => setBatchPage(p => p + 1)}
+                                        disabled={!batchPagination.next}
+                                        className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-sm font-bold text-indigo-600 hover:bg-indigo-50 disabled:opacity-50 transition-all text-center"
+                                    >
+                                        Next
+                                    </button>
+                                </div>
                             </div>
+                            {batches.length === 0 && (
+                                <div className="col-span-full bg-white border border-slate-200 rounded-2xl shadow-sm p-12 sm:p-16 flex flex-col items-center justify-center text-center animate-fadeIn">
+                                    <div className="w-16 h-16 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600 mb-4 shadow-inner">
+                                        <BookOpen size={28} />
+                                    </div>
+                                    <h3 className="text-lg font-bold text-slate-800 mb-1">No Batches Found</h3>
+                                    <p className="text-sm text-slate-500 max-w-sm">
+                                        There are no active batches at the moment. Create a new batch to get started.
+                                    </p>
+                                </div>
+                            )}
                         </div>
-                        {batches.length === 0 && (
-                            <div className="col-span-full text-center text-slate-400 py-16 bg-slate-50 rounded-2xl border border-dashed border-slate-300">
-                                <p className="text-lg">No batches found. Create one to get started.</p>
-                            </div>
-                        )}
                     </div>
-                </div>
                 ) : (
                     <div className="space-y-6 animate-fadeIn">
                         {/* Batch Details Header */}
-                        <div className="p-8 bg-white rounded-2xl border border-slate-200 shadow-sm">
-                            <div className="flex justify-between items-start mb-6">
+                        <div className="p-4 sm:p-8 bg-white rounded-2xl border border-slate-200 shadow-sm">
+                            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6">
                                 <div>
-                                    <h2 className="text-3xl font-bold text-slate-900 mb-2">{selectedBatch.name}</h2>
-                                    <p className="text-slate-500 text-lg">{selectedBatch.course_name}</p>
+                                    <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 mb-2">{selectedBatch.name}</h2>
+                                    <p className="text-slate-500 text-sm sm:text-lg">{selectedBatch.course_name}</p>
                                 </div>
-                                {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.MENTOR?.add) && (
-                                    <button
-                                        onClick={openAddStudentModal}
-                                        className="px-5 py-2.5 bg-green-50 text-green-700 hover:bg-green-100 border border-green-200 rounded-xl text-sm font-semibold transition-colors flex items-center gap-2"
-                                    >
-                                        <span className="text-lg">+</span> Add Student
-                                    </button>
-                                )}
-                                {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.MENTOR?.edit) && (
-                                    <button
-                                        onClick={handleEditBatch}
-                                        className="px-5 py-2.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-xl text-sm font-semibold transition-colors flex items-center gap-2"
-                                    >
-                                        <Edit size={16} /> Edit Batch
-                                    </button>
-                                )}
-                            </div>
-                            <div className="flex gap-8 pt-6 border-t border-slate-100">
-                                <div>
-                                    <span className="block text-slate-400 text-xs uppercase tracking-wider font-semibold mb-1">Start Date</span>
-                                    <span className="text-slate-900 font-medium">{selectedBatch.start_date}</span>
-                                </div>
-                                <div>
-                                    <span className="block text-slate-400 text-xs uppercase tracking-wider font-semibold mb-1">Total Students</span>
-                                    <span className="text-slate-900 font-medium">{studentsInBatch.length}</span>
-                                </div>
-                                <div className="border-l border-slate-200 pl-8">
-                                    <span className="block text-slate-400 text-xs uppercase tracking-wider font-semibold mb-1">Assigned Teacher</span>
-                                    <span className={`text-sm font-bold ${selectedBatch.teacher_details ? 'text-indigo-600' : 'text-slate-400 italic'}`}>
-                                        {selectedBatch.teacher_details ? `${selectedBatch.teacher_details.first_name || ''} ${selectedBatch.teacher_details.last_name || ''} (@${selectedBatch.teacher_details.username})` : 'Not Assigned'}
-                                    </span>
-                                    {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.MENTOR?.edit) && (
-                                        <button 
-                                            onClick={() => setIsAssignTeacherModalOpen(true)}
-                                            className="ml-3 text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-widest border-b border-indigo-200"
+                                <div className="flex flex-wrap gap-2 w-full lg:w-auto">
+                                    {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.MENTOR?.add) && (
+                                        <button
+                                            onClick={openAddStudentModal}
+                                            className="flex-1 lg:flex-none justify-center px-4 py-2.5 bg-green-50 text-green-700 hover:bg-green-100 border border-green-200 rounded-xl text-xs sm:text-sm font-semibold transition-colors flex items-center gap-2"
                                         >
-                                            Edit
+                                            <span className="text-base sm:text-lg">+</span> Add Student
+                                        </button>
+                                    )}
+                                    {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.MENTOR?.edit) && (
+                                        <button
+                                            onClick={handleEditBatch}
+                                            className="flex-1 lg:flex-none justify-center px-4 py-2.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-xl text-xs sm:text-sm font-semibold transition-colors flex items-center gap-2"
+                                        >
+                                            <Edit size={16} /> Edit Batch
                                         </button>
                                     )}
                                 </div>
                             </div>
+                            <div className="flex flex-col sm:flex-row gap-6 sm:gap-8 pt-6 border-t border-slate-100">
+                                <div>
+                                    <span className="block text-slate-400 text-[10px] sm:text-xs uppercase tracking-wider font-semibold mb-1">Start Date</span>
+                                    <span className="text-slate-900 text-sm sm:text-base font-medium">{selectedBatch.start_date}</span>
+                                </div>
+                                <div>
+                                    <span className="block text-slate-400 text-[10px] sm:text-xs uppercase tracking-wider font-semibold mb-1">Total Students</span>
+                                    <span className="text-slate-900 text-sm sm:text-base font-medium">{studentsInBatch.length}</span>
+                                </div>
+                                <div className="border-t sm:border-t-0 sm:border-l border-slate-200 pt-4 sm:pt-0 sm:pl-8">
+                                    <span className="block text-slate-400 text-[10px] sm:text-xs uppercase tracking-wider font-semibold mb-1">Assigned Teacher</span>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <span className={`text-xs sm:text-sm font-bold ${selectedBatch.teacher_details ? 'text-indigo-600' : 'text-slate-400 italic'}`}>
+                                            {selectedBatch.teacher_details ? `${selectedBatch.teacher_details.first_name || ''} ${selectedBatch.teacher_details.last_name || ''} (@${selectedBatch.teacher_details.username})` : 'Not Assigned'}
+                                        </span>
+                                        {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.MENTOR?.edit) && (
+                                            <button 
+                                                onClick={() => setIsAssignTeacherModalOpen(true)}
+                                                className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-widest border-b border-indigo-200"
+                                            >
+                                                Edit
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
-                        {/* Student List Table */}
-                        <div className="bg-white rounded-2xl overflow-x-auto border border-slate-200 shadow-sm">
+                        {/* Student List - Desktop Table View */}
+                        <div className="hidden md:block bg-white rounded-2xl overflow-x-auto border border-slate-200 shadow-sm">
                             <table className="w-full text-left">
                                 <thead className="bg-slate-50 border-b border-slate-200">
                                     <tr>
@@ -965,6 +1059,84 @@ const MentorModule = () => {
                                 </tbody>
                             </table>
                         </div>
+
+                        {/* Student List - Mobile Card View */}
+                        <div className="md:hidden space-y-4">
+                            {studentsInBatch.map((student) => (
+                                <div key={student.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600 font-bold text-sm flex-shrink-0">
+                                            {student.first_name?.[0]}{student.last_name?.[0] || ''}
+                                        </div>
+                                        <div className="min-w-0">
+                                            <div className="font-bold text-slate-900 truncate">{student.first_name} {student.last_name}</div>
+                                            <div className="text-xs text-slate-400 truncate">{student.email}</div>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-2 text-xs border-t border-slate-100 pt-3">
+                                        <div>
+                                            <span className="block text-slate-400 font-semibold mb-0.5">Mobile</span>
+                                            <span className="text-slate-700 font-medium">{student.mobile || 'N/A'}</span>
+                                        </div>
+                                        <div>
+                                            <span className="block text-slate-400 font-semibold mb-0.5">Wise ID Status</span>
+                                            <span className={`font-bold ${student.lms_student_id ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                                {student.lms_student_id ? 'Linked' : 'Not Linked'}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex flex-col gap-2 pt-3 border-t border-slate-100">
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.MENTOR?.edit) && (
+                                                <button
+                                                    onClick={() => handleWiseLinkClick(student)}
+                                                    className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all text-center border ${student.lms_student_id ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-100 text-slate-600 border-slate-200'}`}
+                                                >
+                                                    {student.lms_student_id ? 'Linked' : 'Link Wise'}
+                                                </button>
+                                            )}
+                                            <button
+                                                onClick={() => setSelectedStudentProfile(student)}
+                                                className="w-full py-2.5 bg-indigo-50 text-indigo-600 rounded-xl text-xs font-bold hover:bg-indigo-100 transition-all flex items-center justify-center gap-1.5 border border-indigo-100"
+                                            >
+                                                <FileText size={14} />
+                                                Profile
+                                            </button>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.MENTOR?.edit) && (
+                                                <button
+                                                    onClick={() => {
+                                                        setCredentialStudent(student);
+                                                        setCredentialForm({ username: student.username || '', password: '' });
+                                                        setIsCredentialsModalOpen(true);
+                                                    }}
+                                                    className="w-full py-2.5 bg-amber-50 text-amber-600 rounded-xl text-xs font-bold hover:bg-amber-100 transition-all flex items-center justify-center gap-1.5 border border-amber-100"
+                                                >
+                                                    <Key size={14} />
+                                                    Set Login
+                                                </button>
+                                            )}
+                                            {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.MENTOR?.delete) && (
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); removeStudentFromBatch(student.id); }}
+                                                    className="w-full py-2.5 bg-red-50 text-red-600 rounded-xl text-xs font-bold hover:bg-red-100 transition-all text-center border border-red-100"
+                                                >
+                                                    Remove
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                            {studentsInBatch.length === 0 && (
+                                <div className="p-8 text-center text-slate-400 bg-white rounded-2xl border border-slate-200 shadow-sm">
+                                    No students assigned to this batch yet.
+                                </div>
+                            )}
+                        </div>
                     </div>
                 )
             )}
@@ -975,7 +1147,7 @@ const MentorModule = () => {
                     <motion.div
                         initial={{ scale: 0.95, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
-                        className="bg-white rounded-2xl p-8 w-full max-w-md shadow-2xl"
+                        className="bg-white rounded-2xl p-5 sm:p-8 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto custom-scrollbar"
                     >
                         <h2 className="text-2xl font-bold mb-6 text-slate-900">{isEditMode ? 'Edit Batch' : 'Create New Batch'}</h2>
                         <form onSubmit={handleSaveBatch} className="space-y-5">
@@ -1129,7 +1301,7 @@ const MentorModule = () => {
                     <motion.div
                         initial={{ scale: 0.95, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
-                        className="bg-white rounded-2xl p-6 w-full max-w-lg shadow-2xl h-[80vh] flex flex-col"
+                        className="bg-white rounded-2xl p-5 sm:p-6 w-full max-w-lg shadow-2xl h-[80vh] max-h-[90vh] flex flex-col"
                     >
                         <div className="flex justify-between items-center mb-6">
                             <h2 className="text-2xl font-bold text-slate-800">Add Student to Batch</h2>
@@ -1168,22 +1340,22 @@ const MentorModule = () => {
                                 <p className="text-center py-10 text-slate-400">No unassigned students found.</p>
                             ) : (
                                 unassignedStudents.map(student => (
-                                    <div key={student.id} className={`flex items-center justify-between p-4 bg-slate-50 rounded-2xl border transition-all ${selectedUnassignedStudents.includes(student.id) ? 'border-indigo-400 bg-indigo-50/30' : 'border-slate-100'}`}>
-                                        <div className="flex items-center gap-4">
+                                    <div key={student.id} className={`flex items-center justify-between p-3 sm:p-4 bg-slate-50 rounded-2xl border transition-all ${selectedUnassignedStudents.includes(student.id) ? 'border-indigo-400 bg-indigo-50/30' : 'border-slate-100'}`}>
+                                        <div className="flex items-center gap-2 sm:gap-4 min-w-0">
                                             <input 
                                                 type="checkbox" 
-                                                className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                                className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 flex-shrink-0"
                                                 checked={selectedUnassignedStudents.includes(student.id)}
                                                 onChange={() => toggleStudentSelection(student.id)}
                                             />
-                                            <div>
-                                                <p className="font-bold text-slate-900 leading-none mb-1">{student.first_name} {student.last_name}</p>
-                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{student.crm_student_id}</p>
+                                            <div className="min-w-0">
+                                                <p className="font-bold text-slate-900 leading-none mb-1 truncate">{student.first_name} {student.last_name}</p>
+                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter truncate">{student.crm_student_id}</p>
                                             </div>
                                         </div>
                                         <button
                                             onClick={() => addStudentToBatch(student.id)}
-                                            className="px-4 py-2 bg-white text-indigo-600 border border-indigo-100 rounded-lg hover:bg-indigo-50 text-xs font-bold transition-colors"
+                                            className="px-4 py-2 bg-white text-indigo-600 border border-indigo-100 rounded-lg hover:bg-indigo-50 text-xs font-bold transition-colors flex-shrink-0"
                                         >
                                             Add
                                         </button>
@@ -1230,7 +1402,7 @@ const MentorModule = () => {
                     <motion.div 
                         initial={{ scale: 0.95, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
-                        className="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl relative"
+                        className="bg-white rounded-3xl p-5 sm:p-8 w-full max-w-md shadow-2xl relative max-h-[90vh] overflow-y-auto custom-scrollbar"
                     >
                         <h2 className="text-2xl font-bold mb-6 text-slate-800">Assign Teacher</h2>
                         <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
@@ -1268,9 +1440,9 @@ const MentorModule = () => {
                     <motion.div
                         initial={{ scale: 0.95, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
-                        className="bg-white rounded-3xl p-8 w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto custom-scrollbar"
+                        className="bg-white rounded-3xl p-5 sm:p-8 w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto custom-scrollbar"
                     >
-                        <div className="flex justify-between items-start mb-8">
+                        <div className="flex justify-between items-start mb-6 sm:mb-8">
                             <div className="flex items-center gap-4">
                                 <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-500 flex items-center justify-center text-white text-2xl font-bold shadow-lg shadow-indigo-100">
                                     {(selectedStudentProfile.first_name?.[0] || '')}{(selectedStudentProfile.last_name?.[0] || '')}
@@ -1290,9 +1462,9 @@ const MentorModule = () => {
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                             {/* Enrollment Details */}
-                            <div className="md:col-span-2 bg-slate-50 p-6 rounded-2xl border border-slate-100">
+                            <div className="md:col-span-2 bg-slate-50 p-5 sm:p-6 rounded-2xl border border-slate-100">
                                 <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Enrollment Details</h3>
-                                <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6">
                                     <div>
                                         <p className="text-xs text-slate-500 mb-1">Program</p>
                                         <p className="font-bold text-slate-800">{selectedStudentProfile.program_name}</p>
@@ -1306,12 +1478,12 @@ const MentorModule = () => {
                                         <p className="font-bold text-slate-800">{selectedStudentProfile.course_name || '-'}</p>
                                     </div>
                                     {studentLmsData?.enrolled_courses?.length > 0 && (
-                                        <div className="col-span-2 md:col-span-1">
+                                        <div className="col-span-1 sm:col-span-2 md:col-span-1">
                                             <p className="text-xs text-slate-500 mb-1">Wise LMS Courses</p>
                                             <div className="flex flex-wrap gap-2 mt-1">
                                                 {studentLmsData.enrolled_courses.map(course => (
                                                     <span key={course.id} className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded text-[10px] font-bold">
-                                                        {course.name}
+                                                        {course.name || 'Unknown Course'}
                                                     </span>
                                                 ))}
                                             </div>
@@ -1321,7 +1493,7 @@ const MentorModule = () => {
                             </div>
 
                             {/* LMS / Finance info */}
-                            <div className="md:col-span-2 bg-gradient-to-br from-slate-900 to-indigo-950 p-7 rounded-3xl text-white shadow-xl relative overflow-hidden group">
+                            <div className="md:col-span-2 bg-gradient-to-br from-slate-900 to-indigo-950 p-5 sm:p-7 rounded-3xl text-white shadow-xl relative overflow-hidden group">
                                 <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity pointer-events-none">
                                     <Key size={120} />
                                 </div>
@@ -1332,7 +1504,7 @@ const MentorModule = () => {
                                     </div>
 
                                     {studentLmsData ? (
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 md:gap-8">
                                             <div className="space-y-4">
                                                 <div>
                                                     <p className="text-xs text-indigo-300/60 font-bold uppercase mb-1">Total Fee</p>
@@ -1351,7 +1523,7 @@ const MentorModule = () => {
                                                     <p className="text-xs text-indigo-300/60 font-bold uppercase mb-1">Attendance</p>
                                                     <div className="flex items-end gap-2">
                                                         <p className="text-3xl font-black text-white">{studentLmsData.attendance}%</p>
-                                                        <p className="text-[10px] text-white/40 mb-1 mb-1">Monthly</p>
+                                                        <p className="text-[10px] text-white/40 mb-1">Monthly</p>
                                                     </div>
                                                 </div>
                                                 <div>
@@ -1360,7 +1532,7 @@ const MentorModule = () => {
                                                 </div>
                                             </div>
 
-                                            <div>
+                                            <div className="sm:col-span-2 md:col-span-1">
                                                 <p className="text-xs text-indigo-300/60 font-bold uppercase mb-3">Course Progress</p>
                                                 <div className="text-4xl font-black text-indigo-400 mb-2">{studentLmsData.course_progress}%</div>
                                                 <div className="w-full bg-white/10 h-1.5 rounded-full overflow-hidden">
@@ -1385,11 +1557,11 @@ const MentorModule = () => {
                                 <div className="space-y-4">
                                     <div>
                                         <p className="text-xs text-slate-500 mb-1">Mobile</p>
-                                        <p className="font-medium text-slate-800">{selectedStudentProfile.mobile || '-'}</p>
+                                        <p className="font-medium text-slate-800 break-all">{selectedStudentProfile.mobile || '-'}</p>
                                     </div>
                                     <div>
                                         <p className="text-xs text-slate-500 mb-1">Email</p>
-                                        <p className="font-medium text-slate-800">{selectedStudentProfile.email || '-'}</p>
+                                        <p className="font-medium text-slate-800 break-all">{selectedStudentProfile.email || '-'}</p>
                                     </div>
                                 </div>
                             </div>
@@ -1397,16 +1569,16 @@ const MentorModule = () => {
                             {/* Dynamic Fields */}
                             <div className="md:col-span-2">
                                 <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Application Form Details</h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white border border-slate-100 p-6 rounded-2xl">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white border border-slate-100 p-5 sm:p-6 rounded-2xl">
                                     {selectedStudentProfile.dynamic_values_list?.length > 0 ? (
                                         selectedStudentProfile.dynamic_values_list.map((val) => (
                                             <div key={val.id}>
                                                 <p className="text-xs text-slate-500 mb-1">{val.field_label}</p>
-                                                <p className="font-medium text-slate-800">{val.value || '-'}</p>
+                                                <p className="font-medium text-slate-800 break-words">{val.value || '-'}</p>
                                             </div>
                                         ))
                                     ) : (
-                                        <p className="text-slate-400 text-sm italic col-span-2">No custom fields filled.</p>
+                                        <p className="text-slate-400 text-sm italic col-span-1 md:col-span-2">No custom fields filled.</p>
                                     )}
                                 </div>
                             </div>
@@ -1457,7 +1629,7 @@ const MentorModule = () => {
                     <motion.div
                         initial={{ scale: 0.95, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
-                        className="bg-white rounded-2xl p-8 w-full max-w-md shadow-2xl"
+                        className="bg-white rounded-2xl p-5 sm:p-8 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto custom-scrollbar"
                     >
                         <h2 className="text-xl font-bold mb-2 text-slate-900 flex items-center gap-2">
                             <Key className="text-amber-500" size={24} />
@@ -1514,7 +1686,7 @@ const MentorModule = () => {
                     <motion.div
                         initial={{ scale: 0.95, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
-                        className="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl"
+                        className="bg-white rounded-3xl p-5 sm:p-8 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto custom-scrollbar"
                     >
                         <h2 className="text-xl font-bold mb-2 text-slate-900 flex items-center gap-2">
                             🔗 Link Wise LMS ID

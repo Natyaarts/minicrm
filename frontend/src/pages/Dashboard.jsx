@@ -86,20 +86,20 @@ function Dashboard() {
     }
 
     return (
-        <div className="space-y-6 md:space-y-8 animate-fadeIn px-2 md:px-0">
+        <div className="space-y-6 animate-fadeIn px-2 md:px-0">
             {user?.role !== 'STUDENT' && <EmployeeSelfService />}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 bg-white p-6 md:p-8 rounded-[2rem] border border-slate-100 shadow-sm">
-                <div className="w-full">
-                    <h1 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">System <span className="text-indigo-600">Overview</span></h1>
-                    <p className="text-slate-500 mt-1 text-sm md:text-base font-medium italic">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                <div>
+                    <h1 className="text-xl md:text-2xl font-bold text-slate-800 tracking-tight">System <span className="text-indigo-600">Overview</span></h1>
+                    <p className="text-slate-500 mt-1 text-xs font-normal">
                         {user?.first_name ? `Welcome back, ${user.first_name}!` : "Performance metrics and active records."}
                     </p>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full md:w-auto">
+                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                     {canViewSales && (
                         <button
                             onClick={handleExport}
-                            className="px-4 py-3 md:py-2 bg-white border border-slate-200 rounded-2xl text-slate-600 text-xs md:text-sm font-black shadow-sm hover:bg-slate-50 transition-colors flex items-center justify-center gap-2 uppercase tracking-widest"
+                            className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-600 text-xs font-semibold shadow-sm hover:bg-slate-50 transition-colors"
                         >
                             <Download size={14} /> Export
                         </button>
@@ -107,7 +107,7 @@ function Dashboard() {
                     {canViewSales && (
                         <button
                             onClick={() => navigate('/sales')}
-                            className="px-4 py-3 md:py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs md:text-sm font-black shadow-lg shadow-indigo-200 transition-all uppercase tracking-widest"
+                            className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors"
                         >
                             + New Admission
                         </button>
@@ -115,35 +115,37 @@ function Dashboard() {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {statCards.map((card, i) => (
                     <motion.div
                         key={i}
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: i * 0.1 }}
-                        className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm hover:shadow-xl transition-all group cursor-default"
+                        className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all flex items-center gap-4 cursor-default"
                     >
-                        <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${card.color} flex items-center justify-center text-white mb-4 group-hover:scale-110 transition-transform shadow-lg`}>
-                            <card.icon size={24} />
+                        <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${card.color} flex items-center justify-center text-white shrink-0 shadow-sm`}>
+                            <card.icon size={20} />
                         </div>
-                        <p className="text-slate-400 text-xs font-black uppercase tracking-widest mb-1">{card.title}</p>
-                        <h3 className="text-2xl font-black text-slate-900">{card.value}</h3>
+                        <div>
+                            <p className="text-slate-400 text-[10px] font-semibold uppercase tracking-wider mb-0.5">{card.title}</p>
+                            <h3 className="text-lg font-bold text-slate-800">{card.value}</h3>
+                        </div>
                     </motion.div>
                 ))}
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <div className="lg:col-span-2 bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm">
-                    <h3 className="text-xl font-bold text-slate-900 mb-6">Program Distribution</h3>
-                    <div className="space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2 bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                    <h3 className="text-base font-bold text-slate-800 mb-4">Program Distribution</h3>
+                    <div className="space-y-4">
                         {distribution.map((item, i) => (
                             <div key={i}>
-                                <div className="flex justify-between text-sm mb-2 font-bold text-slate-600 uppercase tracking-widest text-[10px]">
+                                <div className="flex justify-between text-[10px] mb-1 font-semibold text-slate-500 uppercase tracking-wider">
                                     <span>{item.name || "Uncategorized"}</span>
                                     <span className="text-indigo-600">{item.value} Students</span>
                                 </div>
-                                <div className="w-full bg-slate-50 h-2 rounded-full overflow-hidden">
+                                <div className="w-full bg-slate-50 h-1.5 rounded-full overflow-hidden">
                                     <motion.div
                                         initial={{ width: 0 }}
                                         animate={{ width: `${(item.value / stats.students) * 100}%` }}
@@ -155,16 +157,16 @@ function Dashboard() {
                     </div>
 
                     {canViewAnalytics && stats.revenue_distribution?.length > 0 && (
-                        <div className="mt-12 pt-8 border-t border-slate-100">
-                            <h3 className="text-xl font-bold text-slate-900 mb-6">Revenue Breakdown</h3>
-                            <div className="space-y-6">
+                        <div className="mt-8 pt-6 border-t border-slate-100">
+                            <h3 className="text-base font-bold text-slate-800 mb-4">Revenue Breakdown</h3>
+                            <div className="space-y-4">
                                 {stats.revenue_distribution.map((item, i) => (
                                     <div key={i}>
-                                        <div className="flex justify-between text-sm mb-2 font-bold text-slate-600 uppercase tracking-widest text-[10px]">
+                                        <div className="flex justify-between text-[10px] mb-1 font-semibold text-slate-500 uppercase tracking-wider">
                                             <span>{item.name || "General"}</span>
                                             <span className="text-emerald-600">₹{item.value?.toLocaleString()}</span>
                                         </div>
-                                        <div className="w-full bg-slate-50 h-2 rounded-full overflow-hidden">
+                                        <div className="w-full bg-slate-50 h-1.5 rounded-full overflow-hidden">
                                             <motion.div
                                                 initial={{ width: 0 }}
                                                 animate={{ width: `${(item.value / stats.revenue) * 100}%` }}
@@ -178,39 +180,38 @@ function Dashboard() {
                     )}
                 </div>
 
-                <div className="bg-slate-900 p-8 rounded-[2.5rem] text-white shadow-2xl relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/20 rounded-full blur-3xl"></div>
-                    <h3 className="text-xl font-bold mb-6">Quick Actions</h3>
-                    <div className="space-y-4 relative z-10">
+                <div className="bg-slate-900 p-5 rounded-xl text-white shadow-sm relative border border-slate-800 overflow-hidden">
+                    <h3 className="text-base font-bold mb-4">Quick Actions</h3>
+                    <div className="space-y-2 relative z-10">
                         {canViewAnalytics && (
                             <button
                                 onClick={() => navigate('/analytics')}
-                                className="w-full py-4 px-6 bg-white/10 hover:bg-white/20 rounded-2xl flex items-center justify-between group transition-all"
+                                className="w-full py-2.5 px-4 bg-slate-800/40 hover:bg-slate-800/80 rounded-lg flex items-center justify-between group transition-all border border-slate-800/60"
                             >
-                                <span className="font-bold text-sm">Deep Analytics</span>
-                                <ArrowUpRight className="text-indigo-400 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
+                                <span className="font-semibold text-xs text-slate-200">Deep Analytics</span>
+                                <ArrowUpRight size={14} className="text-indigo-400 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
                             </button>
                         )}
                         {canViewAdmin && (
                             <button
                                 onClick={() => navigate('/users')}
-                                className="w-full py-4 px-6 bg-white/10 hover:bg-white/20 rounded-2xl flex items-center justify-between group transition-all"
+                                className="w-full py-2.5 px-4 bg-slate-800/40 hover:bg-slate-800/80 rounded-lg flex items-center justify-between group transition-all border border-slate-800/60"
                             >
-                                <span className="font-bold text-sm">Manage Staff</span>
-                                <ArrowUpRight className="text-indigo-400 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
+                                <span className="font-semibold text-xs text-slate-200">Manage Staff</span>
+                                <ArrowUpRight size={14} className="text-indigo-400 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
                             </button>
                         )}
                         {canViewAcademic && (
                             <button
                                 onClick={() => navigate('/academic')}
-                                className="w-full py-4 px-6 bg-indigo-600 hover:bg-indigo-700 rounded-2xl flex items-center justify-between group transition-all mt-4"
+                                className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 rounded-lg flex items-center justify-between group transition-all mt-2"
                             >
-                                <span className="font-bold text-sm">Academic Setup</span>
-                                <ArrowUpRight className="text-white group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
+                                <span className="font-semibold text-xs text-white">Academic Setup</span>
+                                <ArrowUpRight size={14} className="text-white group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
                             </button>
                         )}
                         {!canViewAnalytics && !canViewAdmin && !canViewAcademic && (
-                            <div className="text-slate-500 italic text-sm py-4">
+                            <div className="text-slate-500 italic text-xs py-2">
                                 Contact admin for additional permissions.
                             </div>
                         )}
