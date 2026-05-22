@@ -601,7 +601,7 @@ const MentorModule = () => {
                                     <tr className="text-left">
                                         <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Student</th>
                                         <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-center">Program</th>
-                                        <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-center">Batch</th>
+                                        <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-center">Course & Batch</th>
                                         <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-right">Actions</th>
                                     </tr>
                                 </thead>
@@ -624,8 +624,11 @@ const MentorModule = () => {
                                                     {student.program_name}
                                                 </span>
                                             </td>
-                                            <td className="px-6 py-5 bg-white border-y border-slate-100 text-center text-sm font-medium text-slate-600">
-                                                {student.batch_name || <span className="text-slate-300 italic">Unassigned</span>}
+                                            <td className="px-6 py-5 bg-white border-y border-slate-100 text-center text-sm font-medium">
+                                                <div className="flex flex-col items-center gap-0.5">
+                                                    <span className="text-slate-800 font-bold">{student.course_name || <span className="text-slate-300 italic text-xs font-normal">No Course</span>}</span>
+                                                    <span className="text-xs text-slate-500">{student.batch_name || 'Unassigned Batch'}</span>
+                                                </div>
                                             </td>
                                             <td className="px-6 py-5 bg-white border-y border-r border-slate-100 rounded-r-2xl text-right">
                                                 <div className="flex justify-end gap-2">
