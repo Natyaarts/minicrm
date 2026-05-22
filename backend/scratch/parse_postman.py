@@ -8,15 +8,8 @@ def search_json(file_path):
         if isinstance(obj, dict):
             if 'request' in obj and 'url' in obj['request'] and isinstance(obj['request']['url'], dict):
                 url_path = '/'.join(obj['request']['url'].get('path', []))
-                if 'fees' in url_path.lower() or 'student' in url_path.lower():
+                if 'institutes' in url_path.lower():
                     print("\nEndpoint:", url_path)
-                    if 'response' in obj and len(obj['response']) > 0:
-                        body = obj['response'][0].get('body', '')
-                        if body:
-                            try:
-                                print(json.dumps(json.loads(body), indent=2)[:500] + "...")
-                            except:
-                                print("Body not JSON")
             for v in obj.values():
                 traverse(v)
         elif isinstance(obj, list):

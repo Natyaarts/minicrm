@@ -115,6 +115,7 @@ class BatchSerializer(serializers.ModelSerializer):
     secondary_mentors_details = UserSerializer(source='secondary_mentors', many=True, read_only=True)
     teacher_details = UserSerializer(source='teacher', read_only=True)
     course_name = serializers.CharField(source='course.name', read_only=True)
+    sub_program_name = serializers.CharField(source='course.sub_program.name', read_only=True)
     syllabus_parts = SyllabusPartSerializer(many=True, read_only=True)
     resources = BatchResourceSerializer(many=True, read_only=True)
     exams = ExamSerializer(many=True, read_only=True)

@@ -875,9 +875,9 @@ const MentorModule = () => {
 
                                     <div className="grid grid-cols-2 gap-4 text-xs pt-4 border-t border-slate-100">
                                         <div>
-                                            <span className="block text-slate-400 font-semibold mb-0.5 uppercase tracking-wider text-[10px]">Course</span>
-                                            <span className="text-slate-700 font-medium truncate block" title={batch.course_name}>
-                                                {batch.course_name || 'N/A'}
+                                            <span className="block text-slate-400 font-semibold mb-0.5 uppercase tracking-wider text-[10px]">Course / Subject</span>
+                                            <span className="text-slate-700 font-medium truncate block" title={`${batch.course_name} (${batch.sub_program_name})`}>
+                                                {batch.course_name || 'N/A'} {batch.sub_program_name ? <span className="text-slate-400 font-normal text-[10px]">({batch.sub_program_name})</span> : ''}
                                             </span>
                                         </div>
                                         <div>
@@ -944,7 +944,7 @@ const MentorModule = () => {
                             <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6">
                                 <div>
                                     <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 mb-2">{selectedBatch.name}</h2>
-                                    <p className="text-slate-500 text-sm sm:text-lg">{selectedBatch.course_name}</p>
+                                    <p className="text-slate-500 text-sm sm:text-lg">{selectedBatch.course_name} {selectedBatch.sub_program_name ? `(${selectedBatch.sub_program_name})` : ''}</p>
                                 </div>
                                 <div className="flex flex-wrap gap-2 w-full lg:w-auto">
                                     {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.MENTOR?.add) && (

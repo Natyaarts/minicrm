@@ -427,9 +427,12 @@ class WiseCourseListView(views.APIView):
         normalized = []
         for c in courses:
             normalized.append({
+                "_id": c.get('_id') or c.get('id'),
                 "id": c.get('_id') or c.get('id'),
                 "name": c.get('name') or c.get('title'),
-                "sessionsCount": c.get('studentCount', 0), # Using studentCount as a fallback label
+                "subject": c.get('subject') or c.get('className') or c.get('name'),
+                "sessionsCount": c.get('sessionsCount', 0),
+                "studentCount": c.get('studentCount', 0),
                 "type": c.get('classType', 'LIVE'),
                 "fee": c.get('feesAdded', False)
             })
