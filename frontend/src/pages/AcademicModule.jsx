@@ -155,9 +155,16 @@ const AcademicModule = () => {
                     next: data.next,
                     previous: data.previous
                 });
+                if (!selectedBatchId && !searchTerm) {
+                    setStats(prev => ({ ...prev, totalStudents: data.count }));
+                }
             } else {
                 setStudents(Array.isArray(data) ? data : []);
-                setStudentPagination({ count: (Array.isArray(data) ? data.length : 0), next: null, previous: null });
+                const count = Array.isArray(data) ? data.length : 0;
+                setStudentPagination({ count, next: null, previous: null });
+                if (!selectedBatchId && !searchTerm) {
+                    setStats(prev => ({ ...prev, totalStudents: count }));
+                }
             }
         } catch (err) {
             console.error("Failed to fetch students", err);
