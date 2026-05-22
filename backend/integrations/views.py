@@ -537,23 +537,28 @@ class SyncWiseBatchView(views.APIView):
                     
                     # Clean phone
                     clean_phone = str(phone).replace(" ", "")
-                    if len(clean_phone) < 10: continue
                     
                     # Try to find existing student (Better lookup to prevent IntegrityErrors)
-                    expected_crm_id = f"WISE-{clean_phone[-10:]}"
-                    student = Student.objects.filter(
-                        models.Q(lms_student_id=str(p_id)) | 
-                        models.Q(mobile=clean_phone) | 
-                        models.Q(crm_student_id=expected_crm_id)
-                    ).first()
+                    if len(clean_phone) >= 10:
+                        expected_crm_id = f"WISE-{clean_phone[-10:]}"
+                    else:
+                        expected_crm_id = f"WISE-{p_id}"
+                        clean_phone = "" # Leave blank if invalid
+                    
+                    query = models.Q(lms_student_id=str(p_id)) | models.Q(crm_student_id=expected_crm_id)
+                    if clean_phone:
+                        query |= models.Q(mobile=clean_phone)
+                        
+                    student = Student.objects.filter(query).first()
                     
                     if not student:
                         # Create User
-                        username = f"wise_{clean_phone[-10:]}"
+                        base_username_id = clean_phone[-10:] if clean_phone else str(p_id)
+                        username = f"wise_{base_username_id}"
                         # Check if username exists already to avoid clash
                         if User.objects.filter(username=username).exists():
                              import uuid
-                             username = f"wise_{clean_phone[-10:]}_{str(uuid.uuid4())[:4]}"
+                             username = f"wise_{base_username_id}_{str(uuid.uuid4())[:4]}"
 
                         # Improved Name Parsing
                         p_name = p.get('name', '').strip()
