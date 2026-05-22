@@ -11,6 +11,8 @@ const AcademicCoordinatorModule = () => {
     const [loading, setLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [academicStatus, setAcademicStatus] = useState('');
+    const [programFilter, setProgramFilter] = useState('');
+    const [programs, setPrograms] = useState([]);
     const [studentPage, setStudentPage] = useState(1);
     const [studentPagination, setStudentPagination] = useState({ count: 0, next: null, previous: null });
     const [toast, setToast] = useState(null);
@@ -25,11 +27,24 @@ const AcademicCoordinatorModule = () => {
     const [savingCompletion, setSavingCompletion] = useState(false);
     const [academicFiles, setAcademicFiles] = useState({});
 
+    useEffect(() => {
+        const fetchPrograms = async () => {
+            try {
+                const res = await api.get('programs/');
+                setPrograms(res.data);
+            } catch (err) {
+                console.error("Failed to fetch programs", err);
+            }
+        };
+        fetchPrograms();
+    }, []);
+
     const fetchStudents = async () => {
         setLoading(true);
         try {
             let url = `students/?page=${studentPage}&search=${searchTerm}`;
             if (academicStatus) url += `&academic_status=${academicStatus}`;
+            if (programFilter) url += `&program=${programFilter}`;
             
             const res = await api.get(url);
             const data = res.data;
@@ -56,11 +71,11 @@ const AcademicCoordinatorModule = () => {
             fetchStudents();
         }, 500);
         return () => clearTimeout(timer);
-    }, [studentPage, searchTerm, academicStatus]);
+    }, [studentPage, searchTerm, academicStatus, programFilter]);
 
     useEffect(() => {
-        if (searchTerm || academicStatus !== undefined) setStudentPage(1);
-    }, [searchTerm, academicStatus]);
+        if (searchTerm || academicStatus !== undefined || programFilter !== undefined) setStudentPage(1);
+    }, [searchTerm, academicStatus, programFilter]);
 
     const handleCompleteProfile = async (student) => {
         setCompletingProfile(student);
@@ -234,6 +249,16 @@ const AcademicCoordinatorModule = () => {
                         </p>
                     </div>
                     <div className="flex flex-col sm:flex-row gap-2.5 w-full sm:w-auto">
+                        <select
+                            value={programFilter}
+                            onChange={(e) => setProgramFilter(e.target.value)}
+                            className="px-3 py-1.5 rounded-md border border-slate-200 text-xs text-slate-600 outline-none focus:border-emerald-500 bg-white shadow-sm"
+                        >
+                            <option value="">All Programs</option>
+                            {programs.map(p => (
+                                <option key={p.id} value={p.id}>{p.name}</option>
+                            ))}
+                        </select>
                         <select
                             value={academicStatus}
                             onChange={(e) => setAcademicStatus(e.target.value)}
