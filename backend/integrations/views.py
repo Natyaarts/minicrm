@@ -74,8 +74,11 @@ class LMSProxyView(views.APIView):
                     classroom = cs.get('classroom', {})
                     course_name = ""
                     if isinstance(classroom, dict):
-                        # For ONE_TO_ONE classes, 'name' is often the student's name, so 'subject' is more useful
-                        course_name = classroom.get('subject') or classroom.get('name') or classroom.get('title') or classroom.get('className')
+                        class_type = classroom.get('classType', '')
+                        if class_type == 'ONE_TO_ONE':
+                            course_name = classroom.get('subject') or classroom.get('name') or classroom.get('title')
+                        else:
+                            course_name = classroom.get('name') or classroom.get('title') or classroom.get('subject') or classroom.get('className')
                     elif isinstance(classroom, str):
                         course_name = classroom
                         
