@@ -72,7 +72,15 @@ class LMSProxyView(views.APIView):
                 for cs in class_summary_list:
                     # Extract course name from nested classroom object or root object
                     classroom = cs.get('classroom', {})
-                    course_name = str(classroom)
+                    course_name = ""
+                    if isinstance(classroom, dict):
+                        # For ONE_TO_ONE classes, 'name' is often the student's name, so 'subject' is more useful
+                        course_name = classroom.get('subject') or classroom.get('name') or classroom.get('title') or classroom.get('className')
+                    elif isinstance(classroom, str):
+                        course_name = classroom
+                        
+                    if not course_name:
+                        course_name = cs.get('className') or cs.get('title') or cs.get('subject') or cs.get('name') or 'Unknown Course'
                         
                     enrolled_courses.append({
                         "id": cs.get('classId'),
