@@ -556,15 +556,14 @@ const TeacherModule = () => {
                                         <h3 className="text-lg font-black text-slate-800 flex items-center gap-2 px-2"><Calendar size={18}/> Past Class Sessions</h3>
                                         
                                         <div className="flex-1 overflow-y-auto pr-2 space-y-4 custom-scrollbar max-h-[600px] pb-10">
-                                            {classSessions.filter(s => !s.teacher_summary?.includes('Auto-synced')).length === 0 ? (
+                                            {classSessions.length === 0 ? (
                                                 <div className="text-center py-16 bg-white rounded-3xl border border-dashed border-slate-200">
                                                     <Calendar size={48} className="mx-auto text-slate-200 mb-4" />
-                                                    <p className="text-slate-400 font-medium italic">No manual class sessions recorded yet for this batch.</p>
+                                                    <p className="text-slate-400 font-medium italic">No class sessions recorded yet for this batch.</p>
                                                 </div>
                                             ) : (
                                                 <div className="space-y-4">
                                                     {[...classSessions]
-                                                        .filter(s => !s.teacher_summary?.includes('Auto-synced'))
                                                         .sort((a, b) => new Date(b.date) - new Date(a.date))
                                                         .map(session => (
                                                         <div key={session.id} className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
