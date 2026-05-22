@@ -822,8 +822,17 @@ class SyncWiseAttendanceView(views.APIView):
                         )
                         
                         present_lms_ids = log.get('students', [])
+                        
+                        # Handle case where students might be a list of dicts instead of list of strings
+                        present_ids_clean = set()
+                        for item in present_lms_ids:
+                            if isinstance(item, dict):
+                                present_ids_clean.add(str(item.get('_id') or item.get('id')))
+                            else:
+                                present_ids_clean.add(str(item))
+
                         for student in batch.students.all():
-                            is_present = bool(student.lms_student_id and student.lms_student_id in present_lms_ids)
+                            is_present = bool(student.lms_student_id and str(student.lms_student_id) in present_ids_clean)
                             Attendance.objects.update_or_create(
                                 session=session,
                                 student=student,
