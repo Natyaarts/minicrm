@@ -692,7 +692,10 @@ const AcademicModule = () => {
                                             {student.first_name} {student.last_name}
                                         </div>
                                     </td>
-                                    <td className="p-3.5 text-slate-500 text-xs font-normal">{student.program_name}</td>
+                                    <td className="p-3.5">
+                                        <div className="text-slate-700 text-xs font-medium">{student.program_name}</div>
+                                        <div className="text-[10px] text-slate-400 mt-0.5">{student.sub_program_name || student.course_name || 'No Course'}</div>
+                                    </td>
                                     <td className="p-3.5">
                                         <div className="max-w-[160px] space-y-1">
                                             {student.dynamic_values_list?.filter(v => v.value && v.value.trim() !== '').slice(0, 2).map(val => (
