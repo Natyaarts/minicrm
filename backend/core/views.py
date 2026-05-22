@@ -320,6 +320,22 @@ class StudentViewSet(viewsets.ModelViewSet):
         if course:
             qs = qs.filter(course_id=course)
 
+        academic_status = self.request.query_params.get('academic_status')
+        if academic_status == 'AVAILABLE':
+            qs = qs.filter(
+                dynamic_values__field__field_group='ACADEMIC'
+            ).exclude(
+                Q(dynamic_values__value__isnull=True) | Q(dynamic_values__value__exact='')
+            ).distinct()
+        elif academic_status == 'WANTED':
+            qs = qs.exclude(
+                id__in=Student.objects.filter(
+                    dynamic_values__field__field_group='ACADEMIC'
+                ).exclude(
+                    Q(dynamic_values__value__isnull=True) | Q(dynamic_values__value__exact='')
+                ).values('id')
+            )
+
         return qs.order_by('-id')
 
     def perform_destroy(self, instance):

@@ -10,6 +10,7 @@ const AcademicCoordinatorModule = () => {
     const [students, setStudents] = useState([]);
     const [loading, setLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
+    const [academicStatus, setAcademicStatus] = useState('');
     const [studentPage, setStudentPage] = useState(1);
     const [studentPagination, setStudentPagination] = useState({ count: 0, next: null, previous: null });
     const [toast, setToast] = useState(null);
@@ -27,7 +28,10 @@ const AcademicCoordinatorModule = () => {
     const fetchStudents = async () => {
         setLoading(true);
         try {
-            const res = await api.get(`students/?page=${studentPage}&search=${searchTerm}`);
+            let url = `students/?page=${studentPage}&search=${searchTerm}`;
+            if (academicStatus) url += `&academic_status=${academicStatus}`;
+            
+            const res = await api.get(url);
             const data = res.data;
             if (data.results) {
                 setStudents(data.results);
@@ -52,11 +56,11 @@ const AcademicCoordinatorModule = () => {
             fetchStudents();
         }, 500);
         return () => clearTimeout(timer);
-    }, [studentPage, searchTerm]);
+    }, [studentPage, searchTerm, academicStatus]);
 
     useEffect(() => {
-        if (searchTerm) setStudentPage(1);
-    }, [searchTerm]);
+        if (searchTerm || academicStatus !== undefined) setStudentPage(1);
+    }, [searchTerm, academicStatus]);
 
     const handleCompleteProfile = async (student) => {
         setCompletingProfile(student);
@@ -230,6 +234,15 @@ const AcademicCoordinatorModule = () => {
                         </p>
                     </div>
                     <div className="flex flex-col sm:flex-row gap-2.5 w-full sm:w-auto">
+                        <select
+                            value={academicStatus}
+                            onChange={(e) => setAcademicStatus(e.target.value)}
+                            className="px-3 py-1.5 rounded-md border border-slate-200 text-xs text-slate-600 outline-none focus:border-emerald-500 bg-white shadow-sm"
+                        >
+                            <option value="">All Applications</option>
+                            <option value="AVAILABLE">Data Available</option>
+                            <option value="WANTED">Data Pending (Wanted)</option>
+                        </select>
                         <div className="relative w-full sm:w-64">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                             <input
