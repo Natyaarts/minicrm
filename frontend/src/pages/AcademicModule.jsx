@@ -320,13 +320,17 @@ const AcademicModule = () => {
                             <div className="flex flex-col gap-2.5 text-[11px] border-t border-slate-100 pt-3">
                                 <div className="flex justify-between items-center text-slate-500">
                                     <span className="bg-slate-50 px-2 py-0.5 rounded text-slate-600 font-medium border border-slate-100">Students: {batch.student_count}</span>
-                                    <span className="text-[10px] text-slate-400">Mentor: <span className="font-medium text-slate-600">{batch.primary_mentor_details?.username || '-'}</span></span>
+                                    <span className="text-[10px] text-slate-400">Mentor: <span className="font-medium text-slate-600">
+                                        {batch.primary_mentor_details ? (batch.primary_mentor_details.first_name || batch.primary_mentor_details.last_name ? `${batch.primary_mentor_details.first_name || ''} ${batch.primary_mentor_details.last_name || ''}`.trim() : batch.primary_mentor_details.username) : '-'}
+                                    </span></span>
                                 </div>
                                 <div className="text-slate-500 flex items-center gap-1.5">
                                     <span>Teacher:</span>
                                     {batch.teacher_details?.username ? (
                                         <span className="px-2 py-0.5 bg-indigo-50 border border-indigo-100/50 text-indigo-600 rounded font-semibold text-[10px]">
-                                            {batch.teacher_details.username}
+                                            {batch.teacher_details.first_name || batch.teacher_details.last_name 
+                                                ? `${batch.teacher_details.first_name || ''} ${batch.teacher_details.last_name || ''}`.trim() 
+                                                : batch.teacher_details.username}
                                         </span>
                                     ) : (
                                         <span className="text-slate-400 italic font-normal">Not Assigned</span>
@@ -575,11 +579,19 @@ const AcademicModule = () => {
                             <tr key={batch.id} className="hover:bg-slate-50/50 transition-colors">
                                 <td className="p-3.5 font-semibold text-slate-900 text-sm">{batch.name}</td>
                                 <td className="p-3.5 text-slate-500 text-xs font-normal">{batch.course_name}</td>
-                                <td className="p-3.5 text-slate-500 text-xs font-normal">{batch.primary_mentor_details?.username || '-'}</td>
+                                <td className="p-3.5 text-slate-500 text-xs font-normal">
+                                    {batch.primary_mentor_details 
+                                        ? (batch.primary_mentor_details.first_name || batch.primary_mentor_details.last_name 
+                                            ? `${batch.primary_mentor_details.first_name || ''} ${batch.primary_mentor_details.last_name || ''}`.trim() 
+                                            : batch.primary_mentor_details.username) 
+                                        : '-'}
+                                </td>
                                 <td className="p-3.5 text-xs text-slate-500">
                                     {batch.teacher_details ? (
                                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full font-semibold bg-indigo-50 text-indigo-600">
-                                            {batch.teacher_details.username}
+                                            {batch.teacher_details.first_name || batch.teacher_details.last_name 
+                                                ? `${batch.teacher_details.first_name || ''} ${batch.teacher_details.last_name || ''}`.trim() 
+                                                : batch.teacher_details.username}
                                         </span>
                                     ) : <span className="text-slate-400 italic">Not Assigned</span>}
                                 </td>
