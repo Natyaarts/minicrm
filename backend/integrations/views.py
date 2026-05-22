@@ -280,6 +280,42 @@ class SyncWiseStudentsView(views.APIView):
                                     student.email = email
                                     changed = True
                                 
+                                # Fetch course names for the student
+                                try:
+                                    res = wise.get_student_fee_summary(wise_id)
+                                    if res:
+                                        class_summary = res.get('classWiseStudentSummary', [])
+                                        course_names = []
+                                        for cs in class_summary:
+                                            classroom = cs.get('classroom', {})
+                                            cname = ""
+                                            if isinstance(classroom, dict):
+                                                class_type = classroom.get('classType', '')
+                                                if class_type == 'ONE_TO_ONE':
+                                                    cname = classroom.get('subject') or classroom.get('name') or classroom.get('title')
+                                                else:
+                                                    cname = classroom.get('name') or classroom.get('title') or classroom.get('subject') or classroom.get('className')
+                                            elif isinstance(classroom, str):
+                                                cname = classroom
+                                                
+                                            if not cname:
+                                                cname = cs.get('className') or cs.get('title') or cs.get('subject') or cs.get('name')
+                                                
+                                            if cname:
+                                                course_names.append(cname)
+                                        
+                                        if course_names:
+                                            unique_names = list(dict.fromkeys(course_names))
+                                            joined_names = " & ".join(unique_names)
+                                            if student.lms_course_names != joined_names:
+                                                student.lms_course_names = joined_names
+                                                changed = True
+                                        elif student.lms_course_names is not None:
+                                            student.lms_course_names = None
+                                            changed = True
+                                except Exception as e:
+                                    print(f"Error fetching course for {mobile}: {e}")
+                                
                                 # FORCE Update names if they are currently blank or email-like
                                 current_fname = (student.first_name or '').strip()
                                 current_lname = (student.last_name or '').strip()
@@ -298,29 +334,61 @@ class SyncWiseStudentsView(views.APIView):
                             else:
                                 # New Student creation
                                 username = f"wise_{mobile_suffix}"
-                                if username in existing_usernames:
-                                    import uuid
-                                    username = f"wise_{mobile_suffix}_{str(uuid.uuid4())[:4]}"
-                                    
-                                user = User.objects.create_user(
-                                    username=username,
-                                    email=email or f"{username}@example.com",
-                                    password="Changeme@123",
-                                    role='STUDENT',
-                                    first_name=fname or "Wise",
-                                    last_name=lname or "Student"
-                                )
+                                # Handle duplicates across different suffix formats safely
+                                base_username = username
+                                counter = 1
+                                while base_username in existing_usernames:
+                                    base_username = f"{username}_{counter}"
+                                    counter += 1
+                                username = base_username
+                                
+                                user = User.objects.create_user(username=username, email=email)
+                                user.set_password('wise123')
+                                user.role = 'STUDENT'
+                                user.first_name = fname or "Wise"
+                                user.last_name = lname or "Student"
+                                user.save()
                                 existing_usernames.add(username)
                                 
+                                # Fetch course names for the new student
+                                course_names_str = None
+                                try:
+                                    res = wise.get_student_fee_summary(wise_id)
+                                    if res:
+                                        class_summary = res.get('classWiseStudentSummary', [])
+                                        course_names = []
+                                        for cs in class_summary:
+                                            classroom = cs.get('classroom', {})
+                                            cname = ""
+                                            if isinstance(classroom, dict):
+                                                class_type = classroom.get('classType', '')
+                                                if class_type == 'ONE_TO_ONE':
+                                                    cname = classroom.get('subject') or classroom.get('name') or classroom.get('title')
+                                                else:
+                                                    cname = classroom.get('name') or classroom.get('title') or classroom.get('subject') or classroom.get('className')
+                                            elif isinstance(classroom, str):
+                                                cname = classroom
+                                            if not cname:
+                                                cname = cs.get('className') or cs.get('title') or cs.get('subject') or cs.get('name')
+                                            if cname:
+                                                course_names.append(cname)
+                                        if course_names:
+                                            unique_names = list(dict.fromkeys(course_names))
+                                            course_names_str = " & ".join(unique_names)
+                                except Exception as e:
+                                    print(f"Error fetching course for {mobile}: {e}")
+
+                                crm_id = f"WISE-{mobile_suffix}"
                                 new_student = Student.objects.create(
                                     user=user,
-                                    crm_student_id=f"WISE-{mobile_suffix}",
-                                    first_name=fname or "Wise",
-                                    last_name=lname or "Student",
+                                    crm_student_id=crm_id,
+                                    program_type=fallback_program,
+                                    first_name=user.first_name,
+                                    last_name=user.last_name,
                                     mobile=mobile,
                                     email=email,
                                     lms_student_id=wise_id,
-                                    program_type=fallback_program
+                                    lms_course_names=course_names_str
                                 )
                                 crm_students[mobile_suffix] = new_student
                                 stats["created"] += 1

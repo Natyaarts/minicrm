@@ -79,6 +79,7 @@ class Student(models.Model):
     # LMS identifiers
     lms_student_id = models.CharField(max_length=100, blank=True, null=True)
     lms_course_id = models.CharField(max_length=100, blank=True, null=True)
+    lms_course_names = models.CharField(max_length=500, blank=True, null=True)
     lms_batch_id = models.CharField(max_length=100, blank=True, null=True)
 
     def __str__(self):

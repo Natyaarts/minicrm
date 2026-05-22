@@ -626,7 +626,7 @@ const MentorModule = () => {
                                             </td>
                                             <td className="px-6 py-5 bg-white border-y border-slate-100 text-center text-sm font-medium">
                                                 <div className="flex flex-col items-center gap-0.5">
-                                                    <span className="text-slate-800 font-bold">{student.course_name || <span className="text-slate-300 italic text-xs font-normal">No Course</span>}</span>
+                                                    <span className="text-slate-800 font-bold">{student.course_name || student.lms_course_names || <span className="text-slate-300 italic text-xs font-normal">No Course</span>}</span>
                                                     <span className="text-xs text-slate-500">{student.batch_name || 'Unassigned Batch'}</span>
                                                 </div>
                                             </td>

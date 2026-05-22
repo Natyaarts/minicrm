@@ -169,6 +169,7 @@ class StudentSerializer(serializers.ModelSerializer):
     course_name = serializers.CharField(source='course.name', read_only=True)
     batch_name = serializers.CharField(source='batch.name', read_only=True)
     username = serializers.CharField(source='user.username', read_only=True)
+    lms_course_names = serializers.CharField(read_only=True)
     
     # Detail lists for read
     dynamic_values_list = StudentDynamicValueReadSerializer(source='dynamic_values', many=True, read_only=True)
