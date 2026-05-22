@@ -708,7 +708,7 @@ const AcademicModule = () => {
                                     </td>
                                     <td className="p-3.5">
                                         <div className="text-slate-700 text-xs font-medium">{student.batch_name || <span className="text-slate-400 italic font-normal">Unassigned</span>}</div>
-                                        <div className="text-[10px] text-slate-400 mt-0.5">{student.sub_program_name || student.course_name || ''}</div>
+                                        <div className="text-[10px] text-slate-400 mt-0.5">{student.sub_program_name || student.course_name || student.lms_course_names || ''}</div>
                                     </td>
                                     <td className="p-3.5">
                                         <div className="font-mono text-[10px] font-medium text-slate-500">

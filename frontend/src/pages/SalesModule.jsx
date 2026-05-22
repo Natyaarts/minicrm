@@ -848,7 +848,7 @@ const SalesModule = () => {
                                                     </td>
                                                     <td className="px-6 py-3.5">
                                                         <div className="font-semibold text-slate-800">{student.program_name}</div>
-                                                        <div className="text-[10px] text-slate-500">{student.sub_program_name || student.course_name || '-'}</div>
+                                                        <div className="text-[10px] text-slate-500">{student.sub_program_name || student.course_name || student.lms_course_names || '-'}</div>
                                                     </td>
                                                     <td className="px-6 py-3.5">
                                                         <div className="max-w-[200px] space-y-1">
@@ -998,7 +998,7 @@ const SalesModule = () => {
                                                 <div>
                                                     <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mb-0.5">Program</div>
                                                     <div className="text-slate-800 font-semibold truncate">{student.program_name}</div>
-                                                    <div className="text-[10px] text-slate-500 truncate">{student.sub_program_name || student.course_name || '-'}</div>
+                                                    <div className="text-[10px] text-slate-500 truncate">{student.sub_program_name || student.course_name || student.lms_course_names || '-'}</div>
                                                 </div>
                                                 <div>
                                                     <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mb-0.5">Payment</div>
