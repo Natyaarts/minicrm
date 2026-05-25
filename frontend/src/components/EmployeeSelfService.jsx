@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Clock, Play, Square, Coffee, Download, Calendar as CalIcon } from 'lucide-react';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
+import FaceSelfieCapture from './FaceSelfieCapture';
 
 const EmployeeSelfService = () => {
     const { user } = useAuth();
@@ -44,20 +45,36 @@ const EmployeeSelfService = () => {
         }
     };
 
+    const [showSelfieCapture, setShowSelfieCapture] = useState(false);
+
     useEffect(() => {
         fetchData();
     }, []);
 
-    const handleClock = async (action) => {
+    const handleClock = async (action, photoData = null) => {
         try {
             if (action === 'in') {
+                if (!photoData) {
+                    setShowSelfieCapture(true);
+                    return;
+                }
+                setShowSelfieCapture(false);
+                
                 navigator.geolocation.getCurrentPosition(async (pos) => {
-                    const payload = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
+                    const payload = { 
+                        latitude: pos.coords.latitude, 
+                        longitude: pos.coords.longitude,
+                        photo: photoData 
+                    };
                     await api.post('hrms/attendance/clock_in/', payload);
                     fetchData();
                     alert("Clocked in successfully!");
                 }, async (err) => {
-                    await api.post('hrms/attendance/clock_in/', { latitude: 0, longitude: 0 });
+                    await api.post('hrms/attendance/clock_in/', { 
+                        latitude: 0, 
+                        longitude: 0,
+                        photo: photoData
+                    });
                     fetchData();
                     alert("Clocked in (Geolocation disabled)");
                 });
@@ -67,7 +84,8 @@ const EmployeeSelfService = () => {
                 alert("Clocked out successfully!");
             }
         } catch (err) {
-            alert(err.response?.data?.error || "Clock action failed");
+            console.error("Clock In Error:", err);
+            alert(err.response?.data?.error || `Clock-in failed: ${err.message || 'Unknown error'}`);
         }
     };
 
@@ -94,8 +112,15 @@ const EmployeeSelfService = () => {
     const isClockedOut = attendance && attendance.clock_out;
 
     return (
-        <div className="bg-slate-900 rounded-xl p-5 text-white shadow-sm mb-6 relative border border-slate-800">
-            <div className="relative z-10 grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <>
+            {showSelfieCapture && (
+                <FaceSelfieCapture 
+                    onCapture={(photoData) => handleClock('in', photoData)}
+                    onCancel={() => setShowSelfieCapture(false)}
+                />
+            )}
+            <div className="bg-slate-900 rounded-xl p-5 text-white shadow-sm mb-6 relative border border-slate-800">
+                <div className="relative z-10 grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Clock Section */}
                 <div className="flex flex-col justify-center items-start lg:border-r border-slate-800 lg:pr-6">
                     <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Your Work Hub</h2>
@@ -183,6 +208,7 @@ const EmployeeSelfService = () => {
                 </div>
             </div>
         </div>
+        </>
     );
 };
 

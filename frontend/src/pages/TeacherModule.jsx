@@ -267,7 +267,7 @@ const TeacherModule = () => {
                                         ) : (
                                             batchStudents.map(student => {
                                                 const totalSessions = classSessions.length;
-                                                const sessionsPresent = classSessions.filter(s => s.attendances?.some(a => a.student_id === student.id && a.is_present)).length;
+                                                const sessionsPresent = classSessions.filter(s => s.attendances?.some(a => a.student === student.id && a.is_present)).length;
                                                 const percentage = totalSessions > 0 ? (sessionsPresent / totalSessions) * 100 : 100;
                                                 const isLowAttendance = totalSessions > 3 && percentage < 75;
 

@@ -1,19 +1,25 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { motion } from 'framer-motion';
 
 function Login() {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
     const { login } = useAuth();
     const navigate = useNavigate();
 
     const handleLogin = async (e) => {
         e.preventDefault();
+        if (!username || !password) {
+            setError('Please enter both username and password');
+            return;
+        }
         setError('');
+        setIsLoading(true);
         const result = await login(username, password);
+        setIsLoading(false);
         if (result.success) {
             if (result.user.role === 'STUDENT') {
                 navigate('/student');
@@ -26,109 +32,72 @@ function Login() {
     };
 
     return (
-        <div className="flex min-h-screen bg-white font-sans">
-            {/* Left Side - Brand Section (Visible on desktop) */}
-            <div className="hidden lg:flex lg:w-1/2 relative bg-gradient-to-br from-[#FFD700] via-[#FFC107] to-[#FFB300] items-center justify-center p-12 overflow-hidden">
-                {/* Decorative Elements */}
-                <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-white/20 rounded-full blur-3xl" />
-                <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-black/5 rounded-full blur-3xl" />
-                
-                <div className="relative z-10 text-center space-y-8 max-w-md">
-                    <motion.div 
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.8 }}
-                        className="bg-white/90 p-8 rounded-[3rem] shadow-2xl backdrop-blur-sm border border-white/50"
-                    >
-                        <img src="/logo.png" alt="Natya Logo" className="w-64 h-auto mx-auto object-contain" />
-                    </motion.div>
-                </div>
-                
-                {/* Bottom decorative text */}
-                <div className="absolute bottom-10 left-10 right-10 flex justify-between items-center text-slate-900/40 text-[10px] font-black uppercase tracking-[0.2em]">
-                    <span>Natya Arts Academy</span>
-                    <span>v2.0.4 Premium</span>
-                </div>
+        <div className="min-h-screen flex font-sans bg-[#0a0a0a]">
+            {/* LEFT SIDE: Simple Branding */}
+            <div className="hidden lg:flex flex-col items-center justify-center w-1/2 bg-[#050505] border-r border-white/5 p-12 text-center">
+                <img src="/logo.png" alt="Natya Logo" className="w-full max-w-sm h-auto object-contain" />
+                <h1 className="text-3xl font-bold text-white mt-8 mb-3 tracking-tight">Natya Arts Academy</h1>
+                <p className="text-slate-400 text-base max-w-sm">
+                    Premium ERP portal designed exclusively for our students, mentors, and staff.
+                </p>
             </div>
 
-            {/* Right Side - Login Form Section */}
-            <div className="w-full lg:w-1/2 flex items-center justify-center p-8 md:p-20 bg-white">
-                <div className="w-full max-w-md space-y-10">
-                    {/* Mobile Logo Container (Maximum Visibility) */}
-                    <div className="lg:hidden flex flex-col items-center mb-10">
-                        <motion.div 
-                            initial={{ y: -20, opacity: 0 }}
-                            animate={{ y: 0, opacity: 1 }}
-                            className="w-full h-44 bg-gradient-to-br from-[#FFD700] via-[#FFC107] to-[#FFB300] rounded-[2.5rem] shadow-2xl shadow-amber-200/60 flex items-center justify-center relative overflow-hidden"
-                        >
-                            {/* Decorative background circle */}
-                            <div className="absolute -top-10 -right-10 w-32 h-32 bg-white/20 rounded-full blur-2xl" />
-                            
-                            <img 
-                                src="/logo.png" 
-                                alt="Logo" 
-                                className="w-[85%] h-auto max-h-[85%] object-contain relative z-10 drop-shadow-md" 
-                            />
-                        </motion.div>
-                        <h2 className="text-4xl font-black text-slate-900 tracking-tight mt-8">Welcome Back</h2>
-                        <div className="h-1.5 w-16 bg-rose-600 rounded-full mt-4 mb-2" />
-                        <p className="text-slate-400 font-black text-[10px] uppercase tracking-[0.4em]">Premium ERP Portal</p>
+            {/* RIGHT SIDE: Simple Login Form */}
+            <div className="w-full lg:w-1/2 flex items-center justify-center p-8 bg-[#0a0a0a]">
+                <div className="w-full max-w-md p-8 bg-[#111111] border border-white/10 rounded-2xl shadow-2xl">
+                    
+                    {/* Mobile Logo Fallback */}
+                    <div className="lg:hidden text-center mb-8">
+                        <img src="/logo.png" alt="Natya Logo" className="w-32 h-auto object-contain mx-auto mb-4" />
+                        <h2 className="text-2xl font-bold text-white mb-1">Natya ERP</h2>
+                        <p className="text-slate-400 text-sm">Please sign in to continue</p>
                     </div>
 
-                    <div className="hidden lg:block">
-                        <h2 className="text-5xl font-black text-slate-900 tracking-tight mb-3">Welcome Back</h2>
-                        <p className="text-slate-500 font-bold text-lg">Sign in to access your dashboard</p>
+                    <div className="hidden lg:block text-center mb-8">
+                        <h2 className="text-3xl font-bold text-white mb-2">Sign In</h2>
+                        <p className="text-slate-400 text-sm">Access your dashboard</p>
                     </div>
 
                     {error && (
-                        <motion.div 
-                            initial={{ opacity: 0, x: -20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            className="p-5 bg-rose-50 border border-rose-100 rounded-2xl text-rose-600 text-xs font-black flex items-center gap-3 shadow-sm"
-                        >
-                            <div className="w-8 h-8 bg-rose-600 text-white rounded-full flex items-center justify-center shrink-0 shadow-md shadow-rose-200">!</div>
+                        <div className="mb-6 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm text-center">
                             {error}
-                        </motion.div>
+                        </div>
                     )}
 
-                    <form onSubmit={handleLogin} className="space-y-8">
-                        <div className="space-y-3">
-                            <label className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Username</label>
+                    <form onSubmit={handleLogin} className="space-y-5">
+                        <div>
+                            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Username</label>
                             <input
                                 type="text"
                                 value={username}
                                 onChange={(e) => setUsername(e.target.value)}
-                                className="w-full px-8 py-5 bg-slate-50 border border-slate-100 rounded-[1.5rem] focus:ring-4 focus:ring-amber-100 focus:border-amber-400 text-slate-900 outline-none transition-all duration-300 font-bold placeholder-slate-300"
-                                placeholder="Your username"
+                                className="w-full px-4 py-3.5 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:border-amber-500 transition-colors"
+                                placeholder="Enter username"
+                                disabled={isLoading}
                             />
                         </div>
 
-                        <div className="space-y-3">
-                            <div className="flex justify-between items-center px-1">
-                                <label className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">Password</label>
-                            </div>
+                        <div>
+                            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Password</label>
                             <input
                                 type="password"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
-                                className="w-full px-8 py-5 bg-slate-50 border border-slate-100 rounded-[1.5rem] focus:ring-4 focus:ring-amber-100 focus:border-amber-400 text-slate-900 outline-none transition-all duration-300 font-bold placeholder-slate-300"
+                                className="w-full px-4 py-3.5 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:border-amber-500 transition-colors"
                                 placeholder="••••••••"
+                                disabled={isLoading}
                             />
                         </div>
 
                         <button
                             type="submit"
-                            className="w-full py-5 bg-slate-900 text-white font-black text-lg rounded-[1.5rem] shadow-2xl shadow-slate-200 hover:bg-rose-600 hover:shadow-rose-200 transition-all duration-500 transform hover:-translate-y-1 active:translate-y-0"
+                            disabled={isLoading}
+                            className="w-full py-3.5 mt-4 bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold rounded-lg transition-colors disabled:opacity-50"
                         >
-                            Log In to System
+                            {isLoading ? "Authenticating..." : "Sign In"}
                         </button>
                     </form>
 
-                    <div className="pt-12 text-center">
-                        <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.4em]">
-                            &copy; 2026 Natya Arts &bull; Premium ERP
-                        </p>
-                    </div>
                 </div>
             </div>
         </div>

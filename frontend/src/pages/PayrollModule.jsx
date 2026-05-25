@@ -179,13 +179,15 @@ const PayrollModule = () => {
             const response = await api.get(`payroll/payslips/${id}/download_pdf/`, {
                 responseType: 'blob',
             });
-            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const blob = new Blob([response.data], { type: 'application/pdf' });
+            const url = window.URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
             link.setAttribute('download', `Payslip_${empId}_${month}_${year}.pdf`);
             document.body.appendChild(link);
             link.click();
             link.remove();
+            window.URL.revokeObjectURL(url);
         } catch (err) {
             console.error("Download failed", err);
             alert("Failed to download PDF");

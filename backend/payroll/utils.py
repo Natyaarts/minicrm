@@ -122,7 +122,7 @@ def render_to_pdf(template_src, context):
     pdf.cell(0, 5, "This is a computer-generated document and does not require a signature.", ln=True, align='C')
     pdf.cell(0, 5, f"Generated on {context['current_date']}", ln=True, align='C')
 
-    return HttpResponse(pdf.output(), content_type='application/pdf')
+    return HttpResponse(bytes(pdf.output()), content_type='application/pdf')
 
 def number_to_words(number):
     """Simple number to words converter for currency"""

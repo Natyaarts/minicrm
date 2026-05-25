@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
+import FaceSelfieCapture from '../components/FaceSelfieCapture';
 
 const AttendanceModule = () => {
     const { user: authUser } = useAuth();
@@ -25,6 +26,8 @@ const AttendanceModule = () => {
     const [location, setLocation] = useState({ latitude: null, longitude: null, status: 'idle' });
     const [activeTab, setActiveTab] = useState('personal');
     const [searchTerm, setSearchTerm] = useState('');
+    const [showSelfieCapture, setShowSelfieCapture] = useState(false);
+    const [previewImage, setPreviewImage] = useState(null);
 
     useEffect(() => {
         if (authUser?.role === 'SUPER_ADMIN') {
@@ -76,16 +79,23 @@ const AttendanceModule = () => {
         }
     };
 
-    const handleClockIn = async () => {
+    const handleClockIn = async (photoData = null) => {
+        if (!photoData) {
+            setShowSelfieCapture(true);
+            return;
+        }
+        setShowSelfieCapture(false);
         setLoading(true);
         try {
             await api.post('hrms/attendance/clock_in/', {
                 latitude: location.latitude,
-                longitude: location.longitude
+                longitude: location.longitude,
+                photo: photoData
             });
             fetchAttendance();
         } catch (err) {
-            alert(err.response?.data?.error || "Clock-in failed");
+            console.error("Clock In Error:", err);
+            alert(err.response?.data?.error || `Clock-in failed: ${err.message || 'Unknown error'}`);
         } finally {
             setLoading(false);
         }
@@ -106,10 +116,52 @@ const AttendanceModule = () => {
         }
     };
 
+    const handleOverrideStatus = async (logId, newStatus) => {
+        try {
+            await api.patch(`hrms/attendance/${logId}/override_status/`, { status: newStatus });
+            fetchAttendance();
+        } catch (err) {
+            alert(err.response?.data?.error || "Failed to override status");
+        }
+    };
+
     const isAdmin = authUser?.role === 'SUPER_ADMIN';
 
     return (
-        <div className="space-y-6 animate-fadeIn px-2 md:px-0 pb-20">
+        <div className="space-y-6 animate-fadeIn px-2 md:px-0 pb-20 relative">
+            <AnimatePresence>
+                {previewImage && (
+                    <motion.div 
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4"
+                        onClick={() => setPreviewImage(null)}
+                    >
+                        <motion.div 
+                            initial={{ scale: 0.95 }}
+                            animate={{ scale: 1 }}
+                            exit={{ scale: 0.95 }}
+                            className="bg-white p-2 rounded-2xl shadow-2xl max-w-lg w-full relative"
+                            onClick={e => e.stopPropagation()}
+                        >
+                            <button 
+                                onClick={() => setPreviewImage(null)}
+                                className="absolute -top-4 -right-4 w-10 h-10 bg-white text-slate-800 rounded-full flex items-center justify-center shadow-lg hover:bg-slate-100"
+                            >
+                                <XCircle size={24} />
+                            </button>
+                            <img src={previewImage} alt="Clock in preview" className="w-full h-auto rounded-xl" />
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+            {showSelfieCapture && (
+                <FaceSelfieCapture 
+                    onCapture={handleClockIn}
+                    onCancel={() => setShowSelfieCapture(false)}
+                />
+            )}
             {/* Header Area */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
                 <div>
@@ -189,7 +241,7 @@ const AttendanceModule = () => {
                                 <div className="space-y-3">
                                     {!todayRecord?.clock_in && (
                                         <button 
-                                            onClick={handleClockIn}
+                                            onClick={() => handleClockIn()}
                                             disabled={loading || location.status !== 'granted'}
                                             className="w-full py-2 bg-slate-800 text-white rounded-lg text-sm font-semibold hover:bg-indigo-600 transition-all shadow-sm hover:shadow-md disabled:opacity-50"
                                         >
@@ -309,7 +361,7 @@ const AttendanceModule = () => {
                                             <th className="px-5 py-3 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200">Punch In</th>
                                             <th className="px-5 py-3 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200">Punch Out</th>
                                             <th className="px-5 py-3 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200">Duration</th>
-                                            <th className="px-5 py-3 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200">Compliance</th>
+                                            <th className="px-5 py-3 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200">Status</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
@@ -337,13 +389,27 @@ const AttendanceModule = () => {
                                                     <span className="text-xs font-semibold text-slate-600">{log.date}</span>
                                                 </td>
                                                 <td className="px-5 py-3">
-                                                    <div className="flex flex-col">
-                                                        <span className="text-xs font-bold text-slate-800">
-                                                            {log.clock_in ? new Date(`2000-01-01T${log.clock_in}`).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'}
-                                                        </span>
-                                                        <span className="text-[10px] font-semibold text-emerald-600 flex items-center gap-1 mt-0.5">
-                                                            <MapPin size={10} /> Verified
-                                                        </span>
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="flex flex-col">
+                                                            <span className="text-xs font-bold text-slate-800">
+                                                                {log.clock_in ? new Date(`2000-01-01T${log.clock_in}`).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'}
+                                                            </span>
+                                                            <span className="text-[10px] font-semibold text-emerald-600 flex items-center gap-1 mt-0.5">
+                                                                <MapPin size={10} /> Verified
+                                                            </span>
+                                                        </div>
+                                                        {log.clock_in_photo && (
+                                                            <div 
+                                                                className="relative cursor-pointer"
+                                                                onClick={() => setPreviewImage(log.clock_in_photo)}
+                                                            >
+                                                                <img 
+                                                                    src={log.clock_in_photo} 
+                                                                    alt="Clock in selfie" 
+                                                                    className="w-8 h-8 rounded-full border-2 border-indigo-100 object-cover hover:border-indigo-400 transition-colors shadow-sm"
+                                                                />
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </td>
                                                 <td className="px-5 py-3">
@@ -365,13 +431,32 @@ const AttendanceModule = () => {
                                                     </span>
                                                 </td>
                                                 <td className="px-5 py-3">
-                                                    <span className={`px-2.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider border ${
-                                                        log.status === 'PRESENT' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
-                                                        log.status === 'LATE' ? 'bg-amber-50 text-amber-600 border-amber-100' :
-                                                        'bg-red-50 text-red-600 border-red-100'
-                                                    }`}>
-                                                        {log.status}
-                                                    </span>
+                                                    {activeTab === 'master' ? (
+                                                        <select 
+                                                            value={log.status}
+                                                            onChange={(e) => handleOverrideStatus(log.id, e.target.value)}
+                                                            className={`px-2 py-1 rounded text-[10px] font-semibold uppercase tracking-wider border outline-none cursor-pointer ${
+                                                                log.status === 'PRESENT' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                                                                log.status === 'LATE' ? 'bg-amber-50 text-amber-600 border-amber-100' :
+                                                                log.status === 'HALF_DAY' ? 'bg-blue-50 text-blue-600 border-blue-100' :
+                                                                'bg-red-50 text-red-600 border-red-100'
+                                                            }`}
+                                                        >
+                                                            <option value="PRESENT">Present</option>
+                                                            <option value="LATE">Late</option>
+                                                            <option value="HALF_DAY">Half Day</option>
+                                                            <option value="ABSENT">Absent</option>
+                                                        </select>
+                                                    ) : (
+                                                        <span className={`px-2.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider border ${
+                                                            log.status === 'PRESENT' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                                                            log.status === 'LATE' ? 'bg-amber-50 text-amber-600 border-amber-100' :
+                                                            log.status === 'HALF_DAY' ? 'bg-blue-50 text-blue-600 border-blue-100' :
+                                                            'bg-red-50 text-red-600 border-red-100'
+                                                        }`}>
+                                                            {log.status.replace('_', ' ')}
+                                                        </span>
+                                                    )}
                                                 </td>
                                             </tr>
                                         ))}

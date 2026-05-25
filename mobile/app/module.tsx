@@ -74,6 +74,14 @@ export default function ModuleDetailScreen() {
   const [taskCol, setTaskCol] = useState<'todo' | 'progress' | 'review' | 'done'>('todo');
   const [tasksList, setTasksList] = useState<any[]>([]);
 
+  // Asset Management Specific State
+  const [assetSearch, setAssetSearch] = useState('');
+  const [assetsList, setAssetsList] = useState<any[]>([]);
+
+  // Sales/Leads Specific State
+  const [salesSearch, setSalesSearch] = useState('');
+  const [salesLeads, setSalesLeads] = useState<any[]>([]);
+
   // Student Portal Specific State
   const [studentProfile, setStudentProfile] = useState<any | null>(null);
   const [studentExams, setStudentExams] = useState<any[]>([]);
@@ -146,6 +154,8 @@ export default function ModuleDetailScreen() {
   const isPayroll = (title as string).toLowerCase().includes('payroll');
   const isLeave = (title as string).toLowerCase().includes('leave');
   const isTasks = (title as string).toLowerCase().includes('tasks') || (title as string).toLowerCase().includes('performance');
+  const isAssets = (title as string).toLowerCase().includes('asset');
+  const isSales = (title as string).toLowerCase().includes('sales') || (title as string).toLowerCase().includes('leads');
 
   // Administrative / Other checkers
   const isStudent = (title as string).toLowerCase().includes('student');
@@ -463,6 +473,42 @@ export default function ModuleDetailScreen() {
             { label: 'Done', value: `${doneCount}` }
           ],
           items: [], action: '+ New Task',
+        });
+        setLoading(false); return;
+      }
+
+      // 11b. ASSET MANAGEMENT (HRMS)
+      if (isAssets) {
+        const res = await client.get('/hrms/assets/').catch(() => ({ data: [] }));
+        const a = res.data?.results || res.data || [];
+        setAssetsList(a);
+        const assignedCount = a.filter((asset: any) => asset.status === 'ASSIGNED').length;
+        setModuleData({
+          subtitle: 'Track company laptops, equipment, and keys.',
+          stats: [
+            { label: 'Total Assets', value: `${a.length}` },
+            { label: 'Assigned', value: `${assignedCount}` },
+            { label: 'Available', value: `${a.length - assignedCount}` }
+          ],
+          items: [], action: '+ Assign Asset',
+        });
+        setLoading(false); return;
+      }
+
+      // 11c. SALES / LEADS
+      if (isSales) {
+        const res = await client.get('/sales/leads/').catch(() => ({ data: [] }));
+        const leads = res.data?.results || res.data || [];
+        setSalesLeads(leads);
+        const newCount = leads.filter((l: any) => l.status === 'NEW').length;
+        setModuleData({
+          subtitle: 'Manage admissions pipeline and prospective students.',
+          stats: [
+            { label: 'Total Leads', value: `${leads.length}` },
+            { label: 'New Leads', value: `${newCount}` },
+            { label: 'Conversion', value: '14%' }
+          ],
+          items: [], action: '+ Add Lead',
         });
         setLoading(false); return;
       }
@@ -2232,6 +2278,88 @@ export default function ModuleDetailScreen() {
                   <FontAwesome5 name="check-double" size={24} color="#A0AEC0" style={{ marginBottom: 12 }} />
                   <Text style={styles.emptyFieldsTitle}>No tasks in this column</Text>
                   <Text style={styles.emptyFieldsSub}>TAP "+ NEW TASK" TO ASSIGN OBJECTIVES</Text>
+                </View>
+              )}
+            </View>
+          </View>
+        )}
+
+        {/* 11b. ASSET MANAGEMENT SPECIFIC VIEW */}
+        {isAssets && (
+          <View style={styles.mentorContainer}>
+            <View style={styles.searchBar}>
+              <FontAwesome5 name="search" size={16} color="#A0AEC0" />
+              <TextInput style={styles.input} placeholder="Search assets by name or ID..." placeholderTextColor="#A0AEC0" value={assetSearch} onChangeText={setAssetSearch} />
+            </View>
+            <View style={{ flexDirection: 'row', gap: 12, marginBottom: 20 }}>
+              <TouchableOpacity style={[styles.segmentButton, { flex: 1 }]}><Text style={styles.segmentText}>All Categories</Text></TouchableOpacity>
+              <TouchableOpacity style={[styles.segmentButton, { flex: 1 }]}><Text style={styles.segmentText}>All Statuses</Text></TouchableOpacity>
+            </View>
+
+            <View style={styles.batchGrid}>
+              {assetsList.filter(a => a.name?.toLowerCase().includes(assetSearch.toLowerCase()) || a.asset_id?.toLowerCase().includes(assetSearch.toLowerCase())).length > 0 ? assetsList.filter(a => a.name?.toLowerCase().includes(assetSearch.toLowerCase()) || a.asset_id?.toLowerCase().includes(assetSearch.toLowerCase())).map((asset: any, idx: number) => (
+                <View key={asset.id || idx} style={styles.teacherBatchCard}>
+                  <View style={styles.teacherBatchHeader}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.teacherBatchTitle} numberOfLines={1}>{asset.name}</Text>
+                      <Text style={styles.teacherBatchSub}>ID: {asset.asset_id}</Text>
+                    </View>
+                    <View style={[styles.teacherBookIcon, { backgroundColor: '#EBF8FF' }]}>
+                      <FontAwesome5 name={asset.category === 'LAPTOP' ? 'laptop' : asset.category === 'KEY' ? 'key' : 'box'} size={16} color="#3182CE" />
+                    </View>
+                  </View>
+
+                  <View style={styles.teacherBatchBody}>
+                    <View style={[styles.badge, { backgroundColor: asset.status === 'ASSIGNED' ? '#EBF8FF' : '#C6F6D5', alignSelf: 'flex-start', marginBottom: 12 }]}>
+                      <Text style={[styles.badgeText, { color: asset.status === 'ASSIGNED' ? '#3182CE' : '#22543D' }]}>{asset.status}</Text>
+                    </View>
+                    <View style={styles.teacherBatchRow}>
+                      <Text style={styles.teacherLabel}>Assigned to</Text>
+                      <Text style={styles.teacherValue}>{asset.assigned_to?.user?.first_name || 'Unassigned'}</Text>
+                    </View>
+                  </View>
+                </View>
+              )) : (
+                <View style={styles.emptyStateBox}>
+                  <Text style={styles.emptyStateText}>No assets found matching your criteria.</Text>
+                </View>
+              )}
+            </View>
+          </View>
+        )}
+
+        {/* 11c. SALES / LEADS SPECIFIC VIEW */}
+        {isSales && (
+          <View style={styles.mentorContainer}>
+            <View style={styles.searchBar}>
+              <FontAwesome5 name="search" size={16} color="#A0AEC0" />
+              <TextInput style={styles.input} placeholder="Search leads by name or phone..." placeholderTextColor="#A0AEC0" value={salesSearch} onChangeText={setSalesSearch} />
+            </View>
+
+            <View style={styles.studentListContainer}>
+              {salesLeads.filter(l => l.name?.toLowerCase().includes(salesSearch.toLowerCase()) || l.phone?.includes(salesSearch)).length > 0 ? salesLeads.filter(l => l.name?.toLowerCase().includes(salesSearch.toLowerCase()) || l.phone?.includes(salesSearch)).map((lead: any, idx: number) => (
+                <View key={lead.id || idx} style={styles.itemCard}>
+                  <View style={styles.itemInfo}>
+                    <Text style={styles.itemName}>{lead.name}</Text>
+                    <Text style={styles.itemDesc}>{lead.program_interested || 'General Inquiry'} • {lead.phone}</Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end', gap: 6 }}>
+                    <View style={[styles.badge, { backgroundColor: lead.status === 'NEW' ? '#EBF8FF' : lead.status === 'CONVERTED' ? '#C6F6D5' : '#FEFCBF' }]}>
+                      <Text style={[styles.badgeText, { color: lead.status === 'NEW' ? '#3182CE' : lead.status === 'CONVERTED' ? '#22543D' : '#975A16' }]}>{lead.status}</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      <TouchableOpacity onPress={() => Linking.openURL(`tel:${lead.phone}`)}>
+                        <FontAwesome5 name="phone" size={12} color="#718096" />
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => Linking.openURL(`mailto:${lead.email}`)}>
+                        <FontAwesome5 name="envelope" size={12} color="#718096" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
+              )) : (
+                <View style={styles.emptyStateBox}>
+                  <Text style={styles.emptyStateText}>No leads found in the pipeline.</Text>
                 </View>
               )}
             </View>

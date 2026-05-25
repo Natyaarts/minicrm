@@ -65,6 +65,7 @@ class EmployeeProfile(models.Model):
     employee_id = models.CharField(max_length=20, unique=True)
     department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True)
     designation = models.ForeignKey(Designation, on_delete=models.SET_NULL, null=True, blank=True)
+    reporting_to = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='subordinates')
     
     # Personal Information
     date_of_birth = models.DateField(null=True, blank=True)
@@ -131,6 +132,9 @@ class Attendance(models.Model):
     clock_out_latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     clock_out_longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     
+    # Verification Data
+    clock_in_photo = models.ImageField(upload_to='attendance_photos/', null=True, blank=True)
+    
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PRESENT')
     notes = models.TextField(blank=True, null=True)
     
@@ -179,3 +183,90 @@ class TaskComment(models.Model):
 
     def __str__(self):
         return f"Comment by {self.author.username} on {self.task.title}"
+
+class CompanyPost(models.Model):
+    POST_TYPE_CHOICES = (
+        ('GENERAL', 'General Post'),
+        ('ANNOUNCEMENT', 'Announcement'),
+        ('CELEBRATION', 'Celebration'),
+    )
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='company_posts')
+    content = models.TextField()
+    post_type = models.CharField(max_length=20, choices=POST_TYPE_CHOICES, default='GENERAL')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.post_type} by {self.author.username} on {self.created_at.date()}"
+
+class EmployeeDocument(models.Model):
+    employee = models.ForeignKey(EmployeeProfile, on_delete=models.CASCADE, related_name='documents')
+    document_type = models.CharField(max_length=100) # e.g. Resume, ID Proof, Contract
+    file = models.FileField(upload_to='employee_docs/')
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.document_type} - {self.employee.user.username}"
+
+class Asset(models.Model):
+    STATUS_CHOICES = (
+        ('AVAILABLE', 'Available'),
+        ('ASSIGNED', 'Assigned'),
+        ('MAINTENANCE', 'In Maintenance'),
+        ('RETIRED', 'Retired'),
+    )
+    name = models.CharField(max_length=100)
+    asset_id = models.CharField(max_length=50, unique=True)
+    category = models.CharField(max_length=50) # Laptop, Monitor, Key
+    assigned_to = models.ForeignKey(EmployeeProfile, on_delete=models.SET_NULL, null=True, blank=True, related_name='assets')
+    assigned_date = models.DateField(null=True, blank=True)
+    returned_date = models.DateField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='AVAILABLE')
+
+    def __str__(self):
+        return f"{self.name} ({self.asset_id})"
+
+class Expense(models.Model):
+    STATUS_CHOICES = (
+        ('PENDING', 'Pending'),
+        ('APPROVED', 'Approved'),
+        ('REJECTED', 'Rejected'),
+        ('PAID', 'Paid'),
+    )
+    employee = models.ForeignKey(EmployeeProfile, on_delete=models.CASCADE, related_name='expenses')
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    category = models.CharField(max_length=50) # Travel, Internet, Meals
+    description = models.TextField()
+    receipt = models.FileField(upload_to='expense_receipts/', null=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+    submitted_date = models.DateField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.employee.user.username} - {self.amount} ({self.status})"
+
+class PerformanceReview(models.Model):
+    employee = models.ForeignKey(EmployeeProfile, on_delete=models.CASCADE, related_name='reviews')
+    reviewer = models.ForeignKey(EmployeeProfile, on_delete=models.SET_NULL, null=True, related_name='reviews_given')
+    review_period = models.CharField(max_length=50) # e.g. Q1 2026
+    rating = models.IntegerField() # 1 to 5
+    feedback = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.employee.user.username} - {self.review_period} - {self.rating}/5"
+
+class Offboarding(models.Model):
+    STATUS_CHOICES = (
+        ('PENDING', 'Pending'),
+        ('IN_PROGRESS', 'In Progress'),
+        ('COMPLETED', 'Completed'),
+    )
+    employee = models.OneToOneField(EmployeeProfile, on_delete=models.CASCADE, related_name='offboarding')
+    resignation_date = models.DateField()
+    last_working_day = models.DateField()
+    reason = models.TextField()
+    assets_returned = models.BooleanField(default=False)
+    exit_interview_completed = models.BooleanField(default=False)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+
+    def __str__(self):
+        return f"Offboarding: {self.employee.user.username}"

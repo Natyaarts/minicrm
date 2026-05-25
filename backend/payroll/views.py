@@ -207,8 +207,7 @@ class PayslipViewSet(viewsets.ModelViewSet):
 
         pdf = render_to_pdf('payroll/payslip.html', context)
         if pdf:
-            response = HttpResponse(pdf.content, content_type='application/pdf')
             filename = f"Payslip_{payslip.employee.employee_id}_{month_name}_{payslip.year}.pdf"
-            response['Content-Disposition'] = f'attachment; filename="{filename}"'
-            return response
+            pdf['Content-Disposition'] = f'attachment; filename="{filename}"'
+            return pdf
         return Response({"error": "PDF generation failed"}, status=400)

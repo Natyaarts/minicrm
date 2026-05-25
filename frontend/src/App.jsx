@@ -19,6 +19,7 @@ import LeaveModule from './pages/LeaveModule';
 import AnalyticsModule from './pages/AnalyticsModule';
 import TasksModule from './pages/TasksModule';
 import FinanceModule from './pages/FinanceModule';
+import AssetModule from './pages/AssetModule';
 import Login from './pages/Login';
 
 function App() {
@@ -41,6 +42,7 @@ function App() {
           <Route path="/hrms/payroll" element={<PayrollModule />} />
           <Route path="/hrms/leaves" element={<LeaveModule />} />
           <Route path="/hrms/tasks" element={<TasksModule />} />
+          <Route path="/hrms/assets" element={<AssetModule />} />
           <Route path="/sales" element={<SalesModule />} /> {/* Internal Sales View (with Sidebar) */}
           <Route path="/mentor" element={<MentorModule />} />
           <Route path="/student" element={<StudentPortal />} />

@@ -17,6 +17,11 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
+import OrganizationChart from '../components/OrganizationChart';
+import CompanyWall from '../components/CompanyWall';
+import AssetManagement from '../components/AssetManagement';
+import ExpenseManagement from '../components/ExpenseManagement';
+import PerformanceReviews from '../components/PerformanceReviews';
 
 const HRMSModule = () => {
     const { user: authUser } = useAuth();
@@ -47,7 +52,7 @@ const HRMSModule = () => {
     const [newEmployee, setNewEmployee] = useState({
         username: '', first_name: '', last_name: '', email: '', password: '',
         employee_id: `EMP-${Math.floor(1000 + Math.random() * 9000)}`,
-        department: '', designation: '', date_of_joining: new Date().toISOString().split('T')[0],
+        department: '', designation: '', reporting_to: '', date_of_joining: new Date().toISOString().split('T')[0],
         base_salary: 0,
         additional_data: {}
     });
@@ -115,17 +120,22 @@ const HRMSModule = () => {
     const handleAddEmployee = async (e) => {
         e.preventDefault();
         try {
+            const payload = { ...newEmployee };
+            if (!payload.reporting_to) payload.reporting_to = null;
+
             if (isEditMode) {
-                await api.patch(`hrms/employees/${newEmployee.id}/`, newEmployee);
+                await api.patch(`hrms/employees/${newEmployee.id}/`, payload);
             } else {
-                await api.post('hrms/employees/', newEmployee);
+                await api.post('hrms/employees/', payload);
             }
             setShowAddEmployee(false);
             setIsEditMode(false);
             setNewEmployee({
                 username: '', first_name: '', last_name: '', email: '', password: '',
                 employee_id: `EMP-${Math.floor(1000 + Math.random() * 9000)}`,
-                department: '', designation: '', date_of_joining: new Date().toISOString().split('T')[0],
+                department: '', designation: '', reporting_to: '', 
+                date_of_joining: new Date().toISOString().split('T')[0],
+                date_of_birth: '',
                 base_salary: 0,
                 additional_data: {}
             });
@@ -140,6 +150,7 @@ const HRMSModule = () => {
         setNewEmployee({
             ...emp,
             password: '', // Don't prefill password for security
+            reporting_to: emp.reporting_to || '',
             additional_data: emp.additional_data || {}
         });
         setIsEditMode(true);
@@ -236,11 +247,10 @@ const HRMSModule = () => {
                 </div>
 
                 <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-                    {['employees', 'departments', 'designations', 'form builder'].map((tab) => {
+                    {['employees', 'company wall', 'expenses', 'performance', 'departments', 'designations', 'organization chart', 'form builder'].map((tab) => {
                         // Permissions check for tabs
                         if (authUser?.role !== 'SUPER_ADMIN') {
-                            if (tab === 'departments' || tab === 'designations') return null;
-                            if (tab === 'form builder' && !authUser?.permissions?.WORKFORCE?.edit) return null;
+                            if (tab === 'departments' || tab === 'designations' || tab === 'form builder') return null;
                         }
                         
                         return (
@@ -437,6 +447,13 @@ const HRMSModule = () => {
                             </table>
                         </div>
                     )}
+                    
+                    {activeTab === 'organization chart' && (
+                        <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm p-4 overflow-hidden">
+                            <OrganizationChart employees={employees} />
+                        </div>
+                    )}
+
                     {activeTab === 'form builder' && (
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                             {/* Create Field Form */}
@@ -521,58 +538,86 @@ const HRMSModule = () => {
                             </div>
                         </div>
                     )}
+
+                    {activeTab === 'company wall' && (
+                        <CompanyWall authUser={authUser} />
+                    )}
+
+                    {activeTab === 'expenses' && (
+                        <ExpenseManagement authUser={authUser} employees={employees} />
+                    )}
+
+                    {activeTab === 'performance' && (
+                        <PerformanceReviews authUser={authUser} employees={employees} />
+                    )}
                 </motion.div>
             </AnimatePresence>
 
             {/* Modals (Dept) */}
             {showAddDept && (
-                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 sm:p-6">
                     <motion.div 
-                        initial={{ scale: 0.9, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden"
+                        initial={{ scale: 0.95, opacity: 0, y: 20 }}
+                        animate={{ scale: 1, opacity: 1, y: 0 }}
+                        className="bg-white w-full max-w-lg rounded-[2rem] shadow-2xl overflow-hidden flex flex-col"
                     >
-                        <div className="p-8">
-                            <h3 className="text-2xl font-black text-slate-900 mb-2">New Department</h3>
-                            <p className="text-slate-500 text-sm mb-6">Group your workforce into functional teams.</p>
-                            
-                            <form onSubmit={handleAddDept} className="space-y-4">
+                        {/* Header */}
+                        <div className="px-8 py-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center shadow-sm">
+                                    <Building2 size={24} strokeWidth={2.5} />
+                                </div>
                                 <div>
-                                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Department Name</label>
+                                    <h3 className="text-2xl font-black text-slate-900 tracking-tight">New Department</h3>
+                                    <p className="text-slate-500 text-xs font-medium mt-0.5">Group your workforce into functional teams.</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setShowAddDept(false)} className="w-10 h-10 bg-white border border-slate-200 rounded-full flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 hover:border-rose-100 transition-all shadow-sm">
+                                <X size={20} />
+                            </button>
+                        </div>
+                        
+                        <div className="p-8">
+                            <form id="deptForm" onSubmit={handleAddDept} className="space-y-6">
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Department Name</label>
                                     <input 
                                         required
                                         type="text" 
-                                        className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:border-rose-300 focus:ring-4 focus:ring-rose-50 transition-all font-bold"
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 transition-all font-semibold text-slate-800 placeholder-slate-400 text-sm"
                                         placeholder="e.g. Finance & Accounts"
                                         value={newDept.name}
                                         onChange={(e) => setNewDept({...newDept, name: e.target.value})}
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Description</label>
+                                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Description</label>
                                     <textarea 
-                                        className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:border-rose-300 focus:ring-4 focus:ring-rose-50 transition-all font-medium h-24 resize-none"
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 transition-all font-medium text-slate-800 placeholder-slate-400 text-sm h-28 resize-none custom-scrollbar"
                                         placeholder="What does this team do?"
                                         value={newDept.description}
                                         onChange={(e) => setNewDept({...newDept, description: e.target.value})}
                                     />
                                 </div>
-                                <div className="flex gap-3 pt-4">
-                                    <button 
-                                        type="button"
-                                        onClick={() => setShowAddDept(false)}
-                                        className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold hover:bg-slate-200 transition-all"
-                                    >
-                                        Cancel
-                                    </button>
-                                    <button 
-                                        type="submit"
-                                        className="flex-1 py-4 bg-rose-600 text-white rounded-2xl font-bold hover:bg-rose-700 transition-all shadow-lg shadow-rose-200"
-                                    >
-                                        Create Dept
-                                    </button>
-                                </div>
                             </form>
+                        </div>
+
+                        {/* Footer */}
+                        <div className="px-8 py-5 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-3">
+                            <button 
+                                type="button"
+                                onClick={() => setShowAddDept(false)}
+                                className="px-6 py-3 bg-white border border-slate-200 text-slate-600 rounded-xl font-bold hover:bg-slate-50 hover:text-slate-900 transition-all shadow-sm text-sm"
+                            >
+                                Cancel
+                            </button>
+                            <button 
+                                type="submit"
+                                form="deptForm"
+                                className="px-8 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 hover:shadow-indigo-300 transform hover:-translate-y-0.5 text-sm"
+                            >
+                                Create Dept
+                            </button>
                         </div>
                     </motion.div>
                 </div>
@@ -580,46 +625,59 @@ const HRMSModule = () => {
 
             {/* Modals (Designation) */}
             {showAddDesignation && (
-                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 sm:p-6">
                     <motion.div 
-                        initial={{ scale: 0.9, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden"
+                        initial={{ scale: 0.95, opacity: 0, y: 20 }}
+                        animate={{ scale: 1, opacity: 1, y: 0 }}
+                        className="bg-white w-full max-w-lg rounded-[2rem] shadow-2xl overflow-hidden flex flex-col"
                     >
-                        <div className="p-8">
-                            <h3 className="text-2xl font-black text-slate-900 mb-2">New Designation</h3>
-                            <p className="text-slate-500 text-sm mb-6">Define roles within your departments.</p>
-                            
-                            <form onSubmit={handleAddDesignation} className="space-y-4">
+                        {/* Header */}
+                        <div className="px-8 py-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center shadow-sm">
+                                    <Briefcase size={24} strokeWidth={2.5} />
+                                </div>
                                 <div>
-                                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Department</label>
+                                    <h3 className="text-2xl font-black text-slate-900 tracking-tight">New Designation</h3>
+                                    <p className="text-slate-500 text-xs font-medium mt-0.5">Define roles within your departments.</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setShowAddDesignation(false)} className="w-10 h-10 bg-white border border-slate-200 rounded-full flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 hover:border-rose-100 transition-all shadow-sm">
+                                <X size={20} />
+                            </button>
+                        </div>
+                        
+                        <div className="p-8">
+                            <form id="desigForm" onSubmit={handleAddDesignation} className="space-y-6">
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Department</label>
                                     <select 
                                         required
-                                        className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:border-amber-300 focus:ring-4 focus:ring-amber-50 transition-all font-bold"
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 transition-all font-semibold text-slate-800 text-sm appearance-none cursor-pointer"
                                         value={newDesignation.department}
                                         onChange={(e) => setNewDesignation({...newDesignation, department: e.target.value})}
                                     >
-                                        <option value="">Select Department</option>
+                                        <option value="" disabled>Select Department</option>
                                         {departments.map(d => (
                                             <option key={d.id} value={d.id}>{d.name}</option>
                                         ))}
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Designation Title</label>
+                                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Designation Title</label>
                                     <input 
                                         required
                                         type="text" 
-                                        className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:border-amber-300 focus:ring-4 focus:ring-amber-50 transition-all font-bold"
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 transition-all font-semibold text-slate-800 placeholder-slate-400 text-sm"
                                         placeholder="e.g. Senior Accountant"
                                         value={newDesignation.name}
                                         onChange={(e) => setNewDesignation({...newDesignation, name: e.target.value})}
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Permission Role (Auto-Assign)</label>
+                                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Permission Role <span className="text-slate-400 font-normal">(Auto-Assign)</span></label>
                                     <select 
-                                        className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:border-amber-300 focus:ring-4 focus:ring-amber-50 transition-all font-bold appearance-none"
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 transition-all font-semibold text-slate-800 text-sm appearance-none cursor-pointer"
                                         value={newDesignation.permission_role}
                                         onChange={(e) => setNewDesignation({...newDesignation, permission_role: e.target.value})}
                                     >
@@ -631,24 +689,27 @@ const HRMSModule = () => {
                                         <option value="TEACHER">Teacher</option>
                                         <option value="EMPLOYEE">General Employee</option>
                                     </select>
-                                    <p className="text-[10px] text-slate-400 mt-2 ml-1">Staff with this designation will automatically get these permissions.</p>
-                                </div>
-                                <div className="flex gap-3 pt-4">
-                                    <button 
-                                        type="button"
-                                        onClick={() => setShowAddDesignation(false)}
-                                        className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold hover:bg-slate-200 transition-all"
-                                    >
-                                        Cancel
-                                    </button>
-                                    <button 
-                                        type="submit"
-                                        className="flex-1 py-4 bg-amber-500 text-white rounded-2xl font-bold hover:bg-amber-600 transition-all shadow-lg shadow-amber-200"
-                                    >
-                                        Create Role
-                                    </button>
+                                    <p className="text-[11px] text-slate-500 mt-2 font-medium">Staff with this designation will automatically inherit these module permissions.</p>
                                 </div>
                             </form>
+                        </div>
+
+                        {/* Footer */}
+                        <div className="px-8 py-5 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-3">
+                            <button 
+                                type="button"
+                                onClick={() => setShowAddDesignation(false)}
+                                className="px-6 py-3 bg-white border border-slate-200 text-slate-600 rounded-xl font-bold hover:bg-slate-50 hover:text-slate-900 transition-all shadow-sm text-sm"
+                            >
+                                Cancel
+                            </button>
+                            <button 
+                                type="submit"
+                                form="desigForm"
+                                className="px-8 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 hover:shadow-indigo-300 transform hover:-translate-y-0.5 text-sm"
+                            >
+                                Create Role
+                            </button>
                         </div>
                     </motion.div>
                 </div>
@@ -656,114 +717,175 @@ const HRMSModule = () => {
 
             {/* Modal (Add Employee) */}
             {showAddEmployee && (
-                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 sm:p-6">
                     <motion.div 
-                        initial={{ scale: 0.9, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto"
+                        initial={{ scale: 0.95, opacity: 0, y: 20 }}
+                        animate={{ scale: 1, opacity: 1, y: 0 }}
+                        className="bg-white w-full max-w-3xl rounded-[2rem] shadow-2xl overflow-hidden flex flex-col max-h-[95vh]"
                     >
-                        <div className="p-8">
-                            <div className="flex justify-between items-start mb-6">
-                                <div>
-                                    <h3 className="text-2xl font-black text-slate-900">{isEditMode ? 'Edit Employee Profile' : 'Onboard New Employee'}</h3>
-                                    <p className="text-slate-500 text-sm">{isEditMode ? 'Update existing credentials and HR data.' : 'Create login credentials and HR profile.'}</p>
+                        {/* Header */}
+                        <div className="px-8 py-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 sticky top-0 z-20">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center shadow-sm">
+                                    <UserPlus size={24} strokeWidth={2.5} />
                                 </div>
-                                <button onClick={() => { setShowAddEmployee(false); setIsEditMode(false); }} className="p-2 bg-slate-50 rounded-xl text-slate-400 hover:text-rose-600 transition-colors">
-                                    <X size={20} />
-                                </button>
+                                <div>
+                                    <h3 className="text-2xl font-black text-slate-900 tracking-tight">{isEditMode ? 'Edit Profile' : 'Onboard Employee'}</h3>
+                                    <p className="text-slate-500 text-xs font-medium mt-0.5">{isEditMode ? 'Update existing credentials and HR data.' : 'Create login credentials and set up their HR profile.'}</p>
+                                </div>
                             </div>
-                            
-                            <form onSubmit={handleAddEmployee} className="space-y-6">
+                            <button onClick={() => { setShowAddEmployee(false); setIsEditMode(false); }} className="w-10 h-10 bg-white border border-slate-200 rounded-full flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 hover:border-rose-100 transition-all shadow-sm">
+                                <X size={20} />
+                            </button>
+                        </div>
+                        
+                        {/* Scrollable Form Area */}
+                        <div className="p-8 overflow-y-auto custom-scrollbar flex-1 bg-white">
+                            <form id="employeeForm" onSubmit={handleAddEmployee} className="space-y-10">
+                                
                                 {/* Section 1: Credentials */}
-                                <div className="bg-slate-50 p-6 rounded-2xl space-y-4">
-                                    <h4 className="text-xs font-black text-rose-600 uppercase tracking-widest">1. Login Credentials</h4>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Username</label>
-                                            <input required className="w-full px-4 py-3 bg-white border border-slate-100 rounded-xl outline-none focus:border-rose-300 transition-all font-bold text-sm" 
-                                                value={newEmployee.username} onChange={(e) => setNewEmployee({...newEmployee, username: e.target.value})} />
+                                <div>
+                                    <div className="flex items-center gap-2 mb-6">
+                                        <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600 shrink-0">
+                                            <span className="font-bold text-sm">1</span>
                                         </div>
+                                        <h4 className="text-sm font-bold text-slate-800 uppercase tracking-wide">Identity & Access</h4>
+                                        <div className="h-px bg-slate-100 flex-1 ml-4"></div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5 px-2">
                                         <div>
-                                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Password {isEditMode && '(Leave blank to keep current)'}</label>
-                                            <input required={!isEditMode} type="password" className="w-full px-4 py-3 bg-white border border-slate-100 rounded-xl outline-none focus:border-rose-300 transition-all font-bold text-sm" 
-                                                value={newEmployee.password} onChange={(e) => setNewEmployee({...newEmployee, password: e.target.value})} />
-                                        </div>
-                                        <div>
-                                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">First Name</label>
-                                            <input required className="w-full px-4 py-3 bg-white border border-slate-100 rounded-xl outline-none focus:border-rose-300 transition-all font-bold text-sm" 
+                                            <label className="block text-xs font-semibold text-slate-600 mb-1.5">First Name</label>
+                                            <input required className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 transition-all font-semibold text-slate-800 placeholder-slate-400 text-sm" 
+                                                placeholder="e.g. John"
                                                 value={newEmployee.first_name} onChange={(e) => setNewEmployee({...newEmployee, first_name: e.target.value})} />
                                         </div>
                                         <div>
-                                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Last Name</label>
-                                            <input required className="w-full px-4 py-3 bg-white border border-slate-100 rounded-xl outline-none focus:border-rose-300 transition-all font-bold text-sm" 
+                                            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Last Name</label>
+                                            <input required className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 transition-all font-semibold text-slate-800 placeholder-slate-400 text-sm" 
+                                                placeholder="e.g. Doe"
                                                 value={newEmployee.last_name} onChange={(e) => setNewEmployee({...newEmployee, last_name: e.target.value})} />
                                         </div>
                                         <div className="md:col-span-2">
-                                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Email Address</label>
-                                            <input required type="email" className="w-full px-4 py-3 bg-white border border-slate-100 rounded-xl outline-none focus:border-rose-300 transition-all font-bold text-sm" 
+                                            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Email Address</label>
+                                            <input required type="email" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 transition-all font-semibold text-slate-800 placeholder-slate-400 text-sm" 
+                                                placeholder="john.doe@company.com"
                                                 value={newEmployee.email} onChange={(e) => setNewEmployee({...newEmployee, email: e.target.value})} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Username</label>
+                                            <input required className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 transition-all font-semibold text-slate-800 placeholder-slate-400 text-sm" 
+                                                placeholder="johndoe123"
+                                                value={newEmployee.username} onChange={(e) => setNewEmployee({...newEmployee, username: e.target.value})} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Password {isEditMode && <span className="text-slate-400 font-normal">(Leave blank to keep)</span>}</label>
+                                            <input required={!isEditMode} type="password" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 transition-all font-semibold text-slate-800 placeholder-slate-400 text-sm" 
+                                                placeholder="••••••••"
+                                                value={newEmployee.password} onChange={(e) => setNewEmployee({...newEmployee, password: e.target.value})} />
                                         </div>
                                     </div>
                                 </div>
 
                                 {/* Section 2: HR Details */}
-                                <div className="bg-amber-50/50 p-6 rounded-2xl space-y-4">
-                                    <h4 className="text-xs font-black text-amber-600 uppercase tracking-widest">2. Employment Details</h4>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <div className="flex items-center gap-2 mb-6">
+                                        <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600 shrink-0">
+                                            <span className="font-bold text-sm">2</span>
+                                        </div>
+                                        <h4 className="text-sm font-bold text-slate-800 uppercase tracking-wide">Workforce Setup</h4>
+                                        <div className="h-px bg-slate-100 flex-1 ml-4"></div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5 px-2">
                                         <div>
-                                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Employee ID</label>
-                                            <input required className="w-full px-4 py-3 bg-white border border-slate-100 rounded-xl outline-none focus:border-amber-300 transition-all font-bold text-sm" 
+                                            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Employee ID</label>
+                                            <input required className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 transition-all font-bold text-indigo-600 font-mono text-sm" 
                                                 value={newEmployee.employee_id} onChange={(e) => setNewEmployee({...newEmployee, employee_id: e.target.value})} />
                                         </div>
                                         <div>
-                                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Monthly Salary (INR)</label>
-                                            <input required type="number" className="w-full px-4 py-3 bg-white border border-slate-100 rounded-xl outline-none focus:border-amber-300 transition-all font-bold text-sm" 
+                                            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Monthly Salary (INR)</label>
+                                            <input required type="number" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 transition-all font-semibold text-slate-800 text-sm" 
+                                                placeholder="0.00"
                                                 value={newEmployee.base_salary} onChange={(e) => setNewEmployee({...newEmployee, base_salary: e.target.value})} />
                                         </div>
                                         <div>
-                                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Department</label>
-                                            <select required className="w-full px-4 py-3 bg-white border border-slate-100 rounded-xl outline-none focus:border-amber-300 transition-all font-bold text-sm" 
+                                            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Department</label>
+                                            <select required className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 transition-all font-semibold text-slate-800 text-sm appearance-none cursor-pointer" 
                                                 value={newEmployee.department} onChange={(e) => setNewEmployee({...newEmployee, department: e.target.value})}>
-                                                <option value="">Select Dept</option>
+                                                <option value="" disabled>Select Department</option>
                                                 {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                                             </select>
                                         </div>
                                         <div>
-                                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Designation</label>
-                                            <select required className="w-full px-4 py-3 bg-white border border-slate-100 rounded-xl outline-none focus:border-amber-300 transition-all font-bold text-sm" 
+                                            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Designation / Role</label>
+                                            <select required className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 transition-all font-semibold text-slate-800 text-sm appearance-none cursor-pointer" 
                                                 value={newEmployee.designation} onChange={(e) => setNewEmployee({...newEmployee, designation: e.target.value})}>
-                                                <option value="">Select Designation</option>
-                                                {designations.filter(d => d.department == newEmployee.department).map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                                                <option value="" disabled>Select Role</option>
+                                                {designations.filter(d => d.department == newEmployee.department).map(d => (
+                                                    <option key={d.id} value={d.id}>{d.name}</option>
+                                                ))}
                                             </select>
+                                        </div>
+                                        <div className="md:col-span-2">
+                                            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Reporting Manager <span className="text-slate-400 font-normal">(Optional)</span></label>
+                                            <select className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 transition-all font-semibold text-slate-800 text-sm appearance-none cursor-pointer" 
+                                                value={newEmployee.reporting_to || ''} onChange={(e) => setNewEmployee({...newEmployee, reporting_to: e.target.value})}>
+                                                <option value="">None (Top Level / CEO)</option>
+                                                {employees.map(e => {
+                                                    if (e.id === newEmployee.id) return null;
+                                                    return <option key={e.id} value={e.id}>{e.full_name || e.display_username} • {e.designation_name}</option>;
+                                                })}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Date of Birth</label>
+                                            <input required type="date" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 transition-all font-semibold text-slate-800 text-sm" 
+                                                value={newEmployee.date_of_birth || ''} onChange={(e) => setNewEmployee({...newEmployee, date_of_birth: e.target.value})} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Date of Joining</label>
+                                            <input required type="date" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 transition-all font-semibold text-slate-800 text-sm" 
+                                                value={newEmployee.date_of_joining || ''} onChange={(e) => setNewEmployee({...newEmployee, date_of_joining: e.target.value})} />
                                         </div>
                                     </div>
                                 </div>
                                 
                                 {/* Section 3: Custom Fields */}
                                 {customFields.length > 0 && (
-                                    <div className="bg-slate-50 p-6 rounded-2xl space-y-4">
-                                        <h4 className="text-xs font-black text-slate-600 uppercase tracking-widest">3. Additional Information</h4>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <div className="flex items-center gap-2 mb-6">
+                                            <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600 shrink-0">
+                                                <span className="font-bold text-sm">3</span>
+                                            </div>
+                                            <h4 className="text-sm font-bold text-slate-800 uppercase tracking-wide">Additional Details</h4>
+                                            <div className="h-px bg-slate-100 flex-1 ml-4"></div>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5 px-2">
                                             {customFields.map(field => (
-                                                <div key={field.id}>
-                                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">
-                                                        {field.label} {field.required && <span className="text-rose-600">*</span>}
+                                                <div key={field.id} className={field.field_type === 'file' ? "md:col-span-2" : ""}>
+                                                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+                                                        {field.label} {field.required && <span className="text-rose-500">*</span>}
                                                     </label>
                                                     <input 
-                                                        type={field.field_type === 'file' ? 'file' : field.field_type} 
                                                         required={field.required}
-                                                        className="w-full px-4 py-3 bg-white border border-slate-100 rounded-xl outline-none focus:border-rose-300 transition-all font-bold text-sm" 
-                                                        placeholder={`Enter ${field.label}`}
-                                                        value={newEmployee.additional_data?.[field.name] || ''}
+                                                        type={field.field_type === 'number' ? 'number' : field.field_type === 'date' ? 'date' : field.field_type === 'file' ? 'file' : 'text'}
+                                                        className={`w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 transition-all font-semibold text-slate-800 text-sm ${field.field_type === 'file' ? 'file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer bg-white' : ''}`}
+                                                        value={field.field_type !== 'file' ? (newEmployee.additional_data?.[field.name] || '') : undefined}
                                                         onChange={(e) => {
-                                                            const value = field.field_type === 'file' ? e.target.files[0]?.name : e.target.value;
-                                                            setNewEmployee({
-                                                                ...newEmployee, 
-                                                                additional_data: {
-                                                                    ...newEmployee.additional_data,
-                                                                    [field.name]: value
-                                                                }
-                                                            })
+                                                            if (field.field_type === 'file') {
+                                                                // Basic file handling mock
+                                                                setNewEmployee({
+                                                                    ...newEmployee,
+                                                                    additional_data: { ...newEmployee.additional_data, [field.name]: 'file_attached' }
+                                                                });
+                                                            } else {
+                                                                setNewEmployee({
+                                                                    ...newEmployee,
+                                                                    additional_data: { ...newEmployee.additional_data, [field.name]: e.target.value }
+                                                                });
+                                                            }
                                                         }}
                                                     />
                                                 </div>
@@ -772,13 +894,67 @@ const HRMSModule = () => {
                                     </div>
                                 )}
 
-                                <div className="flex gap-3 pt-4">
-                                    <button type="button" onClick={() => { setShowAddEmployee(false); setIsEditMode(false); }} className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold hover:bg-slate-200 transition-all">Cancel</button>
-                                    <button type="submit" className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 transition-all shadow-lg">
-                                        {isEditMode ? 'Update Profile' : 'Onboard Employee'}
-                                    </button>
-                                </div>
+                                {/* Section 4: Documents (Edit Mode Only) */}
+                                {isEditMode && (
+                                    <div>
+                                        <div className="flex items-center gap-2 mb-6">
+                                            <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600 shrink-0">
+                                                <span className="font-bold text-sm">4</span>
+                                            </div>
+                                            <h4 className="text-sm font-bold text-slate-800 uppercase tracking-wide">Documents Vault</h4>
+                                            <div className="h-px bg-slate-100 flex-1 ml-4"></div>
+                                        </div>
+                                        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 text-center">
+                                            <p className="text-sm text-slate-600 font-medium mb-3">Upload employee documents (Offer Letter, ID Proofs, Resumes, etc.)</p>
+                                            <button type="button" className="px-4 py-2 bg-white border border-slate-200 shadow-sm rounded-lg text-sm font-bold text-indigo-600 hover:bg-indigo-50 transition-colors">
+                                                + Upload Document
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Section 5: Offboarding (Edit Mode Only) */}
+                                {isEditMode && (
+                                    <div>
+                                        <div className="flex items-center gap-2 mb-6">
+                                            <div className="w-8 h-8 rounded-lg bg-rose-50 flex items-center justify-center text-rose-600 shrink-0">
+                                                <span className="font-bold text-sm">5</span>
+                                            </div>
+                                            <h4 className="text-sm font-bold text-rose-600 uppercase tracking-wide">Offboarding & Separation</h4>
+                                            <div className="h-px bg-slate-100 flex-1 ml-4"></div>
+                                        </div>
+                                        <div className="bg-rose-50/50 border border-rose-100 rounded-2xl p-6">
+                                            <div className="flex justify-between items-center">
+                                                <div>
+                                                    <h5 className="font-bold text-slate-800">Initiate Offboarding</h5>
+                                                    <p className="text-xs text-slate-500 mt-1">Begin the separation process (resignation, asset return, exit interview).</p>
+                                                </div>
+                                                <button type="button" onClick={() => alert("Initiating offboarding flow...")} className="px-4 py-2 bg-rose-600 shadow-sm rounded-lg text-sm font-bold text-white hover:bg-rose-700 transition-colors">
+                                                    Start Offboarding
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </form>
+                        </div>
+
+                        {/* Footer / Actions */}
+                        <div className="px-8 py-5 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-3 rounded-b-[2rem]">
+                            <button 
+                                type="button"
+                                onClick={() => { setShowAddEmployee(false); setIsEditMode(false); }}
+                                className="px-6 py-3 bg-white border border-slate-200 text-slate-600 rounded-xl font-bold hover:bg-slate-50 hover:text-slate-900 transition-all shadow-sm text-sm"
+                            >
+                                Cancel
+                            </button>
+                            <button 
+                                type="submit"
+                                form="employeeForm"
+                                className="px-8 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 hover:shadow-indigo-300 transform hover:-translate-y-0.5 text-sm"
+                            >
+                                {isEditMode ? 'Save Changes' : 'Complete Onboarding'}
+                            </button>
                         </div>
                     </motion.div>
                 </div>

@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Department, Designation, EmployeeProfile, CustomField, Attendance, ShiftSetting, Task, TaskComment
+from .models import Department, Designation, EmployeeProfile, CustomField, Attendance, ShiftSetting, Task, TaskComment, CompanyPost, EmployeeDocument, Asset, Expense, PerformanceReview, Offboarding
 
 class ShiftSettingSerializer(serializers.ModelSerializer):
     class Meta:
@@ -18,6 +18,7 @@ class AttendanceSerializer(serializers.ModelSerializer):
             'date', 'clock_in', 'clock_out', 
             'clock_in_latitude', 'clock_in_longitude',
             'clock_out_latitude', 'clock_out_longitude',
+            'clock_in_photo',
             'status', 'notes'
         ]
         read_only_fields = ['id', 'date', 'status']
@@ -54,6 +55,7 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
     full_name = serializers.ReadOnlyField(source='user.get_full_name')
     department_name = serializers.ReadOnlyField(source='department.name')
     designation_name = serializers.ReadOnlyField(source='designation.name')
+    reporting_to_name = serializers.ReadOnlyField(source='reporting_to.user.get_full_name')
     
     class Meta:
         model = EmployeeProfile
@@ -61,7 +63,8 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
             'id', 'username', 'password', 'email', 'first_name', 'last_name',
             'display_username', 'full_name', 'employee_id', 'department', 
             'department_name', 'designation', 'designation_name', 
-            'date_of_joining', 'status', 'base_salary', 'additional_data'
+            'reporting_to', 'reporting_to_name',
+            'date_of_joining', 'date_of_birth', 'gender', 'status', 'base_salary', 'additional_data'
         ]
         read_only_fields = ['id', 'status']
 
@@ -79,6 +82,11 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
         
         # Create the profile linked to the user
         profile = EmployeeProfile.objects.create(user=user, **validated_data)
+        
+        # Auto-create the salary structure for the new employee
+        from payroll.models import SalaryStructure
+        SalaryStructure.objects.create(employee=profile, base_salary=profile.base_salary)
+        
         return profile
 
 class TaskCommentSerializer(serializers.ModelSerializer):
@@ -97,4 +105,54 @@ class TaskSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Task
+        fields = '__all__'
+
+class CompanyPostSerializer(serializers.ModelSerializer):
+    author_name = serializers.ReadOnlyField(source='author.get_full_name')
+    author_username = serializers.ReadOnlyField(source='author.username')
+    author_designation = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CompanyPost
+        fields = ['id', 'author', 'author_name', 'author_username', 'author_designation', 'content', 'post_type', 'created_at']
+        read_only_fields = ['author', 'created_at']
+
+    def get_author_designation(self, obj):
+        try:
+            return obj.author.hrms_profile.designation.name if obj.author.hrms_profile.designation else 'No Role'
+        except:
+            return 'No Role'
+
+class EmployeeDocumentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EmployeeDocument
+        fields = '__all__'
+
+class AssetSerializer(serializers.ModelSerializer):
+    assigned_to_name = serializers.ReadOnlyField(source='assigned_to.user.get_full_name')
+
+    class Meta:
+        model = Asset
+        fields = '__all__'
+
+class ExpenseSerializer(serializers.ModelSerializer):
+    employee_name = serializers.ReadOnlyField(source='employee.user.get_full_name')
+
+    class Meta:
+        model = Expense
+        fields = '__all__'
+
+class PerformanceReviewSerializer(serializers.ModelSerializer):
+    employee_name = serializers.ReadOnlyField(source='employee.user.get_full_name')
+    reviewer_name = serializers.ReadOnlyField(source='reviewer.user.get_full_name')
+
+    class Meta:
+        model = PerformanceReview
+        fields = '__all__'
+
+class OffboardingSerializer(serializers.ModelSerializer):
+    employee_name = serializers.ReadOnlyField(source='employee.user.get_full_name')
+
+    class Meta:
+        model = Offboarding
         fields = '__all__'

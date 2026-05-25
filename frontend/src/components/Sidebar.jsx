@@ -52,6 +52,7 @@ const sidebarSections = [
             { icon: CalendarCheck, label: 'Attendance', path: '/hrms/attendance', module: 'ATTENDANCE' },
             { icon: Wallet, label: 'Payroll', path: '/hrms/payroll', module: 'PAYROLL' },
             { icon: CalendarDays, label: 'Leave Management', path: '/hrms/leaves', module: 'LEAVES' },
+            { icon: Briefcase, label: 'Asset Management', path: '/hrms/assets', module: 'WORKFORCE' },
             { icon: CheckSquare, label: 'Tasks & Performance', path: '/hrms/tasks', module: 'WORKFORCE' },
         ]
     },
@@ -90,7 +91,7 @@ function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }) {
         if (item.label === 'Teacher Module' && user.role !== 'SUPER_ADMIN') return false;
         
         // Allow Employees to see relevant HRMS modules
-        const employeeModules = ['Workforce Hub', 'Attendance', 'Leave Management', 'Tasks & Performance', 'Payroll'];
+        const employeeModules = ['Workforce Hub', 'Attendance', 'Leave Management', 'Tasks & Performance', 'Payroll', 'Asset Management'];
         if (employeeModules.includes(item.label) && user.role === 'EMPLOYEE') return true;
 
         if (item.module === 'COMMON') return true;
