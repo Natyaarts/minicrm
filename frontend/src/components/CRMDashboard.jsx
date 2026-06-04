@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Users, TrendingUp, DollarSign, Activity } from 'lucide-react';
-import api from '../api/client';
+import api from '../api/axios';
 
 const CRMDashboard = () => {
     const [stats, setStats] = useState({
