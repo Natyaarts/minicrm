@@ -29,6 +29,7 @@ echo "⚛️  Building Frontend..."
 cd "$FRONTEND_DIR"
     echo "📦 Installing dependencies..."
     npm install
+    export NODE_OPTIONS="--max-old-space-size=4096"
     npm run build
 cd "$PROJECT_DIR"
 
