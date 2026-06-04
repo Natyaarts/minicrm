@@ -6,7 +6,7 @@ from .views import (
     BatchViewSet, StudentViewSet, TransactionViewSet, DocumentViewSet,
     SyllabusPartViewSet, ClassSessionViewSet, AttendanceViewSet, BatchResourceViewSet,
     ExamViewSet, ExamResultViewSet, QuestionViewSet, DashboardStatsView, AnalyticsDetailView,
-    StudentSubmissionViewSet
+    StudentSubmissionViewSet, CalendarEventsView
 )
 from .bulk_views import BulkUploadView
 
@@ -31,5 +31,6 @@ urlpatterns = [
     path('', include(router.urls)),
     path('dashboard-stats/', DashboardStatsView.as_view(), name='dashboard-stats'),
     path('analytics-details/', AnalyticsDetailView.as_view(), name='analytics-details'),
+    path('calendar-events/', CalendarEventsView.as_view(), name='calendar-events'),
     path('bulk/upload-students/', BulkUploadView.as_view(), name='bulk-upload-students'),
 ]

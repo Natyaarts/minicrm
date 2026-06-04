@@ -87,11 +87,14 @@ const AttendanceModule = () => {
         setShowSelfieCapture(false);
         setLoading(true);
         try {
-            await api.post('hrms/attendance/clock_in/', {
+            const res = await api.post('hrms/attendance/clock_in/', {
                 latitude: location.latitude,
                 longitude: location.longitude,
                 photo: photoData
             });
+            if (res.data && res.data.is_face_verified === false) {
+                alert("Face verification failed. Please try again with better lighting.");
+            }
             fetchAttendance();
         } catch (err) {
             console.error("Clock In Error:", err);
@@ -395,8 +398,13 @@ const AttendanceModule = () => {
                                                                 {log.clock_in ? new Date(`2000-01-01T${log.clock_in}`).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'}
                                                             </span>
                                                             <span className="text-[10px] font-semibold text-emerald-600 flex items-center gap-1 mt-0.5">
-                                                                <MapPin size={10} /> Verified
+                                                                <MapPin size={10} /> Loc Verified
                                                             </span>
+                                                            {log.is_face_verified && (
+                                                                <span className="text-[10px] font-semibold text-indigo-600 flex items-center gap-1 mt-0.5">
+                                                                    <CheckCircle2 size={10} /> Face Verified ({log.verification_confidence}%)
+                                                                </span>
+                                                            )}
                                                         </div>
                                                         {log.clock_in_photo && (
                                                             <div 
@@ -490,14 +498,20 @@ const SettingsView = ({ location, requestLocation }) => {
     const fetchShift = async () => {
         try {
             const res = await api.get('hrms/shifts/');
-            setShift(res.data[0] || {
+            const raw = res.data[0] || {
                 name: 'General Shift',
-                start_time: '09:00:00',
-                end_time: '18:00:00',
+                start_time: '09:00',
+                end_time: '18:00',
                 grace_period_minutes: 15,
                 office_latitude: 0,
                 office_longitude: 0,
                 allowed_radius_meters: 200
+            };
+            // HTML time inputs need HH:MM format — strip seconds if present
+            setShift({
+                ...raw,
+                start_time: raw.start_time ? raw.start_time.slice(0, 5) : '09:00',
+                end_time: raw.end_time ? raw.end_time.slice(0, 5) : '18:00',
             });
         } catch (err) {
             console.error(err);
@@ -508,15 +522,22 @@ const SettingsView = ({ location, requestLocation }) => {
         e.preventDefault();
         setLoading(true);
         try {
+            // Convert HH:MM back to HH:MM:SS for Django backend
+            const payload = {
+                ...shift,
+                start_time: shift.start_time.length === 5 ? shift.start_time + ':00' : shift.start_time,
+                end_time: shift.end_time.length === 5 ? shift.end_time + ':00' : shift.end_time,
+            };
             if (shift.id) {
-                await api.patch(`hrms/shifts/${shift.id}/`, shift);
+                await api.patch(`hrms/shifts/${shift.id}/`, payload);
             } else {
-                await api.post('hrms/shifts/', shift);
+                await api.post('hrms/shifts/', payload);
             }
-            alert("Settings saved successfully!");
+            alert("Shift settings saved successfully!");
             fetchShift();
         } catch (err) {
-            alert("Failed to save settings");
+            alert("Failed to save settings. Please check all fields.");
+            console.error(err);
         } finally {
             setLoading(false);
         }

@@ -12,13 +12,14 @@ function Login() {
 
     const handleLogin = async (e) => {
         e.preventDefault();
-        if (!username || !password) {
+        const trimmedUsername = username.trim();
+        if (!trimmedUsername || !password) {
             setError('Please enter both username and password');
             return;
         }
         setError('');
         setIsLoading(true);
-        const result = await login(username, password);
+        const result = await login(trimmedUsername, password);
         setIsLoading(false);
         if (result.success) {
             if (result.user.role === 'STUDENT') {

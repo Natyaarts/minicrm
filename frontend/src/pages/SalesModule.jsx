@@ -3,9 +3,13 @@ import { useSearchParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Copy, Check, Search, FileText, User, Trash2, Edit2, RotateCcw, Trash, X } from 'lucide-react';
+import { Copy, Check, Search, FileText, User, Trash2, Edit2, RotateCcw, Trash, X, UserCircle } from 'lucide-react';
 import { copyToClipboard } from '../utils/clipboard';
 import { compressImage } from '../utils/fileCompressor';
+import KanbanBoard from '../components/KanbanBoard';
+import CRMDashboard from '../components/CRMDashboard';
+import CRMTasks from '../components/CRMTasks';
+import CRMCampaigns from '../components/CRMCampaigns';
 
 const SalesModule = () => {
     const { user: authUser } = useAuth();
@@ -19,6 +23,8 @@ const SalesModule = () => {
     const [subPrograms, setSubPrograms] = useState([]);
     const [courses, setCourses] = useState([]);
     const [dynamicFields, setDynamicFields] = useState([]);
+    const [campaigns, setCampaigns] = useState([]);
+    const [salesUsers, setSalesUsers] = useState([]);
 
     const [selectedProgram, setSelectedProgram] = useState('');
     const [selectedSubProgram, setSelectedSubProgram] = useState('');
@@ -35,6 +41,7 @@ const SalesModule = () => {
         dob: '',
         gender: '',
         marital_status: '',
+        campaign_id: '',
         perm_address: '',
         perm_city: '',
         perm_district: '',
@@ -56,9 +63,18 @@ const SalesModule = () => {
 
     // Auth State for Bulk Upload Visibility
     const [isAuthenticated, setIsAuthenticated] = useState(false);
-    const [activeTab, setActiveTab] = useState('single');
+    const [activeTab, setActiveTab] = useState('dashboard');
     const [bulkFile, setBulkFile] = useState(null);
     const [bulkResponse, setBulkResponse] = useState(null);
+
+    useEffect(() => {
+        if (location.pathname === '/crm/dashboard') setActiveTab('dashboard');
+        else if (location.pathname === '/crm/pipeline') setActiveTab('kanban');
+        else if (location.pathname === '/crm/leads') setActiveTab('list');
+        else if (location.pathname === '/crm/tasks') setActiveTab('tasks');
+        else if (location.pathname === '/crm/campaigns') setActiveTab('campaigns');
+        else if (location.pathname === '/sales') setActiveTab('dashboard');
+    }, [location.pathname]);
 
     // Student List Data
     const [studentList, setStudentList] = useState([]);
@@ -68,13 +84,52 @@ const SalesModule = () => {
     const [wiseData, setWiseData] = useState(null);
     const [loadingWise, setLoadingWise] = useState(false);
 
+    // Activity Timeline State
+    const [interactions, setInteractions] = useState([]);
+    const [interactionType, setInteractionType] = useState('NOTE');
+    const [interactionNotes, setInteractionNotes] = useState('');
+    const [loadingInteractions, setLoadingInteractions] = useState(false);
+
     useEffect(() => {
         if (selectedStudentProfile?.id) {
             fetchLiveWiseData(selectedStudentProfile.id);
+            fetchInteractions(selectedStudentProfile.id);
         } else {
             setWiseData(null);
+            setInteractions([]);
         }
     }, [selectedStudentProfile]);
+
+    const fetchInteractions = async (studentId) => {
+        setLoadingInteractions(true);
+        try {
+            const res = await api.get(`/crm/interactions/?student_id=${studentId}`);
+            setInteractions(res.data?.results || res.data || []);
+        } catch (err) {
+            console.error('Failed to fetch interactions:', err);
+        } finally {
+            setLoadingInteractions(false);
+        }
+    };
+
+    const handleLogInteraction = async () => {
+        if (!interactionNotes.trim()) return;
+        try {
+            const res = await api.post('/crm/interactions/', {
+                student: selectedStudentProfile.id,
+                interaction_type: interactionType,
+                notes: interactionNotes
+            });
+            setInteractions([res.data, ...interactions]);
+            setInteractionNotes('');
+            setToast({ title: "Success", description: "Activity logged.", type: 'success' });
+            setTimeout(() => setToast(null), 3000);
+        } catch (err) {
+            console.error('Failed to log interaction:', err);
+            setToast({ title: "Error", description: "Could not log activity.", type: 'error' });
+            setTimeout(() => setToast(null), 3000);
+        }
+    };
 
     const fetchLiveWiseData = async (studentId) => {
         setLoadingWise(true);
@@ -127,6 +182,16 @@ const SalesModule = () => {
             try {
                 const res = await api.get('programs/');
                 setPrograms(res.data);
+                
+                try {
+                    const campRes = await api.get('crm/campaigns/');
+                    setCampaigns(campRes.data.results || campRes.data || []);
+                } catch(e) {}
+                
+                try {
+                    const suRes = await api.get('crm/sales-users/');
+                    setSalesUsers(suRes.data || []);
+                } catch(e) {}
 
                 // Check URL Param (Support both Slug and ID for backward compatibility)
                 const urlProg = searchParams.get('program') || searchParams.get('p');
@@ -390,6 +455,12 @@ const SalesModule = () => {
 
         data.append('dynamic_values', JSON.stringify(dynamicValues));
         data.append('is_active', 'true');
+        if (formData.campaign_id) {
+            data.append('campaign', formData.campaign_id);
+        }
+        if (formData.assigned_to) {
+            data.append('assigned_to', formData.assigned_to);
+        }
 
         // Handle dynamic files
         Object.keys(files).forEach(fieldId => {
@@ -501,6 +572,7 @@ const SalesModule = () => {
             last_name: student.last_name,
             mobile: student.mobile,
             email: student.email,
+            assigned_to: student.assigned_to,
             program_type: student.program_type,
             sub_program: student.sub_program,
             course: student.course,
@@ -588,13 +660,16 @@ const SalesModule = () => {
         e.preventDefault();
         if (!bulkFile) return;
 
-        const formData = new FormData();
-        formData.append('file', bulkFile);
+        const bulkData = new FormData();
+        bulkData.append('file', bulkFile);
+        if (formData.campaign_id) {
+            bulkData.append('campaign_id', formData.campaign_id);
+        }
         setLoading(true);
         setBulkResponse(null);
 
         try {
-            const res = await api.post('bulk/upload-students/', formData, {
+            const res = await api.post('bulk/upload-students/', bulkData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
             setBulkResponse(res.data);
@@ -661,39 +736,18 @@ const SalesModule = () => {
                     className="text-center mb-8"
                 >
                     <h1 className="text-2xl md:text-3xl font-bold text-slate-800 tracking-tight mb-2">
-                        Student Enrollment
+                        {activeTab === 'single' || activeTab === 'bulk' ? 'Student Enrollment' :
+                         activeTab === 'kanban' || activeTab === 'list' ? 'Sales Pipeline & Leads' :
+                         activeTab === 'dashboard' ? 'Sales Dashboard' :
+                         activeTab === 'tasks' ? 'Tasks & Follow-ups' :
+                         activeTab === 'campaigns' ? 'Marketing Campaigns' : 'Sales Management'}
                     </h1>
                     <p className="text-xs text-slate-500 max-w-xl mx-auto">
-                        Join our community of learners and achievers. Please fill out the form below to begin your journey.
+                        {activeTab === 'single' || activeTab === 'bulk' ? 'Join our community of learners and achievers. Please fill out the form below to begin your journey.' :
+                         activeTab === 'campaigns' ? 'Manage your marketing sources, track budgets, and analyze lead generation.' :
+                         'Manage and track your leads, interactions, and sales processes effectively.'}
                     </p>
                 </motion.div>
-
-                {isAuthenticated && !isPublicView && (
-                    <div className="flex mb-6 overflow-x-auto pb-1 justify-start sm:justify-center">
-                        <div className="bg-white p-1 rounded-xl shadow-sm border border-slate-200 flex flex-nowrap whitespace-nowrap min-w-min mx-auto">
-                            <button
-                                onClick={() => setActiveTab('single')}
-                                className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${activeTab === 'single' ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                            >
-                                Single Application
-                            </button>
-                            {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.SALES?.add) && (
-                                <button
-                                    onClick={() => setActiveTab('bulk')}
-                                    className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${activeTab === 'bulk' ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                                >
-                                    Bulk Upload
-                                </button>
-                            )}
-                            <button
-                                onClick={() => setActiveTab('list')}
-                                className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${activeTab === 'list' ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                            >
-                                View Applications
-                            </button>
-                        </div>
-                    </div>
-                )}
 
                 <AnimatePresence>
                     {toast && (
@@ -723,88 +777,107 @@ const SalesModule = () => {
                 </AnimatePresence>
 
                 <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-slate-200">
-                    {activeTab === 'list' && isAuthenticated ? (
-                        <div>
-                            {/* Card Header with padding and border */}
-                            <div className="p-4 sm:p-6 pb-4 flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-4 border-b border-slate-200">
+                    {(activeTab === 'list' || activeTab === 'kanban') && isAuthenticated && (
+                        <div className="p-4 sm:p-6 pb-4 flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-4 border-b border-slate-200">
+                            <div className="flex items-center gap-4">
                                 <h3 className="text-lg font-semibold text-slate-900">
-                                    {isTrashView ? 'Trash Section' : 'Submitted Applications'}
+                                    {isTrashView ? 'Trash Section' : activeTab === 'kanban' ? 'Sales Pipeline' : 'Submitted Applications'}
                                 </h3>
-                                <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3">
-                                    {/* Program Logic Filters */}
-                                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 bg-slate-50 p-2 sm:p-1.5 rounded-xl border border-slate-200 w-full sm:w-auto">
-                                        <select 
-                                            value={selectedProgram}
-                                            onChange={handleProgramChange}
-                                            className="bg-transparent text-xs font-semibold text-slate-700 px-2 py-1 sm:py-0.5 outline-none min-w-[120px] cursor-pointer w-full sm:w-auto"
-                                        >
-                                            <option value="">All Brands/Programs</option>
-                                            {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                                        </select>
-                                        
-                                        {selectedProgram && (
-                                            <div className="flex flex-col sm:flex-row sm:items-center gap-2 border-t sm:border-t-0 sm:border-l border-slate-200 pt-2 sm:pt-0 sm:pl-2 w-full sm:w-auto">
-                                                <select 
-                                                    value={selectedSubProgram}
-                                                    onChange={handleSubProgramChange}
-                                                    className="bg-transparent text-xs font-semibold text-indigo-600 px-2 py-1 sm:py-0.5 outline-none min-w-[120px] cursor-pointer w-full sm:w-auto"
-                                                >
-                                                    <option value="">All Categories</option>
-                                                    {subPrograms.map(sp => <option key={sp.id} value={sp.id}>{sp.name}</option>)}
-                                                </select>
-                                                
-                                                {selectedSubProgram && (
-                                                    <select 
-                                                        value={selectedCourse}
-                                                        onChange={handleCourseChange}
-                                                        className="bg-transparent text-xs font-semibold text-emerald-600 px-2 py-1 sm:py-0.5 outline-none min-w-[120px] border-t sm:border-t-0 sm:border-l border-slate-200 pt-2 sm:pt-0 sm:pl-2 cursor-pointer w-full sm:w-auto"
-                                                    >
-                                                        <option value="">All Courses</option>
-                                                        {courses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                                                    </select>
-                                                )}
-                                            </div>
-                                        )}
-                                        
-                                        {(selectedProgram || selectedSubProgram || selectedCourse) && (
-                                            <button 
-                                                onClick={() => {
-                                                    setSelectedProgram('');
-                                                    setSelectedSubProgram('');
-                                                    setSelectedCourse('');
-                                                    setSubPrograms([]);
-                                                    setCourses([]);
-                                                }}
-                                                className="p-1 text-slate-400 hover:text-rose-500 transition-colors self-end sm:self-center"
-                                                title="Clear Filters"
-                                            >
-                                                <X size={12} />
-                                            </button>
-                                        )}
-                                    </div>
-
-                                    <div className="flex items-center gap-3 w-full sm:w-auto">
+                                <div className="hidden lg:flex items-center gap-2">
+                                    <button
+                                        onClick={() => setActiveTab('single')}
+                                        className="px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-semibold hover:bg-indigo-100 transition-colors"
+                                    >
+                                        + New Lead
+                                    </button>
+                                    {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.SALES?.add) && (
                                         <button
-                                            onClick={() => setIsTrashView(!isTrashView)}
-                                            className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex-1 sm:flex-initial ${isTrashView ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-50 border border-slate-200 text-slate-600 hover:bg-slate-100'}`}
+                                            onClick={() => setActiveTab('bulk')}
+                                            className="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold hover:bg-slate-200 transition-colors"
                                         >
-                                            <Trash2 size={14} />
-                                            {isTrashView ? 'View Active' : 'View Trash'}
+                                            Bulk Upload
                                         </button>
-                                        <div className="relative flex-1 sm:flex-initial">
-                                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                                            <input
-                                                type="text"
-                                                placeholder="Search students..."
-                                                value={searchTerm}
-                                                onChange={(e) => setSearchTerm(e.target.value)}
-                                                className="pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 focus:border-indigo-500 outline-none text-xs w-full sm:w-48 md:w-56"
-                                            />
+                                    )}
+                                </div>
+                            </div>
+                            <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3">
+                                {/* Program Logic Filters */}
+                                <div className="flex flex-col sm:flex-row sm:items-center gap-2 bg-slate-50 p-2 sm:p-1.5 rounded-xl border border-slate-200 w-full sm:w-auto">
+                                    <select 
+                                        value={selectedProgram}
+                                        onChange={handleProgramChange}
+                                        className="bg-transparent text-xs font-semibold text-slate-700 px-2 py-1 sm:py-0.5 outline-none min-w-[120px] cursor-pointer w-full sm:w-auto"
+                                    >
+                                        <option value="">All Brands/Programs</option>
+                                        {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                    </select>
+                                    
+                                    {selectedProgram && (
+                                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 border-t sm:border-t-0 sm:border-l border-slate-200 pt-2 sm:pt-0 sm:pl-2 w-full sm:w-auto">
+                                            <select 
+                                                value={selectedSubProgram}
+                                                onChange={handleSubProgramChange}
+                                                className="bg-transparent text-xs font-semibold text-indigo-600 px-2 py-1 sm:py-0.5 outline-none min-w-[120px] cursor-pointer w-full sm:w-auto"
+                                            >
+                                                <option value="">All Categories</option>
+                                                {subPrograms.map(sp => <option key={sp.id} value={sp.id}>{sp.name}</option>)}
+                                            </select>
+                                            
+                                            {selectedSubProgram && (
+                                                <select 
+                                                    value={selectedCourse}
+                                                    onChange={handleCourseChange}
+                                                    className="bg-transparent text-xs font-semibold text-emerald-600 px-2 py-1 sm:py-0.5 outline-none min-w-[120px] border-t sm:border-t-0 sm:border-l border-slate-200 pt-2 sm:pt-0 sm:pl-2 cursor-pointer w-full sm:w-auto"
+                                                >
+                                                    <option value="">All Courses</option>
+                                                    {courses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                                </select>
+                                            )}
                                         </div>
+                                    )}
+                                    
+                                    {(selectedProgram || selectedSubProgram || selectedCourse) && (
+                                        <button 
+                                            onClick={() => {
+                                                setSelectedProgram('');
+                                                setSelectedSubProgram('');
+                                                setSelectedCourse('');
+                                                setSubPrograms([]);
+                                                setCourses([]);
+                                            }}
+                                            className="p-1 text-slate-400 hover:text-rose-500 transition-colors self-end sm:self-center"
+                                            title="Clear Filters"
+                                        >
+                                            <X size={12} />
+                                        </button>
+                                    )}
+                                </div>
+
+                                <div className="flex items-center gap-3 w-full sm:w-auto">
+                                    <button
+                                        onClick={() => setIsTrashView(!isTrashView)}
+                                        className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex-1 sm:flex-initial ${isTrashView ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-50 border border-slate-200 text-slate-600 hover:bg-slate-100'}`}
+                                    >
+                                        <Trash2 size={14} />
+                                        {isTrashView ? 'View Active' : 'View Trash'}
+                                    </button>
+                                    <div className="relative flex-1 sm:flex-initial">
+                                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                                        <input
+                                            type="text"
+                                            placeholder="Search students..."
+                                            value={searchTerm}
+                                            onChange={(e) => setSearchTerm(e.target.value)}
+                                            className="pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 focus:border-indigo-500 outline-none text-xs w-full sm:w-48 md:w-56"
+                                        />
                                     </div>
                                 </div>
                             </div>
+                        </div>
+                    )}
 
+                    {activeTab === 'list' && isAuthenticated ? (
+                        <div>
                             {/* Desktop View Table (hidden on mobile) */}
                             <div className="hidden md:block overflow-x-auto">
                                 <table className="w-full text-left border-collapse min-w-[1000px]">
@@ -814,6 +887,7 @@ const SalesModule = () => {
                                             <th className="px-6 py-3 text-xs font-semibold uppercase text-slate-500 tracking-wider">Contact</th>
                                             <th className="px-6 py-3 text-xs font-semibold uppercase text-slate-500 tracking-wider">Program</th>
                                             <th className="px-6 py-3 text-xs font-semibold uppercase text-slate-500 tracking-wider">Application Info</th>
+                                            <th className="px-6 py-3 text-xs font-semibold uppercase text-slate-500 tracking-wider">Assigned To</th>
                                             <th className="px-6 py-3 text-xs font-semibold uppercase text-slate-500 tracking-wider">Amount</th>
                                             <th className="px-6 py-3 text-xs font-semibold uppercase text-slate-500 tracking-wider">Transaction ID</th>
                                             <th className="px-6 py-3 text-xs font-semibold uppercase text-slate-500 tracking-wider">Status</th>
@@ -1116,6 +1190,27 @@ const SalesModule = () => {
                                 </div>
                             </div>
                         </div>
+                    ) : activeTab === 'dashboard' && isAuthenticated ? (
+                        <div className="bg-slate-50 min-h-[500px]">
+                            <CRMDashboard />
+                        </div>
+                    ) : activeTab === 'tasks' && isAuthenticated ? (
+                        <div className="bg-slate-50 min-h-[500px]">
+                            <CRMTasks />
+                        </div>
+                    ) : activeTab === 'campaigns' && isAuthenticated ? (
+                        <div className="bg-slate-50 min-h-[500px]">
+                            <CRMCampaigns />
+                        </div>
+                    ) : activeTab === 'kanban' && isAuthenticated ? (
+                        <div className="p-4 sm:p-6 bg-slate-50 min-h-[500px]">
+                            <KanbanBoard 
+                                program={selectedProgram}
+                                subProgram={selectedSubProgram}
+                                course={selectedCourse}
+                                searchTerm={searchTerm}
+                            />
+                        </div>
                     ) : activeTab === 'bulk' && isAuthenticated ? (
                         <div className="p-6">
                             <div className="max-w-md mx-auto text-center">
@@ -1140,6 +1235,19 @@ const SalesModule = () => {
                                             </p>
                                             <p className="text-[10px] text-slate-500 mt-1">XLSX, CSV up to 10MB</p>
                                         </div>
+                                    </div>
+                                    
+                                    <div>
+                                        <select
+                                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-500"
+                                            value={formData.campaign_id}
+                                            onChange={(e) => setFormData(prev => ({ ...prev, campaign_id: e.target.value }))}
+                                        >
+                                            <option value="">No Campaign (Organic/Legacy)</option>
+                                            {campaigns.filter(c => c.status === 'ACTIVE').map(c => (
+                                                <option key={c.id} value={c.id}>{c.name}</option>
+                                            ))}
+                                        </select>
                                     </div>
 
                                     <button
@@ -1213,6 +1321,44 @@ const SalesModule = () => {
                                             required
                                         />
                                     )}
+                                    
+                                    <div className="flex flex-col">
+                                        <label className="text-xs font-semibold text-slate-600 mb-1.5">Campaign (Optional)</label>
+                                        <div className="relative">
+                                            <select
+                                                className="w-full px-3 py-1.5 rounded-lg bg-white border border-slate-200 focus:border-indigo-500 outline-none text-xs text-slate-700 shadow-sm appearance-none"
+                                                value={formData.campaign_id}
+                                                onChange={(e) => setFormData(prev => ({ ...prev, campaign_id: e.target.value }))}
+                                            >
+                                                <option value="">No Campaign (Organic)</option>
+                                                {campaigns.filter(c => c.status === 'ACTIVE').map(c => (
+                                                    <option key={c.id} value={c.id}>{c.name}</option>
+                                                ))}
+                                            </select>
+                                            <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-slate-400">
+                                                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="flex flex-col">
+                                        <label className="text-xs font-semibold text-slate-600 mb-1.5">Assigned To</label>
+                                        <div className="relative">
+                                            <select
+                                                className="w-full px-3 py-1.5 rounded-lg bg-white border border-slate-200 focus:border-indigo-500 outline-none text-xs text-slate-700 shadow-sm appearance-none"
+                                                value={formData.assigned_to || ''}
+                                                onChange={(e) => setFormData(prev => ({ ...prev, assigned_to: e.target.value }))}
+                                            >
+                                                <option value="">Unassigned</option>
+                                                {salesUsers.map(u => (
+                                                    <option key={u.id} value={u.id}>{u.name}</option>
+                                                ))}
+                                            </select>
+                                            <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-slate-400">
+                                                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 
@@ -1415,7 +1561,31 @@ const SalesModule = () => {
 
                             {/* Base Contact Info */}
                             <div className="md:col-span-2 bg-slate-50 p-4 rounded-xl border border-slate-200 text-left">
-                                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Contact Info</h3>
+                                <div className="flex justify-between items-center mb-3">
+                                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Contact Info</h3>
+                                    <div className="flex gap-2">
+                                        {selectedStudentProfile.mobile && (
+                                            <a href={`tel:${selectedStudentProfile.mobile}`} title="Call" className="p-1.5 bg-white border border-slate-200 rounded-md text-slate-500 hover:text-indigo-600 hover:border-indigo-200 transition-colors shadow-sm">
+                                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
+                                            </a>
+                                        )}
+                                        {selectedStudentProfile.mobile && (
+                                            <a href={`sms:${selectedStudentProfile.mobile}`} title="SMS" className="p-1.5 bg-white border border-slate-200 rounded-md text-slate-500 hover:text-indigo-600 hover:border-indigo-200 transition-colors shadow-sm">
+                                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+                                            </a>
+                                        )}
+                                        {selectedStudentProfile.mobile && (
+                                            <a href={`https://wa.me/${selectedStudentProfile.mobile.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" title="WhatsApp" className="p-1.5 bg-white border border-slate-200 rounded-md text-slate-500 hover:text-green-500 hover:border-green-200 transition-colors shadow-sm">
+                                                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" /></svg>
+                                            </a>
+                                        )}
+                                        {selectedStudentProfile.email && (
+                                            <a href={`mailto:${selectedStudentProfile.email}`} title="Email" className="p-1.5 bg-white border border-slate-200 rounded-md text-slate-500 hover:text-indigo-600 hover:border-indigo-200 transition-colors shadow-sm">
+                                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                                            </a>
+                                        )}
+                                    </div>
+                                </div>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                                     <div>
                                         <p className="text-[10px] text-slate-500 mb-0.5">Mobile</p>
@@ -1458,6 +1628,84 @@ const SalesModule = () => {
                                         </div>
                                     </div>
                                 )}
+                            </div>
+
+                            {/* Activity Log / Interactions */}
+                            <div className="md:col-span-2 text-left bg-slate-50 border border-slate-200 rounded-xl p-4 mt-2">
+                                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Activity Timeline</h3>
+                                
+                                {/* Log New Activity Form */}
+                                <div className="mb-4 bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
+                                    <div className="flex gap-2 mb-2">
+                                        <select 
+                                            value={interactionType} 
+                                            onChange={(e) => setInteractionType(e.target.value)}
+                                            className="text-xs border border-slate-200 rounded-md p-1.5 bg-slate-50 outline-none text-slate-700 font-medium"
+                                        >
+                                            <option value="NOTE">Log Note</option>
+                                            <option value="CALL">Logged Call</option>
+                                            <option value="WHATSAPP">WhatsApp Sent</option>
+                                            <option value="EMAIL">Email Sent</option>
+                                            <option value="MEETING">Meeting Had</option>
+                                        </select>
+                                    </div>
+                                    <textarea 
+                                        value={interactionNotes}
+                                        onChange={(e) => setInteractionNotes(e.target.value)}
+                                        placeholder={`What happened during this ${interactionType.toLowerCase()}?`}
+                                        className="w-full text-xs p-2 border border-slate-200 rounded-md outline-none focus:border-indigo-400 bg-slate-50 resize-none h-16 mb-2"
+                                    />
+                                    <div className="flex justify-end">
+                                        <button 
+                                            onClick={handleLogInteraction}
+                                            disabled={!interactionNotes.trim()}
+                                            className="bg-indigo-600 text-white text-[10px] font-bold px-3 py-1.5 rounded disabled:opacity-50 hover:bg-indigo-700 transition-colors"
+                                        >
+                                            Save Activity
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Timeline History */}
+                                <div className="space-y-3">
+                                    {loadingInteractions ? (
+                                        <p className="text-slate-400 text-xs italic">Loading history...</p>
+                                    ) : interactions.length > 0 ? (
+                                        interactions.map((interaction) => (
+                                            <div key={interaction.id} className="flex gap-3 bg-white p-3 rounded-lg border border-slate-100 shadow-sm">
+                                                <div className="mt-0.5">
+                                                    {interaction.interaction_type === 'CALL' ? <span className="text-blue-500 bg-blue-50 p-1.5 rounded-full block"><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg></span> :
+                                                     interaction.interaction_type === 'WHATSAPP' ? <span className="text-green-500 bg-green-50 p-1.5 rounded-full block"><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg></span> :
+                                                     interaction.interaction_type === 'EMAIL' ? <span className="text-slate-600 bg-slate-100 p-1.5 rounded-full block"><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg></span> :
+                                                     <span className="text-slate-500 bg-slate-100 p-1.5 rounded-full block"><FileText size={14} /></span>
+                                                    }
+                                                </div>
+                                                <div className="flex-1">
+                                                    <div className="flex justify-between items-start mb-0.5">
+                                                        <p className="text-xs font-bold text-slate-800">{interaction.interaction_type}</p>
+                                                        <p className="text-[10px] text-slate-400 font-medium">
+                                                            {new Date(interaction.date).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                                                        </p>
+                                                    </div>
+                                                    <p className="text-xs text-slate-600 whitespace-pre-wrap leading-relaxed">{interaction.notes}</p>
+                                                    {interaction.audio_recording && (
+                                                        <div className="mt-2">
+                                                            <audio controls className="h-8 w-full max-w-xs">
+                                                                <source src={interaction.audio_recording.startsWith('http') ? interaction.audio_recording : `${api.defaults.baseURL.split('/api')[0]}${interaction.audio_recording}`} type="audio/mp4" />
+                                                                Your browser does not support the audio element.
+                                                            </audio>
+                                                        </div>
+                                                    )}
+                                                    {interaction.author_name && (
+                                                        <p className="text-[9px] text-slate-400 mt-1 italic">Logged by {interaction.author_name}</p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <p className="text-slate-400 text-xs italic text-center py-4">No activities logged yet.</p>
+                                    )}
+                                </div>
                             </div>
 
                             {/* Documents */}
@@ -1552,7 +1800,7 @@ const SalesModule = () => {
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
                                 <div className="md:col-span-2 bg-slate-50 p-4 rounded-xl border border-slate-200 text-left">
                                     <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Program Selection</h4>
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-left">
+                                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-left">
                                         <div>
                                             <label className="text-[10px] font-semibold text-slate-600 mb-1 block">Program <span className="text-red-500">*</span></label>
                                             <div className="relative">
@@ -1596,6 +1844,22 @@ const SalesModule = () => {
                                                 >
                                                     <option value="">Select Course</option>
                                                     {editCourses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                                </select>
+                                                <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-slate-400">
+                                                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="text-[10px] font-semibold text-slate-600 mb-1 block">Assigned To</label>
+                                            <div className="relative">
+                                                <select
+                                                    className="w-full px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs outline-none focus:border-indigo-500 shadow-sm appearance-none"
+                                                    value={editFormData.assigned_to || ''}
+                                                    onChange={(e) => setEditFormData(prev => ({ ...prev, assigned_to: e.target.value }))}
+                                                >
+                                                    <option value="">Unassigned</option>
+                                                    {salesUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                                                 </select>
                                                 <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-slate-400">
                                                     <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>

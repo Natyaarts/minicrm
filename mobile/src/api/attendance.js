@@ -11,12 +11,14 @@ export const getAttendanceStatus = async () => {
   }
 };
 
-export const clockIn = async (latitude, longitude) => {
+export const clockIn = async (latitude, longitude, photo) => {
   try {
-    const response = await client.post('/hrms/attendance/clock_in/', {
-      latitude,
-      longitude,
-    });
+    const payload = { latitude, longitude };
+    if (photo) {
+      payload.photo = photo; // Base64 string from expo-image-picker
+    }
+    
+    const response = await client.post('/hrms/attendance/clock_in/', payload);
     return { success: true, data: response.data };
   } catch (error) {
     const errorMsg = error.response?.data?.error || 'Clock in failed';

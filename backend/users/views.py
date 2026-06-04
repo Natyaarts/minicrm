@@ -97,3 +97,15 @@ class RolePermissionViewSet(viewsets.ModelViewSet):
         if role:
             return RolePermission.objects.filter(role=role)
         return RolePermission.objects.all()
+
+class ExpoTokenView(views.APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        token = request.data.get('token')
+        if token:
+            request.user.expo_push_token = token
+            request.user.save()
+            return Response({'status': 'token saved successfully'})
+        return Response({'error': 'Token not provided'}, status=status.HTTP_400_BAD_REQUEST)
+

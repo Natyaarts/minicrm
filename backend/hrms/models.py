@@ -70,6 +70,7 @@ class EmployeeProfile(models.Model):
     # Personal Information
     date_of_birth = models.DateField(null=True, blank=True)
     gender = models.CharField(max_length=10, blank=True)
+    profile_photo = models.ImageField(upload_to='profiles/', null=True, blank=True)
     
     # Job Information
     date_of_joining = models.DateField()
@@ -134,6 +135,8 @@ class Attendance(models.Model):
     
     # Verification Data
     clock_in_photo = models.ImageField(upload_to='attendance_photos/', null=True, blank=True)
+    is_face_verified = models.BooleanField(default=False)
+    verification_confidence = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PRESENT')
     notes = models.TextField(blank=True, null=True)

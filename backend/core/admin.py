@@ -40,3 +40,25 @@ class DocumentAdmin(admin.ModelAdmin):
     list_display = ('student', 'document_type', 'uploaded_at')
     list_filter = ('document_type',)
     search_fields = ('student__first_name', 'student__last_name')
+
+from .models import Exam, Question, QuestionOption, StudentSubmission
+
+@admin.register(Exam)
+class ExamAdmin(admin.ModelAdmin):
+    list_display = ('title', 'batch', 'exam_type', 'date', 'is_published')
+    list_filter = ('exam_type', 'is_published', 'batch')
+
+@admin.register(Question)
+class QuestionAdmin(admin.ModelAdmin):
+    list_display = ('text', 'exam', 'question_type', 'marks')
+    list_filter = ('exam', 'question_type')
+
+@admin.register(QuestionOption)
+class QuestionOptionAdmin(admin.ModelAdmin):
+    list_display = ('option_text', 'question', 'is_correct')
+    list_filter = ('is_correct',)
+
+@admin.register(StudentSubmission)
+class StudentSubmissionAdmin(admin.ModelAdmin):
+    list_display = ('student', 'exam', 'score', 'is_submitted')
+    list_filter = ('exam', 'is_submitted')

@@ -4,6 +4,7 @@ import {
     PieChart as PieIcon, FileText, Download, AlertCircle, Briefcase
 } from 'lucide-react';
 import api from '../api/axios';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, Legend } from 'recharts';
 
 const AnalyticsModule = () => {
     const [loading, setLoading] = useState(true);
@@ -153,76 +154,137 @@ const AnalyticsModule = () => {
 
             {/* Overview Tab */}
             {activeTab === 'overview' && (
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div className="bg-white p-6 rounded-lg border border-slate-200 shadow-sm">
-                        <h3 className="font-bold text-slate-800 mb-6 flex items-center gap-2"><PieIcon size={18} className="text-slate-400"/> Revenue</h3>
-                        <div className="space-y-6">
-                            <div>
-                                <div className="flex justify-between text-sm mb-2">
-                                    <span className="text-slate-600 font-medium">Collected</span>
-                                    <span className="font-bold text-green-600">₹{data.revenue_metrics.collected.toLocaleString()}</span>
-                                </div>
-                                <div className="w-full bg-slate-100 h-2 rounded overflow-hidden">
-                                    <div className="bg-green-500 h-full rounded" style={{ width: `${(data.revenue_metrics.collected / data.revenue_metrics.potential) * 100}%` }} />
-                                </div>
+                <div className="space-y-6">
+                    {/* Top Row: Revenue and Lead Funnel */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {/* Revenue Over Time */}
+                        <div className="bg-white p-6 rounded-lg border border-slate-200 shadow-sm flex flex-col">
+                            <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                                <DollarSign size={18} className="text-slate-400" /> Revenue Timeline
+                            </h3>
+                            <div className="flex-1 min-h-[250px]">
+                                {data.revenue_timeline && data.revenue_timeline.length > 0 ? (
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <AreaChart data={data.revenue_timeline}>
+                                            <defs>
+                                                <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.3}/>
+                                                    <stop offset="95%" stopColor="#4f46e5" stopOpacity={0}/>
+                                                </linearGradient>
+                                            </defs>
+                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#64748b'}} />
+                                            <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#64748b'}} tickFormatter={(value) => `₹${value}`} />
+                                            <RechartsTooltip formatter={(value) => `₹${value.toLocaleString()}`} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                                            <Area type="monotone" dataKey="revenue" stroke="#4f46e5" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" />
+                                        </AreaChart>
+                                    </ResponsiveContainer>
+                                ) : (
+                                    <div className="h-full flex items-center justify-center text-slate-400 text-sm italic">No revenue data available.</div>
+                                )}
                             </div>
-                            <div>
-                                <div className="flex justify-between text-sm mb-2">
-                                    <span className="text-slate-600 font-medium">Outstanding Dues</span>
-                                    <span className="font-bold text-red-600">₹{data.revenue_metrics.due.toLocaleString()}</span>
-                                </div>
-                                <div className="w-full bg-slate-100 h-2 rounded overflow-hidden">
-                                    <div className="bg-red-500 h-full rounded" style={{ width: `${(data.revenue_metrics.due / data.revenue_metrics.potential) * 100}%` }} />
-                                </div>
+                        </div>
+
+                        {/* Lead Funnel */}
+                        <div className="bg-white p-6 rounded-lg border border-slate-200 shadow-sm flex flex-col">
+                            <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                                <Users size={18} className="text-slate-400" /> Lead Conversion Funnel
+                            </h3>
+                            <div className="flex-1 min-h-[250px]">
+                                {data.lead_funnel && data.lead_funnel.length > 0 ? (
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <BarChart data={data.lead_funnel} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                                            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
+                                            <XAxis type="number" hide />
+                                            <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#64748b', fontWeight: 600}} width={120} />
+                                            <RechartsTooltip cursor={{fill: '#f8fafc'}} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                                            <Bar dataKey="value" fill="#8b5cf6" radius={[0, 4, 4, 0]} barSize={24}>
+                                                {data.lead_funnel.map((entry, index) => (
+                                                    <Cell key={`cell-${index}`} fill={['#94a3b8', '#3b82f6', '#f59e0b', '#10b981', '#ef4444'][index % 5]} />
+                                                ))}
+                                            </Bar>
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                ) : (
+                                    <div className="h-full flex items-center justify-center text-slate-400 text-sm italic">No lead data available.</div>
+                                )}
                             </div>
-                            <div className="pt-6 border-t border-slate-100">
-                                <p className="text-sm text-slate-500 mb-1">Total Potential Revenue</p>
-                                <p className="text-3xl font-bold text-slate-900">₹{data.revenue_metrics.potential.toLocaleString()}</p>
-                            </div>
-                            <button 
-                                onClick={fetchDueStudents} 
-                                className="w-full py-2.5 bg-slate-50 text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-100 text-sm font-bold flex items-center justify-center gap-2 transition-colors"
-                            >
-                                <AlertCircle size={16} /> View Delinquent Students
-                            </button>
                         </div>
                     </div>
 
-                    <div className="lg:col-span-2 bg-white p-6 rounded-lg border border-slate-200 shadow-sm flex flex-col">
-                        <h3 className="font-bold text-slate-800 mb-4">Batch Utilization</h3>
-                        <div className="overflow-x-auto flex-1">
-                            <table className="w-full text-sm text-left">
-                                <thead className="text-slate-500 border-b border-slate-200 bg-slate-50">
-                                    <tr>
-                                        <th className="py-3 px-4 font-semibold">Batch Name</th>
-                                        <th className="py-3 px-4 font-semibold">Course</th>
-                                        <th className="py-3 px-4 font-semibold">Students</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {data.batch_details.slice((batchPage - 1) * batchesPerPage, batchPage * batchesPerPage).map((b, i) => (
-                                        <tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50">
-                                            <td className="py-3 px-4 font-medium text-slate-800">{b.name}</td>
-                                            <td className="py-3 px-4 text-slate-500">{b.course__name || 'N/A'}</td>
-                                            <td className="py-3 px-4">
-                                                <span className="inline-block px-2.5 py-1 bg-slate-100 text-slate-700 rounded text-xs font-medium">
-                                                    {b.student_count}
-                                                </span>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                        {data.batch_details.length > batchesPerPage && (
-                            <div className="flex justify-between items-center mt-4 pt-4 border-t border-slate-100 text-sm text-slate-500">
-                                <span>Showing {(batchPage - 1) * batchesPerPage + 1} - {Math.min(batchPage * batchesPerPage, data.batch_details.length)} of {data.batch_details.length}</span>
-                                <div className="flex gap-2">
-                                    <button onClick={() => setBatchPage(p => Math.max(1, p - 1))} disabled={batchPage === 1} className="px-3 py-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50 font-medium transition-colors">Prev</button>
-                                    <button onClick={() => setBatchPage(p => Math.min(Math.ceil(data.batch_details.length / batchesPerPage), p + 1))} disabled={batchPage === Math.ceil(data.batch_details.length / batchesPerPage)} className="px-3 py-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50 font-medium transition-colors">Next</button>
-                                </div>
+                    {/* Bottom Row: Program Distribution & Delinquent Summary */}
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        {/* Program Distribution */}
+                        <div className="lg:col-span-2 bg-white p-6 rounded-lg border border-slate-200 shadow-sm flex flex-col">
+                            <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                                <PieIcon size={18} className="text-slate-400" /> Program Enrollment Distribution
+                            </h3>
+                            <div className="flex-1 min-h-[300px] flex items-center justify-center">
+                                {data.program_distribution && data.program_distribution.length > 0 ? (
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <PieChart>
+                                            <Pie
+                                                data={data.program_distribution}
+                                                cx="50%"
+                                                cy="50%"
+                                                innerRadius={60}
+                                                outerRadius={100}
+                                                paddingAngle={5}
+                                                dataKey="value"
+                                                nameKey="name"
+                                                label={({name, percent}) => `${name} ${(percent * 100).toFixed(0)}%`}
+                                                labelLine={{ stroke: '#cbd5e1', strokeWidth: 1 }}
+                                            >
+                                                {data.program_distribution.map((entry, index) => (
+                                                    <Cell key={`cell-${index}`} fill={['#6366f1', '#ec4899', '#14b8a6', '#f59e0b', '#8b5cf6'][index % 5]} />
+                                                ))}
+                                            </Pie>
+                                            <RechartsTooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                                            <Legend verticalAlign="bottom" height={36} iconType="circle" />
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                ) : (
+                                    <div className="h-full flex items-center justify-center text-slate-400 text-sm italic">No enrollment data available.</div>
+                                )}
                             </div>
-                        )}
+                        </div>
+
+                        {/* Revenue Summary Card */}
+                        <div className="bg-white p-6 rounded-lg border border-slate-200 shadow-sm">
+                            <h3 className="font-bold text-slate-800 mb-6 flex items-center gap-2">
+                                <AlertCircle size={18} className="text-slate-400"/> Revenue Health
+                            </h3>
+                            <div className="space-y-6">
+                                <div>
+                                    <div className="flex justify-between text-sm mb-2">
+                                        <span className="text-slate-600 font-medium">Collected</span>
+                                        <span className="font-bold text-green-600">₹{data.revenue_metrics.collected.toLocaleString()}</span>
+                                    </div>
+                                    <div className="w-full bg-slate-100 h-2 rounded overflow-hidden">
+                                        <div className="bg-green-500 h-full rounded transition-all duration-1000" style={{ width: `${(data.revenue_metrics.collected / (data.revenue_metrics.potential || 1)) * 100}%` }} />
+                                    </div>
+                                </div>
+                                <div>
+                                    <div className="flex justify-between text-sm mb-2">
+                                        <span className="text-slate-600 font-medium">Outstanding Dues</span>
+                                        <span className="font-bold text-red-600">₹{data.revenue_metrics.due.toLocaleString()}</span>
+                                    </div>
+                                    <div className="w-full bg-slate-100 h-2 rounded overflow-hidden">
+                                        <div className="bg-red-500 h-full rounded transition-all duration-1000" style={{ width: `${(data.revenue_metrics.due / (data.revenue_metrics.potential || 1)) * 100}%` }} />
+                                    </div>
+                                </div>
+                                <div className="pt-6 border-t border-slate-100">
+                                    <p className="text-sm text-slate-500 mb-1">Total Potential Revenue</p>
+                                    <p className="text-3xl font-bold text-slate-900">₹{data.revenue_metrics.potential.toLocaleString()}</p>
+                                </div>
+                                <button 
+                                    onClick={fetchDueStudents} 
+                                    className="w-full py-2.5 bg-slate-50 text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-100 text-sm font-bold flex items-center justify-center gap-2 transition-colors"
+                                >
+                                    <AlertCircle size={16} /> View Delinquent Students
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}

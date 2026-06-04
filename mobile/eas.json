@@ -1,10 +1,30 @@
 {
+  "cli": {
+    "version": ">= 16.0.0"
+  },
   "build": {
     "preview": {
       "android": {
         "buildType": "apk"
       }
     },
-    "production": {}
+    "beta": {
+      "android": {
+        "buildType": "app-bundle",
+        "gradleCommand": ":app:bundleRelease"
+      }
+    },
+    "production": {
+      "android": {
+        "buildType": "app-bundle"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "android": {
+        "track": "internal"
+      }
+    }
   }
 }

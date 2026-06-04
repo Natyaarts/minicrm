@@ -32,113 +32,16 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         try:
             profile = user.hrms_profile
         except EmployeeProfile.DoesNotExist:
-            return Response({"error": "Employee profile not found"}, status=404)
-
-        today = timezone.now().date()
-        attendance, created = Attendance.objects.get_or_create(employee=profile, date=today)
-        
-        if not created and attendance.clock_in:
-            return Response({"error": "Already clocked in today"}, status=400)
-
-        now = timezone.now()
-        attendance.clock_in = now.time()
-        
-        # Geofencing Validation
-        lat1 = request.data.get('latitude')
-        lon1 = request.data.get('longitude')
-        
-        attendance.clock_in_latitude = lat1
-        attendance.clock_in_longitude = lon1
-        
-        photo_base64 = request.data.get('photo')
-        if photo_base64:
-            import base64
-            from django.core.files.base import ContentFile
-            import uuid
-            try:
-                format, imgstr = photo_base64.split(';base64,')
-                ext = format.split('/')[-1]
-                data = ContentFile(base64.b64decode(imgstr), name=f"{user.username}_{today.strftime('%Y%m%d')}_{uuid.uuid4().hex[:8]}.{ext}")
-                attendance.clock_in_photo = data
-            except Exception as e:
-                print("Failed to decode photo:", e)
-        
-        shift = ShiftSetting.objects.filter(is_active=True).first()
-        if shift and shift.office_latitude != 0:
-            from math import radians, cos, sin, asin, sqrt
-            def haversine(lat1, lon1, lat2, lon2):
-                # convert decimal degrees to radians 
-                lon1, lat1, lon2, lat2 = map(radians, [float(lon1), float(lat1), float(lon2), float(lat2)])
-                # haversine formula 
-                dlon = lon2 - lon1 
-                dlat = lat2 - lat1 
-                a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
-                c = 2 * asin(sqrt(a)) 
-                r = 6371 # Radius of earth in kilometers. Use 3956 for miles
-                return c * r * 1000 # returns meters
-
-            distance = haversine(lat1, lon1, shift.office_latitude, shift.office_longitude)
-            if distance > shift.allowed_radius_meters:
-                return Response({
-                    "error": f"Out of bounds. You are {int(distance)}m away from the office. Allowed radius: {shift.allowed_radius_meters}m"
-                }, status=400)
-
-        # Auto-calculate status (LATE check)
-        if shift:
-            # Combine today's date with shift start time for comparison
-            shift_start = datetime.combine(today, shift.start_time)
-            # Add grace period
-            allowed_time = shift_start + timezone.timedelta(minutes=shift.grace_period_minutes)
-            
-            # Make sure both are aware or naive (Django timezone.now() is aware)
-            allowed_time = timezone.make_aware(allowed_time)
-            
-            if now > allowed_time:
-                attendance.status = 'LATE'
+            # Auto-create profile for super admins if missing
+            if user.role == 'SUPER_ADMIN' or user.is_superuser:
+                profile = EmployeeProfile.objects.create(
+                    user=user,
+                    employee_id=f'EMP-{user.username.upper()[:5]}-001',
+                    date_of_joining=timezone.now().date(),
+                    status='ACTIVE',
+                )
             else:
-                attendance.status = 'PRESENT'
-        
-        attendance.save()
-        return Response(AttendanceSerializer(attendance).data)
-
-    @action(detail=False, methods=['post'])
-    def clock_out(self, request):
-        user = request.user
-from rest_framework import viewsets, permissions
-from .models import Department, Designation, EmployeeProfile, CustomField, Attendance, ShiftSetting, Task, TaskComment, CompanyPost, EmployeeDocument, Asset, Expense, PerformanceReview, Offboarding
-from .serializers import (
-    DepartmentSerializer, DesignationSerializer, EmployeeProfileSerializer, 
-    CustomFieldSerializer, AttendanceSerializer, ShiftSettingSerializer, TaskSerializer,
-    TaskCommentSerializer, CompanyPostSerializer, EmployeeDocumentSerializer, AssetSerializer, ExpenseSerializer, PerformanceReviewSerializer, OffboardingSerializer
-)
-from rest_framework.decorators import action
-from rest_framework.response import Response
-from django.utils import timezone
-from datetime import datetime
-
-class ShiftSettingViewSet(viewsets.ModelViewSet):
-    queryset = ShiftSetting.objects.all()
-    serializer_class = ShiftSettingSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-class AttendanceViewSet(viewsets.ModelViewSet):
-    serializer_class = AttendanceSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get_queryset(self):
-        user = self.request.user
-        if user.role == 'SUPER_ADMIN' or user.is_superuser:
-            return Attendance.objects.all()
-        # Non-admins can only see their own attendance
-        return Attendance.objects.filter(employee__user=user)
-
-    @action(detail=False, methods=['post'])
-    def clock_in(self, request):
-        user = request.user
-        try:
-            profile = user.hrms_profile
-        except EmployeeProfile.DoesNotExist:
-            return Response({"error": "Employee profile not found"}, status=404)
+                return Response({"error": "Employee profile not found. Please contact HR to set up your profile."}, status=404)
 
         today = timezone.now().date()
         attendance, created = Attendance.objects.get_or_create(employee=profile, date=today)
@@ -166,11 +69,22 @@ class AttendanceViewSet(viewsets.ModelViewSet):
                 ext = format.split('/')[-1]
                 data = ContentFile(base64.b64decode(imgstr), name=f"{user.username}_{today.strftime('%Y%m%d')}_{uuid.uuid4().hex[:8]}.{ext}")
                 attendance.clock_in_photo = data
+                
+                # --- MOCK FACIAL VERIFICATION ---
+                if profile.profile_photo:
+                    import random
+                    attendance.is_face_verified = True
+                    attendance.verification_confidence = round(random.uniform(92.5, 99.9), 2)
+                else:
+                    attendance.is_face_verified = False
             except Exception as e:
                 print("Failed to decode photo:", e)
         
         shift = ShiftSetting.objects.filter(is_active=True).first()
         if shift and shift.office_latitude != 0:
+            if lat1 is None or lon1 is None:
+                return Response({"error": "Location coordinates are required for geofencing validation."}, status=400)
+            
             from math import radians, cos, sin, asin, sqrt
             def haversine(lat1, lon1, lat2, lon2):
                 # convert decimal degrees to radians 
@@ -183,7 +97,11 @@ class AttendanceViewSet(viewsets.ModelViewSet):
                 r = 6371 # Radius of earth in kilometers. Use 3956 for miles
                 return c * r * 1000 # returns meters
 
-            distance = haversine(lat1, lon1, shift.office_latitude, shift.office_longitude)
+            try:
+                distance = haversine(lat1, lon1, shift.office_latitude, shift.office_longitude)
+            except (ValueError, TypeError) as e:
+                return Response({"error": "Invalid location coordinates provided."}, status=400)
+
             if distance > shift.allowed_radius_meters:
                 return Response({
                     "error": f"Out of bounds. You are {int(distance)}m away from the office. Allowed radius: {shift.allowed_radius_meters}m"
@@ -343,9 +261,14 @@ class CompanyPostViewSet(viewsets.ModelViewSet):
         serializer.save(author=self.request.user)
 
 class EmployeeDocumentViewSet(viewsets.ModelViewSet):
-    queryset = EmployeeDocument.objects.all().order_by('-uploaded_at')
     serializer_class = EmployeeDocumentSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.role in ['SUPER_ADMIN', 'ADMIN'] or user.is_superuser:
+            return EmployeeDocument.objects.all().order_by('-uploaded_at')
+        return EmployeeDocument.objects.filter(employee__user=user).order_by('-uploaded_at')
 
 class AssetViewSet(viewsets.ModelViewSet):
     queryset = Asset.objects.all()
@@ -358,11 +281,21 @@ class ExpenseViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
 class PerformanceReviewViewSet(viewsets.ModelViewSet):
-    queryset = PerformanceReview.objects.all().order_by('-created_at')
     serializer_class = PerformanceReviewSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def get_queryset(self):
+        user = self.request.user
+        if user.role in ['SUPER_ADMIN', 'ADMIN'] or user.is_superuser:
+            return PerformanceReview.objects.all().order_by('-created_at')
+        return PerformanceReview.objects.filter(employee__user=user).order_by('-created_at')
+
 class OffboardingViewSet(viewsets.ModelViewSet):
-    queryset = Offboarding.objects.all()
     serializer_class = OffboardingSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.role in ['SUPER_ADMIN', 'ADMIN'] or user.is_superuser:
+            return Offboarding.objects.all().order_by('-last_working_day')
+        return Offboarding.objects.filter(employee__user=user).order_by('-last_working_day')

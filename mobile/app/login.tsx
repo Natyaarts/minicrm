@@ -5,23 +5,30 @@ import {
   Text, 
   TextInput, 
   TouchableOpacity, 
-  Image, 
   KeyboardAvoidingView, 
   Platform,
   ActivityIndicator,
-  Alert
+  Alert,
+  StatusBar,
+  ScrollView,
+  Dimensions,
+  Image
 } from 'react-native';
 import { router } from 'expo-router';
 import { loginUser } from '../src/api/auth';
+import { FontAwesome5 } from '@expo/vector-icons';
+
+const { height, width } = Dimensions.get('window');
 
 export default function LoginScreen() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleLogin = async () => {
     if (!username || !password) {
-      Alert.alert('Error', 'Please enter both username and password');
+      Alert.alert('Required Fields', 'Please enter both username and password');
       return;
     }
 
@@ -30,10 +37,9 @@ export default function LoginScreen() {
     setLoading(false);
 
     if (result.success) {
-      // Redirect to the main tabs dashboard
       router.replace('/(tabs)');
     } else {
-      Alert.alert('Login Failed', result.error);
+      Alert.alert('Authentication Failed', result.error);
     }
   };
 
@@ -42,58 +48,88 @@ export default function LoginScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}
     >
-      <View style={styles.brandSection}>
-        <View style={styles.logoContainer}>
-          <Image 
-            source={{ uri: 'https://natyaarts.org/logo.png' }} 
-            style={styles.logo}
-            resizeMode="contain"
-          />
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFDF5" />
+      <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
+        <View style={styles.mainContent}>
+          {/* Logo & Branding */}
+          <View style={styles.brandContainer}>
+            <Image 
+              source={require('../assets/images/logo.png')} 
+              style={styles.logoImage}
+              resizeMode="contain"
+            />
+            <Text style={styles.brandTitle}>Natya Arts</Text>
+            <Text style={styles.brandSubtitle}>ENTERPRISE PORTAL</Text>
+          </View>
+
+          {/* Login Card */}
+          <View style={styles.card}>
+            <Text style={styles.welcomeText}>Welcome Back</Text>
+            <Text style={styles.subtext}>Access your workspace credentials</Text>
+
+            {/* Username Input */}
+            <View style={styles.inputLabelContainer}>
+              <Text style={styles.inputLabel}>USERNAME</Text>
+            </View>
+            <View style={styles.inputWrapper}>
+              <FontAwesome5 name="user" size={16} color="#A1A1AA" style={styles.inputIcon} />
+              <TextInput 
+                style={styles.input}
+                placeholder="Enter your username"
+                placeholderTextColor="#A1A1AA"
+                value={username}
+                onChangeText={setUsername}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+
+            {/* Password Input */}
+            <View style={styles.inputLabelContainer}>
+              <Text style={styles.inputLabel}>PASSWORD</Text>
+            </View>
+            <View style={styles.inputWrapper}>
+              <FontAwesome5 name="lock" size={16} color="#A1A1AA" style={styles.inputIcon} />
+              <TextInput 
+                style={styles.input}
+                placeholder="Enter your password"
+                placeholderTextColor="#A1A1AA"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={!showPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <TouchableOpacity 
+                style={styles.eyeIcon} 
+                onPress={() => setShowPassword(!showPassword)}
+              >
+                <FontAwesome5 name={showPassword ? "eye" : "eye-slash"} size={14} color="#A1A1AA" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Login Button */}
+            <TouchableOpacity 
+              style={styles.loginButton}
+              onPress={handleLogin}
+              disabled={loading}
+              activeOpacity={0.8}
+            >
+              {loading ? (
+                <ActivityIndicator color="#0F172A" />
+              ) : (
+                <>
+                  <Text style={styles.loginButtonText}>Sign In Securely</Text>
+                  <FontAwesome5 name="arrow-right" size={14} color="#0F172A" style={styles.buttonArrow} />
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          {/* Footer branding */}
+          <Text style={styles.footerText}>© 2026 NATYA ARTS ACADEMY • PROD BUILD v1.2</Text>
         </View>
-        <Text style={styles.brandTitle}>Natya Arts</Text>
-        <Text style={styles.brandSubtitle}>Premium ERP System</Text>
-      </View>
-
-      <View style={styles.formSection}>
-        <Text style={styles.welcomeText}>Welcome Back</Text>
-        <Text style={styles.signInText}>Sign in to your account</Text>
-
-        <View style={styles.inputContainer}>
-          <Text style={styles.label}>USERNAME</Text>
-          <TextInput 
-            style={styles.input}
-            placeholder="Enter your username"
-            value={username}
-            onChangeText={setUsername}
-            autoCapitalize="none"
-          />
-        </View>
-
-        <View style={styles.inputContainer}>
-          <Text style={styles.label}>PASSWORD</Text>
-          <TextInput 
-            style={styles.input}
-            placeholder="••••••••"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-          />
-        </View>
-
-        <TouchableOpacity 
-          style={styles.button}
-          onPress={handleLogin}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.buttonText}>Log In to System</Text>
-          )}
-        </TouchableOpacity>
-
-        <Text style={styles.footerText}>© 2026 Natya Arts Academy</Text>
-      </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
@@ -101,108 +137,127 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFDF5', // Soft Warm Ivory (Yellowish theme backdrop)
   },
-  brandSection: {
-    flex: 1,
-    backgroundColor: '#FFD700',
+  scrollContainer: {
+    flexGrow: 1,
     justifyContent: 'center',
-    alignItems: 'center',
-    borderBottomLeftRadius: 50,
-    borderBottomRightRadius: 50,
+    paddingVertical: 40,
+    backgroundColor: '#FFFDF5',
   },
-  logoContainer: {
-    width: 120,
-    height: 120,
-    backgroundColor: '#fff',
-    borderRadius: 30,
-    justifyContent: 'center',
+  mainContent: {
+    paddingHorizontal: 24,
     alignItems: 'center',
-    padding: 10,
-    elevation: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-  },
-  logo: {
     width: '100%',
-    height: '100%',
+  },
+  brandContainer: {
+    alignItems: 'center',
+    marginBottom: 28,
+  },
+  logoImage: {
+    width: 130,
+    height: 130,
+    marginBottom: 12,
   },
   brandTitle: {
     fontSize: 28,
-    fontWeight: '900',
-    color: '#333',
-    marginTop: 20,
+    fontWeight: 'bold',
+    color: '#1C1917', // Stone 900
+    letterSpacing: 0.5,
   },
   brandSubtitle: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#666',
-    letterSpacing: 2,
-    textTransform: 'uppercase',
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#78716C', // Stone 500
+    letterSpacing: 3,
+    marginTop: 4,
   },
-  formSection: {
-    flex: 1.5,
-    padding: 30,
-    paddingTop: 40,
+  card: {
+    width: '100%',
+    backgroundColor: '#FFFBEB', // Amber 50 (Slightly yellowish background)
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: '#FEF3C7', // Amber 100
+    padding: 24,
+    shadowColor: '#D97706', // Yellowish/Amber shadow glow
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    elevation: 3,
   },
   welcomeText: {
-    fontSize: 32,
-    fontWeight: '900',
-    color: '#1a1a1a',
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1C1917',
+    marginBottom: 4,
   },
-  signInText: {
-    fontSize: 16,
-    color: '#666',
-    fontWeight: '600',
-    marginBottom: 30,
+  subtext: {
+    fontSize: 13,
+    color: '#78716C',
+    fontWeight: 'normal',
+    marginBottom: 24,
   },
-  inputContainer: {
-    marginBottom: 20,
+  inputLabelContainer: {
+    marginBottom: 6,
   },
-  label: {
+  inputLabel: {
     fontSize: 10,
-    fontWeight: '900',
-    color: '#aaa',
+    fontWeight: 'bold',
+    color: '#78716C',
     letterSpacing: 1.5,
-    marginBottom: 8,
-    marginLeft: 5,
+    marginLeft: 4,
+  },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF', // Clean White input
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E4E4E7', // Zinc 200
+    paddingHorizontal: 16,
+    marginBottom: 16,
+    height: 52,
+  },
+  inputIcon: {
+    marginRight: 12,
   },
   input: {
-    backgroundColor: '#f8f9fa',
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-    borderRadius: 15,
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333',
-    borderWidth: 1,
-    borderColor: '#eee',
+    flex: 1,
+    color: '#1C1917',
+    fontSize: 14,
+    fontWeight: 'normal',
+    height: '100%',
   },
-  button: {
-    backgroundColor: '#1a1a1a',
-    paddingVertical: 18,
-    borderRadius: 15,
+  eyeIcon: {
+    padding: 8,
+  },
+  loginButton: {
+    flexDirection: 'row',
+    backgroundColor: '#FBBF24', // Amber/Yellow 400
+    borderRadius: 12,
+    height: 52,
+    justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 20,
-    elevation: 5,
-    shadowColor: '#000',
+    marginTop: 8,
+    shadowColor: '#FBBF24',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 5,
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 2,
   },
-  buttonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '900',
+  loginButtonText: {
+    color: '#0F172A', // Slate 900
+    fontSize: 15,
+    fontWeight: 'bold',
+  },
+  buttonArrow: {
+    marginLeft: 8,
   },
   footerText: {
-    textAlign: 'center',
-    color: '#ccc',
+    marginTop: 32,
+    color: '#A8A29E', // Stone 400
     fontSize: 10,
-    fontWeight: 'bold',
-    marginTop: 40,
-    letterSpacing: 1,
-  }
+    fontWeight: '600',
+    letterSpacing: 1.5,
+  },
 });

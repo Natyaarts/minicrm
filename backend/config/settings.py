@@ -63,6 +63,7 @@ INSTALLED_APPS = [
     'payroll',
     'leaves',
     'finance',
+    'crm',
 ]
 
 MIDDLEWARE = [

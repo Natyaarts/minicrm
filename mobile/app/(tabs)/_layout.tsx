@@ -1,11 +1,13 @@
 import React from 'react';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { Link, Tabs } from 'expo-router';
-import { Pressable } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import { useClientOnlyValue } from '@/components/useClientOnlyValue';
+import { usePushNotifications } from '../../src/hooks/usePushNotifications';
+import NotificationBell from '../../components/NotificationBell';
 
 // You can explore the built-in icon families and icons on the web at https://icons.expo.fyi/
 function TabBarIcon(props: {
@@ -17,6 +19,9 @@ function TabBarIcon(props: {
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
+  
+  // Register for push notifications when tabs load
+  usePushNotifications();
 
   return (
     <Tabs
@@ -32,18 +37,33 @@ export default function TabLayout() {
           title: 'Dashboard',
           tabBarIcon: ({ color }) => <TabBarIcon name="home" color={color} />,
           headerRight: () => (
-            <Link href="/modal" asChild>
-              <Pressable>
-                {({ pressed }) => (
-                  <FontAwesome
-                    name="user-circle"
-                    size={22}
-                    color={Colors[colorScheme ?? 'light'].text}
-                    style={{ marginRight: 15, opacity: pressed ? 0.5 : 1 }}
-                  />
-                )}
-              </Pressable>
-            </Link>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Link href="/dialpad?leadId=0" asChild>
+                <Pressable style={{ marginRight: 15 }}>
+                  {({ pressed }) => (
+                    <FontAwesome
+                      name="phone"
+                      size={20}
+                      color={Colors[colorScheme ?? 'light'].text}
+                      style={{ opacity: pressed ? 0.5 : 1 }}
+                    />
+                  )}
+                </Pressable>
+              </Link>
+              <NotificationBell color={Colors[colorScheme ?? 'light'].text} />
+              <Link href="/modal" asChild>
+                <Pressable>
+                  {({ pressed }) => (
+                    <FontAwesome
+                      name="user-circle"
+                      size={22}
+                      color={Colors[colorScheme ?? 'light'].text}
+                      style={{ marginRight: 15, opacity: pressed ? 0.5 : 1 }}
+                    />
+                  )}
+                </Pressable>
+              </Link>
+            </View>
           ),
         }}
       />

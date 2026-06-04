@@ -20,6 +20,9 @@ import AnalyticsModule from './pages/AnalyticsModule';
 import TasksModule from './pages/TasksModule';
 import FinanceModule from './pages/FinanceModule';
 import AssetModule from './pages/AssetModule';
+import EmployeeLifecycleModule from './pages/EmployeeLifecycleModule';
+import PerformanceReviewModule from './pages/PerformanceReviewModule';
+import CalendarModule from './pages/CalendarModule';
 import Login from './pages/Login';
 
 function App() {
@@ -43,7 +46,14 @@ function App() {
           <Route path="/hrms/leaves" element={<LeaveModule />} />
           <Route path="/hrms/tasks" element={<TasksModule />} />
           <Route path="/hrms/assets" element={<AssetModule />} />
-          <Route path="/sales" element={<SalesModule />} /> {/* Internal Sales View (with Sidebar) */}
+          <Route path="/hrms/performance" element={<PerformanceReviewModule />} />
+          <Route path="/hrms/lifecycle" element={<EmployeeLifecycleModule />} />
+          <Route path="/sales" element={<SalesModule />} /> {/* Fallback/Legacy Route */}
+          <Route path="/crm/dashboard" element={<SalesModule />} />
+          <Route path="/crm/pipeline" element={<SalesModule />} />
+          <Route path="/crm/leads" element={<SalesModule />} />
+          <Route path="/crm/tasks" element={<SalesModule />} />
+          <Route path="/crm/campaigns" element={<SalesModule />} />
           <Route path="/mentor" element={<MentorModule />} />
           <Route path="/student" element={<StudentPortal />} />
           <Route path="/academic" element={<AcademicModule />} />
@@ -51,8 +61,10 @@ function App() {
           <Route path="/teacher" element={<TeacherModule />} />
           <Route path="/courses" element={<CoursesModule />} />
           <Route path="/admin" element={<AdminModule />} />
+          <Route path="/crm/builder" element={<AdminModule />} />
           <Route path="/users" element={<UsersModule />} />
           <Route path="/analytics" element={<AnalyticsModule />} />
+          <Route path="/calendar" element={<CalendarModule />} />
           <Route path="/finance" element={<FinanceModule />} />
         </Route>
       </Routes>

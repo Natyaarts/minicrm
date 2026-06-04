@@ -32,6 +32,13 @@ class BulkUploadView(views.APIView):
         if missing:
              return response.Response({'error': f'Missing columns: {", ".join(missing)}'}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Fetch campaign if provided
+        campaign_id = request.data.get('campaign_id')
+        campaign_obj = None
+        if campaign_id:
+            from crm.models import Campaign
+            campaign_obj = Campaign.objects.filter(id=campaign_id).first()
+
         success_count = 0
         errors = []
 
@@ -58,6 +65,7 @@ class BulkUploadView(views.APIView):
                              if lms_id and pd.notna(lms_id):
                                  s = existing_user.student_profile
                                  s.lms_student_id = str(lms_id).strip()
+                                 # Optional: update campaign if requested, but generally bulk upload is for NEW leads
                                  s.save()
                                  success_count += 1 # Count as success update
                                  continue
@@ -127,6 +135,7 @@ class BulkUploadView(views.APIView):
                         gender=row.get('gender', 'Female'),
                         perm_address=row.get('perm_address', ''),
                         lms_student_id=lms_student_id,
+                        campaign=campaign_obj,
                         is_active=True
                     )
                     success_count += 1

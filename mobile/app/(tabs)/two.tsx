@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { StyleSheet, FlatList, TextInput, ActivityIndicator, TouchableOpacity, Linking, ScrollView, Alert, Modal, Pressable } from 'react-native';
 import { Text, View } from '@/components/Themed';
 import { FontAwesome5 } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import { getStudents } from '../../src/api/sales';
 import client from '../../src/api/client';
 
@@ -312,11 +313,17 @@ export default function SalesScreen() {
       </View>
 
       <View style={styles.cardActions}>
-        <TouchableOpacity style={styles.actionButton} onPress={() => item.phone && Linking.openURL(`tel:${item.phone}`)}>
+        <TouchableOpacity 
+          style={styles.actionButton} 
+          onPress={() => item.phone && router.push({ pathname: '/dialpad', params: { leadId: item.id, phone: item.phone } } as any)}
+        >
           <FontAwesome5 name="phone-alt" size={14} color="#3182CE" />
           <Text style={styles.actionText}>Call</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.actionButton, { backgroundColor: '#F7FAFC' }]} onPress={() => Alert.alert('Applicant Details', `Name: ${item.first_name} ${item.last_name}\nProgram: ${item.program}\nCourse: ${item.course_name}\nStatus: ${item.status}`)}>
+        <TouchableOpacity 
+          style={[styles.actionButton, { backgroundColor: '#F7FAFC' }]} 
+          onPress={() => router.push({ pathname: '/lead-details', params: { leadId: item.id } } as any)}
+        >
           <FontAwesome5 name="eye" size={14} color="#4A5568" />
           <Text style={[styles.actionText, { color: '#4A5568' }]}>Details</Text>
         </TouchableOpacity>

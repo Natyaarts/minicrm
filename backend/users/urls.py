@@ -1,7 +1,7 @@
 
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import LoginView, UserDetailView, UserViewSet, MentorListView, TeacherListView, TeacherViewSet, RolePermissionViewSet
+from .views import LoginView, UserDetailView, UserViewSet, MentorListView, TeacherListView, TeacherViewSet, RolePermissionViewSet, ExpoTokenView
 
 router = DefaultRouter()
 router.register(r'users', UserViewSet, basename='user')
@@ -14,4 +14,5 @@ urlpatterns = [
     path('mentors/', MentorListView.as_view(), name='mentor-list'),
     path('teachers/', TeacherListView.as_view(), name='teacher-list'),
     path('management/', include(router.urls)),
+    path('expo-token/', ExpoTokenView.as_view(), name='expo-token'),
 ]

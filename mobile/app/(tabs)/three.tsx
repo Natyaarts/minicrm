@@ -1,21 +1,26 @@
 import React, { useState } from 'react';
-import { StyleSheet, ScrollView, TouchableOpacity, TextInput } from 'react-native';
+import { StyleSheet, ScrollView, TouchableOpacity, TextInput, StatusBar } from 'react-native';
 import { Text, View } from '@/components/Themed';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useColorScheme } from '@/components/useColorScheme';
+import Colors from '@/constants/Colors';
 
 export default function MenuHubScreen() {
   const router = useRouter();
   const [search, setSearch] = useState('');
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
 
   const menuGroups = [
     {
       category: 'ACADEMICS',
-      color: '#EBF8FF',
+      color: isDark ? 'rgba(59, 130, 246, 0.15)' : '#EBF8FF',
       accent: '#3182CE',
       items: [
         { title: 'Dashboard', icon: 'th-large', route: '/(tabs)' },
         { title: 'Sales/Leads', icon: 'user-friends', route: '/(tabs)/two' },
+        { title: 'General Dialer', icon: 'phone-alt', route: '/dialpad?leadId=0' },
         { title: 'Mentor Module', icon: 'chalkboard-teacher', route: '/module?title=Mentor Module&category=Academics' },
         { title: 'Student Portal', icon: 'user-graduate', route: '/module?title=Student Portal&category=Academics' },
         { title: 'Academic Hierarchy', icon: 'sitemap', route: '/module?title=Academic Hierarchy&category=Academics' },
@@ -27,7 +32,7 @@ export default function MenuHubScreen() {
     },
     {
       category: 'HRMS MODULE',
-      color: '#E6FFFA',
+      color: isDark ? 'rgba(16, 185, 129, 0.15)' : '#E6FFFA',
       accent: '#319795',
       items: [
         { title: 'Workforce Hub', icon: 'building', route: '/module?title=Workforce Hub&category=HRMS' },
@@ -39,7 +44,7 @@ export default function MenuHubScreen() {
     },
     {
       category: 'ADMINISTRATIVE',
-      color: '#FAF5FF',
+      color: isDark ? 'rgba(139, 92, 246, 0.15)' : '#FAF5FF',
       accent: '#805AD5',
       items: [
         { title: 'Staff Directory', icon: 'address-book', route: '/module?title=Staff Directory&category=Administrative' },
@@ -56,14 +61,15 @@ export default function MenuHubScreen() {
   })).filter(group => group.items.length > 0);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: isDark ? '#111827' : '#F9FAFB' }]}>
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
       {/* Search Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>ERP MASTER HUB</Text>
-        <View style={styles.searchBar}>
-          <FontAwesome5 name="search" size={16} color="#A0AEC0" />
+      <View style={[styles.header, { backgroundColor: isDark ? '#1F2937' : '#FFFFFF', borderColor: isDark ? '#374151' : '#E2E8F0' }]}>
+        <Text style={[styles.headerTitle, { color: isDark ? '#9CA3AF' : '#4A5568' }]}>ERP MASTER HUB</Text>
+        <View style={[styles.searchBar, { backgroundColor: isDark ? '#111827' : '#F9FAFB', borderColor: isDark ? '#374151' : '#E2E8F0' }]}>
+          <FontAwesome5 name="search" size={14} color="#A0AEC0" />
           <TextInput
-            style={styles.input}
+            style={[styles.input, { color: isDark ? '#FFFFFF' : '#1A202C' }]}
             placeholder="Search modules..."
             placeholderTextColor="#A0AEC0"
             value={search}
@@ -77,7 +83,7 @@ export default function MenuHubScreen() {
         </View>
       </View>
 
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {filteredGroups.map((group, gIdx) => (
           <View key={gIdx} style={styles.groupContainer}>
             <View style={styles.groupHeader}>
@@ -90,17 +96,17 @@ export default function MenuHubScreen() {
               {group.items.map((item, iIdx) => (
                 <TouchableOpacity
                   key={iIdx}
-                  style={styles.card}
+                  style={[styles.card, { backgroundColor: isDark ? '#1F2937' : '#FFFFFF', borderColor: isDark ? '#374151' : '#E2E8F0' }]}
                   onPress={() => router.push(item.route as any)}
                   activeOpacity={0.7}
                 >
                   <View style={[styles.iconContainer, { backgroundColor: group.color }]}>
-                    <FontAwesome5 name={item.icon} size={22} color={group.accent} />
+                    <FontAwesome5 name={item.icon} size={18} color={group.accent} />
                   </View>
-                  <Text style={styles.cardTitle} numberOfLines={2}>
+                  <Text style={[styles.cardTitle, { color: isDark ? '#E5E7EB' : '#1A202C' }]} numberOfLines={2}>
                     {item.title}
                   </Text>
-                  <FontAwesome5 name="chevron-right" size={10} color="#CBD5E0" style={styles.chevron} />
+                  <FontAwesome5 name="chevron-right" size={10} color={isDark ? '#4B5563' : '#CBD5E0'} style={styles.chevron} />
                 </TouchableOpacity>
               ))}
             </View>
@@ -121,37 +127,30 @@ export default function MenuHubScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F7FAFC',
   },
   header: {
     padding: 20,
-    paddingTop: 60,
-    backgroundColor: '#FFFFFF',
+    paddingTop: 55,
     borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
   },
   headerTitle: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '900',
-    color: '#4A5568',
     letterSpacing: 2,
     marginBottom: 15,
   },
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F7FAFC',
     borderRadius: 16,
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 10,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
   },
   input: {
     flex: 1,
     marginLeft: 12,
-    fontSize: 16,
-    color: '#1A202C',
+    fontSize: 14,
     fontWeight: '600',
   },
   scroll: {
@@ -162,24 +161,24 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   groupContainer: {
-    marginBottom: 30,
+    marginBottom: 24,
     backgroundColor: 'transparent',
   },
   groupHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 14,
     backgroundColor: 'transparent',
   },
   badge: {
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 8,
   },
   badgeText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '900',
-    letterSpacing: 1,
+    letterSpacing: 1.5,
   },
   grid: {
     flexDirection: 'row',
@@ -189,32 +188,29 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '48%',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    padding: 20,
+    borderRadius: 20,
+    padding: 16,
     alignItems: 'flex-start',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.03,
-    shadowRadius: 10,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.02,
+    shadowRadius: 5,
+    elevation: 1,
   },
   iconContainer: {
-    width: 50,
-    height: 50,
-    borderRadius: 18,
+    width: 42,
+    height: 42,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: 14,
   },
   cardTitle: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '800',
-    color: '#1A202C',
-    lineHeight: 20,
-    marginBottom: 8,
+    lineHeight: 18,
+    marginBottom: 6,
   },
   chevron: {
     marginTop: 'auto',
@@ -227,7 +223,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     marginTop: 16,
-    fontSize: 15,
+    fontSize: 14,
     color: '#A0AEC0',
     fontWeight: '600',
   },

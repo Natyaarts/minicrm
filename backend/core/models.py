@@ -44,6 +44,13 @@ class Batch(models.Model):
         return self.name
 
 class Student(models.Model):
+    LEAD_STATUS_CHOICES = [
+        ('NEW', 'New Lead'),
+        ('FOLLOW_UP', 'Follow-up'),
+        ('PAYMENT_PENDING', 'Payment Pending'),
+        ('ENROLLED', 'Enrolled'),
+        ('DROPPED', 'Dropped'),
+    ]
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='student_profile')
     crm_student_id = models.CharField(max_length=50, unique=True)
     program_type = models.ForeignKey(Program, on_delete=models.PROTECT)
@@ -51,6 +58,11 @@ class Student(models.Model):
     course = models.ForeignKey(Course, on_delete=models.SET_NULL, null=True, blank=True)
     batch = models.ForeignKey(Batch, on_delete=models.SET_NULL, null=True, related_name='students')
     is_active = models.BooleanField(default=True)
+    lead_status = models.CharField(max_length=20, choices=LEAD_STATUS_CHOICES, default='NEW')
+    
+    # Lead Assignment (Sales Process)
+    assigned_to = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_leads')
+    campaign = models.ForeignKey('crm.Campaign', on_delete=models.SET_NULL, null=True, blank=True, related_name='leads')
     
     # Personal Info - Minimal required for system, others optional
     first_name = models.CharField(max_length=50, blank=True, null=True)

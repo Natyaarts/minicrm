@@ -308,6 +308,14 @@ class StudentViewSet(viewsets.ModelViewSet):
         if unassigned == 'true':
             qs = qs.filter(batch__isnull=True)
             
+        assigned_to = self.request.query_params.get('assigned_to')
+        if assigned_to:
+            qs = qs.filter(assigned_to_id=assigned_to)
+            
+        assigned_only = self.request.query_params.get('assigned_only')
+        if assigned_only == 'true':
+            qs = qs.filter(assigned_to=user)
+            
         program = self.request.query_params.get('program')
         if program:
             qs = qs.filter(program_type_id=program)
@@ -417,6 +425,28 @@ class StudentViewSet(viewsets.ModelViewSet):
         student = self.get_object()
         student.delete()
         return Response({'status': 'student permanently deleted'})
+
+    @action(detail=False, methods=['post'])
+    def bulk_assign(self, request):
+        student_ids = request.data.get('student_ids', [])
+        user_id = request.data.get('user_id')
+        
+        if not student_ids:
+            return Response({'error': 'No student IDs provided'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        students = Student.objects.filter(id__in=student_ids)
+        
+        if user_id:
+            try:
+                assigned_user = get_user_model().objects.get(id=user_id)
+                students.update(assigned_to=assigned_user)
+                return Response({'status': f'Leads assigned to {assigned_user.first_name or assigned_user.username}'})
+            except get_user_model().DoesNotExist:
+                return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+        else:
+            # Unassign
+            students.update(assigned_to=None)
+            return Response({'status': 'Leads unassigned'})
 
 class TransactionViewSet(viewsets.ModelViewSet):
     queryset = Transaction.objects.all()
@@ -757,6 +787,17 @@ class AnalyticsDetailView(APIView):
         # sort by hours
         teacher_stats = sorted(teacher_stats, key=lambda x: x['hours'], reverse=True)
 
+        # Advanced Charting Data
+        from django.db.models.functions import TruncMonth
+        
+        program_dist = list(Student.objects.values(name=F('program_type__name')).annotate(value=Count('id')))
+        
+        # Lead statuses are enum codes like 'NEW', map them for UI if needed, but UI can handle it.
+        lead_dist = list(Student.objects.values(name=F('lead_status')).annotate(value=Count('id')))
+        
+        revenue_time = list(Transaction.objects.annotate(month_trunc=TruncMonth('date')).values('month_trunc').annotate(total=Sum('amount')).order_by('month_trunc'))
+        revenue_timeline = [{'name': rt['month_trunc'].strftime('%b %Y') if rt['month_trunc'] else 'Unknown', 'revenue': rt['total']} for rt in revenue_time]
+
         return Response({
             'teachers_count': teachers.count(),
             'students_count': Student.objects.count(),
@@ -767,6 +808,46 @@ class AnalyticsDetailView(APIView):
                 'potential': total_potential,
                 'collected': total_collected,
                 'due': total_due
-            }
+            },
+            'program_distribution': program_dist,
+            'lead_funnel': lead_dist,
+            'revenue_timeline': revenue_timeline
         })
 
+class CalendarEventsView(APIView):
+    permission_classes = [DynamicRolePermission]
+    module_name = 'CORE'
+
+    def get(self, request):
+        from core.models import Exam, ClassSession
+        
+        events = []
+        
+        # Exams
+        exams = Exam.objects.all().select_related('batch')
+        for exam in exams:
+            events.append({
+                'id': f"exam_{exam.id}",
+                'title': f"{exam.batch.name} - {exam.title} ({exam.get_exam_type_display()})",
+                'start': exam.date.isoformat(),
+                'end': exam.date.isoformat(),
+                'allDay': True,
+                'type': 'exam',
+                'resourceId': exam.batch.id
+            })
+            
+        # Class Sessions
+        sessions = ClassSession.objects.all().select_related('batch', 'teacher')
+        for session in sessions:
+            teacher_name = f"{session.teacher.first_name} {session.teacher.last_name}".strip() if session.teacher else "Unknown Teacher"
+            events.append({
+                'id': f"class_{session.id}",
+                'title': f"{session.batch.name} - Class ({teacher_name})",
+                'start': session.date.isoformat(),
+                'end': session.date.isoformat(),
+                'allDay': True,
+                'type': 'class',
+                'resourceId': session.batch.id
+            })
+            
+        return Response(events)

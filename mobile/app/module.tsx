@@ -1,12 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, TextInput, Platform, Linking } from 'react-native';
+import { StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, TextInput, Platform, Linking, useColorScheme } from 'react-native';
 import { Text, View } from '@/components/Themed';
 import { FontAwesome5 } from '@expo/vector-icons';
+import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
 import client from '../src/api/client';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { requestDefaultDialerRole, checkIsDefaultDialer } from '../src/utils/CallManager';
 
 export default function ModuleDetailScreen() {
   const router = useRouter();
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
   const { title = 'Module Details', category = 'ACADEMICS' } = useLocalSearchParams();
   const [loading, setLoading] = useState(true);
   
@@ -156,6 +162,13 @@ export default function ModuleDetailScreen() {
   const isTasks = (title as string).toLowerCase().includes('tasks') || (title as string).toLowerCase().includes('performance');
   const isAssets = (title as string).toLowerCase().includes('asset');
   const isSales = (title as string).toLowerCase().includes('sales') || (title as string).toLowerCase().includes('leads');
+  const [isDialerSetup, setIsDialerSetup] = useState(false);
+
+  useEffect(() => {
+    if (isSales) {
+        checkIsDefaultDialer().then(setIsDialerSetup);
+    }
+  }, [isSales]);
 
   // Administrative / Other checkers
   const isStudent = (title as string).toLowerCase().includes('student');
@@ -905,23 +918,107 @@ export default function ModuleDetailScreen() {
   };
 
   const handleClockIn = async () => {
-    setLoading(true);
+    const getLocation = async () => {
+      try {
+        const locServicesEnabled = await Location.hasServicesEnabledAsync();
+        if (!locServicesEnabled) {
+          throw new Error('Location services are disabled on your device. Please enable GPS.');
+        }
+        const { status } = await Location.getForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          throw new Error('Location permissions have not been granted. Please enable location access in settings.');
+        }
+        const location = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        return location;
+      } catch (locErr: any) {
+        console.warn('getCurrentPositionAsync failed, trying getLastKnownPositionAsync:', locErr);
+        const location = await Location.getLastKnownPositionAsync({});
+        if (!location) {
+          throw new Error(locErr.message || 'Could not retrieve your current GPS coordinates. Please ensure GPS is enabled and has signal.');
+        }
+        return location;
+      }
+    };
+
     try {
       if (!clockedIn) {
-        const res = await client.post('/hrms/attendance/clock_in/', { latitude: 0, longitude: 0 });
+        // Request Camera permissions
+        const cameraStatus = await ImagePicker.requestCameraPermissionsAsync();
+        if (cameraStatus.status !== 'granted') {
+          Alert.alert('Permission Denied', 'Camera permission is required to clock in.');
+          return;
+        }
+
+        // Request Location permissions
+        const locationStatus = await Location.requestForegroundPermissionsAsync();
+        if (locationStatus.status !== 'granted') {
+          Alert.alert('Permission Denied', 'Location permission is required to clock in.');
+          return;
+        }
+
+        setLoading(true);
+
+        // Mark that camera is about to open (handles Android reload edge case)
+        await AsyncStorage.setItem('clockInPending', 'true');
+
+        // Capture Photo
+        const photoResult = await ImagePicker.launchCameraAsync({
+          mediaTypes: ['images'],
+          allowsEditing: false,
+          quality: 0.5,
+          base64: true,
+        });
+
+        // Camera returned — clear the pending flag
+        await AsyncStorage.removeItem('clockInPending');
+        setLoading(false);
+
+        if (photoResult.canceled || !photoResult.assets || !photoResult.assets[0].base64) {
+          return; // User cancelled, no error shown
+        }
+
+        const photoBase64 = `data:image/jpeg;base64,${photoResult.assets[0].base64}`;
+
+        // Get Location using helper
+        const location = await getLocation();
+        const lat = location.coords.latitude;
+        const lon = location.coords.longitude;
+
+        const res = await client.post('/hrms/attendance/clock_in/', { 
+          latitude: lat, 
+          longitude: lon,
+          photo: photoBase64
+        });
+        
         setClockedIn(true);
         setGeoStatus('Verified (Within Campus Geofence)');
         if (res.data) setAttLogs(prev => [res.data, ...prev]);
         Alert.alert('Clocked In ✅', 'Attendance recorded at ' + new Date().toLocaleTimeString());
       } else {
-        await client.post('/hrms/attendance/clock_out/', { latitude: 0, longitude: 0 });
+        setLoading(true);
+        // Request Location permissions
+        const locationStatus = await Location.requestForegroundPermissionsAsync();
+        if (locationStatus.status !== 'granted') {
+          Alert.alert('Permission Denied', 'Location permission is required to clock out.');
+          setLoading(false);
+          return;
+        }
+        
+        // Get Location using helper
+        const location = await getLocation();
+        const lat = location.coords.latitude;
+        const lon = location.coords.longitude;
+
+        await client.post('/hrms/attendance/clock_out/', { latitude: lat, longitude: lon });
         setClockedIn(false);
         setGeoStatus('Location Required');
         Alert.alert('Clocked Out 🏁', 'Punch-out recorded successfully.');
         fetchProductionData();
       }
     } catch (e: any) {
-      const errMsg = e.response?.data?.detail || e.response?.data?.error || (clockedIn ? 'No active clock-in record found.' : 'Clock-in failed. Try again.');
+      const errMsg = e.response?.data?.detail || e.response?.data?.error || e.message || (clockedIn ? 'No active clock-in record found.' : 'Clock-in failed. Try again.');
       Alert.alert(clockedIn ? 'Clock Out Info' : 'Clock In Info', errMsg);
       // Local fallback
       if (!clockedIn) { setClockedIn(true); setGeoStatus('Local Mode (API Unavailable)'); }
@@ -1022,15 +1119,15 @@ export default function ModuleDetailScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, isDark && styles.darkContainer]}>
       {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <FontAwesome5 name="arrow-left" size={18} color="#1A202C" />
+      <View style={[styles.header, isDark && styles.darkHeader]}>
+        <TouchableOpacity onPress={() => router.back()} style={[styles.backButton, isDark && styles.darkBackButton]}>
+          <FontAwesome5 name="arrow-left" size={18} color={isDark ? "#FFFFFF" : "#1A202C"} />
         </TouchableOpacity>
         <View style={styles.headerTitleContainer}>
-          <Text style={styles.categoryText}>{(category as string).toUpperCase()}</Text>
-          <Text style={styles.titleText}>{title}</Text>
+          <Text style={[styles.categoryText, isDark && styles.darkCategoryText]}>{(category as string).toUpperCase()}</Text>
+          <Text style={[styles.titleText, isDark && styles.darkTitleText]}>{title}</Text>
         </View>
       </View>
 
@@ -2331,6 +2428,12 @@ export default function ModuleDetailScreen() {
         {/* 11c. SALES / LEADS SPECIFIC VIEW */}
         {isSales && (
           <View style={styles.mentorContainer}>
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 15 }}>
+              <TouchableOpacity onPress={() => router.push('/dialpad?leadId=0')} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#10B981', paddingHorizontal: 15, paddingVertical: 10, borderRadius: 8, gap: 8 }}>
+                 <FontAwesome5 name="phone-alt" size={14} color="#fff" />
+                 <Text style={{ color: '#fff', fontWeight: 'bold' }}>Open Dialer (General)</Text>
+              </TouchableOpacity>
+            </View>
             <View style={styles.searchBar}>
               <FontAwesome5 name="search" size={16} color="#A0AEC0" />
               <TextInput style={styles.input} placeholder="Search leads by name or phone..." placeholderTextColor="#A0AEC0" value={salesSearch} onChangeText={setSalesSearch} />
@@ -2347,8 +2450,11 @@ export default function ModuleDetailScreen() {
                     <View style={[styles.badge, { backgroundColor: lead.status === 'NEW' ? '#EBF8FF' : lead.status === 'CONVERTED' ? '#C6F6D5' : '#FEFCBF' }]}>
                       <Text style={[styles.badgeText, { color: lead.status === 'NEW' ? '#3182CE' : lead.status === 'CONVERTED' ? '#22543D' : '#975A16' }]}>{lead.status}</Text>
                     </View>
-                    <View style={{ flexDirection: 'row', gap: 8 }}>
-                      <TouchableOpacity onPress={() => Linking.openURL(`tel:${lead.phone}`)}>
+                    <View style={{ flexDirection: 'row', gap: 12 }}>
+                      <TouchableOpacity onPress={() => router.push(`/lead-details?leadId=${lead.id}`)}>
+                        <FontAwesome5 name="eye" size={12} color="#718096" />
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => router.push(`/dialpad?leadId=${lead.id}&phone=${lead.phone}`)}>
                         <FontAwesome5 name="phone" size={12} color="#718096" />
                       </TouchableOpacity>
                       <TouchableOpacity onPress={() => Linking.openURL(`mailto:${lead.email}`)}>
@@ -3613,4 +3719,9 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     marginBottom: 6,
   },
+  darkContainer: { backgroundColor: '#111827' },
+  darkHeader: { backgroundColor: '#1F2937', borderBottomColor: '#374151' },
+  darkBackButton: { backgroundColor: '#111827', borderColor: '#374151' },
+  darkCategoryText: { color: '#60A5FA' },
+  darkTitleText: { color: '#FFFFFF' },
 });

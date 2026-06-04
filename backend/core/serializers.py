@@ -171,6 +171,10 @@ class StudentSerializer(serializers.ModelSerializer):
     batch_name = serializers.CharField(source='batch.name', read_only=True)
     username = serializers.CharField(source='user.username', read_only=True)
     lms_course_names = serializers.CharField(read_only=True)
+    campaign_name = serializers.CharField(source='campaign.name', read_only=True)
+    
+    # Assignment
+    assigned_to_name = serializers.SerializerMethodField()
     
     # Detail lists for read
     dynamic_values_list = StudentDynamicValueReadSerializer(source='dynamic_values', many=True, read_only=True)
@@ -194,6 +198,11 @@ class StudentSerializer(serializers.ModelSerializer):
 
     def get_total_paid(self, obj):
         return obj.transactions.aggregate(total=Sum('amount'))['total'] or 0
+
+    def get_assigned_to_name(self, obj):
+        if obj.assigned_to:
+            return f"{obj.assigned_to.first_name} {obj.assigned_to.last_name}".strip() or obj.assigned_to.username
+        return None
 
     def get_total_due(self, obj):
         course_fee = obj.course.fee_amount if obj.course else 0

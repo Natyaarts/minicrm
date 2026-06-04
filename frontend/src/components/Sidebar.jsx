@@ -21,7 +21,8 @@ import {
     CalendarCheck,
     CalendarDays,
     Wallet,
-    CheckSquare
+    CheckSquare,
+    Star
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -34,14 +35,26 @@ const sidebarSections = [
         module: 'ACADEMIC_HIERARCHY',
         items: [
             { icon: LayoutDashboard, label: 'Dashboard', path: '/', module: 'COMMON' },
-            { icon: Users, label: 'Sales/Leads', path: '/sales', module: 'SALES' },
-            { icon: GraduationCap, label: 'Mentor Module', path: '/mentor', module: 'MENTOR' },
-            { icon: UserSquare2, label: 'Student Portal', path: '/student', module: 'STUDENT' },
             { icon: BookOpen, label: 'Academic Hierarchy', path: '/academic', module: 'ACADEMIC_HIERARCHY' },
             { icon: ClipboardEdit, label: 'Coordinator Module', path: '/academic-coordinator', module: 'COORDINATOR' },
             { icon: BookOpen, label: 'Teacher Module', path: '/teacher', module: 'TEACHER' },
             { icon: Library, label: 'Courses', path: '/courses', module: 'COURSES' },
             { icon: BarChart2, label: 'Analytics', path: '/analytics', module: 'ANALYTICS' },
+            { icon: CalendarDays, label: 'Master Calendar', path: '/calendar', module: 'COMMON' },
+        ]
+    },
+    {
+        title: 'CRM Module',
+        module: 'SALES',
+        items: [
+            { icon: LayoutDashboard, label: 'Dashboard', path: '/crm/dashboard', module: 'SALES' },
+            { icon: Sparkles, label: 'Campaigns', path: '/crm/campaigns', module: 'SALES' },
+            { icon: Users, label: 'Pipeline', path: '/crm/pipeline', module: 'SALES' },
+            { icon: ClipboardEdit, label: 'Leads Table', path: '/crm/leads', module: 'SALES' },
+            { icon: CheckSquare, label: 'Tasks', path: '/crm/tasks', module: 'SALES' },
+            { icon: GraduationCap, label: 'Mentor Module', path: '/mentor', module: 'MENTOR' },
+            { icon: UserSquare2, label: 'Student Portal', path: '/student', module: 'STUDENT' },
+            { icon: Sparkles, label: 'App Creator', path: '/crm/builder', module: 'ADMIN' },
         ]
     },
     {
@@ -53,7 +66,9 @@ const sidebarSections = [
             { icon: Wallet, label: 'Payroll', path: '/hrms/payroll', module: 'PAYROLL' },
             { icon: CalendarDays, label: 'Leave Management', path: '/hrms/leaves', module: 'LEAVES' },
             { icon: Briefcase, label: 'Asset Management', path: '/hrms/assets', module: 'WORKFORCE' },
-            { icon: CheckSquare, label: 'Tasks & Performance', path: '/hrms/tasks', module: 'WORKFORCE' },
+            { icon: CheckSquare, label: 'Tasks', path: '/hrms/tasks', module: 'WORKFORCE' },
+            { icon: Star, label: 'Performance Reviews', path: '/hrms/performance', module: 'WORKFORCE' },
+            { icon: UserSquare2, label: 'Employee Lifecycle', path: '/hrms/lifecycle', module: 'WORKFORCE' },
         ]
     },
     {
@@ -62,7 +77,6 @@ const sidebarSections = [
         items: [
             { icon: UserCircle, label: 'Staff Directory', path: '/users', module: 'STAFF_DIRECTORY' },
             { icon: Wallet, label: 'Finance Manager', path: '/finance', module: 'ADMIN' },
-            { icon: Settings, label: 'Admin Panel', path: '/admin', module: 'ADMIN' },
         ]
     }
 ];
@@ -91,7 +105,7 @@ function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }) {
         if (item.label === 'Teacher Module' && user.role !== 'SUPER_ADMIN') return false;
         
         // Allow Employees to see relevant HRMS modules
-        const employeeModules = ['Workforce Hub', 'Attendance', 'Leave Management', 'Tasks & Performance', 'Payroll', 'Asset Management'];
+        const employeeModules = ['Workforce Hub', 'Attendance', 'Leave Management', 'Tasks', 'Performance Reviews', 'Payroll', 'Asset Management', 'Employee Lifecycle'];
         if (employeeModules.includes(item.label) && user.role === 'EMPLOYEE') return true;
 
         if (item.module === 'COMMON') return true;
