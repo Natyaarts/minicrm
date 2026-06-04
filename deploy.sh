@@ -27,13 +27,9 @@ fi
 # 3. Frontend Updates
 echo "⚛️  Building Frontend..."
 cd "$FRONTEND_DIR"
-if [ -d "node_modules" ]; then
-    npm run build
-else
-    echo "📦 node_modules missing, running npm install first..."
+    echo "📦 Installing dependencies..."
     npm install
     npm run build
-fi
 cd "$PROJECT_DIR"
 
 # 4. Copy to Web Root (Ensures Nginx sees the new files)
