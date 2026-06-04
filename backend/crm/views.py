@@ -3,12 +3,34 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.contrib.auth import get_user_model
 from django.db import transaction
+from django.db.models import Sum
 import traceback
-from core.models import Student, Program
+from core.models import Student, Program, Transaction
 from .models import PipelineStage, LeadInteraction, Campaign, WebhookEndpoint, WebhookLog
 from .serializers import PipelineStageSerializer, LeadInteractionSerializer, CampaignSerializer
 
 User = get_user_model()
+
+class DashboardStatsView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        total_leads = Student.objects.count()
+        new_leads = Student.objects.filter(lead_status='NEW').count()
+        follow_ups = Student.objects.filter(lead_status='FOLLOW_UP').count()
+        enrolled_leads = Student.objects.filter(lead_status='ENROLLED').count()
+        
+        conversion_rate = (enrolled_leads / total_leads * 100) if total_leads > 0 else 0
+        
+        revenue_agg = Transaction.objects.aggregate(total_revenue=Sum('amount'))
+        revenue = revenue_agg.get('total_revenue') or 0
+        
+        return Response({
+            "new_leads": new_leads,
+            "conversion_rate": round(conversion_rate, 1),
+            "follow_ups": follow_ups,
+            "revenue": revenue
+        })
 
 class WebhookEndpointSerializer(serializers.ModelSerializer):
     webhook_url = serializers.SerializerMethodField()

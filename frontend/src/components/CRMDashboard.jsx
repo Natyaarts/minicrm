@@ -1,7 +1,34 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Users, TrendingUp, DollarSign, Activity } from 'lucide-react';
+import api from '../api/client';
 
 const CRMDashboard = () => {
+    const [stats, setStats] = useState({
+        new_leads: 0,
+        conversion_rate: 0,
+        follow_ups: 0,
+        revenue: 0
+    });
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchStats = async () => {
+            try {
+                const response = await api.get('/crm/dashboard-stats/');
+                setStats(response.data);
+            } catch (error) {
+                console.error("Failed to fetch dashboard stats", error);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchStats();
+    }, []);
+
+    if (loading) {
+        return <div className="p-6 text-slate-500">Loading dashboard data...</div>;
+    }
+
     return (
         <div className="p-6">
             <h2 className="text-xl font-bold text-slate-800 mb-6">Sales Overview</h2>
@@ -12,7 +39,7 @@ const CRMDashboard = () => {
                     </div>
                     <div>
                         <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">New Leads</p>
-                        <h3 className="text-2xl font-bold text-slate-900">124</h3>
+                        <h3 className="text-2xl font-bold text-slate-900">{stats.new_leads}</h3>
                     </div>
                 </div>
                 <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
@@ -21,7 +48,7 @@ const CRMDashboard = () => {
                     </div>
                     <div>
                         <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Conversion</p>
-                        <h3 className="text-2xl font-bold text-slate-900">28.5%</h3>
+                        <h3 className="text-2xl font-bold text-slate-900">{stats.conversion_rate}%</h3>
                     </div>
                 </div>
                 <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
@@ -30,7 +57,7 @@ const CRMDashboard = () => {
                     </div>
                     <div>
                         <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Follow-ups</p>
-                        <h3 className="text-2xl font-bold text-slate-900">42</h3>
+                        <h3 className="text-2xl font-bold text-slate-900">{stats.follow_ups}</h3>
                     </div>
                 </div>
                 <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
@@ -39,7 +66,7 @@ const CRMDashboard = () => {
                     </div>
                     <div>
                         <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Revenue</p>
-                        <h3 className="text-2xl font-bold text-slate-900">₹45K</h3>
+                        <h3 className="text-2xl font-bold text-slate-900">₹{stats.revenue}</h3>
                     </div>
                 </div>
             </div>
