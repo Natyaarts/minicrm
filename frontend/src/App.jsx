@@ -24,6 +24,7 @@ import EmployeeLifecycleModule from './pages/EmployeeLifecycleModule';
 import PerformanceReviewModule from './pages/PerformanceReviewModule';
 import CalendarModule from './pages/CalendarModule';
 import Login from './pages/Login';
+import PrivacyPolicy from './pages/PrivacyPolicy';
 
 function App() {
   return (
@@ -31,6 +32,7 @@ function App() {
       <Routes>
         {/* Public Routes */}
         <Route path="/login" element={<Login />} />
+        <Route path="/privacy-policy" element={<PrivacyPolicy />} />
         <Route path="/apply/:programSlug" element={<PublicApplicationForm />} />
 
         {/* Protected Routes */}
