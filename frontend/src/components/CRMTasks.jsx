@@ -147,7 +147,7 @@ const CRMTasks = () => {
                                     >
                                         <option value="">Unassigned</option>
                                         {users.map(u => (
-                                            <option key={u.id} value={u.id}>{u.first_name} {u.last_name}</option>
+                                            <option key={u.id} value={u.id}>{u.name}</option>
                                         ))}
                                     </select>
                                 </div>
