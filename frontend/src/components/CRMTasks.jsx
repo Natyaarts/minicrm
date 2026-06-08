@@ -15,7 +15,7 @@ const CRMTasks = () => {
     const fetchTasks = async () => {
         try {
             const res = await api.get('/crm/tasks/');
-            setTasks(res.data);
+            setTasks(res.data.results || res.data);
             setLoading(false);
         } catch (error) {
             console.error('Error fetching tasks:', error);
