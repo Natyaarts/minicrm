@@ -6,8 +6,8 @@ from django.db import transaction
 from django.db.models import Sum
 import traceback
 from core.models import Student, Program, Transaction
-from .models import PipelineStage, LeadInteraction, Campaign, WebhookEndpoint, WebhookLog
-from .serializers import PipelineStageSerializer, LeadInteractionSerializer, CampaignSerializer
+from .models import PipelineStage, LeadInteraction, Campaign, WebhookEndpoint, WebhookLog, Task
+from .serializers import PipelineStageSerializer, LeadInteractionSerializer, CampaignSerializer, TaskSerializer
 
 User = get_user_model()
 
@@ -85,6 +85,23 @@ class CampaignViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
+
+class TaskViewSet(viewsets.ModelViewSet):
+    queryset = Task.objects.all()
+    serializer_class = TaskSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        student_id = self.request.query_params.get('student_id', None)
+        status_param = self.request.query_params.get('status', None)
+        
+        if student_id:
+            queryset = queryset.filter(student_id=student_id)
+        if status_param:
+            queryset = queryset.filter(status=status_param)
+            
+        return queryset
 
 class WebhookReceiveView(APIView):
     permission_classes = [permissions.AllowAny] # Authenticated via secret_token in URL

@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import PipelineStage, LeadInteraction, Campaign
+from .models import PipelineStage, LeadInteraction, Campaign, Task
 
 class PipelineStageSerializer(serializers.ModelSerializer):
     class Meta:
@@ -37,3 +37,22 @@ class CampaignSerializer(serializers.ModelSerializer):
         if obj.created_by:
             return f"{obj.created_by.first_name} {obj.created_by.last_name}".strip() or obj.created_by.username
         return None
+
+class TaskSerializer(serializers.ModelSerializer):
+    student_name = serializers.SerializerMethodField()
+    assigned_to_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Task
+        fields = '__all__'
+
+    def get_student_name(self, obj):
+        if obj.student:
+            return f"{obj.student.first_name} {obj.student.last_name}".strip()
+        return None
+
+    def get_assigned_to_name(self, obj):
+        if obj.assigned_to:
+            return f"{obj.assigned_to.first_name} {obj.assigned_to.last_name}".strip() or obj.assigned_to.username
+        return None
+

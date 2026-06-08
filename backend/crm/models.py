@@ -67,6 +67,34 @@ class Campaign(models.Model):
 
 import uuid
 
+class Task(models.Model):
+    TASK_TYPES = (
+        ('CALL', 'Phone Call'),
+        ('EMAIL', 'Email'),
+        ('MEETING', 'Meeting'),
+        ('OTHER', 'Other'),
+    )
+    STATUS_CHOICES = (
+        ('PENDING', 'Pending'),
+        ('COMPLETED', 'Completed'),
+        ('CANCELLED', 'Cancelled'),
+    )
+    title = models.CharField(max_length=255)
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='crm_tasks', null=True, blank=True)
+    assigned_to = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='assigned_crm_tasks')
+    task_type = models.CharField(max_length=20, choices=TASK_TYPES, default='CALL')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+    due_date = models.DateTimeField(null=True, blank=True)
+    notes = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['due_date']
+
+    def __str__(self):
+        return f"{self.title} - {self.status}"
+
+
 class WebhookEndpoint(models.Model):
     name = models.CharField(max_length=100) # e.g. "Zapier FB Ads"
     secret_token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
