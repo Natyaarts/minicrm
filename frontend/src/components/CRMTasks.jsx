@@ -5,6 +5,8 @@ import api from '../api/axios';
 const CRMTasks = () => {
     const [tasks, setTasks] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [newTask, setNewTask] = useState({ title: '', due_date: '', task_type: 'CALL', status: 'PENDING' });
 
     useEffect(() => {
         fetchTasks();
@@ -20,10 +22,28 @@ const CRMTasks = () => {
             setLoading(false);
         }
     };
+
+    const handleCreateTask = async (e) => {
+        e.preventDefault();
+        try {
+            await api.post('/crm/tasks/', newTask);
+            setIsModalOpen(false);
+            setNewTask({ title: '', due_date: '', task_type: 'CALL', status: 'PENDING' });
+            fetchTasks();
+        } catch (error) {
+            console.error('Error creating task:', error);
+            alert("Failed to create task");
+        }
+    };
+
+    return (
         <div className="p-6">
             <div className="flex justify-between items-center mb-6">
                 <h2 className="text-xl font-bold text-slate-800">Tasks & Follow-ups</h2>
-                <button className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-xs font-semibold hover:bg-indigo-700 transition-colors">
+                <button 
+                    onClick={() => setIsModalOpen(true)}
+                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-xs font-semibold hover:bg-indigo-700 transition-colors"
+                >
                     + New Task
                 </button>
             </div>
@@ -72,6 +92,58 @@ const CRMTasks = () => {
                     )}
                 </div>
             </div>
+
+            {isModalOpen && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-xl shadow-lg w-full max-w-md overflow-hidden">
+                        <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                            <h3 className="font-bold text-slate-800">Create New Task</h3>
+                            <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600">&times;</button>
+                        </div>
+                        <form onSubmit={handleCreateTask} className="p-6 space-y-4">
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-700 mb-1">Task Title</label>
+                                <input 
+                                    type="text" 
+                                    required
+                                    className="w-full border border-slate-200 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                    value={newTask.title}
+                                    onChange={(e) => setNewTask({...newTask, title: e.target.value})}
+                                    placeholder="e.g. Call lead about pricing"
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-700 mb-1">Task Type</label>
+                                    <select 
+                                        className="w-full border border-slate-200 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                                        value={newTask.task_type}
+                                        onChange={(e) => setNewTask({...newTask, task_type: e.target.value})}
+                                    >
+                                        <option value="CALL">Phone Call</option>
+                                        <option value="EMAIL">Email</option>
+                                        <option value="MEETING">Meeting</option>
+                                        <option value="OTHER">Other</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-700 mb-1">Due Date</label>
+                                    <input 
+                                        type="datetime-local" 
+                                        className="w-full border border-slate-200 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                        value={newTask.due_date}
+                                        onChange={(e) => setNewTask({...newTask, due_date: e.target.value})}
+                                    />
+                                </div>
+                            </div>
+                            <div className="pt-4 flex justify-end gap-2">
+                                <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">Cancel</button>
+                                <button type="submit" className="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors">Save Task</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
