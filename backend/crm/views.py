@@ -55,7 +55,7 @@ class SalesUserListView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     
     def get(self, request):
-        users = User.objects.filter(role__in=['SALES', 'SUPER_ADMIN', 'ADMIN', 'ACADEMIC_COORDINATOR'])
+        users = User.objects.filter(role__in=['SALES', 'MENTOR'])
         data = [{'id': u.id, 'name': u.get_full_name() or u.username} for u in users]
         return Response(data)
 
