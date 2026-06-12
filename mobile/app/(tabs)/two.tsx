@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, FlatList, TextInput, ActivityIndicator, TouchableOpacity, Linking, ScrollView, Alert, Modal, Pressable } from 'react-native';
-import { Text, View } from '@/components/Themed';
+import { StyleSheet, FlatList, TextInput, ActivityIndicator, TouchableOpacity, Linking, ScrollView, Alert, Modal, Pressable, Text, View } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { getStudents } from '../../src/api/sales';
