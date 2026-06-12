@@ -127,7 +127,7 @@ const MentorModule = () => {
     const fetchStudentsWithPagination = async () => {
         try {
             setLoading(true);
-            const res = await api.get(`students/?page=${studentPage}&search=${studentSearchQuery}`);
+            const res = await api.get(`students/?page=${studentPage}&search=${studentSearchQuery}&lead_status=CONVERTED`);
             const data = res.data;
             if (data.results) {
                 setAllStudents(data.results);
@@ -267,7 +267,7 @@ const MentorModule = () => {
         setSelectedBatch(batch);
         setLoading(true);
         try {
-            const res = await api.get(`students/?batch=${batch.id}`);
+            const res = await api.get(`students/?batch=${batch.id}&lead_status=CONVERTED`);
             setStudentsInBatch(res.data?.results || res.data || []);
         } catch (err) {
             console.error(err);
@@ -329,7 +329,7 @@ const MentorModule = () => {
     const fetchUnassignedStudents = async () => {
         try {
             setLoading(true);
-            let url = `students/?unassigned=true&page=${unassignedPage}`;
+            let url = `students/?unassigned=true&page=${unassignedPage}&lead_status=CONVERTED`;
             if (unassignedSearchQuery) {
                 url += `&search=${encodeURIComponent(unassignedSearchQuery)}`;
             }
@@ -365,7 +365,7 @@ const MentorModule = () => {
         try {
             await api.post(`batches/${selectedBatch.id}/add_student/`, { student_id: studentId });
             // Refresh batch students
-            const res = await api.get(`students/?batch=${selectedBatch.id}`);
+            const res = await api.get(`students/?batch=${selectedBatch.id}&lead_status=CONVERTED`);
             setStudentsInBatch(res.data?.results || res.data || []);
             setIsAddStudentModalOpen(false);
         } catch (err) {
@@ -380,7 +380,7 @@ const MentorModule = () => {
             setLoading(true);
             await api.post(`batches/${selectedBatch.id}/bulk_add_students/`, { student_ids: selectedUnassignedStudents });
             // Refresh batch students
-            const res = await api.get(`students/?batch=${selectedBatch.id}`);
+            const res = await api.get(`students/?batch=${selectedBatch.id}&lead_status=CONVERTED`);
             setStudentsInBatch(res.data?.results || res.data || []);
             setIsAddStudentModalOpen(false);
             setSelectedUnassignedStudents([]);
@@ -420,7 +420,7 @@ const MentorModule = () => {
         try {
             await api.post(`batches/${selectedBatch.id}/remove_student/`, { student_id: studentId });
             // Refresh list
-            const res = await api.get(`students/?batch=${selectedBatch.id}`);
+            const res = await api.get(`students/?batch=${selectedBatch.id}&lead_status=CONVERTED`);
             setStudentsInBatch(res.data?.results || res.data || []);
         } catch (err) {
             console.error(err);

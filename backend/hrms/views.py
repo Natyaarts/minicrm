@@ -21,10 +21,25 @@ class AttendanceViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+        
         if user.role == 'SUPER_ADMIN' or user.is_superuser:
-            return Attendance.objects.all()
-        # Non-admins can only see their own attendance
-        return Attendance.objects.filter(employee__user=user)
+            qs = Attendance.objects.all().order_by('-date', '-clock_in')
+        else:
+            # Non-admins can only see their own attendance
+            qs = Attendance.objects.filter(employee__user=user).order_by('-date', '-clock_in')
+            
+        if self.request.query_params.get('my_only') == 'true':
+            qs = Attendance.objects.filter(employee__user=user).order_by('-date', '-clock_in')
+            
+        start_date = self.request.query_params.get('start_date')
+        end_date = self.request.query_params.get('end_date')
+        
+        if start_date:
+            qs = qs.filter(date__gte=start_date)
+        if end_date:
+            qs = qs.filter(date__lte=end_date)
+            
+        return qs
 
     @action(detail=False, methods=['post'])
     def clock_in(self, request):

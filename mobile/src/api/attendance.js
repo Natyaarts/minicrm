@@ -2,7 +2,7 @@ import client from './client';
 
 export const getAttendanceStatus = async () => {
   try {
-    const response = await client.get('/hrms/attendance/');
+    const response = await client.get('/hrms/attendance/?my_only=true');
     // Usually returns a list of attendance records for today
     return response.data;
   } catch (error) {

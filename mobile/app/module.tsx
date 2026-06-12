@@ -1487,6 +1487,7 @@ export default function ModuleDetailScreen() {
                             <Text style={styles.batchBadgeText}>{b.status || 'ACTIVE'}</Text>
                           </View>
                         </View>
+                        <View style={styles.batchCardBody}>
                           <Text style={styles.batchDetailText}>• Course: <Text style={styles.batchDetailBold}>{b.course?.name || b.course}</Text></Text>
                           <Text style={styles.batchDetailText}>• Students: <Text style={styles.batchDetailBold}>{b.students_count || b.students?.length || 0}</Text></Text>
                           <Text style={styles.batchDetailText}>• Teacher: <Text style={styles.batchTeacherText}>{b.teacher || 'Not Assigned'}</Text></Text>

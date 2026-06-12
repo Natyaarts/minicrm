@@ -9,18 +9,15 @@ const CompanyWall = ({ authUser }) => {
     const [newPostContent, setNewPostContent] = useState('');
     const [postType, setPostType] = useState('GENERAL');
     const [loading, setLoading] = useState(true);
-    const [loadingMore, setLoadingMore] = useState(false);
     const [page, setPage] = useState(1);
-    const [hasMore, setHasMore] = useState(false);
+    const [pagination, setPagination] = useState({ count: 0, next: null, previous: null });
 
     useEffect(() => {
         fetchData();
     }, []);
 
     const fetchData = async (pageNum = 1) => {
-        if (pageNum === 1) setLoading(true);
-        else setLoadingMore(true);
-
+        setLoading(true);
         try {
             const [postsRes, celebRes] = await Promise.all([
                 api.get(`hrms/company-posts/?page=${pageNum}`).catch(() => ({ data: [] })),
@@ -28,12 +25,13 @@ const CompanyWall = ({ authUser }) => {
             ]);
             
             const fetchedPosts = postsRes.data.results || postsRes.data || [];
-            if (pageNum === 1) {
-                setPosts(fetchedPosts);
-            } else {
-                setPosts(prev => [...prev, ...fetchedPosts]);
-            }
-            setHasMore(!!postsRes.data.next);
+            setPosts(fetchedPosts);
+            setPage(pageNum);
+            setPagination({
+                count: postsRes.data.count || fetchedPosts.length,
+                next: postsRes.data.next,
+                previous: postsRes.data.previous
+            });
 
             if (celebRes.data) {
                 setCelebrations(celebRes.data || { birthdays: [], anniversaries: [] });
@@ -42,15 +40,10 @@ const CompanyWall = ({ authUser }) => {
             console.error("Failed to fetch wall data", error);
         } finally {
             setLoading(false);
-            setLoadingMore(false);
         }
     };
 
-    const handleLoadMore = () => {
-        const nextPage = page + 1;
-        setPage(nextPage);
-        fetchData(nextPage);
-    };
+
 
     const handleCreatePost = async (e) => {
         e.preventDefault();
@@ -197,19 +190,27 @@ const CompanyWall = ({ authUser }) => {
                         ))
                     )}
                     
-                    {hasMore && (
-                        <div className="flex justify-center pt-4 pb-8">
-                            <button 
-                                onClick={handleLoadMore}
-                                disabled={loadingMore}
-                                className="px-6 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl text-sm font-bold shadow-sm hover:bg-slate-50 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                {loadingMore ? (
-                                    <><div className="w-4 h-4 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin"></div> Loading...</>
-                                ) : (
-                                    "Load More"
-                                )}
-                            </button>
+                    {!loading && posts.length > 0 && (
+                        <div className="flex items-center justify-between mt-6 bg-slate-50 px-4 py-3 rounded-xl border border-slate-200 shadow-sm">
+                            <span className="text-sm text-slate-500 font-medium">
+                                Showing <span className="font-bold text-slate-800">{posts.length}</span> of {pagination.count} posts
+                            </span>
+                            <div className="flex gap-2">
+                                <button
+                                    disabled={!pagination.previous}
+                                    onClick={() => fetchData(page - 1)}
+                                    className="px-4 py-2 text-sm font-semibold rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                >
+                                    Previous
+                                </button>
+                                <button
+                                    disabled={!pagination.next}
+                                    onClick={() => fetchData(page + 1)}
+                                    className="px-4 py-2 text-sm font-semibold rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                >
+                                    Next
+                                </button>
+                            </div>
                         </div>
                     )}
                 </div>

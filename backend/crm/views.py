@@ -130,6 +130,12 @@ class LeadInteractionViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         interaction = serializer.save(author=self.request.user)
+        
+        pipeline_status = self.request.data.get('pipeline_status')
+        if pipeline_status:
+            interaction.student.lead_status = pipeline_status
+            interaction.student.save()
+            
         next_followup_date = self.request.data.get('next_followup_date')
         if next_followup_date:
             Task.objects.create(

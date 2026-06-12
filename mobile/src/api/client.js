@@ -2,26 +2,9 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
-
 const getBaseUrl = () => {
-  if (__DEV__) {
-    // If running on Web platform (browser)
-    if (Platform.OS === 'web') {
-      if (typeof window !== 'undefined' && window.location) {
-        const hostname = window.location.hostname;
-        return `http://${hostname}:8000/api/`;
-      }
-    }
-    // If running on Native platforms (Expo Go / Emulator)
-    const hostUri = Constants.expoConfig?.hostUri;
-    if (hostUri) {
-      const ip = hostUri.split(':')[0];
-      return `http://${ip}:8000/api/`;
-    }
-    // Fallback to active system IP
-    return 'http://192.168.220.34:8000/api/';
-  }
-  return 'https://natyaarts.org/api/';
+  // Hardcoded tunnel URL to bypass Windows Firewall and WiFi isolation completely
+  return 'https://ten-coins-throw.loca.lt/api/';
 };
 
 const API_URL = getBaseUrl();
@@ -30,6 +13,8 @@ const client = axios.create({
   baseURL: API_URL,
   headers: {
     'Content-Type': 'application/json',
+    'Bypass-Tunnel-Reminder': 'true',
+    'ngrok-skip-browser-warning': 'true',
   },
 });
 

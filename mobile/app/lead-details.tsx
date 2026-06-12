@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { FontAwesome5 } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import client from '../src/api/client';
 
 interface InteractionItem {
@@ -43,6 +44,8 @@ export default function LeadDetailsScreen() {
   const [noteText, setNoteText] = useState('');
   const [submittingNote, setSubmittingNote] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [followUpDate, setFollowUpDate] = useState<Date | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   useEffect(() => {
     if (leadId) {
@@ -118,15 +121,20 @@ export default function LeadDetailsScreen() {
 
     setSubmittingNote(true);
     try {
-      const payload = {
+      const payload: any = {
         student: parseInt(leadId as string),
         interaction_type: noteType,
         notes: noteText
       };
+      
+      if (followUpDate) {
+        payload.next_followup_date = followUpDate.toISOString();
+      }
 
       await client.post('/crm/interactions/', payload);
       Alert.alert('Success', 'Activity logged successfully!');
       setNoteText('');
+      setFollowUpDate(null);
       setShowAddForm(false);
       fetchInteractions();
     } catch (err) {
@@ -142,6 +150,7 @@ export default function LeadDetailsScreen() {
       };
       setInteractions(prev => [newAct, ...prev]);
       setNoteText('');
+      setFollowUpDate(null);
       setShowAddForm(false);
     } finally {
       setSubmittingNote(false);
@@ -319,6 +328,35 @@ export default function LeadDetailsScreen() {
               value={noteText}
               onChangeText={setNoteText}
             />
+
+            <View style={styles.followUpContainer}>
+              <Text style={styles.followUpLabel}>Schedule Next Follow-up?</Text>
+              <View style={styles.followUpRow}>
+                <TouchableOpacity style={styles.datePickerBtn} onPress={() => setShowDatePicker(true)}>
+                  <FontAwesome5 name="calendar-alt" size={14} color="#64748B" />
+                  <Text style={styles.datePickerText}>
+                    {followUpDate ? followUpDate.toLocaleString([], {dateStyle: 'medium', timeStyle: 'short'}) : 'No Follow-up Scheduled'}
+                  </Text>
+                </TouchableOpacity>
+                {followUpDate && (
+                  <TouchableOpacity onPress={() => setFollowUpDate(null)} style={{marginLeft: 10}}>
+                    <FontAwesome5 name="times-circle" size={20} color="#EF4444" />
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+
+            {showDatePicker && (
+              <DateTimePicker
+                value={followUpDate || new Date()}
+                mode="datetime"
+                display="default"
+                onChange={(event, selectedDate) => {
+                  setShowDatePicker(Platform.OS === 'ios');
+                  if (selectedDate) setFollowUpDate(selectedDate);
+                }}
+              />
+            )}
 
             <TouchableOpacity 
               style={styles.submitBtn} 
@@ -745,7 +783,39 @@ const styles = StyleSheet.create({
   timelineType: {
     fontSize: 12,
     fontWeight: '900',
-    color: '#FFFFFF',
+    color: '#0F172A',
+  },
+  followUpContainer: {
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  followUpRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  followUpLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748B',
+    marginBottom: 6,
+    textTransform: 'uppercase',
+  },
+  datePickerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    flex: 1,
+  },
+  datePickerText: {
+    marginLeft: 8,
+    fontSize: 14,
+    color: '#334155',
+    fontWeight: '500',
   },
   timelineDate: {
     fontSize: 10,

@@ -284,15 +284,27 @@ class StudentViewSet(viewsets.ModelViewSet):
             'user', 'program_type', 'sub_program', 'course', 'batch'
         ).prefetch_related('dynamic_values__field', 'documents', 'transactions').all()
             
-        if user.role in ['ADMIN', 'SUPER_ADMIN', 'ACADEMIC', 'ACADEMIC_COORDINATOR', 'SALES']:
+        # Resolve 'CONVERTED' to its ID
+        converted_stage_id = 'CONVERTED'
+        try:
+            from crm.models import PipelineStage
+            stage = PipelineStage.objects.filter(name__iexact='CONVERTED').first()
+            if stage:
+                converted_stage_id = str(stage.id)
+        except Exception:
+            pass
+
+        if user.role in ['ADMIN', 'SUPER_ADMIN', 'SALES']:
             pass 
+        elif user.role in ['ACADEMIC', 'ACADEMIC_COORDINATOR']:
+            qs = qs.filter(lead_status=converted_stage_id)
         elif user.role in ['MENTOR', 'TEACHER']:
             qs = qs.filter(
                 Q(batch__primary_mentor=user) | 
                 Q(batch__secondary_mentors=user) |
                 Q(batch__teacher=user) |
                 Q(batch__isnull=True)
-            ).distinct()
+            ).filter(lead_status=converted_stage_id).distinct()
         elif user.role == 'STUDENT':
             qs = Student.objects.filter(user=user)
         
@@ -325,7 +337,10 @@ class StudentViewSet(viewsets.ModelViewSet):
 
         lead_status = self.request.query_params.get('lead_status')
         if lead_status:
-            qs = qs.filter(lead_status=lead_status)
+            if lead_status.upper() == 'CONVERTED':
+                qs = qs.filter(lead_status=converted_stage_id)
+            else:
+                qs = qs.filter(lead_status__iexact=lead_status)
 
         sub_program = self.request.query_params.get('sub_program')
         if sub_program:

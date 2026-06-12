@@ -89,7 +89,8 @@ const Dialpad = () => {
       const formData = new FormData();
       formData.append('student', leadId as string);
       formData.append('interaction_type', 'CALL');
-      formData.append('notes', `[${pipelineStatus}] Duration: ${formatDuration(callDuration)}\nNotes: ${postCallNotes}`);
+      formData.append('notes', `Duration: ${formatDuration(callDuration)}\nNotes: ${postCallNotes}`);
+      formData.append('pipeline_status', pipelineStatus);
       
       if (recordedFilePath) {
         formData.append('audio_recording', {

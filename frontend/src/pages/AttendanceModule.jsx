@@ -28,6 +28,10 @@ const AttendanceModule = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [showSelfieCapture, setShowSelfieCapture] = useState(false);
     const [previewImage, setPreviewImage] = useState(null);
+    const [page, setPage] = useState(1);
+    const [pagination, setPagination] = useState({ count: 0, next: null, previous: null });
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
 
     useEffect(() => {
         if (authUser?.role === 'SUPER_ADMIN') {
@@ -36,9 +40,9 @@ const AttendanceModule = () => {
     }, [authUser]);
 
     useEffect(() => {
-        fetchAttendance();
+        fetchAttendance(1);
         requestLocation();
-    }, [activeTab]);
+    }, [activeTab, startDate, endDate]);
 
     const requestLocation = () => {
         if ("geolocation" in navigator) {
@@ -61,22 +65,70 @@ const AttendanceModule = () => {
         }
     };
 
-    const fetchAttendance = async () => {
+    const fetchAttendance = async (pageNum = page) => {
         setLoading(true);
         try {
-            const res = await api.get('hrms/attendance/');
+            let query = `hrms/attendance/?page=${pageNum}`;
+            if (startDate) query += `&start_date=${startDate}`;
+            if (endDate) query += `&end_date=${endDate}`;
+            
+            const res = await api.get(query);
             const data = res.data.results || res.data || [];
             setAttendanceLogs(data);
+            setPage(pageNum);
+            setPagination({
+                count: res.data.count || data.length,
+                next: res.data.next,
+                previous: res.data.previous
+            });
 
-            // Find today's record for current user
+            // Always check today's record accurately 
             const todayStr = new Date().toISOString().split('T')[0];
-            const record = data.find(r => r.date === todayStr && Number(r.user_id) === Number(authUser?.id));
+            const todayRes = await api.get(`hrms/attendance/?start_date=${todayStr}&end_date=${todayStr}`);
+            const todayData = todayRes.data.results || todayRes.data || [];
+            const record = todayData.find(r => Number(r.user_id) === Number(authUser?.id));
             setTodayRecord(record || null);
         } catch (err) {
             console.error("Failed to fetch attendance", err);
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleExportCSV = () => {
+        if (!attendanceLogs.length) return alert("No data to export.");
+        
+        const headers = ["Employee", "Employee ID", "Date", "Clock In", "Clock Out", "Duration", "Status"];
+        
+        const rows = attendanceLogs.map(log => {
+            const getDuration = () => {
+                if (!log.clock_in || !log.clock_out) return '--';
+                const start = new Date(`2000-01-01T${log.clock_in}`);
+                const end = new Date(`2000-01-01T${log.clock_out}`);
+                const diffMs = end - start;
+                const diffHrs = Math.floor(diffMs / (1000 * 60 * 60));
+                const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+                return `${diffHrs}h ${diffMins}m`;
+            };
+            
+            return [
+                `"${log.employee_name || ''}"`,
+                `"${log.employee_id_display || ''}"`,
+                `"${log.date || ''}"`,
+                `"${log.clock_in ? new Date(`2000-01-01T${log.clock_in}`).toLocaleTimeString() : ''}"`,
+                `"${log.clock_out ? new Date(`2000-01-01T${log.clock_out}`).toLocaleTimeString() : ''}"`,
+                `"${getDuration()}"`,
+                `"${log.status || ''}"`
+            ].join(',');
+        });
+        
+        const csvContent = [headers.join(','), ...rows].join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', `Attendance_Export_${new Date().toISOString().split('T')[0]}.csv`);
+        link.click();
     };
 
     const handleClockIn = async (photoData = null) => {
@@ -336,7 +388,22 @@ const AttendanceModule = () => {
                                     {activeTab === 'master' ? "Master Attendance Sheet" : "Your Recent Logs"}
                                 </h3>
                                 
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <input 
+                                        type="date" 
+                                        value={startDate}
+                                        onChange={(e) => setStartDate(e.target.value)}
+                                        className="px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 font-semibold text-slate-600"
+                                        title="Start Date"
+                                    />
+                                    <span className="text-slate-400 text-xs font-bold">to</span>
+                                    <input 
+                                        type="date" 
+                                        value={endDate}
+                                        onChange={(e) => setEndDate(e.target.value)}
+                                        className="px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 font-semibold text-slate-600"
+                                        title="End Date"
+                                    />
                                     <div className="relative">
                                         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
                                         <input 
@@ -344,10 +411,14 @@ const AttendanceModule = () => {
                                             placeholder="Search logs..." 
                                             value={searchTerm}
                                             onChange={(e) => setSearchTerm(e.target.value)}
-                                            className="pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 transition-all w-48"
+                                            className="pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 transition-all w-36 sm:w-48"
                                         />
                                     </div>
-                                    <button className="p-1.5 bg-white border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 shadow-sm transition-colors">
+                                    <button 
+                                        onClick={handleExportCSV}
+                                        title="Export to CSV"
+                                        className="p-1.5 bg-white border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 shadow-sm transition-colors"
+                                    >
                                         <Download size={14} />
                                     </button>
                                 </div>
@@ -478,6 +549,30 @@ const AttendanceModule = () => {
                                     </tbody>
                                 </table>
                             </div>
+                            
+                            {!loading && attendanceLogs.length > 0 && (
+                                <div className="p-4 border-t border-slate-200 flex items-center justify-between bg-slate-50">
+                                    <span className="text-xs text-slate-500 font-semibold">
+                                        Showing <span className="font-bold text-slate-800">{attendanceLogs.length}</span> of {pagination.count || attendanceLogs.length} logs
+                                    </span>
+                                    <div className="flex gap-2">
+                                        <button 
+                                            onClick={() => fetchAttendance(page - 1)}
+                                            disabled={!pagination.previous}
+                                            className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                                        >
+                                            Previous
+                                        </button>
+                                        <button 
+                                            onClick={() => fetchAttendance(page + 1)}
+                                            disabled={!pagination.next}
+                                            className="px-3 py-1.5 bg-indigo-50 border border-indigo-100 rounded-lg text-xs font-bold text-indigo-600 hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                                        >
+                                            Next
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>

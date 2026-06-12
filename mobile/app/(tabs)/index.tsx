@@ -23,6 +23,7 @@ export default function AttendanceScreen() {
   const [location, setLocation] = useState<any>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [stats, setStats] = useState<any>(null);
+  const [tasks, setTasks] = useState<any[]>([]);
   const [user, setUser] = useState<any>(null);
 
   // Update clock every second
@@ -89,6 +90,10 @@ export default function AttendanceScreen() {
       if (res.data) {
         setStats(res.data);
       }
+      
+      const tasksRes = await client.get('/crm/tasks/', { params: { status: 'PENDING' } });
+      const tasksData = tasksRes.data?.results || tasksRes.data || [];
+      setTasks(tasksData.slice(0, 3));
     } catch (e) {
       console.log('Failed to fetch dashboard stats', e);
     }
@@ -350,6 +355,35 @@ export default function AttendanceScreen() {
         </View>
       </View>
 
+      {/* Sales CRM Hub Section */}
+      {(user?.role === 'SALES' || user?.role === 'SUPER_ADMIN') && (
+        <View style={[styles.section, { backgroundColor: 'transparent' }]}>
+          <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12}}>
+            <Text style={[styles.sectionTitle, { color: isDark ? '#9CA3AF' : '#4B5563', marginBottom: 0 }]}>SALES CRM HUB</Text>
+            <TouchableOpacity onPress={() => router.push(`/bde-report?bdeId=${user.id}` as any)}>
+               <Text style={{color: '#3B82F6', fontSize: 12, fontWeight: '700'}}>MY FULL REPORT &gt;</Text>
+            </TouchableOpacity>
+          </View>
+          
+          <View style={[styles.tasksCard, { backgroundColor: isDark ? '#1F2937' : '#FFFFFF', borderColor: isDark ? '#374151' : '#E5E7EB' }]}>
+             <Text style={[styles.tasksHeader, { color: isDark ? '#D1D5DB' : '#374151' }]}>My Upcoming Follow-ups</Text>
+             {tasks.length > 0 ? tasks.map(task => (
+                <TouchableOpacity key={task.id} style={[styles.taskItem, { borderTopColor: isDark ? '#374151' : '#F3F4F6' }]} onPress={() => router.push(`/lead-details?leadId=${task.student}` as any)}>
+                   <View style={{flex: 1}}>
+                      <Text style={[styles.taskTitle, { color: isDark ? '#F9FAFB' : '#111827' }]} numberOfLines={1}>{task.title}</Text>
+                      <Text style={styles.taskDate}>
+                         <FontAwesome5 name="clock" size={10} color="#F59E0B" /> {new Date(task.due_date).toLocaleString([], {month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit'})}
+                      </Text>
+                   </View>
+                   <FontAwesome5 name="chevron-right" size={14} color="#9CA3AF" />
+                </TouchableOpacity>
+             )) : (
+                <Text style={styles.emptyTaskText}>No pending follow-ups.</Text>
+             )}
+          </View>
+        </View>
+      )}
+
       {/* Geofence Alert Info */}
       <View style={[styles.infoCard, { backgroundColor: isDark ? '#1E3A8A' : '#EFF6FF', borderColor: isDark ? '#3B82F6' : '#BFDBFE' }]}>
         <FontAwesome5 name="info-circle" size={18} color="#3B82F6" />
@@ -540,6 +574,40 @@ const styles = StyleSheet.create({
   statName: {
     fontSize: 12,
     fontWeight: '700',
+  },
+  tasksCard: {
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 16,
+    marginTop: 8,
+  },
+  tasksHeader: {
+    fontSize: 14,
+    fontWeight: '800',
+    marginBottom: 12,
+  },
+  taskItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderTopWidth: 1,
+  },
+  taskTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  taskDate: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  emptyTaskText: {
+    fontSize: 13,
+    color: '#9CA3AF',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    paddingVertical: 12,
   },
   infoCard: {
     flexDirection: 'row',
