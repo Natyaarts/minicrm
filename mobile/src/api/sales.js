@@ -3,10 +3,13 @@ import client from './client';
 export const getStudents = async (params = {}) => {
   try {
     const response = await client.get('/students/', { params });
-    return response.data.results || response.data || [];
+    if (response.data && Array.isArray(response.data.results)) {
+      return response.data;
+    }
+    return { results: response.data || [], count: response.data?.length || 0 };
   } catch (error) {
     console.error('Failed to fetch students', error);
-    return [];
+    return { results: [], count: 0 };
   }
 };
 

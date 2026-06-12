@@ -2,7 +2,7 @@
   "expo": {
     "name": "NEP",
     "slug": "mobile",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "natyaerp",
@@ -19,7 +19,7 @@
     },
     "android": {
       "package": "com.natyaarts.mobile",
-      "versionCode": 2,
+      "versionCode": 3,
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.CAMERA",

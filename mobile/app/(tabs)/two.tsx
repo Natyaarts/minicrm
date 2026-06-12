@@ -12,11 +12,12 @@ export default function SalesScreen() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [totalStudents, setTotalStudents] = useState(0);
 
   // Pagination & Filtering State for View Applications
   const [filterStatus, setFilterStatus] = useState('All');
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 5;
+  const itemsPerPage = 10;
 
   // Single Application Form State - Advanced Web Parity
   const [programsList, setProgramsList] = useState<any[]>([
@@ -51,9 +52,12 @@ export default function SalesScreen() {
 
   useEffect(() => {
     if (activeTab === 'view') {
-      fetchData();
+      const delayDebounceFn = setTimeout(() => {
+        fetchData();
+      }, 300);
+      return () => clearTimeout(delayDebounceFn);
     }
-  }, [activeTab]);
+  }, [activeTab, search, filterStatus, currentPage]);
 
   useEffect(() => {
     fetchProgramsInit();
@@ -70,27 +74,40 @@ export default function SalesScreen() {
     }
   };
 
-  const fetchData = async (searchQuery = '') => {
+  const fetchData = async () => {
     setLoading(true);
-    const data = await getStudents({ search: searchQuery });
-    // If API returns empty or few, provide robust dummy list for pagination & filtering demonstration
-    const list = data.length > 2 ? data : [
-      { id: 1, first_name: 'Aarav', last_name: 'Menon', crm_student_id: 'NAT-2026-001', course_name: 'G 226 BNS', phone: '+91 98765 43210', status: 'ACTIVE', program: 'Natya' },
-      { id: 2, first_name: 'Diya', last_name: 'Nair', crm_student_id: 'NAT-2026-002', course_name: 'G 244 BNS', phone: '+91 98765 43211', status: 'ACTIVE', program: 'Wise Import' },
-      { id: 3, first_name: 'Rohan', last_name: 'Kumar', crm_student_id: 'NAT-2026-003', course_name: 'CAMPUS DIP KUCH 01', phone: '+91 98765 43212', status: 'NEW', program: 'Natya Career Academy' },
-      { id: 4, first_name: 'Ananya', last_name: 'Sharma', crm_student_id: 'NAT-2026-004', course_name: 'MUSIC THEORY (BVOC)', phone: '+91 98765 43213', status: 'PENDING', program: 'Wise Import' },
-      { id: 5, first_name: 'Vikram', last_name: 'Singh', crm_student_id: 'NAT-2026-005', course_name: 'G 245 BNS', phone: '+91 98765 43214', status: 'ACTIVE', program: 'Wise Courses' },
-      { id: 6, first_name: 'Priya', last_name: 'Lakshmi', crm_student_id: 'NAT-2026-006', course_name: 'G 226 BNS', phone: '+91 98765 43215', status: 'NEW', program: 'Natya' },
-      { id: 7, first_name: 'Rahul', last_name: 'Verma', crm_student_id: 'NAT-2026-007', course_name: 'G 244 BNS', phone: '+91 98765 43216', status: 'ACTIVE', program: 'Wise Import' },
-      { id: 8, first_name: 'Sneha', last_name: 'Pillai', crm_student_id: 'NAT-2026-008', course_name: 'CAMPUS DIP KUCH 01', phone: '+91 98765 43217', status: 'PENDING', program: 'Natya Career Academy' }
-    ];
+    const params: any = { page: currentPage };
+    if (search) params.search = search;
+    if (filterStatus !== 'All') {
+      if (['ACTIVE', 'NEW', 'PENDING'].includes(filterStatus)) {
+        params.status = filterStatus;
+      } else {
+        params.program = filterStatus;
+      }
+    }
+    
+    const data = await getStudents(params);
+    let list = data.results || [];
+    let count = data.count || list.length;
+    
+    // If API returns empty, provide dummy list for demonstration
+    if (list.length === 0 && !search && filterStatus === 'All' && currentPage === 1) {
+      list = [
+        { id: 1, first_name: 'Aarav', last_name: 'Menon', crm_student_id: 'NAT-2026-001', course_name: 'G 226 BNS', phone: '+91 98765 43210', status: 'ACTIVE', program: 'Natya' },
+        { id: 2, first_name: 'Diya', last_name: 'Nair', crm_student_id: 'NAT-2026-002', course_name: 'G 244 BNS', phone: '+91 98765 43211', status: 'ACTIVE', program: 'Wise Import' },
+        { id: 3, first_name: 'Rohan', last_name: 'Kumar', crm_student_id: 'NAT-2026-003', course_name: 'CAMPUS DIP KUCH 01', phone: '+91 98765 43212', status: 'NEW', program: 'Natya Career Academy' },
+        { id: 4, first_name: 'Ananya', last_name: 'Sharma', crm_student_id: 'NAT-2026-004', course_name: 'MUSIC THEORY (BVOC)', phone: '+91 98765 43213', status: 'PENDING', program: 'Wise Import' }
+      ];
+      count = 4;
+    }
     setStudents(list);
+    setTotalStudents(count);
     setLoading(false);
   };
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await fetchData(search);
+    await fetchData();
     setRefreshing(false);
   };
 
@@ -275,14 +292,8 @@ export default function SalesScreen() {
   };
 
   // Filter and Paginate Logic
-  const filteredStudents = students.filter(item => {
-    const matchesSearch = `${item.first_name} ${item.last_name} ${item.crm_student_id} ${item.course_name}`.toLowerCase().includes(search.toLowerCase());
-    const matchesStatus = filterStatus === 'All' || item.status === filterStatus || item.program === filterStatus;
-    return matchesSearch && matchesStatus;
-  });
-
-  const totalPages = Math.ceil(filteredStudents.length / itemsPerPage) || 1;
-  const paginatedStudents = filteredStudents.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  const totalPages = Math.ceil(totalStudents / itemsPerPage) || 1;
+  const paginatedStudents = students;
 
   const renderStudent = ({ item }: { item: any }) => (
     <TouchableOpacity style={styles.card}>

@@ -272,7 +272,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#374151',
     overflow: 'hidden',
-    alignItems: 'center',
+    alignItems: 'flex-start',
   },
   unreadCard: {
     borderColor: '#FBBF24', // Yellow highlight for unread
@@ -282,7 +282,7 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     padding: 16,
-    alignItems: 'center',
+    alignItems: 'flex-start',
   },
   iconContainer: {
     width: 44,
@@ -291,6 +291,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 14,
+    marginTop: 2,
   },
   contentContainer: {
     flex: 1,
@@ -325,7 +326,8 @@ const styles = StyleSheet.create({
   },
   deleteButton: {
     paddingHorizontal: 16,
-    height: '100%',
+    paddingVertical: 16,
+    alignSelf: 'stretch',
     justifyContent: 'center',
     alignItems: 'center',
     borderLeftWidth: 1,
