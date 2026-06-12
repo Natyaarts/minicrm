@@ -15,20 +15,73 @@ class DashboardStatsView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        total_leads = Student.objects.count()
-        new_leads = Student.objects.filter(lead_status='NEW').count()
-        follow_ups = Student.objects.filter(lead_status='FOLLOW_UP').count()
-        enrolled_leads = Student.objects.filter(lead_status='ENROLLED').count()
+        from django.db.models import Count
         
-        conversion_rate = (enrolled_leads / total_leads * 100) if total_leads > 0 else 0
+        students = Student.objects.filter(is_active=True)
+        total_leads = students.count()
+        
+        # Assignment metrics
+        unassigned_leads = students.filter(assigned_to__isnull=True).count()
+        assigned_leads = total_leads - unassigned_leads
+        
+        # Contacted vs Pending
+        contacted_leads = students.filter(crm_interactions__isnull=False).distinct().count()
+        pending_leads = total_leads - contacted_leads
+        
+        # Pipeline Stages Breakdown
+        pipeline_stages_data = []
+        standard_mapping = {
+            'NEW': 'New Lead',
+            'FOLLOW_UP': 'Follow-up',
+            'PAYMENT_PENDING': 'Payment Pending',
+            'ENROLLED': 'Enrolled',
+            'DROPPED': 'Dropped'
+        }
+        status_counts = students.values('lead_status').annotate(count=Count('id'))
+        dynamic_stages = {str(stage.id): stage.name for stage in PipelineStage.objects.all()}
+        
+        for item in status_counts:
+            status_val = str(item['lead_status'])
+            count = item['count']
+            if status_val in standard_mapping:
+                name = standard_mapping[status_val]
+            elif status_val in dynamic_stages:
+                name = dynamic_stages[status_val]
+            else:
+                name = status_val
+                
+            pipeline_stages_data.append({
+                "id": status_val,
+                "name": name,
+                "count": count
+            })
+            
+        # Leaderboard
+        sales_reps = User.objects.filter(role='SALES')
+        leaderboard = []
+        for rep in sales_reps:
+            rep_leads = students.filter(assigned_to=rep).count()
+            rep_contacted = students.filter(assigned_to=rep, crm_interactions__isnull=False).distinct().count()
+            if rep_leads > 0:
+                leaderboard.append({
+                    "id": rep.id,
+                    "name": rep.get_full_name() or rep.username,
+                    "assigned": rep_leads,
+                    "contacted": rep_contacted
+                })
+        leaderboard.sort(key=lambda x: x['assigned'], reverse=True)
         
         revenue_agg = Transaction.objects.aggregate(total_revenue=Sum('amount'))
         revenue = revenue_agg.get('total_revenue') or 0
         
         return Response({
-            "new_leads": new_leads,
-            "conversion_rate": round(conversion_rate, 1),
-            "follow_ups": follow_ups,
+            "total_leads": total_leads,
+            "unassigned_leads": unassigned_leads,
+            "assigned_leads": assigned_leads,
+            "contacted_leads": contacted_leads,
+            "pending_leads": pending_leads,
+            "pipeline_stages": pipeline_stages_data,
+            "leaderboard": leaderboard,
             "revenue": revenue
         })
 
@@ -55,7 +108,7 @@ class SalesUserListView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     
     def get(self, request):
-        users = User.objects.filter(role__in=['SALES', 'MENTOR'])
+        users = User.objects.filter(role='SALES')
         data = [{'id': u.id, 'name': u.get_full_name() or u.username} for u in users]
         return Response(data)
 
@@ -76,7 +129,18 @@ class LeadInteractionViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
-        serializer.save(author=self.request.user)
+        interaction = serializer.save(author=self.request.user)
+        next_followup_date = self.request.data.get('next_followup_date')
+        if next_followup_date:
+            Task.objects.create(
+                title=f"Follow-up: {interaction.student.first_name} {interaction.student.last_name}",
+                student=interaction.student,
+                assigned_to=self.request.user,
+                task_type='CALL',
+                status='PENDING',
+                due_date=next_followup_date,
+                notes=f"Follow-up from previous interaction."
+            )
 
 class CampaignViewSet(viewsets.ModelViewSet):
     queryset = Campaign.objects.all()
@@ -85,6 +149,51 @@ class CampaignViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
+
+from django.shortcuts import get_object_or_404
+
+class BDEReportView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, user_id):
+        bde = get_object_or_404(User, id=user_id, role='SALES')
+        
+        leads = Student.objects.filter(assigned_to=bde).order_by('-id')
+        leads_data = []
+        for lead in leads:
+            leads_data.append({
+                'id': lead.id,
+                'name': f"{lead.first_name} {lead.last_name}",
+                'crm_id': lead.crm_student_id,
+                'status': lead.lead_status,
+                'mobile': lead.mobile
+            })
+
+        interactions = LeadInteraction.objects.filter(author=bde).select_related('student').order_by('-date')
+        timeline = []
+        for inter in interactions:
+            timeline.append({
+                'id': inter.id,
+                'student_name': f"{inter.student.first_name} {inter.student.last_name}",
+                'student_id': inter.student.id,
+                'type': inter.interaction_type,
+                'notes': inter.notes,
+                'date': inter.date,
+                'audio_url': request.build_absolute_uri(inter.audio_recording.url) if inter.audio_recording else None
+            })
+
+        metrics = {
+            'total_assigned': leads.count(),
+            'total_interactions': interactions.count(),
+            'pending_tasks': Task.objects.filter(assigned_to=bde, status='PENDING').count()
+        }
+
+        return Response({
+            'bde': {'id': bde.id, 'name': bde.get_full_name() or bde.username, 'email': bde.email},
+            'metrics': metrics,
+            'leads': leads_data,
+            'timeline': timeline
+        })
 
 class TaskViewSet(viewsets.ModelViewSet):
     queryset = Task.objects.all()

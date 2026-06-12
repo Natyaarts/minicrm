@@ -310,7 +310,10 @@ class StudentViewSet(viewsets.ModelViewSet):
             
         assigned_to = self.request.query_params.get('assigned_to')
         if assigned_to:
-            qs = qs.filter(assigned_to_id=assigned_to)
+            if assigned_to == 'unassigned':
+                qs = qs.filter(assigned_to__isnull=True)
+            else:
+                qs = qs.filter(assigned_to_id=assigned_to)
             
         assigned_only = self.request.query_params.get('assigned_only')
         if assigned_only == 'true':
@@ -319,6 +322,10 @@ class StudentViewSet(viewsets.ModelViewSet):
         program = self.request.query_params.get('program')
         if program:
             qs = qs.filter(program_type_id=program)
+
+        lead_status = self.request.query_params.get('lead_status')
+        if lead_status:
+            qs = qs.filter(lead_status=lead_status)
 
         sub_program = self.request.query_params.get('sub_program')
         if sub_program:

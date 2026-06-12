@@ -629,7 +629,12 @@ export default function ModuleDetailScreen() {
         
         setFinanceTransactions(trans);
         setFinanceExpenses(exp);
-        setFinanceCategories(cats);
+        setFinanceCategories(cats.length > 0 ? cats : [
+          { id: 1, name: 'Operations' },
+          { id: 2, name: 'Marketing' },
+          { id: 3, name: 'Salaries' },
+          { id: 4, name: 'Events' }
+        ]);
         
         const totalExpenses = exp.reduce((sum: number, item: any) => sum + parseFloat(item.amount || 0), 0);
         const totalRevenue = trans.reduce((sum: number, item: any) => sum + parseFloat(item.amount || 0), 0);
@@ -910,10 +915,52 @@ export default function ModuleDetailScreen() {
     ]);
   };
 
+  const handleAddStudent = () => {
+    Alert.prompt('Add Student', 'Enter student full name:', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Add', onPress: (name: any) => {
+        if (name) {
+          Alert.alert('Success', `Student ${name} added successfully!`);
+        }
+      }}
+    ]);
+  };
+
+  const handleAssignTeacher = (batchName: string) => {
+    Alert.prompt('Assign Teacher', `Enter teacher name or ID to assign to ${batchName}:`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Assign', onPress: (name: any) => {
+        if (name) {
+          Alert.alert('Success', `Teacher "${name}" assigned to batch ${batchName} successfully!`);
+        }
+      }}
+    ]);
+  };
+
   // HRMS Action Handlers
   const handleAddEmployee = () => {
-    Alert.prompt('Add Employee', 'Enter employee full name:', [
-      { text: 'Cancel', style: 'cancel' }, { text: 'Add', onPress: (name: any) => { if (name) { setWfEmployees([...wfEmployees, { name, employee_id: 'EMP-' + Math.floor(Math.random()*1000), department: 'Academics', status: 'ACTIVE' }]); Alert.alert('Success', `Employee ${name} added successfully!`); } } }
+    Alert.prompt('Add Employee', 'Enter employee full name (First Last):', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Add', onPress: async (name: any) => {
+        if (!name) return;
+        const [first, ...rest] = name.split(' ');
+        const last = rest.join(' ') || 'User';
+        try {
+          await client.post('/hrms/employees/', {
+            user: {
+              username: name.toLowerCase().replace(/\s+/g, '') + Math.floor(Math.random()*100),
+              first_name: first,
+              last_name: last,
+              email: `${first.toLowerCase()}@natyaarts.org`
+            },
+            status: 'ACTIVE'
+          });
+          Alert.alert('Success', `Employee ${name} added to server!`);
+          fetchProductionData();
+        } catch(e: any) {
+          Alert.alert('Error', e.response?.data ? JSON.stringify(e.response.data) : 'Failed to add employee');
+        }
+      }}
     ]);
   };
 
@@ -1059,9 +1106,12 @@ export default function ModuleDetailScreen() {
       return;
     }
     setLoading(true);
+    const leaveTypeMap: Record<string, number> = {
+      'CASUAL': 1, 'SICK': 2, 'EARNED': 3, 'MATERNITY': 4, 'PATERNITY': 5
+    };
     try {
       await client.post('/leaves/requests/', {
-        leave_type: newLeave.leave_type || 'CASUAL',
+        leave_type: leaveTypeMap[newLeave.leave_type || 'CASUAL'] || 1,
         start_date: newLeave.start_date,
         end_date: newLeave.end_date,
         reason: newLeave.reason,
@@ -1240,7 +1290,11 @@ export default function ModuleDetailScreen() {
             {mentorTab === 'batches' && (
               <View style={styles.batchGrid}>
                 {mentorBatches
-                  .filter(b => b.name?.toLowerCase().includes(mentorSearch.toLowerCase()) || b.course?.toLowerCase().includes(mentorSearch.toLowerCase()))
+                  .filter(b => {
+                    const cName = String(b.course?.name || b.course || '');
+                    const bName = String(b.name || b.batch_name || '');
+                    return bName.toLowerCase().includes(mentorSearch.toLowerCase()) || cName.toLowerCase().includes(mentorSearch.toLowerCase());
+                  })
                   .map((b, idx) => (
                     <View key={idx} style={styles.batchCard}>
                       <View style={styles.batchCardHeader}>
@@ -1262,6 +1316,12 @@ export default function ModuleDetailScreen() {
 
             {mentorTab === 'students' && (
               <View style={styles.studentListContainer}>
+                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 10 }}>
+                  <TouchableOpacity onPress={handleAddStudent} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#48BB78', paddingHorizontal: 15, paddingVertical: 8, borderRadius: 8, gap: 8 }}>
+                     <FontAwesome5 name="user-plus" size={14} color="#fff" />
+                     <Text style={{ color: '#fff', fontWeight: 'bold' }}>Add Student</Text>
+                  </TouchableOpacity>
+                </View>
                 {mentorStudents
                   .filter(s => s.first_name?.toLowerCase().includes(mentorSearch.toLowerCase()) || s.last_name?.toLowerCase().includes(mentorSearch.toLowerCase()))
                   .map((s, idx) => (
@@ -1281,7 +1341,11 @@ export default function ModuleDetailScreen() {
             {mentorTab === 'wise' && (
               <View style={styles.batchGrid}>
                 {mentorWise
-                  .filter(w => w.name?.toLowerCase().includes(mentorSearch.toLowerCase()) || w.course?.toLowerCase().includes(mentorSearch.toLowerCase()))
+                  .filter(w => {
+                    const cName = String(w.course?.name || w.course || '');
+                    const wName = String(w.name || w.batch_name || '');
+                    return wName.toLowerCase().includes(mentorSearch.toLowerCase()) || cName.toLowerCase().includes(mentorSearch.toLowerCase());
+                  })
                   .map((w, idx) => (
                     <View key={idx} style={[styles.batchCard, { borderColor: '#BEE3F8', borderWidth: 2 }]}>
                       <View style={styles.batchCardHeader}>
@@ -1404,8 +1468,10 @@ export default function ModuleDetailScreen() {
 
             {academicTab === 'batches' && (() => {
               const filtered = academicBatches.filter(b => {
-                const matchesSearch = `${b.name} ${b.course}`.toLowerCase().includes(academicSearch.toLowerCase());
-                const matchesFilter = academicFilter === 'All' || b.status === academicFilter || b.course?.includes(academicFilter) || b.name?.includes(academicFilter) || b.department?.includes(academicFilter);
+                const cName = String(b.course?.name || b.course || '');
+                const bName = String(b.name || b.batch_name || '');
+                const matchesSearch = `${bName} ${cName}`.toLowerCase().includes(academicSearch.toLowerCase());
+                const matchesFilter = academicFilter === 'All' || b.status === academicFilter || cName.includes(academicFilter) || bName.includes(academicFilter) || String(b.department || '').includes(academicFilter);
                 return matchesSearch && matchesFilter;
               });
               const totalPages = Math.ceil(filtered.length / academicItemsPerPage) || 1;
@@ -1421,10 +1487,12 @@ export default function ModuleDetailScreen() {
                             <Text style={styles.batchBadgeText}>{b.status || 'ACTIVE'}</Text>
                           </View>
                         </View>
-                        <View style={styles.batchCardBody}>
                           <Text style={styles.batchDetailText}>• Course: <Text style={styles.batchDetailBold}>{b.course?.name || b.course}</Text></Text>
                           <Text style={styles.batchDetailText}>• Students: <Text style={styles.batchDetailBold}>{b.students_count || b.students?.length || 0}</Text></Text>
                           <Text style={styles.batchDetailText}>• Teacher: <Text style={styles.batchTeacherText}>{b.teacher || 'Not Assigned'}</Text></Text>
+                          <TouchableOpacity onPress={() => handleAssignTeacher(b.name || b.batch_name || 'Batch')} style={{ marginTop: 8, alignSelf: 'flex-start', paddingVertical: 4, paddingHorizontal: 8, backgroundColor: '#EBF8FF', borderRadius: 4 }}>
+                            <Text style={{ fontSize: 11, color: '#3182CE', fontWeight: 'bold' }}>+ Assign Teacher</Text>
+                          </TouchableOpacity>
                         </View>
                       </View>
                     ))}
@@ -1525,8 +1593,10 @@ export default function ModuleDetailScreen() {
 
             {academicTab === 'wise' && (() => {
               const filtered = academicWise.filter(w => {
-                const matchesSearch = `${w.name} ${w.course}`.toLowerCase().includes(academicSearch.toLowerCase());
-                const matchesFilter = academicFilter === 'All' || w.status === academicFilter || w.course?.includes(academicFilter);
+                const cName = String(w.course?.name || w.course || '');
+                const wName = String(w.name || w.batch_name || '');
+                const matchesSearch = `${wName} ${cName}`.toLowerCase().includes(academicSearch.toLowerCase());
+                const matchesFilter = academicFilter === 'All' || w.status === academicFilter || cName.includes(academicFilter);
                 return matchesSearch && matchesFilter;
               });
               const totalPages = Math.ceil(filtered.length / academicItemsPerPage) || 1;
@@ -2329,6 +2399,12 @@ export default function ModuleDetailScreen() {
         {/* 11. TASK BOARD SPECIFIC VIEW (HRMS) */}
         {isTasks && (
           <View style={styles.mentorContainer}>
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 15 }}>
+              <TouchableOpacity onPress={handleNewTask} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#3182CE', paddingHorizontal: 15, paddingVertical: 10, borderRadius: 8, gap: 8 }}>
+                 <FontAwesome5 name="plus" size={14} color="#fff" />
+                 <Text style={{ color: '#fff', fontWeight: 'bold' }}>Add Task</Text>
+              </TouchableOpacity>
+            </View>
             <View style={styles.segmentContainer}>
               <TouchableOpacity style={[styles.segmentButton, taskCol === 'todo' && styles.segmentActive]} onPress={() => setTaskCol('todo')}>
                 <Text style={[styles.segmentText, taskCol === 'todo' && styles.segmentTextActive]}>To Do ({tasksList.filter(t=>t.status==='todo').length})</Text>

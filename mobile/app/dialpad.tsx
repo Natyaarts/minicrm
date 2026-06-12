@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Dimensions, Platform, Linking, Alert, NativeModules } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Dimensions, Platform, Linking, Alert, NativeModules, TextInput, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, router } from 'expo-router';
 import { startNativeRecording, stopNativeRecording, listenToCallEvents } from '../src/utils/CallManager';
@@ -10,8 +10,11 @@ const { width } = Dimensions.get('window');
 const Dialpad = () => {
   const { leadId, phone } = useLocalSearchParams();
   const [phoneNumber, setPhoneNumber] = useState((phone as string) || '');
-  const [callStatus, setCallStatus] = useState<'IDLE' | 'CALLING' | 'ACTIVE'>('IDLE');
+  const [callStatus, setCallStatus] = useState<'IDLE' | 'CALLING' | 'ACTIVE' | 'POST_CALL'>('IDLE');
   const [callDuration, setCallDuration] = useState(0);
+  const [postCallNotes, setPostCallNotes] = useState('');
+  const [pipelineStatus, setPipelineStatus] = useState('INTERESTED');
+  const [recordedFilePath, setRecordedFilePath] = useState<string | null>(null);
 
   useEffect(() => {
     let interval: any;
@@ -29,34 +32,12 @@ const Dialpad = () => {
     // Listen for events from our Kotlin InCallService Bridge
     const unsubscribe = listenToCallEvents(async (path) => {
       console.log("Recording saved at:", path);
-      
-      if (leadId && leadId !== '0' && path) {
-        try {
-          const formData = new FormData();
-          formData.append('student', leadId as string);
-          formData.append('interaction_type', 'CALL');
-          formData.append('notes', `Outbound call lasting ${formatDuration(callDuration)}`);
-          
-          // Append the file
-          formData.append('audio_recording', {
-            uri: `file://${path}`,
-            type: 'audio/m4a',
-            name: `recording_${Date.now()}.m4a`
-          } as any);
-
-          await client.post('/crm/interactions/', formData, {
-            headers: {
-              'Content-Type': 'multipart/form-data',
-            }
-          });
-          console.log("Uploaded successfully to CRM!");
-        } catch (error) {
-          console.error("Failed to upload recording", error);
-        }
+      if (path) {
+        setRecordedFilePath(path);
       }
     });
     return () => unsubscribe();
-  }, [leadId, callDuration]);
+  }, []);
 
   const handlePress = (num: string) => {
     setPhoneNumber((prev) => prev + num);
@@ -88,33 +69,45 @@ const Dialpad = () => {
   };
 
   const handleEndCall = async () => {
-    setCallStatus('IDLE');
+    setCallStatus('POST_CALL');
     
-    let filePath = null;
     if (Platform.OS === 'android') {
-      filePath = await stopNativeRecording();
+      const filePath = await stopNativeRecording();
+      if (filePath) setRecordedFilePath(filePath);
       console.log("Stopped recording:", filePath);
     }
+  };
 
-    // Fallback for Expo Go / iOS / Emulators when the custom native call recorder is absent.
-    // Logs the call details directly in the CRM interaction history.
-    const hasNativeRecorder = !!NativeModules.CallRecordingModule;
-    if (!hasNativeRecorder && leadId && leadId !== '0') {
-      try {
-        const formData = new FormData();
-        formData.append('student', leadId as string);
-        formData.append('interaction_type', 'CALL');
-        formData.append('notes', `Outbound call lasting ${formatDuration(callDuration)} (Call logged successfully via Dialpad)`);
-        
-        await client.post('/crm/interactions/', formData, {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          }
-        });
-        console.log("Fallback call interaction logged successfully in CRM!");
-      } catch (error) {
-        console.error("Failed to upload fallback CRM call log:", error);
+  const handlePostCallSubmit = async () => {
+    if (!leadId || leadId === '0') {
+      Alert.alert('No Lead Linked', 'Call log will not be saved automatically because no lead was selected.');
+      router.back();
+      return;
+    }
+
+    try {
+      const formData = new FormData();
+      formData.append('student', leadId as string);
+      formData.append('interaction_type', 'CALL');
+      formData.append('notes', `[${pipelineStatus}] Duration: ${formatDuration(callDuration)}\nNotes: ${postCallNotes}`);
+      
+      if (recordedFilePath) {
+        formData.append('audio_recording', {
+          uri: `file://${recordedFilePath}`,
+          type: 'audio/m4a',
+          name: `recording_${Date.now()}.m4a`
+        } as any);
       }
+      
+      await client.post('/crm/interactions/', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      console.log("Post-call review uploaded successfully!");
+      Alert.alert('Success', 'Call recording and notes saved to CRM.');
+      router.back();
+    } catch (error) {
+      console.error("Failed to upload post-call log:", error);
+      Alert.alert('Error', 'Failed to save call log.');
     }
   };
 
@@ -130,7 +123,60 @@ const Dialpad = () => {
     return num;
   };
 
-  if (callStatus !== 'IDLE') {
+  if (callStatus === 'POST_CALL') {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#1A202C', marginTop: 10 }}>Call Review</Text>
+        </View>
+        <ScrollView style={{ padding: 20 }}>
+          <Text style={{ fontSize: 16, color: '#718096', marginBottom: 20 }}>
+            Duration: <Text style={{ fontWeight: 'bold', color: '#1A202C' }}>{formatDuration(callDuration)}</Text>
+          </Text>
+
+          <Text style={{ fontSize: 14, fontWeight: '600', color: '#4A5568', marginBottom: 10 }}>Pipeline Status</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 20 }}>
+            {['INTERESTED', 'FOLLOW UP', 'NOT INTERESTED', 'CONVERTED'].map(status => (
+              <TouchableOpacity 
+                key={status} 
+                onPress={() => setPipelineStatus(status)}
+                style={{
+                  paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20,
+                  backgroundColor: pipelineStatus === status ? '#3182CE' : '#EBF8FF',
+                }}
+              >
+                <Text style={{ color: pipelineStatus === status ? '#FFF' : '#3182CE', fontWeight: 'bold', fontSize: 12 }}>
+                  {status}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <Text style={{ fontSize: 14, fontWeight: '600', color: '#4A5568', marginBottom: 10 }}>Call Notes</Text>
+          <TextInput
+            style={{
+              backgroundColor: '#F7FAFC', borderWidth: 1, borderColor: '#E2E8F0',
+              borderRadius: 8, padding: 12, height: 100, textAlignVertical: 'top', color: '#1A202C'
+            }}
+            placeholder="Type your notes here..."
+            placeholderTextColor="#A0AEC0"
+            multiline
+            value={postCallNotes}
+            onChangeText={setPostCallNotes}
+          />
+
+          <TouchableOpacity 
+            style={{ backgroundColor: '#10B981', padding: 16, borderRadius: 8, alignItems: 'center', marginTop: 30 }}
+            onPress={handlePostCallSubmit}
+          >
+            <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 16 }}>Save & Upload Log</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  if (callStatus === 'CALLING' || callStatus === 'ACTIVE') {
     return (
       <SafeAreaView style={styles.activeCallContainer}>
         <View style={styles.callHeader}>

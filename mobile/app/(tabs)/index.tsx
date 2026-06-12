@@ -101,7 +101,7 @@ export default function AttendanceScreen() {
       if (data) {
         const today = new Date().toISOString().split('T')[0];
         const records = data.results || data || [];
-        const activeRecord = records.find((r: any) => r.date === today && r.clock_in && !r.clock_out);
+        const activeRecord = records.find((r: any) => r.clock_in && !r.clock_out);
         
         if (activeRecord) {
           setIsClockedIn(true);

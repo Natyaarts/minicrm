@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { 
   StyleSheet, 
   View, 
@@ -26,14 +27,25 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
+  useEffect(() => {
+    const checkToken = async () => {
+      const token = await AsyncStorage.getItem('userToken');
+      if (token) {
+        router.replace('/(tabs)');
+      }
+    };
+    checkToken();
+  }, []);
+
   const handleLogin = async () => {
-    if (!username || !password) {
+    const trimmedUsername = username.trim();
+    if (!trimmedUsername || !password) {
       Alert.alert('Required Fields', 'Please enter both username and password');
       return;
     }
 
     setLoading(true);
-    const result = await loginUser(username, password);
+    const result = await loginUser(trimmedUsername, password);
     setLoading(false);
 
     if (result.success) {

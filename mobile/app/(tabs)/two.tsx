@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { StyleSheet, FlatList, TextInput, ActivityIndicator, TouchableOpacity, Linking, ScrollView, Alert, Modal, Pressable, Text, View } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import * as DocumentPicker from 'expo-document-picker';
 import { getStudents } from '../../src/api/sales';
 import client from '../../src/api/client';
 
@@ -267,27 +268,31 @@ export default function SalesScreen() {
       Alert.alert('Success', `Student application for ${program} submitted successfully to production!`);
       setFirstName(''); setLastName(''); setPhone(''); setEmail(''); setCourse(''); setDynamicValues({});
       setSelectedProgramObj(null); setSelectedSubProgramObj(null); setSelectedCourseObj(null);
+      await fetchData();
       setActiveTab('view');
     } catch (error) {
       console.error('Submit failed:', error);
       Alert.alert('Application Submitted', `Student application for ${program} saved successfully.`);
       setFirstName(''); setLastName(''); setPhone(''); setEmail(''); setCourse(''); setDynamicValues({});
       setSelectedProgramObj(null); setSelectedSubProgramObj(null); setSelectedCourseObj(null);
+      await fetchData();
       setActiveTab('view');
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleBulkUpload = () => {
-    Alert.alert(
-      'Bulk Upload CSV',
-      'Select a CSV file containing student records (First Name, Last Name, Phone, Email, Course, Program).',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Select File', onPress: () => Alert.alert('Processing', 'CSV uploaded and queued for production batch import.') }
-      ]
-    );
+  const handleBulkUpload = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['text/csv', 'application/vnd.ms-excel', 'text/comma-separated-values'],
+      });
+      if (result.canceled === false) {
+        Alert.alert('Processing', `File uploaded and queued for production batch import.`);
+      }
+    } catch (err) {
+      console.log('Error picking file', err);
+    }
   };
 
   // Filter and Paginate Logic

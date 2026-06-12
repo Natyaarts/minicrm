@@ -8,6 +8,7 @@ import { copyToClipboard } from '../utils/clipboard';
 import { compressImage } from '../utils/fileCompressor';
 import KanbanBoard from '../components/KanbanBoard';
 import CRMDashboard from '../components/CRMDashboard';
+import BDEReport from '../components/BDEReport';
 import CRMTasks from '../components/CRMTasks';
 import CRMCampaigns from '../components/CRMCampaigns';
 
@@ -25,10 +26,13 @@ const SalesModule = () => {
     const [dynamicFields, setDynamicFields] = useState([]);
     const [campaigns, setCampaigns] = useState([]);
     const [salesUsers, setSalesUsers] = useState([]);
+    const [pipelineStages, setPipelineStages] = useState([]);
 
     const [selectedProgram, setSelectedProgram] = useState('');
     const [selectedSubProgram, setSelectedSubProgram] = useState('');
     const [selectedCourse, setSelectedCourse] = useState('');
+    const [selectedStageFilter, setSelectedStageFilter] = useState('');
+    const [selectedAssigneeFilter, setSelectedAssigneeFilter] = useState('');
 
     // Form Data
     const [formData, setFormData] = useState({
@@ -81,6 +85,10 @@ const SalesModule = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [toast, setToast] = useState(null);
     const [selectedStudentProfile, setSelectedStudentProfile] = useState(null);
+    const [pendingPipelineStatus, setPendingPipelineStatus] = useState('');
+    const [selectedLeadIds, setSelectedLeadIds] = useState([]);
+    const [showBulkAssignModal, setShowBulkAssignModal] = useState(false);
+    const [bulkAssignTo, setBulkAssignTo] = useState('');
     const [wiseData, setWiseData] = useState(null);
     const [loadingWise, setLoadingWise] = useState(false);
 
@@ -88,17 +96,22 @@ const SalesModule = () => {
     const [interactions, setInteractions] = useState([]);
     const [interactionType, setInteractionType] = useState('NOTE');
     const [interactionNotes, setInteractionNotes] = useState('');
+    const [nextFollowupDate, setNextFollowupDate] = useState('');
     const [loadingInteractions, setLoadingInteractions] = useState(false);
+    
+    const [selectedBdeId, setSelectedBdeId] = useState(null);
 
     useEffect(() => {
         if (selectedStudentProfile?.id) {
+            setPendingPipelineStatus(selectedStudentProfile.lead_status || 'NEW');
             fetchLiveWiseData(selectedStudentProfile.id);
             fetchInteractions(selectedStudentProfile.id);
         } else {
+            setPendingPipelineStatus('');
             setWiseData(null);
             setInteractions([]);
         }
-    }, [selectedStudentProfile]);
+    }, [selectedStudentProfile?.id]);
 
     const fetchInteractions = async (studentId) => {
         setLoadingInteractions(true);
@@ -112,16 +125,68 @@ const SalesModule = () => {
         }
     };
 
+    const handleStatusChange = async (newStatus) => {
+        try {
+            await api.patch(`students/${selectedStudentProfile.id}/`, { lead_status: newStatus });
+            setSelectedStudentProfile(prev => ({ ...prev, lead_status: newStatus }));
+            setToast({ title: "Success", description: "Pipeline status updated.", type: 'success' });
+            setTimeout(() => setToast(null), 3000);
+            fetchStudents();
+        } catch (error) {
+            console.error("Failed to update status", error);
+            setToast({ title: "Error", description: "Failed to update status.", type: 'error' });
+            setTimeout(() => setToast(null), 3000);
+        }
+    };
+
+    const handleBulkAssign = async () => {
+        if (!bulkAssignTo || selectedLeadIds.length === 0) return;
+        try {
+            await Promise.all(selectedLeadIds.map(id => 
+                api.patch(`students/${id}/`, { assigned_to: bulkAssignTo })
+            ));
+            setToast({ title: "Success", description: `${selectedLeadIds.length} leads assigned successfully.`, type: 'success' });
+            setTimeout(() => setToast(null), 3000);
+            setSelectedLeadIds([]);
+            setShowBulkAssignModal(false);
+            setBulkAssignTo('');
+            fetchStudents();
+        } catch (error) {
+            console.error("Failed to bulk assign leads", error);
+            setToast({ title: "Error", description: "Failed to assign leads.", type: 'error' });
+            setTimeout(() => setToast(null), 3000);
+        }
+    };
+
+    const toggleLeadSelection = (id) => {
+        setSelectedLeadIds(prev => 
+            prev.includes(id) ? prev.filter(leadId => leadId !== id) : [...prev, id]
+        );
+    };
+
+    const toggleAllLeads = () => {
+        if (selectedLeadIds.length === studentList.length && studentList.length > 0) {
+            setSelectedLeadIds([]);
+        } else {
+            setSelectedLeadIds(studentList.map(s => s.id));
+        }
+    };
+
     const handleLogInteraction = async () => {
         if (!interactionNotes.trim()) return;
         try {
-            const res = await api.post('/crm/interactions/', {
+            const payload = {
                 student: selectedStudentProfile.id,
                 interaction_type: interactionType,
                 notes: interactionNotes
-            });
+            };
+            if (nextFollowupDate) {
+                payload.next_followup_date = nextFollowupDate;
+            }
+            const res = await api.post('/crm/interactions/', payload);
             setInteractions([res.data, ...interactions]);
             setInteractionNotes('');
+            setNextFollowupDate('');
             setToast({ title: "Success", description: "Activity logged.", type: 'success' });
             setTimeout(() => setToast(null), 3000);
         } catch (err) {
@@ -193,6 +258,23 @@ const SalesModule = () => {
                     setSalesUsers(suRes.data || []);
                 } catch(e) {}
 
+                try {
+                    const stageRes = await api.get('crm/stages/');
+                    let stageData = stageRes.data.results || stageRes.data;
+                    if (!Array.isArray(stageData) || stageData.length === 0) {
+                        stageData = [
+                            { id: 'NEW', name: 'New Lead', color: '#e2e8f0' },
+                            { id: 'FOLLOW_UP', name: 'Follow-up', color: '#fef08a' },
+                            { id: 'PAYMENT_PENDING', name: 'Payment Pending', color: '#fed7aa' },
+                            { id: 'ENROLLED', name: 'Enrolled', color: '#bbf7d0' },
+                            { id: 'DROPPED', name: 'Dropped', color: '#fecaca' },
+                        ];
+                    } else {
+                        stageData = stageData.sort((a, b) => a.order - b.order);
+                    }
+                    setPipelineStages(stageData);
+                } catch (e) {}
+
                 // Check URL Param (Support both Slug and ID for backward compatibility)
                 const urlProg = searchParams.get('program') || searchParams.get('p');
                 const urlSubProg = searchParams.get('sp');
@@ -247,6 +329,8 @@ const SalesModule = () => {
             if (selectedProgram) params.append('program', selectedProgram);
             if (selectedSubProgram) params.append('sub_program', selectedSubProgram);
             if (selectedCourse) params.append('course', selectedCourse);
+            if (selectedStageFilter) params.append('lead_status', selectedStageFilter);
+            if (selectedAssigneeFilter) params.append('assigned_to', selectedAssigneeFilter);
 
             const res = await api.get(`students/?${params.toString()}`);
             const data = res.data;
@@ -280,12 +364,13 @@ const SalesModule = () => {
             }, 500);
             return () => clearTimeout(timer);
         }
-    }, [activeTab, isAuthenticated, isTrashView, studentPage, searchTerm, selectedProgram, selectedSubProgram, selectedCourse]);
+    }, [activeTab, isAuthenticated, isTrashView, studentPage, searchTerm, selectedProgram, selectedSubProgram, selectedCourse, selectedStageFilter, selectedAssigneeFilter]);
 
     // Reset pagination on mode change
     useEffect(() => {
         setStudentPage(1);
-    }, [isTrashView, searchTerm]);
+        setSelectedLeadIds([]);
+    }, [isTrashView, searchTerm, selectedProgram, selectedSubProgram, selectedCourse, selectedStageFilter, selectedAssigneeFilter]);
 
 
     // Handle Program Change UI
@@ -749,6 +834,58 @@ const SalesModule = () => {
                     </p>
                 </motion.div>
 
+                {/* Bulk Assign Modal */}
+                <AnimatePresence>
+                    {showBulkAssignModal && (
+                        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+                            <motion.div 
+                                initial={{ opacity: 0, scale: 0.95 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.95 }}
+                                className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden"
+                            >
+                                <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                                    <h3 className="font-bold text-slate-800">Bulk Assign Leads</h3>
+                                    <button onClick={() => setShowBulkAssignModal(false)} className="text-slate-400 hover:text-slate-600">
+                                        <X size={20} />
+                                    </button>
+                                </div>
+                                <div className="p-6">
+                                    <p className="text-xs text-slate-500 mb-4">You are assigning {selectedLeadIds.length} lead(s) to a sales representative.</p>
+                                    <div className="mb-6">
+                                        <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Select Assignee</label>
+                                        <select
+                                            className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 focus:border-indigo-500 outline-none text-sm text-slate-700 shadow-sm appearance-none"
+                                            value={bulkAssignTo}
+                                            onChange={(e) => setBulkAssignTo(e.target.value)}
+                                        >
+                                            <option value="">Select a sales rep...</option>
+                                            {salesUsers.map(u => (
+                                                <option key={u.id} value={u.id}>{u.name || `${u.first_name} ${u.last_name}`}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div className="flex justify-end gap-3">
+                                        <button 
+                                            onClick={() => setShowBulkAssignModal(false)}
+                                            className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button 
+                                            onClick={handleBulkAssign}
+                                            disabled={!bulkAssignTo}
+                                            className={`px-4 py-2 text-xs font-semibold text-white rounded-lg transition-colors ${bulkAssignTo ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-indigo-300 cursor-not-allowed'}`}
+                                        >
+                                            Assign Leads
+                                        </button>
+                                    </div>
+                                </div>
+                            </motion.div>
+                        </div>
+                    )}
+                </AnimatePresence>
+
                 <AnimatePresence>
                     {toast && (
                         <motion.div
@@ -796,6 +933,14 @@ const SalesModule = () => {
                                             className="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold hover:bg-slate-200 transition-colors"
                                         >
                                             Bulk Upload
+                                        </button>
+                                    )}
+                                    {selectedLeadIds.length > 0 && activeTab === 'list' && (
+                                        <button
+                                            onClick={() => setShowBulkAssignModal(true)}
+                                            className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold hover:bg-indigo-700 transition-colors shadow-sm flex items-center gap-2"
+                                        >
+                                            Bulk Assign ({selectedLeadIds.length})
                                         </button>
                                     )}
                                 </div>
@@ -853,6 +998,51 @@ const SalesModule = () => {
                                     )}
                                 </div>
 
+                                {/* Pipeline & Assignee Filters */}
+                                <div className="flex flex-col sm:flex-row sm:items-center gap-2 bg-indigo-50/50 p-2 sm:p-1.5 rounded-xl border border-indigo-100 w-full sm:w-auto">
+                                    <select 
+                                        value={selectedStageFilter}
+                                        onChange={(e) => setSelectedStageFilter(e.target.value)}
+                                        className="bg-transparent text-xs font-semibold text-indigo-700 px-2 py-1 sm:py-0.5 outline-none min-w-[120px] cursor-pointer w-full sm:w-auto"
+                                    >
+                                        <option value="">All Pipeline Stages</option>
+                                        {pipelineStages.map(stage => (
+                                            <option key={stage.id} value={stage.id || stage.name}>
+                                                {stage.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    
+                                    <div className="hidden sm:block w-px h-4 bg-indigo-200"></div>
+
+                                    <select 
+                                        value={selectedAssigneeFilter}
+                                        onChange={(e) => setSelectedAssigneeFilter(e.target.value)}
+                                        className="bg-transparent text-xs font-semibold text-indigo-700 px-2 py-1 sm:py-0.5 outline-none min-w-[120px] cursor-pointer w-full sm:w-auto"
+                                    >
+                                        <option value="">All Sales Reps</option>
+                                        <option value="unassigned">Unassigned Leads</option>
+                                        {salesUsers.map(u => (
+                                            <option key={u.id} value={u.id}>
+                                                {u.first_name} {u.last_name}
+                                            </option>
+                                        ))}
+                                    </select>
+
+                                    {(selectedStageFilter || selectedAssigneeFilter) && (
+                                        <button 
+                                            onClick={() => {
+                                                setSelectedStageFilter('');
+                                                setSelectedAssigneeFilter('');
+                                            }}
+                                            className="p-1 text-indigo-400 hover:text-rose-500 transition-colors self-end sm:self-center"
+                                            title="Clear Pipeline Filters"
+                                        >
+                                            <X size={12} />
+                                        </button>
+                                    )}
+                                </div>
+
                                 <div className="flex items-center gap-3 w-full sm:w-auto">
                                     <button
                                         onClick={() => setIsTrashView(!isTrashView)}
@@ -883,6 +1073,14 @@ const SalesModule = () => {
                                 <table className="w-full text-left border-collapse min-w-[1000px]">
                                     <thead>
                                         <tr className="bg-slate-50 border-b border-slate-200">
+                                            <th className="px-6 py-3 w-10">
+                                                <input 
+                                                    type="checkbox" 
+                                                    checked={selectedLeadIds.length === filteredStudents.length && filteredStudents.length > 0}
+                                                    onChange={toggleAllLeads}
+                                                    className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
+                                                />
+                                            </th>
                                             <th className="px-6 py-3 text-xs font-semibold uppercase text-slate-500 tracking-wider">Student</th>
                                             <th className="px-6 py-3 text-xs font-semibold uppercase text-slate-500 tracking-wider">Contact</th>
                                             <th className="px-6 py-3 text-xs font-semibold uppercase text-slate-500 tracking-wider">Program</th>
@@ -899,7 +1097,15 @@ const SalesModule = () => {
                                             <tr><td colSpan="8" className="px-6 py-8 text-center text-slate-400 font-medium">Loading records...</td></tr>
                                         ) : filteredStudents.length > 0 ? (
                                             filteredStudents.map((student) => (
-                                                <tr key={student.id} className="hover:bg-slate-50/50 transition-colors">
+                                                <tr key={student.id} className={`hover:bg-slate-50/50 transition-colors ${selectedLeadIds.includes(student.id) ? 'bg-indigo-50/30' : ''}`}>
+                                                    <td className="px-6 py-3.5">
+                                                        <input 
+                                                            type="checkbox"
+                                                            checked={selectedLeadIds.includes(student.id)}
+                                                            onChange={() => toggleLeadSelection(student.id)}
+                                                            className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
+                                                        />
+                                                    </td>
                                                     <td className="px-6 py-3.5">
                                                         <div className="flex items-center gap-2">
                                                             <div className="w-7 h-7 shrink-0 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-700 font-semibold text-[10px]">
@@ -1192,7 +1398,32 @@ const SalesModule = () => {
                         </div>
                     ) : activeTab === 'dashboard' && isAuthenticated ? (
                         <div className="bg-slate-50 min-h-[500px]">
-                            <CRMDashboard />
+                            <CRMDashboard 
+                                onStatClick={async (type, value) => {
+                                    if (type === 'stage') {
+                                        setSelectedStageFilter(value);
+                                        setActiveTab('list');
+                                    }
+                                    if (type === 'assignee') {
+                                        setSelectedAssigneeFilter(value);
+                                        setActiveTab('list');
+                                    }
+                                    if (type === 'all') {
+                                        setSelectedStageFilter('');
+                                        setSelectedAssigneeFilter('');
+                                        setActiveTab('list');
+                                    }
+                                    if (type === 'single') {
+                                        try {
+                                            const res = await api.get(`students/${value}/`);
+                                            setSelectedStudentProfile(res.data);
+                                        } catch(e) {
+                                            console.error("Failed to load student profile", e);
+                                        }
+                                    }
+                                }}
+                                onBdeClick={setSelectedBdeId}
+                            />
                         </div>
                     ) : activeTab === 'tasks' && isAuthenticated ? (
                         <div className="bg-slate-50 min-h-[500px]">
@@ -1630,6 +1861,35 @@ const SalesModule = () => {
                                 )}
                             </div>
 
+                            {/* Pipeline Status */}
+                            <div className="md:col-span-2 text-left bg-indigo-50/50 border border-indigo-100 rounded-xl p-4 mt-2">
+                                <h3 className="text-xs font-bold text-indigo-900 uppercase tracking-wider mb-2">Sales Pipeline Status</h3>
+                                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                                    <select
+                                        value={pendingPipelineStatus}
+                                        onChange={(e) => setPendingPipelineStatus(e.target.value)}
+                                        className="flex-1 text-xs font-semibold border border-indigo-200 rounded-lg p-2 bg-white outline-none text-indigo-700 shadow-sm"
+                                    >
+                                        {pipelineStages.map(stage => (
+                                            <option key={stage.id} value={stage.id || stage.name}>
+                                                {stage.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <button
+                                        onClick={() => handleStatusChange(pendingPipelineStatus)}
+                                        disabled={pendingPipelineStatus === (selectedStudentProfile.lead_status || 'NEW')}
+                                        className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors ${
+                                            pendingPipelineStatus !== (selectedStudentProfile.lead_status || 'NEW')
+                                                ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm'
+                                                : 'bg-indigo-200 text-indigo-400 cursor-not-allowed'
+                                        }`}
+                                    >
+                                        {pendingPipelineStatus !== (selectedStudentProfile.lead_status || 'NEW') ? 'Save Status' : 'Saved'}
+                                    </button>
+                                </div>
+                            </div>
+
                             {/* Activity Log / Interactions */}
                             <div className="md:col-span-2 text-left bg-slate-50 border border-slate-200 rounded-xl p-4 mt-2">
                                 <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Activity Timeline</h3>
@@ -1655,11 +1915,20 @@ const SalesModule = () => {
                                         placeholder={`What happened during this ${interactionType.toLowerCase()}?`}
                                         className="w-full text-xs p-2 border border-slate-200 rounded-md outline-none focus:border-indigo-400 bg-slate-50 resize-none h-16 mb-2"
                                     />
-                                    <div className="flex justify-end">
+                                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                                        <div className="flex items-center gap-2">
+                                            <label className="text-[10px] font-bold text-slate-500 uppercase">Follow-up:</label>
+                                            <input 
+                                                type="datetime-local" 
+                                                value={nextFollowupDate}
+                                                onChange={(e) => setNextFollowupDate(e.target.value)}
+                                                className="text-xs p-1.5 border border-slate-200 rounded-md outline-none focus:border-indigo-400 bg-white text-slate-700"
+                                            />
+                                        </div>
                                         <button 
                                             onClick={handleLogInteraction}
                                             disabled={!interactionNotes.trim()}
-                                            className="bg-indigo-600 text-white text-[10px] font-bold px-3 py-1.5 rounded disabled:opacity-50 hover:bg-indigo-700 transition-colors"
+                                            className="bg-indigo-600 text-white text-[10px] font-bold px-4 py-2 rounded-md disabled:opacity-50 hover:bg-indigo-700 transition-colors w-full sm:w-auto"
                                         >
                                             Save Activity
                                         </button>
@@ -1976,6 +2245,9 @@ const SalesModule = () => {
                     </motion.div>
                 </div>
             )}
+            {/* BDE Report Modal */}
+            <BDEReport bdeId={selectedBdeId} onClose={() => setSelectedBdeId(null)} />
+
         </div>
     );
 };
