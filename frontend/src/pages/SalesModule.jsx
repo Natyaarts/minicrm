@@ -461,6 +461,17 @@ const SalesModule = () => {
         setDynamicValues({ ...dynamicValues, [fieldId]: e.target.value });
     };
 
+    const isFieldVisible = (field) => {
+        if (!field.conditional_rule || !field.conditional_rule.depends_on) return true;
+        const triggerValue = dynamicValues[field.conditional_rule.depends_on];
+        if (!triggerValue) return false;
+        
+        if (typeof triggerValue === 'string' && typeof field.conditional_rule.value === 'string') {
+            return triggerValue.trim().toLowerCase() === field.conditional_rule.value.trim().toLowerCase();
+        }
+        return triggerValue == field.conditional_rule.value;
+    };
+
     const handleDynamicFileChange = async (e, fieldId) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -517,7 +528,7 @@ const SalesModule = () => {
         let foundFirstName = '';
         let foundMobile = '';
 
-        dynamicFields.forEach(field => {
+        dynamicFields.filter(isFieldVisible).forEach(field => {
             const val = dynamicValues[field.id];
             if (val) {
                 const label = field.label.toLowerCase().trim();
@@ -550,7 +561,7 @@ const SalesModule = () => {
         // Handle dynamic files
         Object.keys(files).forEach(fieldId => {
             // Check if the fieldId corresponds to a dynamic field that is a file type
-            const field = dynamicFields.find(f => f.id === parseInt(fieldId) && f.field_type === 'file');
+            const field = dynamicFields.filter(isFieldVisible).find(f => f.id === parseInt(fieldId) && f.field_type === 'file');
             if (field) {
                 data.append(`dynamic_file_${fieldId}`, files[fieldId]);
             }
@@ -1616,7 +1627,7 @@ const SalesModule = () => {
                                         </h3>
 
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            {dynamicFields.map(field => (
+                                            {dynamicFields.filter(isFieldVisible).map(field => (
                                                 <div key={field.id} className={field.field_type === 'file' ? 'md:col-span-2' : ''}>
                                                     <label className="text-xs font-semibold text-slate-600 mb-1.5 block">
                                                         {field.label} {field.is_required && <span className="text-red-500">*</span>}

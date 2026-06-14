@@ -33,7 +33,7 @@ const AdminModule = () => {
     const [courseModalOpen, setCourseModalOpen] = useState(false);
     const [newField, setNewField] = useState({
         label: '', field_type: 'text', field_group: 'INITIAL', options: '', order: 0, is_required: true,
-        validation_pattern: '', validation_message: ''
+        validation_pattern: '', validation_message: '', conditional_depends_on: '', conditional_value: ''
     });
     const [newSubProgram, setNewSubProgram] = useState('');
     const [programModalOpen, setProgramModalOpen] = useState(false);
@@ -218,11 +218,20 @@ const AdminModule = () => {
             };
         }
 
+        if (payload.conditional_depends_on && payload.conditional_value) {
+            payload.conditional_rule = {
+                depends_on: parseInt(payload.conditional_depends_on),
+                value: payload.conditional_value
+            };
+        } else {
+            payload.conditional_rule = null;
+        }
+
         try {
             await api.post('forms/fields/', payload);
             setFieldModalOpen(false);
             fetchFields();
-            setNewField({ label: '', field_type: 'text', field_group: 'INITIAL', options: '', order: 0, is_required: true, validation_pattern: '', validation_message: '' });
+            setNewField({ label: '', field_type: 'text', field_group: 'INITIAL', options: '', order: 0, is_required: true, validation_pattern: '', validation_message: '', conditional_depends_on: '', conditional_value: '' });
         } catch (err) {
             console.error(err);
             alert("Failed to create field");
@@ -1003,7 +1012,7 @@ const AdminModule = () => {
             {
                 fieldModalOpen && (
                     <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn">
-                        <div className="bg-white rounded-2xl p-8 w-full max-w-md border border-slate-200 shadow-2xl transform transition-all scale-100">
+                        <div className="bg-white rounded-2xl p-8 w-full max-w-md border border-slate-200 shadow-2xl transform transition-all scale-100 max-h-[90vh] overflow-y-auto">
                             <h2 className="text-2xl font-bold mb-6 text-slate-900">Add Custom Field</h2>
                             <form onSubmit={handleCreateField} className="space-y-5">
                                 <div>
@@ -1064,7 +1073,31 @@ const AdminModule = () => {
                                              onChange={e => setNewField({ ...newField, validation_message: e.target.value })} 
                                          />
                                      </div>
-                                 </div><div className="flex gap-4 pt-4">
+                                 </div>
+                                 <div className="mt-4 pt-4 border-t border-slate-100">
+                                    <p className="text-xs font-bold text-slate-500 mb-3">Conditional Visibility (Optional)</p>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <select
+                                            className="w-full p-3 rounded-xl bg-white border border-slate-200 text-slate-900 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none transition-all text-sm font-bold"
+                                            value={newField.conditional_depends_on}
+                                            onChange={e => setNewField({ ...newField, conditional_depends_on: e.target.value })}
+                                        >
+                                            <option value="">-- Always Visible --</option>
+                                            {fields.filter(f => f.field_type === 'dropdown').map(f => (
+                                                <option key={f.id} value={f.id}>Depends on: {f.label}</option>
+                                            ))}
+                                        </select>
+                                        {newField.conditional_depends_on && (
+                                            <input
+                                                className="w-full p-3 rounded-xl bg-white border border-slate-200 text-slate-900 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none transition-all text-sm font-bold"
+                                                placeholder="Required Value (e.g. Yes)"
+                                                value={newField.conditional_value}
+                                                onChange={e => setNewField({ ...newField, conditional_value: e.target.value })}
+                                            />
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="flex gap-4 pt-4">
                                     <button type="button" onClick={() => setFieldModalOpen(false)} className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition">Cancel</button>
                                     <button type="submit" className="flex-1 py-3 bg-indigo-600 rounded-xl hover:bg-indigo-700 text-white font-bold transition shadow-md">Add Field</button>
                                 </div>

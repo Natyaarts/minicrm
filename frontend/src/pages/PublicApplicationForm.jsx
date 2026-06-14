@@ -358,6 +358,17 @@ const PublicApplicationForm = () => {
         }
     };
 
+    const isFieldVisible = (field) => {
+        if (!field.conditional_rule || !field.conditional_rule.depends_on) return true;
+        const triggerValue = formData.dynamic_values[field.conditional_rule.depends_on];
+        if (!triggerValue) return false;
+        
+        if (typeof triggerValue === 'string' && typeof field.conditional_rule.value === 'string') {
+            return triggerValue.trim().toLowerCase() === field.conditional_rule.value.trim().toLowerCase();
+        }
+        return triggerValue == field.conditional_rule.value;
+    };
+
     const handleDynamicChange = async (fieldId, value) => {
         const field = activeFields.find(f => f.id === fieldId);
         
@@ -408,7 +419,9 @@ const PublicApplicationForm = () => {
             return;
         }
 
-        const missingFields = activeFields.filter(f => {
+        const visibleFields = activeFields.filter(isFieldVisible);
+
+        const missingFields = visibleFields.filter(f => {
             if (!f.is_required) return false;
             // No longer skip automated fields as they may be dynamic fields that needs filling
             return !formData.dynamic_values[f.id];
@@ -422,7 +435,7 @@ const PublicApplicationForm = () => {
         }
 
         // Dynamic Rule-Based Validation
-        const failedValidationField = activeFields.find(f => {
+        const failedValidationField = visibleFields.find(f => {
             const val = formData.dynamic_values[f.id];
             if (!val) return false;
             
@@ -484,7 +497,8 @@ const PublicApplicationForm = () => {
             
             if (!foundStudent) {
                 // Creation Mode (INITIAL)
-                const allFields = activeFields;
+                const visibleFields = activeFields.filter(isFieldVisible);
+                const allFields = visibleFields;
                 const dynamicValues = formData.dynamic_values;
 
                 allFields.forEach(f => {
@@ -745,7 +759,7 @@ const PublicApplicationForm = () => {
                                 <button type="submit" className="mt-8 px-10 py-4 bg-indigo-600 text-white rounded-2xl font-black">Skip & Complete</button>
                             </div>
                         ) : (
-                            activeFields.map(field => (
+                            activeFields.filter(isFieldVisible).map(field => (
                                 <div key={field.id} className="space-y-3">
                                     <label className="block text-xs font-black uppercase tracking-widest text-slate-400 ml-1">
                                         {field.label} {field.is_required && !['name', 'mobile', 'phone', 'contact'].some(k => field.label.toLowerCase().includes(k)) && <span className="text-red-500">*</span>}
@@ -801,7 +815,7 @@ const PublicApplicationForm = () => {
                             ))
                         )}
 
-                        {activeFields.length > 0 && (
+                        {activeFields.filter(isFieldVisible).length > 0 && (
                             <div className="pt-8 border-t border-slate-100">
                                 {paymentConfig.required && !paymentDone ? (
                                     <div className="p-8 bg-slate-900 rounded-[40px] text-white shadow-2xl relative overflow-hidden group">

@@ -32,7 +32,7 @@ const CoursesModule = () => {
         program: { name: '', description: '', require_payment: false, registration_fee: 0 },
         subprogram: { name: '', program: '', require_payment: false, registration_fee: 0 },
         course: { name: '', fee_amount: 0, sub_program: '', require_payment: false },
-        field: { label: '', field_type: 'text', field_group: 'INITIAL', options: '', order: 0, is_required: true, validation_pattern: '', validation_message: '' }
+        field: { label: '', field_type: 'text', field_group: 'INITIAL', options: '', order: 0, is_required: true, validation_pattern: '', validation_message: '', conditional_depends_on: '', conditional_value: '' }
     });
 
     useEffect(() => {
@@ -119,6 +119,15 @@ const CoursesModule = () => {
                         message: payload.validation_message || `Invalid ${payload.label}`
                     };
                 }
+
+                if (payload.conditional_depends_on && payload.conditional_value) {
+                    payload.conditional_rule = {
+                        depends_on: parseInt(payload.conditional_depends_on),
+                        value: payload.conditional_value
+                    };
+                } else {
+                    payload.conditional_rule = null;
+                }
             } else {
                 if (activeModal === 'program') {
                     endpoint = editMode ? `programs/${formData.program.id}/` : 'programs/';
@@ -185,7 +194,9 @@ const CoursesModule = () => {
                 ...field,
                 options: Array.isArray(field.options) ? field.options.join(', ') : (field.options || ''),
                 validation_pattern: field.validation_rules?.pattern || '',
-                validation_message: field.validation_rules?.message || ''
+                validation_message: field.validation_rules?.message || '',
+                conditional_depends_on: field.conditional_rule?.depends_on || '',
+                conditional_value: field.conditional_rule?.value || ''
             }
         }));
         setEditMode(true);
@@ -581,7 +592,7 @@ const CoursesModule = () => {
                                             </button>
                                             <button
                                                 onClick={() => {
-                                                    setFormData(prev => ({ ...prev, field: { label: '', field_type: 'text', field_group: 'INITIAL', options: '', order: 0, is_required: true, validation_pattern: '', validation_message: '' } }));
+                                                    setFormData(prev => ({ ...prev, field: { label: '', field_type: 'text', field_group: 'INITIAL', options: '', order: 0, is_required: true, validation_pattern: '', validation_message: '', conditional_depends_on: '', conditional_value: '' } }));
                                                     setEditMode(false);
                                                     setActiveModal('field');
                                                 }}
@@ -735,7 +746,7 @@ const CoursesModule = () => {
                             initial={{ scale: 0.9, opacity: 0, y: 20 }}
                             animate={{ scale: 1, opacity: 1, y: 0 }}
                             exit={{ scale: 0.9, opacity: 0, y: 20 }}
-                            className="bg-white rounded-[32px] p-8 w-full max-w-md shadow-2xl overflow-hidden"
+                            className="bg-white rounded-[32px] p-8 w-full max-w-md shadow-2xl overflow-y-auto max-h-[90vh]"
                         >
                             <div className="flex justify-between items-center mb-8">
                                 <h2 className="text-2xl font-black text-slate-900 capitalize">
@@ -844,6 +855,33 @@ const CoursesModule = () => {
                                                     value={formData.field.validation_message}
                                                     onChange={e => setFormData({ ...formData, field: { ...formData.field, validation_message: e.target.value } })}
                                                 />
+                                            </div>
+                                        </div>
+
+                                        <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-4">
+                                            <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1 flex items-center gap-2">
+                                                <AlertCircle size={12} className="text-indigo-500" />
+                                                Conditional Visibility (Optional)
+                                            </p>
+                                            <div className="space-y-3">
+                                                <select
+                                                    className="w-full p-3.5 rounded-xl bg-white border border-slate-200 text-slate-900 focus:ring-4 focus:ring-indigo-50 focus:border-indigo-500 outline-none transition-all text-xs font-bold"
+                                                    value={formData.field.conditional_depends_on}
+                                                    onChange={e => setFormData({ ...formData, field: { ...formData.field, conditional_depends_on: e.target.value } })}
+                                                >
+                                                    <option value="">-- Always Visible (No Condition) --</option>
+                                                    {fields.filter(f => f.field_type === 'dropdown' && f.id !== formData.field.id).map(f => (
+                                                        <option key={f.id} value={f.id}>Depends on: {f.label}</option>
+                                                    ))}
+                                                </select>
+                                                {formData.field.conditional_depends_on && (
+                                                    <input
+                                                        className="w-full p-3.5 rounded-xl bg-white border border-slate-200 text-slate-900 focus:ring-4 focus:ring-indigo-50 focus:border-indigo-500 outline-none transition-all text-xs font-bold"
+                                                        placeholder="Required Value (e.g. Yes)"
+                                                        value={formData.field.conditional_value}
+                                                        onChange={e => setFormData({ ...formData, field: { ...formData.field, conditional_value: e.target.value } })}
+                                                    />
+                                                )}
                                             </div>
                                         </div>
                                     </>
