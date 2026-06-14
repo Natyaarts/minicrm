@@ -81,6 +81,12 @@ const MentorModule = () => {
     const [isDiscontinueModalOpen, setIsDiscontinueModalOpen] = useState(false);
     const [discontinueReason, setDiscontinueReason] = useState('');
     const [discontinueStudentId, setDiscontinueStudentId] = useState(null);
+    const [discontinueDate, setDiscontinueDate] = useState(new Date().toISOString().split('T')[0]);
+
+    // Rejoin State
+    const [isRejoinModalOpen, setIsRejoinModalOpen] = useState(false);
+    const [rejoinStudentId, setRejoinStudentId] = useState(null);
+    const [rejoinDate, setRejoinDate] = useState(new Date().toISOString().split('T')[0]);
     
     // Batch Reassignment State
     const [isReassignBatchModalOpen, setIsReassignBatchModalOpen] = useState(false);
@@ -676,7 +682,7 @@ const MentorModule = () => {
         if (!breakStudentId) return;
         setLoading(true);
         try {
-            await api.post(`students/${breakStudentId}/take_break/`, { reason: breakReason });
+            await api.post(`students/${breakStudentId}/take_break/`, { reason: breakReason, date: breakStartDate || undefined });
             alert("Student placed on break successfully.");
             setIsBreakModalOpen(false);
             setBreakReason('');
@@ -695,7 +701,7 @@ const MentorModule = () => {
         if (!discontinueStudentId) return;
         setLoading(true);
         try {
-            await api.post(`students/${discontinueStudentId}/discontinue/`, { reason: discontinueReason });
+            await api.post(`students/${discontinueStudentId}/discontinue/`, { reason: discontinueReason, date: discontinueDate || undefined });
             alert("Student marked as discontinued.");
             setIsDiscontinueModalOpen(false);
             setDiscontinueReason('');
@@ -710,12 +716,15 @@ const MentorModule = () => {
         }
     };
 
-    const handleRejoin = async (studentId) => {
-        if (!window.confirm("Are you sure you want to rejoin this student?")) return;
+    const handleRejoin = async (e) => {
+        e.preventDefault();
+        if (!rejoinStudentId) return;
         setLoading(true);
         try {
-            await api.post(`students/${studentId}/rejoin/`);
+            await api.post(`students/${rejoinStudentId}/rejoin/`, { date: rejoinDate || undefined });
             alert("Student rejoined successfully.");
+            setIsRejoinModalOpen(false);
+            setRejoinStudentId(null);
             fetchStudentsWithPagination(); // Refresh list
         } catch (err) {
             console.error(err);
@@ -1174,7 +1183,10 @@ const MentorModule = () => {
                                     <div className="pt-2">
                                         {student.academic_status === 'ON_BREAK' ? (
                                             <button
-                                                onClick={() => handleRejoin(student.id)}
+                                                onClick={() => {
+                                                    setRejoinStudentId(student.id);
+                                                    setIsRejoinModalOpen(true);
+                                                }}
                                                 className="w-full py-2.5 rounded-xl text-xs font-bold transition-all text-center border bg-emerald-50 text-emerald-600 border-emerald-100"
                                             >
                                                 Rejoin Student
@@ -2257,6 +2269,16 @@ const MentorModule = () => {
                                     required
                                 />
                             </div>
+                            <div className="mb-4">
+                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Break Start Date</label>
+                                <input
+                                    type="date"
+                                    value={breakStartDate}
+                                    onChange={(e) => setBreakStartDate(e.target.value)}
+                                    className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 transition-all text-sm"
+                                    required
+                                />
+                            </div>
                             <div className="flex gap-3 justify-end mt-6">
                                 <button type="button" onClick={() => setIsBreakModalOpen(false)} className="px-5 py-2.5 text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all">Cancel</button>
                                 <button type="submit" disabled={loading} className="px-5 py-2.5 text-sm font-bold text-white bg-orange-600 hover:bg-orange-700 rounded-xl transition-all shadow-md shadow-orange-200 flex items-center gap-2">
@@ -2286,6 +2308,16 @@ const MentorModule = () => {
                                     onChange={(e) => setDiscontinueReason(e.target.value)}
                                     placeholder="Enter reason for discontinuing..."
                                     className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-400 transition-all resize-none h-32 text-sm"
+                                    required
+                                />
+                            </div>
+                            <div className="mb-4">
+                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Discontinue Date</label>
+                                <input
+                                    type="date"
+                                    value={discontinueDate}
+                                    onChange={(e) => setDiscontinueDate(e.target.value)}
+                                    className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 transition-all text-sm"
                                     required
                                 />
                             </div>
@@ -2426,6 +2458,42 @@ const MentorModule = () => {
                             </div>
                         </form>
                     </motion.div>
+                </div>
+            )}
+
+            {isRejoinModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+                        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-emerald-50/50">
+                            <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                <span className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center">
+                                    <FontAwesome5 name="undo" size={12} />
+                                </span>
+                                Rejoin Student
+                            </h3>
+                            <button onClick={() => setIsRejoinModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors">
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <form onSubmit={handleRejoin} className="p-6">
+                            <div className="mb-4">
+                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Rejoin Date</label>
+                                <input
+                                    type="date"
+                                    value={rejoinDate}
+                                    onChange={(e) => setRejoinDate(e.target.value)}
+                                    className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 transition-all text-sm"
+                                    required
+                                />
+                            </div>
+                            <div className="flex gap-3 justify-end mt-6">
+                                <button type="button" onClick={() => setIsRejoinModalOpen(false)} className="px-5 py-2.5 text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all">Cancel</button>
+                                <button type="submit" disabled={loading} className="px-5 py-2.5 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-all shadow-md shadow-emerald-200 flex items-center gap-2">
+                                    {loading ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span> : 'Confirm Rejoin'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
             )}
 

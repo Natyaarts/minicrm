@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+import datetime
 
 class Program(models.Model):
     name = models.CharField(max_length=100) # e.g., Natya, Natya Career Academy
@@ -112,7 +113,7 @@ class Student(models.Model):
 
 class StudentBreakHistory(models.Model):
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='break_history')
-    break_start_date = models.DateField(auto_now_add=True)
+    break_start_date = models.DateField(default=datetime.date.today)
     rejoin_date = models.DateField(null=True, blank=True)
     reason = models.TextField(blank=True, null=True)
     is_active_break = models.BooleanField(default=True)

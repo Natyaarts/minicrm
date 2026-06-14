@@ -524,6 +524,7 @@ class StudentViewSet(viewsets.ModelViewSet):
     def take_break(self, request, pk=None):
         student = self.get_object()
         reason = request.data.get('reason', '')
+        break_date = request.data.get('date')
         
         if student.academic_status == 'ON_BREAK':
             return Response({'error': 'Student is already on break'}, status=status.HTTP_400_BAD_REQUEST)
@@ -532,8 +533,16 @@ class StudentViewSet(viewsets.ModelViewSet):
         student.save()
         
         from core.models import StudentBreakHistory
+        import datetime
+        
+        try:
+            break_date_obj = datetime.date.fromisoformat(break_date) if break_date else datetime.date.today()
+        except ValueError:
+            break_date_obj = datetime.date.today()
+
         StudentBreakHistory.objects.create(
             student=student,
+            break_start_date=break_date_obj,
             reason=reason,
             is_active_break=True
         )
@@ -542,6 +551,7 @@ class StudentViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def rejoin(self, request, pk=None):
         student = self.get_object()
+        rejoin_date = request.data.get('date')
         
         if student.academic_status != 'ON_BREAK':
             return Response({'error': 'Student is not currently on break'}, status=status.HTTP_400_BAD_REQUEST)
@@ -550,11 +560,17 @@ class StudentViewSet(viewsets.ModelViewSet):
         student.save()
         
         from core.models import StudentBreakHistory
-        from datetime import date
+        import datetime
+        
+        try:
+            rejoin_date_obj = datetime.date.fromisoformat(rejoin_date) if rejoin_date else datetime.date.today()
+        except ValueError:
+            rejoin_date_obj = datetime.date.today()
+
         active_break = StudentBreakHistory.objects.filter(student=student, is_active_break=True).first()
         if active_break:
             active_break.is_active_break = False
-            active_break.rejoin_date = date.today()
+            active_break.rejoin_date = rejoin_date_obj
             active_break.save()
             
         return Response({'status': 'Student rejoined successfully'})
@@ -563,6 +579,7 @@ class StudentViewSet(viewsets.ModelViewSet):
     def discontinue(self, request, pk=None):
         student = self.get_object()
         reason = request.data.get('reason', '')
+        discontinue_date = request.data.get('date')
         
         if student.academic_status == 'DISCONTINUED':
             return Response({'error': 'Student is already discontinued'}, status=status.HTTP_400_BAD_REQUEST)
@@ -570,8 +587,14 @@ class StudentViewSet(viewsets.ModelViewSet):
         student.academic_status = 'DISCONTINUED'
         # Optional: You might want to update lead_status to 'DROPPED' as well
         student.lead_status = 'DROPPED'
-        from datetime import date
-        student.discontinued_date = date.today()
+        
+        import datetime
+        try:
+            discontinue_date_obj = datetime.date.fromisoformat(discontinue_date) if discontinue_date else datetime.date.today()
+        except ValueError:
+            discontinue_date_obj = datetime.date.today()
+            
+        student.discontinued_date = discontinue_date_obj
         student.save()
         
         # We can also save the reason in a log/history if we want, but for now we just change status.
