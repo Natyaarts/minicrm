@@ -1076,7 +1076,10 @@ const MentorModule = () => {
                                                 <div className="flex justify-end gap-2">
                                                     {student.academic_status === 'ON_BREAK' ? (
                                                         <button
-                                                            onClick={() => handleRejoin(student.id)}
+                                                            onClick={() => {
+                                                                setRejoinStudentId(student.id);
+                                                                setIsRejoinModalOpen(true);
+                                                            }}
                                                             className="px-3 py-2 rounded-xl text-xs font-bold transition-all bg-emerald-50 text-emerald-600 border border-emerald-100 hover:bg-emerald-100"
                                                         >
                                                             Rejoin
