@@ -2470,7 +2470,7 @@ const MentorModule = () => {
                         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-emerald-50/50">
                             <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                                 <span className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center">
-                                    <FontAwesome5 name="undo" size={12} />
+                                    <RefreshCw size={12} />
                                 </span>
                                 Rejoin Student
                             </h3>
