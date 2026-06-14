@@ -193,6 +193,69 @@ class BatchViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Student not found in this batch'}, status=status.HTTP_404_NOT_FOUND)
 
     @action(detail=True, methods=['post'])
+    def reassign(self, request, pk=None):
+        try:
+            batch = self.get_object()
+        except:
+            return Response({'error': 'Batch not found or access denied'}, status=status.HTTP_404_NOT_FOUND)
+            
+        new_mentor_id = request.data.get('new_mentor_id')
+        reason = request.data.get('reason', '')
+        
+        if not new_mentor_id:
+            return Response({'error': 'new_mentor_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        User = get_user_model()
+        try:
+            new_mentor = User.objects.get(id=new_mentor_id)
+        except User.DoesNotExist:
+            return Response({'error': 'New mentor not found'}, status=status.HTTP_404_NOT_FOUND)
+            
+        previous_mentor = batch.primary_mentor
+        
+        if previous_mentor and previous_mentor.id == new_mentor.id:
+            return Response({'error': 'Mentor is already assigned to this batch'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        # Update batch
+        batch.primary_mentor = new_mentor
+        batch.save()
+        
+        # Create history record
+        from core.models import BatchAssignmentHistory
+        BatchAssignmentHistory.objects.create(
+            batch=batch,
+            previous_mentor=previous_mentor,
+            new_mentor=new_mentor,
+            assigned_by=request.user,
+            reason=reason
+        )
+        
+        from notifications.models import Notification
+        Notification.objects.create(
+            user=new_mentor,
+            title="Batch Reassigned",
+            message=f"You have been assigned to batch {batch.name}.",
+            notification_type='BATCH',
+            target_url=f"/mentor"
+        )
+        
+        return Response({'status': 'Batch reassigned successfully'})
+
+    @action(detail=True, methods=['get'])
+    def assignment_history(self, request, pk=None):
+        try:
+            batch = self.get_object()
+        except:
+            return Response({'error': 'Batch not found or access denied'}, status=status.HTTP_404_NOT_FOUND)
+            
+        from core.models import BatchAssignmentHistory
+        from core.serializers import BatchAssignmentHistorySerializer
+        
+        history = BatchAssignmentHistory.objects.filter(batch=batch).order_by('-assigned_at')
+        serializer = BatchAssignmentHistorySerializer(history, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
     def log_session(self, request, pk=None):
         batch = self.get_object()
         date = request.data.get('date')
@@ -351,20 +414,8 @@ class StudentViewSet(viewsets.ModelViewSet):
             qs = qs.filter(course_id=course)
 
         academic_status = self.request.query_params.get('academic_status')
-        if academic_status == 'AVAILABLE':
-            qs = qs.filter(
-                dynamic_values__field__field_group='ACADEMIC'
-            ).exclude(
-                Q(dynamic_values__value__isnull=True) | Q(dynamic_values__value__exact='')
-            ).distinct()
-        elif academic_status == 'WANTED':
-            qs = qs.exclude(
-                id__in=Student.objects.filter(
-                    dynamic_values__field__field_group='ACADEMIC'
-                ).exclude(
-                    Q(dynamic_values__value__isnull=True) | Q(dynamic_values__value__exact='')
-                ).values('id')
-            )
+        if academic_status:
+            qs = qs.filter(academic_status=academic_status)
 
         return qs.order_by('-id')
 
@@ -390,7 +441,6 @@ class StudentViewSet(viewsets.ModelViewSet):
                 'Status': 'Active' if s.is_active else 'Inactive',
                 'Total Paid': total_paid,
             })
-        
         df = pd.DataFrame(data)
         response = HttpResponse(content_type='text/csv')
         response['Content-Disposition'] = 'attachment; filename="students.csv"'
@@ -469,6 +519,165 @@ class StudentViewSet(viewsets.ModelViewSet):
             # Unassign
             students.update(assigned_to=None)
             return Response({'status': 'Leads unassigned'})
+
+    @action(detail=True, methods=['post'])
+    def take_break(self, request, pk=None):
+        student = self.get_object()
+        reason = request.data.get('reason', '')
+        
+        if student.academic_status == 'ON_BREAK':
+            return Response({'error': 'Student is already on break'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        student.academic_status = 'ON_BREAK'
+        student.save()
+        
+        from core.models import StudentBreakHistory
+        StudentBreakHistory.objects.create(
+            student=student,
+            reason=reason,
+            is_active_break=True
+        )
+        return Response({'status': 'Student placed on break'})
+
+    @action(detail=True, methods=['post'])
+    def rejoin(self, request, pk=None):
+        student = self.get_object()
+        
+        if student.academic_status != 'ON_BREAK':
+            return Response({'error': 'Student is not currently on break'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        student.academic_status = 'ACTIVE'
+        student.save()
+        
+        from core.models import StudentBreakHistory
+        from datetime import date
+        active_break = StudentBreakHistory.objects.filter(student=student, is_active_break=True).first()
+        if active_break:
+            active_break.is_active_break = False
+            active_break.rejoin_date = date.today()
+            active_break.save()
+            
+        return Response({'status': 'Student rejoined successfully'})
+
+    @action(detail=True, methods=['post'])
+    def discontinue(self, request, pk=None):
+        student = self.get_object()
+        reason = request.data.get('reason', '')
+        
+        if student.academic_status == 'DISCONTINUED':
+            return Response({'error': 'Student is already discontinued'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        student.academic_status = 'DISCONTINUED'
+        # Optional: You might want to update lead_status to 'DROPPED' as well
+        student.lead_status = 'DROPPED'
+        from datetime import date
+        student.discontinued_date = date.today()
+        student.save()
+        
+        # We can also save the reason in a log/history if we want, but for now we just change status.
+        return Response({'status': 'Student marked as discontinued'})
+
+    @action(detail=False, methods=['get'])
+    def break_metrics(self, request):
+        from core.models import StudentBreakHistory
+        from datetime import datetime, date
+        
+        start_date_str = request.query_params.get('start_date')
+        end_date_str = request.query_params.get('end_date')
+        
+        qs = self.get_queryset()
+        
+        # Parse dates if provided
+        start_date = None
+        end_date = None
+        try:
+            if start_date_str:
+                start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+            if end_date_str:
+                end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+        except ValueError:
+            pass
+        # Students on break filtering
+        on_break_qs = qs.filter(academic_status='ON_BREAK')
+        # To filter by when they took the break, we can look at the StudentBreakHistory
+        
+        # Rejoined filtering
+        rejoined_qs = StudentBreakHistory.objects.filter(
+            student__in=qs,
+            is_active_break=False
+        )
+        
+        # Discontinued filtering
+        discontinued_qs = qs.filter(academic_status='DISCONTINUED')
+        
+        if start_date and end_date:
+            on_break_qs = on_break_qs.filter(
+                studentbreakhistory__break_start_date__gte=start_date,
+                studentbreakhistory__break_start_date__lte=end_date,
+                studentbreakhistory__is_active_break=True
+            ).distinct()
+            
+            rejoined_qs = rejoined_qs.filter(
+                rejoin_date__gte=start_date,
+                rejoin_date__lte=end_date
+            )
+        else:
+            # Default behavior if no dates: Rejoined this month
+            today = date.today()
+            rejoined_qs = rejoined_qs.filter(
+                rejoin_date__year=today.year,
+                rejoin_date__month=today.month
+            )
+
+        # Build responses
+        on_break_data = []
+        for s in on_break_qs:
+            history = StudentBreakHistory.objects.filter(student=s, is_active_break=True).first()
+            on_break_data.append({
+                'id': s.id,
+                'name': f"{s.first_name} {s.last_name}",
+                'crm_student_id': s.crm_student_id,
+                'mobile': s.mobile,
+                'email': s.email,
+                'reason': history.reason if history else '',
+                'date': history.break_start_date.strftime('%Y-%m-%d') if history and history.break_start_date else ''
+            })
+            
+        rejoined_data = []
+        for history in rejoined_qs:
+            s = history.student
+            rejoined_data.append({
+                'id': s.id,
+                'name': f"{s.first_name} {s.last_name}",
+                'crm_student_id': s.crm_student_id,
+                'mobile': s.mobile,
+                'email': s.email,
+                'reason': history.reason,
+                'break_date': history.break_start_date.strftime('%Y-%m-%d') if history.break_start_date else '',
+                'rejoin_date': history.rejoin_date.strftime('%Y-%m-%d') if history.rejoin_date else ''
+            })
+            
+        discontinued_data = []
+        for s in discontinued_qs:
+            discontinued_data.append({
+                'id': s.id,
+                'name': f"{s.first_name} {s.last_name}",
+                'crm_student_id': s.crm_student_id,
+                'mobile': s.mobile,
+                'email': s.email,
+                'reason': 'Discontinued',
+                'date': s.discontinued_date.strftime('%Y-%m-%d') if s.discontinued_date else ''
+            })
+            
+        return Response({
+            'on_break': on_break_data,
+            'rejoined': rejoined_data,
+            'discontinued': discontinued_data,
+            'on_break_count': len(on_break_data),
+            'rejoined_count': len(rejoined_data),
+            'discontinued_count': len(discontinued_data)
+        })
+
 
 class TransactionViewSet(viewsets.ModelViewSet):
     queryset = Transaction.objects.all()

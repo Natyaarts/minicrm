@@ -109,6 +109,27 @@ class ClassSessionSerializer(serializers.ModelSerializer):
         model = ClassSession
         fields = '__all__'
 
+from .models import BatchAssignmentHistory
+
+class BatchAssignmentHistorySerializer(serializers.ModelSerializer):
+    previous_mentor_name = serializers.SerializerMethodField()
+    new_mentor_name = serializers.SerializerMethodField()
+    assigned_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = BatchAssignmentHistory
+        fields = ['id', 'batch', 'previous_mentor', 'new_mentor', 'assigned_by', 'assigned_at', 'reason', 
+                  'previous_mentor_name', 'new_mentor_name', 'assigned_by_name']
+        
+    def get_previous_mentor_name(self, obj):
+        return f"{obj.previous_mentor.first_name} {obj.previous_mentor.last_name}" if obj.previous_mentor else "None"
+
+    def get_new_mentor_name(self, obj):
+        return f"{obj.new_mentor.first_name} {obj.new_mentor.last_name}" if obj.new_mentor else "None"
+        
+    def get_assigned_by_name(self, obj):
+        return f"{obj.assigned_by.first_name} {obj.assigned_by.last_name}" if obj.assigned_by else "System"
+
 class BatchSerializer(serializers.ModelSerializer):
     student_count = serializers.SerializerMethodField()
     primary_mentor_details = UserSerializer(source='primary_mentor', read_only=True)

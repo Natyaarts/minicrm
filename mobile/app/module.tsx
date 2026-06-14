@@ -5,6 +5,8 @@ import { FontAwesome5 } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import client from '../src/api/client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { requestDefaultDialerRole, checkIsDefaultDialer } from '../src/utils/CallManager';
@@ -22,6 +24,9 @@ export default function ModuleDetailScreen() {
   const [mentorStudents, setMentorStudents] = useState<any[]>([]);
   const [mentorWise, setMentorWise] = useState<any[]>([]);
   const [mentorSearch, setMentorSearch] = useState('');
+  const [mentorFilterProgram, setMentorFilterProgram] = useState('');
+  const [mentorFilterCourse, setMentorFilterCourse] = useState('');
+  const [mentorFilterStatus, setMentorFilterStatus] = useState('');
   const [isCreatingBatch, setIsCreatingBatch] = useState(false);
   const [newBatchData, setNewBatchData] = useState({ name: '', courseId: '', startDate: new Date().toISOString().split('T')[0] });
   const [mentorCourses, setMentorCourses] = useState<any[]>([]);
@@ -179,6 +184,52 @@ export default function ModuleDetailScreen() {
   useEffect(() => {
     fetchProductionData();
   }, [title]);
+
+  useEffect(() => {
+    if ((title as string).toLowerCase().includes('mentor') && !loading) {
+      const fetchFilteredMentorStudents = async () => {
+        try {
+          let url = '/students/?lead_status=CONVERTED';
+          if (mentorFilterProgram) url += `&program=${mentorFilterProgram}`;
+          if (mentorFilterCourse) url += `&course=${mentorFilterCourse}`;
+          if (mentorFilterStatus) url += `&academic_status=${mentorFilterStatus}`;
+          
+          const res = await client.get(url).catch(() => ({ data: [] }));
+          setMentorStudents(res.data?.results || res.data || []);
+        } catch (err) {
+          console.error(err);
+        }
+      };
+      fetchFilteredMentorStudents();
+    }
+  }, [mentorFilterProgram, mentorFilterCourse, mentorFilterStatus]);
+
+  const handleExportCSV = async () => {
+    try {
+      setLoading(true);
+      let url = '/students/export_csv/?lead_status=CONVERTED';
+      if (mentorSearch) url += `&search=${mentorSearch}`;
+      if (mentorFilterProgram) url += `&program=${mentorFilterProgram}`;
+      if (mentorFilterCourse) url += `&course=${mentorFilterCourse}`;
+      if (mentorFilterStatus) url += `&academic_status=${mentorFilterStatus}`;
+      
+      const res = await client.get(url, { responseType: 'text' });
+      const fileUri = FileSystem.documentDirectory + 'filtered_students.csv';
+      await FileSystem.writeAsStringAsync(fileUri, res.data, { encoding: FileSystem.EncodingType.UTF8 });
+      
+      const isAvailable = await Sharing.isAvailableAsync();
+      if (isAvailable) {
+        await Sharing.shareAsync(fileUri);
+      } else {
+        Alert.alert('Error', 'Sharing is not available on this device');
+      }
+    } catch (err) {
+      console.error(err);
+      Alert.alert('Error', 'Failed to export CSV');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const fetchProductionData = async () => {
     setLoading(true);
@@ -1316,12 +1367,61 @@ export default function ModuleDetailScreen() {
 
             {mentorTab === 'students' && (
               <View style={styles.studentListContainer}>
-                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 10 }}>
-                  <TouchableOpacity onPress={handleAddStudent} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#48BB78', paddingHorizontal: 15, paddingVertical: 8, borderRadius: 8, gap: 8 }}>
+                
+                {/* Status Filters Row */}
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12, flexGrow: 0 }} contentContainerStyle={{ gap: 8, paddingHorizontal: 2 }}>
+                  {['', 'ACTIVE', 'ON_BREAK', 'DISCONTINUED'].map(st => (
+                    <TouchableOpacity 
+                      key={st}
+                      onPress={() => setMentorFilterStatus(st)}
+                      style={{
+                        paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16,
+                        backgroundColor: mentorFilterStatus === st ? '#3182CE' : (isDark ? '#2D3748' : '#E2E8F0')
+                      }}
+                    >
+                      <Text style={{ fontSize: 12, fontWeight: 'bold', color: mentorFilterStatus === st ? '#FFF' : (isDark ? '#A0AEC0' : '#4A5568') }}>
+                        {st === '' ? 'All Status' : st.replace('_', ' ')}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+
+                {/* Course Filters Row */}
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12, flexGrow: 0 }} contentContainerStyle={{ gap: 8, paddingHorizontal: 2 }}>
+                  <TouchableOpacity 
+                    onPress={() => setMentorFilterCourse('')}
+                    style={{
+                      paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16,
+                      backgroundColor: mentorFilterCourse === '' ? '#805AD5' : (isDark ? '#2D3748' : '#E2E8F0')
+                    }}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: 'bold', color: mentorFilterCourse === '' ? '#FFF' : (isDark ? '#A0AEC0' : '#4A5568') }}>All Courses</Text>
+                  </TouchableOpacity>
+                  {mentorCourses.map((c: any) => (
+                    <TouchableOpacity 
+                      key={c.id}
+                      onPress={() => setMentorFilterCourse(c.id.toString())}
+                      style={{
+                        paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16,
+                        backgroundColor: mentorFilterCourse === c.id.toString() ? '#805AD5' : (isDark ? '#2D3748' : '#E2E8F0')
+                      }}
+                    >
+                      <Text style={{ fontSize: 12, fontWeight: 'bold', color: mentorFilterCourse === c.id.toString() ? '#FFF' : (isDark ? '#A0AEC0' : '#4A5568') }}>{c.name}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10, alignItems: 'center', backgroundColor: 'transparent' }}>
+                  <TouchableOpacity onPress={handleExportCSV} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? '#2D3748' : '#EDF2F7', borderWidth: 1, borderColor: isDark ? '#4A5568' : '#CBD5E0', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, gap: 8 }}>
+                     <FontAwesome5 name="file-csv" size={14} color={isDark ? "#CBD5E0" : "#4A5568"} />
+                     <Text style={{ color: isDark ? '#CBD5E0' : '#4A5568', fontWeight: 'bold', fontSize: 13 }}>Export CSV</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={handleAddStudent} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#48BB78', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, gap: 8 }}>
                      <FontAwesome5 name="user-plus" size={14} color="#fff" />
-                     <Text style={{ color: '#fff', fontWeight: 'bold' }}>Add Student</Text>
+                     <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 13 }}>Add Student</Text>
                   </TouchableOpacity>
                 </View>
+
                 {mentorStudents
                   .filter(s => s.first_name?.toLowerCase().includes(mentorSearch.toLowerCase()) || s.last_name?.toLowerCase().includes(mentorSearch.toLowerCase()))
                   .map((s, idx) => (
@@ -1331,7 +1431,7 @@ export default function ModuleDetailScreen() {
                         <Text style={styles.itemDesc}>ID: {s.crm_student_id || s.username} | Course: {s.course_name || 'General'}</Text>
                       </View>
                       <View style={[styles.badge, { backgroundColor: '#C6F6D5' }]}>
-                        <Text style={[styles.badgeText, { color: '#22543D' }]}>{s.status || 'ACTIVE'}</Text>
+                        <Text style={[styles.badgeText, { color: '#22543D' }]}>{s.status || s.academic_status || 'ACTIVE'}</Text>
                       </View>
                     </View>
                   ))}

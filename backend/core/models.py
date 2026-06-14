@@ -43,6 +43,17 @@ class Batch(models.Model):
     def __str__(self):
         return self.name
 
+class BatchAssignmentHistory(models.Model):
+    batch = models.ForeignKey(Batch, on_delete=models.CASCADE, related_name='assignment_history')
+    previous_mentor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='previous_batch_assignments')
+    new_mentor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='new_batch_assignments')
+    assigned_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='batch_assignments_made')
+    assigned_at = models.DateTimeField(auto_now_add=True)
+    reason = models.TextField(blank=True, null=True)
+
+    def __str__(self):
+        return f"{self.batch.name} reassigned to {self.new_mentor.username if self.new_mentor else 'None'} by {self.assigned_by.username if self.assigned_by else 'System'}"
+
 class Student(models.Model):
     LEAD_STATUS_CHOICES = [
         ('NEW', 'New Lead'),
@@ -59,6 +70,8 @@ class Student(models.Model):
     batch = models.ForeignKey(Batch, on_delete=models.SET_NULL, null=True, related_name='students')
     is_active = models.BooleanField(default=True)
     lead_status = models.CharField(max_length=50, default='NEW')
+    academic_status = models.CharField(max_length=20, default='ACTIVE', choices=[('ACTIVE', 'Active'), ('ON_BREAK', 'On Break'), ('DISCONTINUED', 'Discontinued')])
+    discontinued_date = models.DateField(null=True, blank=True)
     
     # Lead Assignment (Sales Process)
     assigned_to = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_leads')
@@ -96,6 +109,17 @@ class Student(models.Model):
 
     def __str__(self):
         return f"{self.first_name} {self.last_name}"
+
+class StudentBreakHistory(models.Model):
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='break_history')
+    break_start_date = models.DateField(auto_now_add=True)
+    rejoin_date = models.DateField(null=True, blank=True)
+    reason = models.TextField(blank=True, null=True)
+    is_active_break = models.BooleanField(default=True)
+
+    def __str__(self):
+        return f"{self.student} - Break ({self.break_start_date} to {self.rejoin_date or 'Present'})"
+
 
 class Transaction(models.Model):
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='transactions')

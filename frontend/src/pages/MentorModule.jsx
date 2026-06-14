@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import { motion } from 'framer-motion';
-import { FileText, User, Calendar, BookOpen, Search, X, Key, Edit, Users } from 'lucide-react';
+import { FileText, User, Calendar, BookOpen, Search, X, Key, Edit, Users, History, RefreshCw, UserMinus, Download } from 'lucide-react';
 
 const MentorModule = () => {
     // Data State
@@ -29,11 +29,15 @@ const MentorModule = () => {
     const [credentialStudent, setCredentialStudent] = useState(null);
     const [credentialForm, setCredentialForm] = useState({ username: '', password: '' });
     const [allStudents, setAllStudents] = useState([]);
-    const [viewTab, setViewTab] = useState('batches'); // 'batches', 'all-students', 'wise-courses'
+    const [viewTab, setViewTab] = useState('dashboard'); // 'dashboard', 'batches', 'all-students', 'wise-courses'
     const [wiseCourses, setWiseCourses] = useState([]);
     const [selectedWiseCourse, setSelectedWiseCourse] = useState(null);
     const [wiseParticipants, setWiseParticipants] = useState([]);
     const [studentSearchQuery, setStudentSearchQuery] = useState('');
+    const [studentFilterProgram, setStudentFilterProgram] = useState('');
+    const [studentFilterCourse, setStudentFilterCourse] = useState('');
+    const [studentFilterBatch, setStudentFilterBatch] = useState('');
+    const [studentFilterStatus, setStudentFilterStatus] = useState('');
     const [unassignedSearchQuery, setUnassignedSearchQuery] = useState('');
     const [selectedUnassignedStudents, setSelectedUnassignedStudents] = useState([]);
     const [studentPage, setStudentPage] = useState(1);
@@ -62,6 +66,27 @@ const MentorModule = () => {
         secondary_mentors: []
     });
     const [isEditMode, setIsEditMode] = useState(false);
+    
+    // Break & Rejoin State
+    const [breakMetrics, setBreakMetrics] = useState({ on_break_count: 0, rejoined_count: 0, on_break: [], rejoined: [] });
+    const [isBreakModalOpen, setIsBreakModalOpen] = useState(false);
+    const [breakReason, setBreakReason] = useState('');
+    const [breakStudentId, setBreakStudentId] = useState(null);
+    const [breakStartDate, setBreakStartDate] = useState('');
+    const [breakEndDate, setBreakEndDate] = useState('');
+    const [isBreakListModalOpen, setIsBreakListModalOpen] = useState(false);
+    const [breakListModalType, setBreakListModalType] = useState('on_break'); // 'on_break', 'rejoined', 'discontinued'
+    
+    // Discontinued State
+    const [isDiscontinueModalOpen, setIsDiscontinueModalOpen] = useState(false);
+    const [discontinueReason, setDiscontinueReason] = useState('');
+    const [discontinueStudentId, setDiscontinueStudentId] = useState(null);
+    
+    // Batch Reassignment State
+    const [isReassignBatchModalOpen, setIsReassignBatchModalOpen] = useState(false);
+    const [reassignBatchData, setReassignBatchData] = useState({ new_mentor_id: '', reason: '' });
+    const [isBatchHistoryModalOpen, setIsBatchHistoryModalOpen] = useState(false);
+    const [batchHistoryData, setBatchHistoryData] = useState([]);
 
     useEffect(() => {
         if (isAddStudentModalOpen) {
@@ -110,8 +135,72 @@ const MentorModule = () => {
             fetchStudentsWithPagination();
         } else if (viewTab === 'wise-courses') {
             fetchWiseCourses();
+        } else if (viewTab === 'dashboard') {
+            fetchBreakMetrics();
         }
     }, [viewTab, studentPage]);
+
+    useEffect(() => {
+        if (viewTab === 'dashboard') {
+            fetchBreakMetrics();
+        }
+    }, [breakStartDate, breakEndDate]);
+
+    const fetchBreakMetrics = async () => {
+        try {
+            let url = 'students/break_metrics/';
+            const params = new URLSearchParams();
+            if (breakStartDate) params.append('start_date', breakStartDate);
+            if (breakEndDate) params.append('end_date', breakEndDate);
+            if (params.toString()) url += `?${params.toString()}`;
+            
+            const res = await api.get(url);
+            setBreakMetrics(res.data);
+        } catch (err) {
+            console.error("Failed to fetch break metrics", err);
+        }
+    };
+
+    const handleExportBreakList = () => {
+        const list = breakListModalType === 'on_break' ? breakMetrics.on_break : (breakListModalType === 'rejoined' ? breakMetrics.rejoined : breakMetrics.discontinued);
+        if (!list || list.length === 0) return;
+
+        let csvContent = "data:text/csv;charset=utf-8,";
+        const headers = ["ID", "Name", "Mobile", "Email", "Reason"];
+        if (breakListModalType === 'rejoined') {
+            headers.push("Break Date", "Rejoin Date");
+        } else if (breakListModalType === 'discontinued') {
+            headers.push("Discontinued Date");
+        } else {
+            headers.push("Break Date");
+        }
+        
+        csvContent += headers.join(",") + "\n";
+        
+        list.forEach(item => {
+            const row = [
+                item.crm_student_id,
+                `"${item.name}"`,
+                item.mobile,
+                item.email,
+                `"${item.reason}"`
+            ];
+            if (breakListModalType === 'rejoined') {
+                row.push(item.break_date, item.rejoin_date);
+            } else {
+                row.push(item.date);
+            }
+            csvContent += row.join(",") + "\n";
+        });
+        
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `${breakListModalType}_students.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
 
     // Handle search with debounce
     useEffect(() => {
@@ -122,12 +211,44 @@ const MentorModule = () => {
             }, 500);
             return () => clearTimeout(timer);
         }
-    }, [studentSearchQuery]);
+    }, [studentSearchQuery, studentFilterProgram, studentFilterCourse, studentFilterBatch, studentFilterStatus]);
+
+    const handleExportFilteredStudents = async () => {
+        try {
+            setLoading(true);
+            let url = `students/export_csv/?lead_status=CONVERTED`;
+            if (studentSearchQuery) url += `&search=${studentSearchQuery}`;
+            if (studentFilterProgram) url += `&program=${studentFilterProgram}`;
+            if (studentFilterCourse) url += `&course=${studentFilterCourse}`;
+            if (studentFilterBatch) url += `&batch=${studentFilterBatch}`;
+            if (studentFilterStatus) url += `&academic_status=${studentFilterStatus}`;
+            
+            const res = await api.get(url, { responseType: 'blob' });
+            const urlBlob = window.URL.createObjectURL(new Blob([res.data]));
+            const link = document.createElement('a');
+            link.href = urlBlob;
+            link.setAttribute('download', 'filtered_students.csv');
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+        } catch (error) {
+            console.error("Export failed:", error);
+            alert("Failed to export students.");
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const fetchStudentsWithPagination = async () => {
         try {
             setLoading(true);
-            const res = await api.get(`students/?page=${studentPage}&search=${studentSearchQuery}&lead_status=CONVERTED`);
+            let url = `students/?page=${studentPage}&search=${studentSearchQuery}&lead_status=CONVERTED`;
+            if (studentFilterProgram) url += `&program=${studentFilterProgram}`;
+            if (studentFilterCourse) url += `&course=${studentFilterCourse}`;
+            if (studentFilterBatch) url += `&batch=${studentFilterBatch}`;
+            if (studentFilterStatus) url += `&academic_status=${studentFilterStatus}`;
+            
+            const res = await api.get(url);
             const data = res.data;
             if (data.results) {
                 setAllStudents(data.results);
@@ -276,6 +397,39 @@ const MentorModule = () => {
         }
     };
 
+
+    const handleReassignBatch = async (e) => {
+        e.preventDefault();
+        if (!reassignBatchData.new_mentor_id) return;
+        setLoading(true);
+        try {
+            await api.post(`batches/${selectedBatch.id}/reassign/`, reassignBatchData);
+            setIsReassignBatchModalOpen(false);
+            setReassignBatchData({ new_mentor_id: '', reason: '' });
+            fetchBatches();
+            // Fetch updated selected batch info
+            const res = await api.get(`batches/${selectedBatch.id}/`);
+            setSelectedBatch(res.data);
+        } catch (err) {
+            console.error("Failed to reassign batch", err);
+            alert(err.response?.data?.error || "Failed to reassign batch");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleViewBatchHistory = async () => {
+        setLoading(true);
+        try {
+            const res = await api.get(`batches/${selectedBatch.id}/assignment_history/`);
+            setBatchHistoryData(res.data);
+            setIsBatchHistoryModalOpen(true);
+        } catch (err) {
+            console.error("Failed to fetch batch history", err);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const handleEditBatch = () => {
         setNewBatch({
@@ -517,6 +671,60 @@ const MentorModule = () => {
         }
     };
 
+    const handleTakeBreak = async (e) => {
+        e.preventDefault();
+        if (!breakStudentId) return;
+        setLoading(true);
+        try {
+            await api.post(`students/${breakStudentId}/take_break/`, { reason: breakReason });
+            alert("Student placed on break successfully.");
+            setIsBreakModalOpen(false);
+            setBreakReason('');
+            setBreakStudentId(null);
+            fetchStudentsWithPagination(); // Refresh list
+        } catch (err) {
+            console.error(err);
+            alert(err.response?.data?.error || "Failed to place student on break.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleDiscontinue = async (e) => {
+        e.preventDefault();
+        if (!discontinueStudentId) return;
+        setLoading(true);
+        try {
+            await api.post(`students/${discontinueStudentId}/discontinue/`, { reason: discontinueReason });
+            alert("Student marked as discontinued.");
+            setIsDiscontinueModalOpen(false);
+            setDiscontinueReason('');
+            setDiscontinueStudentId(null);
+            fetchStudentsWithPagination(); // Refresh list
+            if (viewTab === 'dashboard') fetchBreakMetrics();
+        } catch (err) {
+            console.error(err);
+            alert(err.response?.data?.error || "Failed to mark student as discontinued.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleRejoin = async (studentId) => {
+        if (!window.confirm("Are you sure you want to rejoin this student?")) return;
+        setLoading(true);
+        try {
+            await api.post(`students/${studentId}/rejoin/`);
+            alert("Student rejoined successfully.");
+            fetchStudentsWithPagination(); // Refresh list
+        } catch (err) {
+            console.error(err);
+            alert(err.response?.data?.error || "Failed to rejoin student.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
     return (
         <div className="min-h-screen w-full bg-slate-50 font-sans text-slate-900 pb-10">
             {/* Top Minimal Navigation */}
@@ -529,6 +737,12 @@ const MentorModule = () => {
                 </div>
 
                 <div className="flex bg-white border border-slate-200 p-1 rounded-xl w-full lg:w-auto overflow-x-auto scrollbar-none gap-1 shadow-sm">
+                    <button
+                        onClick={() => { setViewTab('dashboard'); setSelectedBatch(null); }}
+                        className={`flex-1 lg:flex-none whitespace-nowrap px-4 sm:px-5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all ${viewTab === 'dashboard' ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                        Dashboard
+                    </button>
                     <button
                         onClick={() => { setViewTab('batches'); setSelectedBatch(null); }}
                         className={`flex-1 lg:flex-none whitespace-nowrap px-4 sm:px-5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all ${viewTab === 'batches' ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
@@ -574,23 +788,237 @@ const MentorModule = () => {
             </div>
 
             {/* Content Logic */}
+            {viewTab === 'dashboard' && !selectedBatch && (
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between hover:shadow-md transition-all">
+                            <div>
+                                <p className="text-sm font-semibold text-slate-500 mb-1">Total Batches</p>
+                                <p className="text-3xl font-black text-slate-800">{batchPagination?.count || batches?.length || 0}</p>
+                            </div>
+                            <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600">
+                                <BookOpen size={24} />
+                            </div>
+                        </div>
+
+                        {/* Date Filter for Break Metrics */}
+                        <div className="col-span-1 sm:col-span-2 lg:col-span-4 flex items-center justify-end gap-3 mb-2">
+                            <input 
+                                type="date" 
+                                value={breakStartDate} 
+                                onChange={(e) => setBreakStartDate(e.target.value)}
+                                className="px-3 py-1.5 text-sm rounded-lg border border-slate-200 bg-white"
+                            />
+                            <span className="text-slate-400">to</span>
+                            <input 
+                                type="date" 
+                                value={breakEndDate} 
+                                onChange={(e) => setBreakEndDate(e.target.value)}
+                                className="px-3 py-1.5 text-sm rounded-lg border border-slate-200 bg-white"
+                            />
+                        </div>
+
+                        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between hover:shadow-md transition-all">
+                            <div>
+                                <p className="text-sm font-semibold text-slate-500 mb-1">Total Students</p>
+                                <p className="text-3xl font-black text-slate-800">{studentPagination?.count || allStudents?.length || 0}</p>
+                            </div>
+                            <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600">
+                                <Users size={24} />
+                            </div>
+                        </div>
+
+                        <div 
+                            className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between hover:shadow-md transition-all cursor-pointer hover:border-orange-200"
+                            onClick={() => {
+                                setBreakListModalType('on_break');
+                                setIsBreakListModalOpen(true);
+                            }}
+                        >
+                            <div>
+                                <p className="text-sm font-semibold text-slate-500 mb-1">Students On Break</p>
+                                <p className="text-3xl font-black text-slate-800">{breakMetrics.on_break_count || 0}</p>
+                            </div>
+                            <div className="w-12 h-12 bg-orange-50 rounded-2xl flex items-center justify-center text-orange-600">
+                                <User size={24} />
+                            </div>
+                        </div>
+
+                        <div 
+                            className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between hover:shadow-md transition-all cursor-pointer hover:border-emerald-200"
+                            onClick={() => {
+                                setBreakListModalType('rejoined');
+                                setIsBreakListModalOpen(true);
+                            }}
+                        >
+                            <div>
+                                <p className="text-sm font-semibold text-slate-500 mb-1">Rejoined Students</p>
+                                <p className="text-3xl font-black text-slate-800">{breakMetrics.rejoined_count || 0}</p>
+                            </div>
+                            <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-600">
+                                <Calendar size={24} />
+                            </div>
+                        </div>
+
+                        <div 
+                            onClick={() => {
+                                setBreakListModalType('discontinued');
+                                setIsBreakListModalOpen(true);
+                            }}
+                            className="bg-white rounded-3xl p-6 border border-slate-200 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] cursor-pointer hover:shadow-lg transition-all"
+                        >
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-sm font-semibold text-slate-500 mb-1">Discontinued Students</p>
+                                    <p className="text-3xl font-black text-slate-800">{breakMetrics.discontinued_count || 0}</p>
+                                </div>
+                                <div className="w-12 h-12 bg-red-50 rounded-2xl flex items-center justify-center text-red-600">
+                                    <UserMinus size={24} />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+                        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                            <h3 className="text-lg font-bold text-slate-800 mb-4">Quick Actions</h3>
+                            <div className="space-y-3">
+                                {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.MENTOR?.add) && (
+                                    <button
+                                        onClick={() => {
+                                            setNewBatch({ name: '', course: '', start_date: '', end_date: '', secondary_mentors: [] });
+                                            setIsEditMode(false);
+                                            setIsCreateModalOpen(true);
+                                        }}
+                                        className="w-full flex items-center justify-between p-4 rounded-xl border border-slate-100 bg-slate-50 hover:bg-indigo-50 hover:border-indigo-100 transition-all group"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center text-indigo-600 shadow-sm">
+                                                <BookOpen size={20} />
+                                            </div>
+                                            <div className="text-left">
+                                                <p className="text-sm font-bold text-slate-800 group-hover:text-indigo-700">Create New Batch</p>
+                                                <p className="text-xs text-slate-500">Set up a new academic batch</p>
+                                            </div>
+                                        </div>
+                                        <span className="text-indigo-400 group-hover:text-indigo-600">→</span>
+                                    </button>
+                                )}
+                                <button
+                                    onClick={() => setViewTab('all-students')}
+                                    className="w-full flex items-center justify-between p-4 rounded-xl border border-slate-100 bg-slate-50 hover:bg-blue-50 hover:border-blue-100 transition-all group"
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center text-blue-600 shadow-sm">
+                                            <Users size={20} />
+                                        </div>
+                                        <div className="text-left">
+                                            <p className="text-sm font-bold text-slate-800 group-hover:text-blue-700">View All Students</p>
+                                            <p className="text-xs text-slate-500">Manage student profiles & progress</p>
+                                        </div>
+                                    </div>
+                                    <span className="text-blue-400 group-hover:text-blue-600">→</span>
+                                </button>
+                                {(authUser?.role === 'ADMIN' || authUser?.role === 'SUPER_ADMIN') && (
+                                    <button
+                                        onClick={() => setViewTab('wise-courses')}
+                                        className="w-full flex items-center justify-between p-4 rounded-xl border border-slate-100 bg-slate-50 hover:bg-purple-50 hover:border-purple-100 transition-all group"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center text-purple-600 shadow-sm">
+                                                <Calendar size={20} />
+                                            </div>
+                                            <div className="text-left">
+                                                <p className="text-sm font-bold text-slate-800 group-hover:text-purple-700">Sync Wise LMS</p>
+                                                <p className="text-xs text-slate-500">Import classes from Wise</p>
+                                            </div>
+                                        </div>
+                                        <span className="text-purple-400 group-hover:text-purple-600">→</span>
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                            <h3 className="text-lg font-bold text-slate-800 mb-4">Recent Batches</h3>
+                            <div className="space-y-3">
+                                {batches.slice(0, 4).map(batch => (
+                                    <div key={batch.id} className="flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-100 cursor-pointer" onClick={() => { setViewTab('batches'); handleBatchClick(batch); }}>
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600 font-bold text-sm">
+                                                {batch.name?.charAt(0) || 'B'}
+                                            </div>
+                                            <div>
+                                                <p className="text-sm font-bold text-slate-800 truncate max-w-[200px]">{batch.name}</p>
+                                                <p className="text-xs text-slate-500 truncate max-w-[200px]">{batch.course_name || 'No Course'}</p>
+                                            </div>
+                                        </div>
+                                        <span className="px-2.5 py-1 bg-emerald-50 text-emerald-600 text-[10px] font-black uppercase rounded-lg tracking-wider">Active</span>
+                                    </div>
+                                ))}
+                                {(!batches || batches.length === 0) && (
+                                    <div className="text-center py-8 text-slate-400 text-sm">No recent batches found</div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </motion.div>
+            )}
+
             {viewTab === 'all-students' && !selectedBatch ? (
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
                     <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+                        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-8">
                             <div>
                                 <h2 className="text-xl font-bold text-slate-800">All Students</h2>
                                 <p className="text-sm text-slate-500">Showing {allStudents.length} students across all programs</p>
                             </div>
-                            <div className="relative w-full md:w-80">
-                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                                <input
-                                    type="text"
-                                    placeholder="Search by name, ID or mobile..."
-                                    className="w-full pl-11 pr-4 py-3 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 transition-all text-sm"
-                                    value={studentSearchQuery}
-                                    onChange={(e) => setStudentSearchQuery(e.target.value)}
-                                />
+                            <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+                                <select
+                                    className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                                    value={studentFilterProgram}
+                                    onChange={(e) => setStudentFilterProgram(e.target.value)}
+                                >
+                                    <option value="">All Programs</option>
+                                    {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                </select>
+                                <select
+                                    className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                                    value={studentFilterCourse}
+                                    onChange={(e) => setStudentFilterCourse(e.target.value)}
+                                >
+                                    <option value="">All Courses</option>
+                                    {courses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                </select>
+                                <select
+                                    className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                                    value={studentFilterStatus}
+                                    onChange={(e) => setStudentFilterStatus(e.target.value)}
+                                >
+                                    <option value="">All Statuses</option>
+                                    <option value="ACTIVE">Active</option>
+                                    <option value="ON_BREAK">On Break</option>
+                                    <option value="DISCONTINUED">Discontinued</option>
+                                </select>
+                                <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+                                    <div className="relative w-full sm:w-64">
+                                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                        <input
+                                            type="text"
+                                            placeholder="Search by name, ID..."
+                                            className="w-full pl-11 pr-4 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 transition-all text-sm"
+                                            value={studentSearchQuery}
+                                            onChange={(e) => setStudentSearchQuery(e.target.value)}
+                                        />
+                                    </div>
+                                    <button 
+                                        onClick={handleExportFilteredStudents}
+                                        className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 hover:text-indigo-600 transition-colors text-sm font-semibold shadow-sm whitespace-nowrap"
+                                    >
+                                        <Download size={16} />
+                                        Export CSV
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
@@ -614,7 +1042,12 @@ const MentorModule = () => {
                                                         {student.first_name?.[0]}{student.last_name?.[0] || ''}
                                                     </div>
                                                     <div>
-                                                        <div className="font-bold text-slate-800">{student.first_name} {student.last_name}</div>
+                                                        <div className="font-bold text-slate-800 flex items-center gap-2">
+                                                            {student.first_name} {student.last_name}
+                                                            {student.academic_status === 'ON_BREAK' && (
+                                                                <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-[9px] font-black uppercase rounded-md tracking-widest">On Break</span>
+                                                            )}
+                                                        </div>
                                                         <div className="text-xs text-slate-400">{student.crm_student_id}</div>
                                                     </div>
                                                 </div>
@@ -632,9 +1065,40 @@ const MentorModule = () => {
                                             </td>
                                             <td className="px-6 py-5 bg-white border-y border-r border-slate-100 rounded-r-2xl text-right">
                                                 <div className="flex justify-end gap-2">
+                                                    {student.academic_status === 'ON_BREAK' ? (
+                                                        <button
+                                                            onClick={() => handleRejoin(student.id)}
+                                                            className="px-3 py-2 rounded-xl text-xs font-bold transition-all bg-emerald-50 text-emerald-600 border border-emerald-100 hover:bg-emerald-100"
+                                                        >
+                                                            Rejoin
+                                                        </button>
+                                                    ) : (
+                                                        <>
+                                                            <button
+                                                                onClick={() => {
+                                                                    setBreakStudentId(student.id);
+                                                                    setIsBreakModalOpen(true);
+                                                                }}
+                                                                className="px-3 py-2 rounded-xl text-xs font-bold transition-all bg-orange-50 text-orange-600 border border-orange-100 hover:bg-orange-100"
+                                                            >
+                                                                Take Break
+                                                            </button>
+                                                            {student.academic_status !== 'DISCONTINUED' && (
+                                                                <button
+                                                                    onClick={() => {
+                                                                        setDiscontinueStudentId(student.id);
+                                                                        setIsDiscontinueModalOpen(true);
+                                                                    }}
+                                                                    className="px-3 py-2 rounded-xl text-xs font-bold transition-all bg-red-50 text-red-600 border border-red-100 hover:bg-red-100"
+                                                                >
+                                                                    Discontinue
+                                                                </button>
+                                                            )}
+                                                        </>
+                                                    )}
                                                     <button
                                                         onClick={() => handleWiseLinkClick(student)}
-                                                        className={`px-3 py-2 rounded-xl text-xs font-bold transition-all ${student.lms_student_id ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-slate-100 text-slate-600'}`}
+                                                        className={`px-3 py-2 rounded-xl text-xs font-bold transition-all ${student.lms_student_id ? 'bg-indigo-50 text-indigo-600 border border-indigo-100' : 'bg-slate-100 text-slate-600'}`}
                                                     >
                                                         {student.lms_student_id ? 'Linked' : 'Link Wise'}
                                                     </button>
@@ -668,7 +1132,12 @@ const MentorModule = () => {
                                             {student.first_name?.[0]}{student.last_name?.[0] || ''}
                                         </div>
                                         <div className="min-w-0">
-                                            <div className="font-bold text-slate-900 truncate">{student.first_name} {student.last_name}</div>
+                                            <div className="font-bold text-slate-900 truncate flex items-center gap-2">
+                                                {student.first_name} {student.last_name}
+                                                {student.academic_status === 'ON_BREAK' && (
+                                                    <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-[9px] font-black uppercase rounded-md tracking-widest flex-shrink-0">On Break</span>
+                                                )}
+                                            </div>
                                             <div className="text-xs text-slate-400 truncate">{student.crm_student_id}</div>
                                         </div>
                                     </div>
@@ -691,7 +1160,7 @@ const MentorModule = () => {
                                     <div className="grid grid-cols-2 gap-2 pt-3 border-t border-slate-100">
                                         <button
                                             onClick={() => handleWiseLinkClick(student)}
-                                            className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all text-center border ${student.lms_student_id ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-100 text-slate-600 border-slate-200'}`}
+                                            className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all text-center border ${student.lms_student_id ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-slate-100 text-slate-600 border-slate-200'}`}
                                         >
                                             {student.lms_student_id ? 'Linked' : 'Link Wise'}
                                         </button>
@@ -701,6 +1170,26 @@ const MentorModule = () => {
                                         >
                                             View Profile
                                         </button>
+                                    </div>
+                                    <div className="pt-2">
+                                        {student.academic_status === 'ON_BREAK' ? (
+                                            <button
+                                                onClick={() => handleRejoin(student.id)}
+                                                className="w-full py-2.5 rounded-xl text-xs font-bold transition-all text-center border bg-emerald-50 text-emerald-600 border-emerald-100"
+                                            >
+                                                Rejoin Student
+                                            </button>
+                                        ) : (
+                                            <button
+                                                onClick={() => {
+                                                    setBreakStudentId(student.id);
+                                                    setIsBreakModalOpen(true);
+                                                }}
+                                                className="w-full py-2.5 rounded-xl text-xs font-bold transition-all text-center border bg-orange-50 text-orange-600 border-orange-100"
+                                            >
+                                                Put on Break
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                             ))}
@@ -963,6 +1452,20 @@ const MentorModule = () => {
                                             <Edit size={16} /> Edit Batch
                                         </button>
                                     )}
+                                    {(authUser?.role === 'SUPER_ADMIN' || authUser?.role === 'ADMIN') && (
+                                        <button
+                                            onClick={() => setIsReassignBatchModalOpen(true)}
+                                            className="flex-1 lg:flex-none justify-center px-4 py-2.5 bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 rounded-xl text-xs sm:text-sm font-semibold transition-colors flex items-center gap-2"
+                                        >
+                                            <RefreshCw size={16} /> Reassign Batch
+                                        </button>
+                                    )}
+                                    <button
+                                        onClick={handleViewBatchHistory}
+                                        className="flex-1 lg:flex-none justify-center px-4 py-2.5 bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200 rounded-xl text-xs sm:text-sm font-semibold transition-colors flex items-center gap-2"
+                                    >
+                                        <History size={16} /> View History
+                                    </button>
                                 </div>
                             </div>
                             <div className="flex flex-col sm:flex-row gap-6 sm:gap-8 pt-6 border-t border-slate-100">
@@ -1252,35 +1755,29 @@ const MentorModule = () => {
                                 <label className="block text-sm font-semibold text-slate-700 mb-2">Secondary Mentors (Optional)</label>
                                 <div className="p-3 border border-slate-200 rounded-xl bg-slate-50 max-h-40 overflow-y-auto custom-scrollbar">
                                     <div className="space-y-2">
-                                        {mentors
-                                            .filter(m => m.id !== authUser?.id) // Exclude self
-                                            .map(mentor => (
-                                                <label key={mentor.id} className="flex items-center gap-3 p-2 bg-white rounded-lg border border-slate-100 cursor-pointer hover:border-indigo-200 transition-colors">
-                                                    <input
-                                                        type="checkbox"
-                                                        value={mentor.id}
-                                                        checked={newBatch.secondary_mentors.includes(mentor.id)}
-                                                        onChange={(e) => {
-                                                            const id = parseInt(e.target.value);
-                                                            setNewBatch(prev => {
-                                                                const current = prev.secondary_mentors;
-                                                                return {
-                                                                    ...prev,
-                                                                    secondary_mentors: e.target.checked
-                                                                        ? [...current, id]
-                                                                        : current.filter(existingId => existingId !== id)
-                                                                };
-                                                            });
-                                                        }}
-                                                        className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500 border-gray-300"
-                                                    />
-                                                    <div>
-                                                        <div className="text-sm font-medium text-slate-700">{mentor.first_name} {mentor.last_name}</div>
-                                                        <div className="text-xs text-slate-400">@{mentor.username}</div>
-                                                    </div>
-                                                </label>
-                                            ))}
-                                        {mentors.filter(m => m.id !== authUser?.id).length === 0 && (
+                                        {mentors.filter(m => m.id !== authUser?.id && m.role === 'MENTOR').map(mentor => (
+                                            <label key={mentor.id} className="flex items-center gap-3 p-3 border border-slate-200 rounded-xl hover:bg-slate-50 cursor-pointer transition-colors group relative overflow-hidden">
+                                                <input
+                                                    type="checkbox"
+                                                    value={mentor.id}
+                                                    checked={newBatch.secondary_mentors.includes(mentor.id)}
+                                                    onChange={(e) => {
+                                                        const id = parseInt(e.target.value);
+                                                        if (e.target.checked) {
+                                                            setNewBatch({ ...newBatch, secondary_mentors: [...newBatch.secondary_mentors, id] });
+                                                        } else {
+                                                            setNewBatch({ ...newBatch, secondary_mentors: newBatch.secondary_mentors.filter(mId => mId !== id) });
+                                                        }
+                                                    }}
+                                                    className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 transition-shadow"
+                                                />
+                                                <div className="flex-1 min-w-0">
+                                                    <span className="block text-sm font-semibold text-slate-700 group-hover:text-indigo-700 transition-colors truncate">{mentor.first_name} {mentor.last_name}</span>
+                                                    <span className="block text-xs text-slate-500 truncate">{mentor.email}</span>
+                                                </div>
+                                            </label>
+                                        ))}
+                                        {mentors.filter(m => m.id !== authUser?.id && m.role === 'MENTOR').length === 0 && (
                                             <p className="text-sm text-slate-400 text-center py-2">No other mentors available</p>
                                         )}
                                     </div>
@@ -1738,6 +2235,258 @@ const MentorModule = () => {
             )}
             {/* Wise ID Linking Modal */}
             {/* Wise Link Modal Removed - Using Auto-Link Alert/Confirm flow for now */}
+
+            {/* Take Break Modal */}
+            {isBreakModalOpen && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                    <div className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl animate-fadeIn">
+                        <div className="flex justify-between items-center p-6 border-b border-slate-100">
+                            <h2 className="text-lg font-bold text-slate-800">Put Student on Break</h2>
+                            <button onClick={() => setIsBreakModalOpen(false)} className="text-slate-400 hover:text-slate-600 bg-slate-50 hover:bg-slate-100 p-2 rounded-full transition-all">
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <form onSubmit={handleTakeBreak} className="p-6">
+                            <div className="mb-4">
+                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Reason for Break</label>
+                                <textarea
+                                    value={breakReason}
+                                    onChange={(e) => setBreakReason(e.target.value)}
+                                    placeholder="Enter reason for academic break..."
+                                    className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 transition-all resize-none h-32 text-sm"
+                                    required
+                                />
+                            </div>
+                            <div className="flex gap-3 justify-end mt-6">
+                                <button type="button" onClick={() => setIsBreakModalOpen(false)} className="px-5 py-2.5 text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all">Cancel</button>
+                                <button type="submit" disabled={loading} className="px-5 py-2.5 text-sm font-bold text-white bg-orange-600 hover:bg-orange-700 rounded-xl transition-all shadow-md shadow-orange-200 flex items-center gap-2">
+                                    {loading ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span> : 'Confirm Break'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Discontinue Modal */}
+            {isDiscontinueModalOpen && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                    <div className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl animate-fadeIn">
+                        <div className="flex justify-between items-center p-6 border-b border-slate-100">
+                            <h2 className="text-lg font-bold text-slate-800">Mark Student as Discontinued</h2>
+                            <button onClick={() => setIsDiscontinueModalOpen(false)} className="text-slate-400 hover:text-slate-600 bg-slate-50 hover:bg-slate-100 p-2 rounded-full transition-all">
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <form onSubmit={handleDiscontinue} className="p-6">
+                            <div className="mb-4">
+                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Reason for Discontinuation</label>
+                                <textarea
+                                    value={discontinueReason}
+                                    onChange={(e) => setDiscontinueReason(e.target.value)}
+                                    placeholder="Enter reason for discontinuing..."
+                                    className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-400 transition-all resize-none h-32 text-sm"
+                                    required
+                                />
+                            </div>
+                            <div className="flex gap-3 justify-end mt-6">
+                                <button type="button" onClick={() => setIsDiscontinueModalOpen(false)} className="px-5 py-2.5 text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all">Cancel</button>
+                                <button type="submit" disabled={loading} className="px-5 py-2.5 text-sm font-bold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-all shadow-md shadow-red-200 flex items-center gap-2">
+                                    {loading ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span> : 'Confirm'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Break / Rejoin List Modal */}
+            {isBreakListModalOpen && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-[90]">
+                    <div className="bg-white rounded-3xl w-full max-w-4xl overflow-hidden shadow-2xl animate-fadeIn max-h-[90vh] flex flex-col">
+                        <div className="flex justify-between items-center p-6 border-b border-slate-100">
+                            <div>
+                                <h2 className="text-lg font-bold text-slate-800">
+                                    {breakListModalType === 'on_break' ? 'Students On Break' : (breakListModalType === 'rejoined' ? 'Rejoined Students' : 'Discontinued Students')}
+                                </h2>
+                                <p className="text-sm text-slate-500 mt-1">
+                                    {breakStartDate && breakEndDate ? `Showing records from ${breakStartDate} to ${breakEndDate}` : 'Showing all records for the selected period'}
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <button 
+                                    onClick={handleExportBreakList} 
+                                    className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 font-bold text-sm rounded-xl hover:bg-indigo-100 transition-all"
+                                >
+                                    Export CSV
+                                </button>
+                                <button onClick={() => setIsBreakListModalOpen(false)} className="text-slate-400 hover:text-slate-600 bg-slate-50 hover:bg-slate-100 p-2 rounded-full transition-all">
+                                    <X size={20} />
+                                </button>
+                            </div>
+                        </div>
+                        <div className="p-6 overflow-y-auto flex-1 custom-scrollbar bg-slate-50/50">
+                            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+                                <table className="w-full text-left text-sm">
+                                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold">
+                                        <tr>
+                                            <th className="px-4 py-3">Student</th>
+                                            <th className="px-4 py-3">Contact</th>
+                                            <th className="px-4 py-3">Reason</th>
+                                            <th className="px-4 py-3">{breakListModalType === 'discontinued' ? 'Discontinued Date' : 'Break Date'}</th>
+                                            {breakListModalType === 'rejoined' && <th className="px-4 py-3">Rejoin Date</th>}
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {(breakListModalType === 'on_break' ? breakMetrics.on_break : breakMetrics.rejoined)?.length === 0 ? (
+                                            <tr>
+                                                <td colSpan="5" className="px-4 py-8 text-center text-slate-400">
+                                                    No students found for this period.
+                                                </td>
+                                            </tr>
+                                        ) : (
+                                            (breakListModalType === 'on_break' ? breakMetrics.on_break : breakMetrics.rejoined)?.map(student => (
+                                                <tr key={student.id} className="hover:bg-slate-50 transition-colors">
+                                                    <td className="px-4 py-3">
+                                                        <div className="font-bold text-slate-800">{student.name}</div>
+                                                        <div className="text-xs text-slate-400">{student.crm_student_id}</div>
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <div className="text-slate-600">{student.mobile}</div>
+                                                        <div className="text-xs text-slate-400">{student.email}</div>
+                                                    </td>
+                                                    <td className="px-4 py-3 text-slate-600 max-w-xs truncate" title={student.reason}>
+                                                        {student.reason || '-'}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-slate-600">
+                                                        {breakListModalType === 'rejoined' ? student.break_date : student.date}
+                                                    </td>
+                                                    {breakListModalType === 'rejoined' && (
+                                                        <td className="px-4 py-3 font-medium text-emerald-600">
+                                                            {student.rejoin_date}
+                                                        </td>
+                                                    )}
+                                                </tr>
+                                            ))
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Reassign Batch Modal */}
+            {isReassignBatchModalOpen && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden"
+                    >
+                        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                            <h2 className="text-lg font-bold text-slate-800">Reassign Batch</h2>
+                            <button onClick={() => setIsReassignBatchModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-full transition-colors">
+                                <X size={20} className="text-slate-500" />
+                            </button>
+                        </div>
+                        <form onSubmit={handleReassignBatch} className="p-6">
+                            <div className="mb-4">
+                                <label className="block text-sm font-semibold text-slate-700 mb-2">New Mentor</label>
+                                <select
+                                    required
+                                    className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-slate-50"
+                                    value={reassignBatchData.new_mentor_id}
+                                    onChange={e => setReassignBatchData({ ...reassignBatchData, new_mentor_id: e.target.value })}
+                                >
+                                    <option value="">Select Mentor</option>
+                                    {mentors.filter(m => m.id !== selectedBatch?.primary_mentor?.id && m.role === 'MENTOR').map(m => (
+                                        <option key={m.id} value={m.id}>{m.first_name} {m.last_name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="mb-6">
+                                <label className="block text-sm font-semibold text-slate-700 mb-2">Reason for Reassignment (Optional)</label>
+                                <textarea
+                                    className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-slate-50"
+                                    rows="3"
+                                    placeholder="E.g., Mentor left the organization, workload balancing..."
+                                    value={reassignBatchData.reason}
+                                    onChange={e => setReassignBatchData({ ...reassignBatchData, reason: e.target.value })}
+                                ></textarea>
+                            </div>
+                            <div className="flex gap-3 justify-end">
+                                <button type="button" onClick={() => setIsReassignBatchModalOpen(false)} className="px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 border border-slate-200 rounded-xl transition-colors">
+                                    Cancel
+                                </button>
+                                <button type="submit" disabled={loading} className="px-5 py-2.5 text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700 rounded-xl transition-colors disabled:opacity-50">
+                                    {loading ? 'Reassigning...' : 'Reassign Batch'}
+                                </button>
+                            </div>
+                        </form>
+                    </motion.div>
+                </div>
+            )}
+
+            {/* Batch Assignment History Modal */}
+            {isBatchHistoryModalOpen && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="bg-white rounded-2xl shadow-xl w-full max-w-3xl overflow-hidden flex flex-col max-h-[90vh]"
+                    >
+                        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                            <div>
+                                <h2 className="text-lg font-bold text-slate-800">Batch Assignment History</h2>
+                                <p className="text-sm text-slate-500">Timeline for {selectedBatch?.name}</p>
+                            </div>
+                            <button onClick={() => setIsBatchHistoryModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-full transition-colors">
+                                <X size={20} className="text-slate-500" />
+                            </button>
+                        </div>
+                        <div className="p-6 overflow-y-auto">
+                            {batchHistoryData.length === 0 ? (
+                                <div className="text-center py-10">
+                                    <History size={48} className="mx-auto text-slate-300 mb-4" />
+                                    <p className="text-slate-500 font-medium">No reassignment history found for this batch.</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-6 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-200 before:to-transparent">
+                                    {batchHistoryData.map((item, index) => (
+                                        <div key={item.id} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
+                                            {/* Icon */}
+                                            <div className="flex items-center justify-center w-10 h-10 rounded-full border border-white bg-indigo-50 text-indigo-500 shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 shadow-sm z-10">
+                                                <RefreshCw size={16} />
+                                            </div>
+                                            {/* Card */}
+                                            <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] p-4 rounded-xl border border-slate-200 bg-white shadow-sm">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <span className="font-bold text-slate-800 text-sm">{new Date(item.assigned_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                                                    <span className="text-xs font-medium text-slate-500">{new Date(item.assigned_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>
+                                                </div>
+                                                <div className="text-slate-600 text-sm mb-3">
+                                                    <p className="mb-1"><span className="font-semibold text-slate-700">From:</span> {item.previous_mentor_name}</p>
+                                                    <p><span className="font-semibold text-indigo-700">To:</span> <span className="text-indigo-700 font-medium">{item.new_mentor_name}</span></p>
+                                                </div>
+                                                {item.reason && (
+                                                    <div className="bg-slate-50 p-3 rounded-lg text-xs text-slate-600 italic border border-slate-100">
+                                                        "{item.reason}"
+                                                    </div>
+                                                )}
+                                                <div className="mt-3 pt-3 border-t border-slate-100 text-xs text-slate-400 font-medium flex justify-end">
+                                                    Assigned by {item.assigned_by_name}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </motion.div>
+                </div>
+            )}
         </div>
     );
 }
