@@ -76,6 +76,8 @@ const MentorModule = () => {
     const [breakEndDate, setBreakEndDate] = useState('');
     const [isBreakListModalOpen, setIsBreakListModalOpen] = useState(false);
     const [breakListModalType, setBreakListModalType] = useState('on_break'); // 'on_break', 'rejoined', 'discontinued'
+    const [modalSearchQuery, setModalSearchQuery] = useState('');
+    const [modalSortConfig, setModalSortConfig] = useState({ key: 'date', direction: 'desc' });
     
     // Discontinued State
     const [isDiscontinueModalOpen, setIsDiscontinueModalOpen] = useState(false);
@@ -167,8 +169,62 @@ const MentorModule = () => {
         }
     };
 
+    const getCurrentBreakList = () => {
+        if (breakListModalType === 'on_break') return breakMetrics.on_break || [];
+        if (breakListModalType === 'rejoined') return breakMetrics.rejoined || [];
+        if (breakListModalType === 'discontinued') return breakMetrics.discontinued || [];
+        return [];
+    };
+
+    const getProcessedBreakList = () => {
+        let displayList = [...getCurrentBreakList()];
+        
+        if (modalSearchQuery) {
+            const query = modalSearchQuery.toLowerCase();
+            displayList = displayList.filter(s => 
+                (s.name && s.name.toLowerCase().includes(query)) || 
+                (s.reason && s.reason.toLowerCase().includes(query)) ||
+                (s.crm_student_id && s.crm_student_id.toLowerCase().includes(query))
+            );
+        }
+        
+        displayList.sort((a, b) => {
+            let valA = a[modalSortConfig.key];
+            let valB = b[modalSortConfig.key];
+            
+            if (modalSortConfig.key === 'date') {
+                valA = breakListModalType === 'rejoined' ? a.break_date : a.date;
+                valB = breakListModalType === 'rejoined' ? b.break_date : b.date;
+            } else if (modalSortConfig.key === 'rejoin_date') {
+                valA = a.rejoin_date;
+                valB = b.rejoin_date;
+            } else if (modalSortConfig.key === 'name') {
+                valA = a.name;
+                valB = b.name;
+            }
+            
+            if (!valA && valB) return modalSortConfig.direction === 'asc' ? -1 : 1;
+            if (valA && !valB) return modalSortConfig.direction === 'asc' ? 1 : -1;
+            if (!valA && !valB) return 0;
+
+            if (valA < valB) return modalSortConfig.direction === 'asc' ? -1 : 1;
+            if (valA > valB) return modalSortConfig.direction === 'asc' ? 1 : -1;
+            return 0;
+        });
+        
+        return displayList;
+    };
+
+    const handleSort = (key) => {
+        let direction = 'asc';
+        if (modalSortConfig.key === key && modalSortConfig.direction === 'asc') {
+            direction = 'desc';
+        }
+        setModalSortConfig({ key, direction });
+    };
+
     const handleExportBreakList = () => {
-        const list = breakListModalType === 'on_break' ? breakMetrics.on_break : (breakListModalType === 'rejoined' ? breakMetrics.rejoined : breakMetrics.discontinued);
+        const list = getProcessedBreakList();
         if (!list || list.length === 0) return;
 
         let csvContent = "data:text/csv;charset=utf-8,";
@@ -2362,25 +2418,51 @@ const MentorModule = () => {
                         </div>
                         <div className="p-6 overflow-y-auto flex-1 custom-scrollbar bg-slate-50/50">
                             <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+                                <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center gap-3">
+                                    <div className="relative flex-1 max-w-sm">
+                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                        <input 
+                                            type="text"
+                                            placeholder="Search by name, ID or reason..."
+                                            value={modalSearchQuery}
+                                            onChange={(e) => setModalSearchQuery(e.target.value)}
+                                            className="w-full pl-9 pr-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 text-sm"
+                                        />
+                                    </div>
+                                </div>
                                 <table className="w-full text-left text-sm">
                                     <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold">
                                         <tr>
-                                            <th className="px-4 py-3">Student</th>
+                                            <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('name')}>
+                                                <div className="flex items-center gap-1">
+                                                    Student {modalSortConfig.key === 'name' && (modalSortConfig.direction === 'asc' ? '↑' : '↓')}
+                                                </div>
+                                            </th>
                                             <th className="px-4 py-3">Contact</th>
                                             <th className="px-4 py-3">Reason</th>
-                                            <th className="px-4 py-3">{breakListModalType === 'discontinued' ? 'Discontinued Date' : 'Break Date'}</th>
-                                            {breakListModalType === 'rejoined' && <th className="px-4 py-3">Rejoin Date</th>}
+                                            <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('date')}>
+                                                <div className="flex items-center gap-1">
+                                                    {breakListModalType === 'discontinued' ? 'Discontinued Date' : 'Break Date'} {modalSortConfig.key === 'date' && (modalSortConfig.direction === 'asc' ? '↑' : '↓')}
+                                                </div>
+                                            </th>
+                                            {breakListModalType === 'rejoined' && (
+                                                <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('rejoin_date')}>
+                                                    <div className="flex items-center gap-1">
+                                                        Rejoin Date {modalSortConfig.key === 'rejoin_date' && (modalSortConfig.direction === 'asc' ? '↑' : '↓')}
+                                                    </div>
+                                                </th>
+                                            )}
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
-                                        {(breakListModalType === 'on_break' ? breakMetrics.on_break : breakMetrics.rejoined)?.length === 0 ? (
+                                        {getProcessedBreakList().length === 0 ? (
                                             <tr>
                                                 <td colSpan="5" className="px-4 py-8 text-center text-slate-400">
-                                                    No students found for this period.
+                                                    No students found for this period or matching search.
                                                 </td>
                                             </tr>
                                         ) : (
-                                            (breakListModalType === 'on_break' ? breakMetrics.on_break : breakMetrics.rejoined)?.map(student => (
+                                            getProcessedBreakList().map(student => (
                                                 <tr key={student.id} className="hover:bg-slate-50 transition-colors">
                                                     <td className="px-4 py-3">
                                                         <div className="font-bold text-slate-800">{student.name}</div>
