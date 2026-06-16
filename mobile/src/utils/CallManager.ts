@@ -1,7 +1,40 @@
-import { Platform, Alert, NativeModules, NativeEventEmitter } from 'react-native';
+import { Platform, Alert, NativeModules, NativeEventEmitter, PermissionsAndroid } from 'react-native';
 
 const { CallRecordingModule } = NativeModules;
 const callRecordingEmitter = CallRecordingModule ? new NativeEventEmitter(CallRecordingModule) : null;
+
+export const requestCallPermissions = async () => {
+    if (Platform.OS !== 'android') return true;
+    try {
+        const grants = await PermissionsAndroid.requestMultiple([
+            PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE,
+            PermissionsAndroid.PERMISSIONS.READ_CALL_LOG,
+            PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+        ]);
+        
+        return (
+            grants[PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE] === PermissionsAndroid.RESULTS.GRANTED &&
+            grants[PermissionsAndroid.PERMISSIONS.READ_CALL_LOG] === PermissionsAndroid.RESULTS.GRANTED &&
+            grants[PermissionsAndroid.PERMISSIONS.RECORD_AUDIO] === PermissionsAndroid.RESULTS.GRANTED
+        );
+    } catch (err) {
+        console.warn(err);
+        return false;
+    }
+};
+
+export const listenToCallState = (onStateChanged: (event: { state: string; phoneNumber: string }) => void) => {
+    if (!callRecordingEmitter) return () => {};
+    
+    const sub = callRecordingEmitter.addListener('onCallStateChanged', (event) => {
+        console.log('Call state changed event:', event);
+        onStateChanged(event);
+    });
+    
+    return () => {
+        sub.remove();
+    };
+};
 
 export const requestDefaultDialerRole = async () => {
     if (Platform.OS !== 'android') {

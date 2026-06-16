@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Dimensions, Platform, Linking, Alert, NativeModules, TextInput, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, router } from 'expo-router';
-import { startNativeRecording, stopNativeRecording, listenToCallEvents } from '../src/utils/CallManager';
+import { startNativeRecording, stopNativeRecording, listenToCallEvents, requestCallPermissions, listenToCallState } from '../src/utils/CallManager';
 import client from '../src/api/client';
 
 const { width } = Dimensions.get('window');
@@ -15,6 +15,12 @@ const Dialpad = () => {
   const [postCallNotes, setPostCallNotes] = useState('');
   const [pipelineStatus, setPipelineStatus] = useState('INTERESTED');
   const [recordedFilePath, setRecordedFilePath] = useState<string | null>(null);
+
+  // Use ref to keep track of current phoneNumber for asynchronous listener
+  const phoneRef = useRef(phoneNumber);
+  useEffect(() => {
+    phoneRef.current = phoneNumber;
+  }, [phoneNumber]);
 
   useEffect(() => {
     let interval: any;
@@ -29,14 +35,59 @@ const Dialpad = () => {
   }, [callStatus]);
 
   useEffect(() => {
-    // Listen for events from our Kotlin InCallService Bridge
-    const unsubscribe = listenToCallEvents(async (path) => {
+    const requestPermissions = async () => {
+      if (Platform.OS === 'android') {
+        const granted = await requestCallPermissions();
+        if (!granted) {
+          Alert.alert(
+            'Permissions Required',
+            'Please grant Phone State, Call Log, and Microphone permissions to enable automatic call logging.'
+          );
+        }
+      }
+    };
+    requestPermissions();
+  }, []);
+
+  useEffect(() => {
+    // 1. Listen for events from our Kotlin MediaStore sync (which runs after stopRecording)
+    const unsubscribeEvents = listenToCallEvents(async (path) => {
       console.log("Recording saved at:", path);
       if (path) {
         setRecordedFilePath(path);
       }
     });
-    return () => unsubscribe();
+
+    // 2. Listen for phone state changes from native BroadcastReceiver
+    let callStarted = false;
+    const unsubscribeState = listenToCallState(async (event) => {
+      console.log("Call State Event received in JS:", event);
+      const { state } = event;
+
+      if (state === 'OFFHOOK') {
+        callStarted = true;
+        setCallStatus('ACTIVE');
+        // Automatically start recording when call is active
+        const filePath = await startNativeRecording(phoneRef.current);
+        console.log("Call auto-started recording. Fallback path:", filePath);
+      } else if (state === 'IDLE') {
+        if (callStarted) {
+          callStarted = false;
+          setCallStatus('POST_CALL');
+          // Automatically stop recording when call hangs up
+          const filePath = await stopNativeRecording();
+          if (filePath) {
+            console.log("Call auto-stopped recording. Path:", filePath);
+            setRecordedFilePath(filePath);
+          }
+        }
+      }
+    });
+
+    return () => {
+      unsubscribeEvents();
+      unsubscribeState();
+    };
   }, []);
 
   const handlePress = (num: string) => {
@@ -49,18 +100,16 @@ const Dialpad = () => {
 
   const handleCall = async () => {
     if (!phoneNumber) return;
-    setCallStatus('CALLING');
-    
-    // Simulate the call being answered after 2 seconds
-    setTimeout(async () => {
-      setCallStatus('ACTIVE');
-      
-      // Tell native Kotlin to start recording the call
-      if (Platform.OS === 'android') {
-        const filePath = await startNativeRecording(phoneNumber);
-        console.log("Started recording:", filePath);
+
+    if (Platform.OS === 'android') {
+      const granted = await requestCallPermissions();
+      if (!granted) {
+        Alert.alert('Permission Error', 'Cannot place call without phone and microphone permissions.');
+        return;
       }
-    }, 2000);
+    }
+
+    setCallStatus('CALLING');
     
     // Launch native system dialer to place the actual phone call
     Linking.openURL(`tel:${phoneNumber}`).catch(err => {
@@ -74,7 +123,7 @@ const Dialpad = () => {
     if (Platform.OS === 'android') {
       const filePath = await stopNativeRecording();
       if (filePath) setRecordedFilePath(filePath);
-      console.log("Stopped recording:", filePath);
+      console.log("Stopped recording manually:", filePath);
     }
   };
 
