@@ -1024,7 +1024,7 @@ const MentorModule = () => {
                         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between hover:shadow-md transition-all">
                             <div>
                                 <p className="text-sm font-semibold text-slate-500 mb-1">Total Batches</p>
-                                <p className="text-3xl font-black text-slate-800">{batchPagination?.count || batches?.length || 0}</p>
+                                <p className="text-3xl font-black text-slate-800">{dashboardStats?.batches || batchPagination?.count || batches?.length || 0}</p>
                             </div>
                             <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600">
                                 <BookOpen size={24} />
@@ -1051,7 +1051,7 @@ const MentorModule = () => {
                         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between hover:shadow-md transition-all">
                             <div>
                                 <p className="text-sm font-semibold text-slate-500 mb-1">Total Students</p>
-                                <p className="text-3xl font-black text-slate-800">{studentPagination?.count || allStudents?.length || 0}</p>
+                                <p className="text-3xl font-black text-slate-800">{dashboardStats?.students || 0}</p>
                             </div>
                             <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600">
                                 <Users size={24} />
