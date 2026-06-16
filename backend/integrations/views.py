@@ -951,8 +951,12 @@ class SyncWiseFeesView(views.APIView):
                     
                     if due_date_str and due_date_str != 'N/A':
                         try:
-                            from django.utils.dateparse import parse_date
-                            student.fee_due_date = parse_date(due_date_str) or student.fee_due_date
+                            from django.utils.dateparse import parse_date, parse_datetime
+                            dt = parse_datetime(due_date_str)
+                            if dt:
+                                student.fee_due_date = dt.date()
+                            else:
+                                student.fee_due_date = parse_date(due_date_str) or student.fee_due_date
                         except Exception:
                             pass
                     
