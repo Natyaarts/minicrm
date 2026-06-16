@@ -745,8 +745,20 @@ class StudentViewSet(viewsets.ModelViewSet):
         # Students where paid_fee < total_fee
         qs = self.get_queryset().filter(paid_fee__lt=F('total_fee'))
         
+        # Support optional date range filtering on fee_due_date
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        if start_date:
+            qs = qs.filter(fee_due_date__gte=start_date)
+        if end_date:
+            qs = qs.filter(fee_due_date__lte=end_date)
+        
         data = []
         for s in qs:
+            mentor_name = 'Not Assigned'
+            if s.batch and s.batch.primary_mentor:
+                mentor_name = f"{s.batch.primary_mentor.first_name} {s.batch.primary_mentor.last_name}".strip() or s.batch.primary_mentor.username
+                
             data.append({
                 'id': s.id,
                 'name': f"{s.first_name} {s.last_name}",
@@ -757,9 +769,88 @@ class StudentViewSet(viewsets.ModelViewSet):
                 'paid_fee': s.paid_fee,
                 'due_amount': s.total_fee - s.paid_fee,
                 'fee_due_date': s.fee_due_date.strftime('%Y-%m-%d') if s.fee_due_date else '',
-                'is_wise_integrated': bool(s.lms_student_id)
+                'is_wise_integrated': bool(s.lms_student_id),
+                'batch_name': s.batch.name if s.batch else 'Unassigned',
+                'mentor_name': mentor_name
             })
             
+        return Response(data)
+
+    @action(detail=False, methods=['get'])
+    def collected_fees(self, request):
+        from django.db.models import Q
+        from core.models import Transaction, MonthlyPayment
+        user = request.user
+        
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        
+        # 1. Query Transactions
+        tx_qs = Transaction.objects.all().select_related('student', 'student__batch', 'student__batch__primary_mentor')
+        if user.role in ['MENTOR', 'TEACHER']:
+            tx_qs = tx_qs.filter(
+                Q(student__batch__primary_mentor=user) | 
+                Q(student__batch__secondary_mentors=user) | 
+                Q(student__batch__teacher=user)
+            ).distinct()
+            
+        if start_date:
+            tx_qs = tx_qs.filter(date__date__gte=start_date)
+        if end_date:
+            tx_qs = tx_qs.filter(date__date__lte=end_date)
+            
+        # 2. Query MonthlyPayments
+        mp_qs = MonthlyPayment.objects.all().select_related('student', 'student__batch', 'student__batch__primary_mentor')
+        if user.role in ['MENTOR', 'TEACHER']:
+            mp_qs = mp_qs.filter(
+                Q(student__batch__primary_mentor=user) | 
+                Q(student__batch__secondary_mentors=user) | 
+                Q(student__batch__teacher=user)
+            ).distinct()
+            
+        if start_date:
+            mp_qs = mp_qs.filter(paid_date__gte=start_date)
+        if end_date:
+            mp_qs = mp_qs.filter(paid_date__lte=end_date)
+            
+        # 3. Format & Merge
+        data = []
+        for t in tx_qs:
+            mentor_name = 'Not Assigned'
+            if t.student.batch and t.student.batch.primary_mentor:
+                mentor_name = f"{t.student.batch.primary_mentor.first_name} {t.student.batch.primary_mentor.last_name}".strip() or t.student.batch.primary_mentor.username
+                
+            data.append({
+                'id': f"tx_{t.id}",
+                'student_name': f"{t.student.first_name} {t.student.last_name}",
+                'crm_student_id': t.student.crm_student_id,
+                'batch_name': t.student.batch.name if t.student.batch else 'Unassigned',
+                'mentor_name': mentor_name,
+                'amount': float(t.amount),
+                'date': t.date.strftime('%Y-%m-%d'),
+                'type': 'LMS / Razorpay Sync',
+                'ref_id': t.transaction_id
+            })
+            
+        for p in mp_qs:
+            mentor_name = 'Not Assigned'
+            if p.student.batch and p.student.batch.primary_mentor:
+                mentor_name = f"{p.student.batch.primary_mentor.first_name} {p.student.batch.primary_mentor.last_name}".strip() or p.student.batch.primary_mentor.username
+                
+            data.append({
+                'id': f"mp_{p.id}",
+                'student_name': f"{p.student.first_name} {p.student.last_name}",
+                'crm_student_id': p.student.crm_student_id,
+                'batch_name': p.student.batch.name if p.student.batch else 'Unassigned',
+                'mentor_name': mentor_name,
+                'amount': float(p.amount),
+                'date': p.paid_date.strftime('%Y-%m-%d') if p.paid_date else '',
+                'type': f"Manual ({p.month.strftime('%b %Y')})",
+                'ref_id': p.notes or 'N/A'
+            })
+            
+        # Sort by date descending
+        data.sort(key=lambda x: x['date'], reverse=True)
         return Response(data)
 
     @action(detail=True, methods=['post'])

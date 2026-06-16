@@ -74,6 +74,8 @@ const MentorModule = () => {
     // Fee State
     const [feeDefaulters, setFeeDefaulters] = useState([]);
     const [isFeeModalOpen, setIsFeeModalOpen] = useState(false);
+    const [collectedFees, setCollectedFees] = useState([]);
+    const [isCollectedModalOpen, setIsCollectedModalOpen] = useState(false);
     const [breakReason, setBreakReason] = useState('');
     const [breakStudentId, setBreakStudentId] = useState(null);
     const [breakStartDate, setBreakStartDate] = useState('');
@@ -163,6 +165,7 @@ const MentorModule = () => {
         } else if (viewTab === 'dashboard') {
             fetchBreakMetrics();
             fetchFeeDefaulters();
+            fetchCollectedFees();
             fetchDashboardStats();
         }
     }, [viewTab, studentPage]);
@@ -171,15 +174,37 @@ const MentorModule = () => {
         if (viewTab === 'dashboard') {
             fetchBreakMetrics();
             fetchFeeDefaulters();
+            fetchCollectedFees();
         }
     }, [breakStartDate, breakEndDate]);
 
     const fetchFeeDefaulters = async () => {
         try {
-            const res = await api.get('students/fee_defaulters/');
+            let url = 'students/fee_defaulters/';
+            const params = [];
+            if (breakStartDate) params.push(`start_date=${breakStartDate}`);
+            if (breakEndDate) params.push(`end_date=${breakEndDate}`);
+            if (params.length > 0) url += `?${params.join('&')}`;
+            
+            const res = await api.get(url);
             setFeeDefaulters(res.data);
         } catch (err) {
             console.error("Failed to fetch fee defaulters", err);
+        }
+    };
+
+    const fetchCollectedFees = async () => {
+        try {
+            let url = 'students/collected_fees/';
+            const params = [];
+            if (breakStartDate) params.push(`start_date=${breakStartDate}`);
+            if (breakEndDate) params.push(`end_date=${breakEndDate}`);
+            if (params.length > 0) url += `?${params.join('&')}`;
+            
+            const res = await api.get(url);
+            setCollectedFees(res.data);
+        } catch (err) {
+            console.error("Failed to fetch collected fees", err);
         }
     };
 
@@ -1121,6 +1146,24 @@ const MentorModule = () => {
                                     <p className="text-xs text-slate-400 mt-1">{feeDefaulters.length} students have unpaid fees</p>
                                 </div>
                                 <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600">
+                                    <IndianRupee size={24} />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div 
+                            onClick={() => setIsCollectedModalOpen(true)}
+                            className="bg-white rounded-3xl p-6 border border-slate-200 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] cursor-pointer hover:shadow-lg transition-all hover:border-emerald-200"
+                        >
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-sm font-semibold text-slate-500 mb-1">Collected Fees</p>
+                                    <p className="text-3xl font-black text-slate-800">
+                                        ₹{collectedFees.reduce((sum, s) => sum + Number(s.amount || 0), 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </p>
+                                    <p className="text-xs text-slate-400 mt-1">{collectedFees.length} successful payments</p>
+                                </div>
+                                <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-600">
                                     <IndianRupee size={24} />
                                 </div>
                             </div>
@@ -3123,7 +3166,7 @@ const MentorModule = () => {
 
             {isFeeModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-[90]">
-                    <div className="bg-white rounded-3xl w-full max-w-4xl overflow-hidden shadow-2xl animate-fadeIn max-h-[90vh] flex flex-col">
+                    <div className="bg-white rounded-3xl w-full max-w-5xl overflow-hidden shadow-2xl animate-fadeIn max-h-[90vh] flex flex-col">
                         <div className="flex justify-between items-center p-6 border-b border-slate-100">
                             <div>
                                 <h2 className="text-lg font-bold text-slate-800">
@@ -3147,6 +3190,8 @@ const MentorModule = () => {
                                             <thead>
                                                 <tr className="border-b border-slate-200 bg-slate-50">
                                                     <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Student</th>
+                                                    <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Batch</th>
+                                                    <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Assigned Mentor</th>
                                                     <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Total Fee</th>
                                                     <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Paid</th>
                                                     <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Due</th>
@@ -3162,9 +3207,11 @@ const MentorModule = () => {
                                                             <div className="text-xs text-slate-500">{student.crm_student_id}</div>
                                                             <div className="text-xs text-slate-400">{student.mobile}</div>
                                                         </td>
-                                                        <td className="px-4 py-3 font-semibold text-slate-700">₹{student.total_fee}</td>
-                                                        <td className="px-4 py-3 font-semibold text-emerald-600">₹{student.paid_fee}</td>
-                                                        <td className="px-4 py-3 font-bold text-red-600">₹{student.due_amount}</td>
+                                                        <td className="px-4 py-3 text-sm text-slate-700 font-medium">{student.batch_name}</td>
+                                                        <td className="px-4 py-3 text-sm text-slate-600">{student.mentor_name}</td>
+                                                        <td className="px-4 py-3 font-semibold text-slate-700">₹{Number(student.total_fee).toFixed(2)}</td>
+                                                        <td className="px-4 py-3 font-semibold text-emerald-600">₹{Number(student.paid_fee).toFixed(2)}</td>
+                                                        <td className="px-4 py-3 font-bold text-red-600">₹{Number(student.due_amount).toFixed(2)}</td>
                                                         <td className="px-4 py-3 text-sm text-slate-600">{student.fee_due_date || '-'}</td>
                                                         <td className="px-4 py-3 text-right">
                                                             {!student.is_wise_integrated ? (
@@ -3201,6 +3248,79 @@ const MentorModule = () => {
                                         </div>
                                         <p className="text-slate-800 font-bold mb-1">All Clear!</p>
                                         <p className="text-slate-500 text-sm">There are no students with due fees.</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {isCollectedModalOpen && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-[90]">
+                    <div className="bg-white rounded-3xl w-full max-w-5xl overflow-hidden shadow-2xl animate-fadeIn max-h-[90vh] flex flex-col">
+                        <div className="flex justify-between items-center p-6 border-b border-slate-100">
+                            <div>
+                                <h2 className="text-lg font-bold text-slate-800">
+                                    Collected Fees History
+                                </h2>
+                                <p className="text-sm text-slate-500 mt-1">
+                                    {collectedFees.length} successful payments (Total Collected: ₹{collectedFees.reduce((sum, s) => sum + Number(s.amount || 0), 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <button onClick={() => setIsCollectedModalOpen(false)} className="text-slate-400 hover:text-slate-600 bg-slate-50 hover:bg-slate-100 p-2 rounded-full transition-all">
+                                    <X size={20} />
+                                </button>
+                            </div>
+                        </div>
+                        <div className="p-6 overflow-y-auto flex-1 custom-scrollbar bg-slate-50/50">
+                            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+                                {collectedFees.length > 0 ? (
+                                    <div className="overflow-x-auto min-h-[300px]">
+                                        <table className="w-full text-left">
+                                            <thead>
+                                                <tr className="border-b border-slate-200 bg-slate-50">
+                                                    <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Student</th>
+                                                    <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Batch</th>
+                                                    <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Assigned Mentor</th>
+                                                    <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Amount</th>
+                                                    <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Payment Date</th>
+                                                    <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Type</th>
+                                                    <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Ref ID / Notes</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {collectedFees.map((payment) => (
+                                                    <tr key={payment.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors last:border-0">
+                                                        <td className="px-4 py-3">
+                                                            <div className="font-bold text-slate-800">{payment.student_name}</div>
+                                                            <div className="text-xs text-slate-500">{payment.crm_student_id}</div>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-sm text-slate-700 font-medium">{payment.batch_name}</td>
+                                                        <td className="px-4 py-3 text-sm text-slate-600">{payment.mentor_name}</td>
+                                                        <td className="px-4 py-3 font-bold text-emerald-600">₹{Number(payment.amount).toFixed(2)}</td>
+                                                        <td className="px-4 py-3 text-sm text-slate-600">{payment.date}</td>
+                                                        <td className="px-4 py-3 text-xs">
+                                                            <span className={`px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${payment.type.includes('Manual') ? 'bg-indigo-50 text-indigo-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                                                                {payment.type}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-xs text-slate-500 max-w-[150px] truncate" title={payment.ref_id}>
+                                                            {payment.ref_id}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                ) : (
+                                    <div className="p-8 text-center">
+                                        <div className="w-16 h-16 bg-slate-150 rounded-full flex items-center justify-center text-slate-400 mx-auto mb-3">
+                                            <IndianRupee size={24} />
+                                        </div>
+                                        <p className="text-slate-800 font-bold mb-1">No collections</p>
+                                        <p className="text-slate-500 text-sm">No fees were collected within the selected date range.</p>
                                     </div>
                                 )}
                             </div>
