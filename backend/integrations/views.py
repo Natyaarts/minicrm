@@ -909,37 +909,49 @@ class SyncWiseTeachersView(views.APIView):
                 "total_found": len(wise_teachers)
             }
         })
-class SyncWiseFeesView(views.APIView):
-    """
-    Syncs fee information from Wise LMS for all linked students.
-    Auto-links unlinked students by phone if possible.
-    """
-    permission_classes = [permissions.IsAuthenticated]
+import threading
+from django.utils.dateparse import parse_date, parse_datetime
 
-    def post(self, request):
-        if request.user.role not in ['ADMIN', 'SUPER_ADMIN', 'SALES']:
-            return response.Response({"error": "Unauthorized"}, status=403)
-            
+_sync_lock = threading.Lock()
+_is_syncing = False
+
+def _run_wise_sync_task():
+    global _is_syncing
+    if not _sync_lock.acquire(blocking=False):
+        return
+    _is_syncing = True
+    try:
         from core.models import Student
+        from integrations.utils import WiseService
+        
         wise = WiseService()
-        
-        # Fetch all active students so we can try to link unlinked ones on the fly
         students = Student.objects.filter(is_active=True)
-        stats = {"synced": 0, "linked": 0, "errors": 0}
         
+        # 1. Bulk fetch all Wise students to map phone numbers
+        phone_to_wise_id = {}
+        try:
+            wise_students = list(wise.get_all_students())
+            for ws in wise_students:
+                phone_val = ws.get('phoneNumber') or ws.get('mobile') or ws.get('phone')
+                if phone_val:
+                    clean_phone = str(phone_val).replace(" ", "").replace("+91", "")[-10:]
+                    wise_id = ws.get('_id') or ws.get('id')
+                    if wise_id and clean_phone:
+                        phone_to_wise_id[clean_phone] = wise_id
+        except Exception as e:
+            print(f"Error fetching all Wise students for bulk mapping: {e}")
+            
+        # 2. Sync loop
         for student in students:
             try:
-                # 1. Attempt to auto-link if not already linked
+                # Auto-link if not already linked using the bulk map
                 if not student.lms_student_id and student.mobile:
-                    wise_user = wise.search_student_by_phone(student.mobile)
-                    if wise_user:
-                        wise_id = wise_user.get('_id') or wise_user.get('id')
-                        if wise_id:
-                            student.lms_student_id = wise_id
-                            student.save()
-                            stats["linked"] += 1
+                    clean_mobile = str(student.mobile).replace(" ", "").replace("+91", "")[-10:]
+                    if clean_mobile in phone_to_wise_id:
+                        student.lms_student_id = phone_to_wise_id[clean_mobile]
+                        student.save()
 
-                # 2. Sync fees for linked students
+                # Sync fees for linked students
                 if student.lms_student_id:
                     fee_summary = wise.get_student_fee_summary(student.lms_student_id)
                     if fee_summary:
@@ -949,7 +961,6 @@ class SyncWiseFeesView(views.APIView):
                         class_summary_list = fee_summary.get('classWiseStudentSummary', [])
                         class_summary = class_summary_list[0] if class_summary_list else {}
                         
-                        # Values in Paisa (1/100 INR), need to divide by 100
                         paid_fee = summary.get('totalPaid', {}).get('value', 0) / 100
                         due_fee = summary.get('totalDue', {}).get('value', 0) / 100
                         total_fee = paid_fee + due_fee
@@ -965,7 +976,6 @@ class SyncWiseFeesView(views.APIView):
                         
                         if due_date_str and due_date_str != 'N/A':
                             try:
-                                from django.utils.dateparse import parse_date, parse_datetime
                                 dt = parse_datetime(due_date_str)
                                 if dt:
                                     student.fee_due_date = dt.date()
@@ -975,21 +985,39 @@ class SyncWiseFeesView(views.APIView):
                                 pass
                         
                         student.save()
-                        stats["synced"] += 1
-                    else:
-                        stats["errors"] += 1
             except Exception as e:
-                print(f"Error syncing fee for student {student.id}: {e}")
-                stats["errors"] += 1
-                
+                print(f"Error syncing student {student.id}: {e}")
+    finally:
+        _is_syncing = False
+        _sync_lock.release()
+
+class SyncWiseFeesView(views.APIView):
+    """
+    Syncs fee information from Wise LMS for all linked students.
+    Auto-links unlinked students by phone using a background task to prevent timeouts.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if request.user.role not in ['ADMIN', 'SUPER_ADMIN', 'SALES']:
+            return response.Response({"error": "Unauthorized"}, status=403)
+            
+        global _is_syncing
+        if _is_syncing:
+            return response.Response({
+                "success": True,
+                "message": "Fee sync is already running in the background. Please wait a minute and refresh."
+            }, status=200)
+            
+        # Start sync in a background thread
+        thread = threading.Thread(target=_run_wise_sync_task)
+        thread.daemon = True
+        thread.start()
+        
         return response.Response({
-            "message": "Fee sync completed", 
-            "stats": {
-                "synced": stats["synced"],
-                "linked": stats["linked"],
-                "errors": stats["errors"]
-            }
-        })
+            "success": True,
+            "message": "Fee sync started in the background. Please wait a minute and refresh the page."
+        }, status=202)
 
 class AutoLinkWiseDataView(views.APIView):
     """

@@ -1314,7 +1314,11 @@ const MentorModule = () => {
                                         onClick={async () => {
                                             try {
                                                 const res = await api.post('integrations/sync-wise-fees/');
-                                                alert(`Fee sync completed!\n- Synced Fees: ${res.data.stats.synced} students\n- Auto-Linked: ${res.data.stats.linked || 0} students\n- Errors: ${res.data.stats.errors}`);
+                                                if (res.data.stats) {
+                                                    alert(`Fee sync completed!\n- Synced Fees: ${res.data.stats.synced} students\n- Auto-Linked: ${res.data.stats.linked || 0} students\n- Errors: ${res.data.stats.errors}`);
+                                                } else {
+                                                    alert(res.data.message || "Fee sync started in the background. Please wait a minute and refresh the page.");
+                                                }
                                                 fetchFeeDefaulters();
                                                 fetchStudentsWithPagination();
                                             } catch(err) {
