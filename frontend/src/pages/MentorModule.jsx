@@ -1314,7 +1314,7 @@ const MentorModule = () => {
                                         onClick={async () => {
                                             try {
                                                 const res = await api.post('integrations/sync-wise-fees/');
-                                                alert(`Synced ${res.data.stats.synced} students. Errors: ${res.data.stats.errors}`);
+                                                alert(`Fee sync completed!\n- Synced Fees: ${res.data.stats.synced} students\n- Auto-Linked: ${res.data.stats.linked || 0} students\n- Errors: ${res.data.stats.errors}`);
                                                 fetchFeeDefaulters();
                                                 fetchStudentsWithPagination();
                                             } catch(err) {
@@ -1338,8 +1338,8 @@ const MentorModule = () => {
                         </div>
 
                         {/* Full Student List - Desktop Table View */}
-                        <div className="hidden md:block overflow-x-auto">
-                            <table className="w-full border-separate border-spacing-y-3">
+                        <div className="hidden md:block overflow-x-auto custom-scrollbar">
+                            <table className="min-w-[1100px] w-full border-separate border-spacing-y-3">
                                 <thead>
                                     <tr className="text-left">
                                         <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Student</th>
@@ -1357,7 +1357,7 @@ const MentorModule = () => {
                                         <tr key={student.id} className="group hover:bg-slate-50/50 transition-colors">
                                             <td className="px-6 py-5 bg-white border-y border-l border-slate-100 rounded-l-2xl first:border-l">
                                                 <div className="flex items-center gap-3">
-                                                    <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600 font-bold text-sm">
+                                                    <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600 font-bold text-sm shrink-0">
                                                         {student.first_name?.[0]}{student.last_name?.[0] || ''}
                                                     </div>
                                                     <div>
@@ -1920,8 +1920,8 @@ const MentorModule = () => {
                         </div>
 
                         {/* Student List - Desktop Table View */}
-                        <div className="hidden md:block bg-white rounded-2xl overflow-x-auto border border-slate-200 shadow-sm">
-                            <table className="w-full text-left">
+                        <div className="hidden md:block bg-white rounded-2xl overflow-x-auto border border-slate-200 shadow-sm custom-scrollbar">
+                            <table className="min-w-[1000px] w-full text-left">
                                 <thead className="bg-slate-50 border-b border-slate-200">
                                     <tr>
                                         <th className="p-5 font-semibold text-slate-505 text-sm">Student Name</th>

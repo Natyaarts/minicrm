@@ -912,6 +912,7 @@ class SyncWiseTeachersView(views.APIView):
 class SyncWiseFeesView(views.APIView):
     """
     Syncs fee information from Wise LMS for all linked students.
+    Auto-links unlinked students by phone if possible.
     """
     permission_classes = [permissions.IsAuthenticated]
 
@@ -922,53 +923,73 @@ class SyncWiseFeesView(views.APIView):
         from core.models import Student
         wise = WiseService()
         
-        linked_students = Student.objects.filter(lms_student_id__isnull=False).exclude(lms_student_id='')
-        stats = {"synced": 0, "errors": 0}
+        # Fetch all active students so we can try to link unlinked ones on the fly
+        students = Student.objects.filter(is_active=True)
+        stats = {"synced": 0, "linked": 0, "errors": 0}
         
-        for student in linked_students:
+        for student in students:
             try:
-                fee_summary = wise.get_student_fee_summary(student.lms_student_id)
-                if fee_summary:
-                    summary_list = fee_summary.get('summary', [])
-                    summary = summary_list[0] if summary_list else {}
-                    
-                    class_summary_list = fee_summary.get('classWiseStudentSummary', [])
-                    class_summary = class_summary_list[0] if class_summary_list else {}
-                    
-                    # Values in Paisa (1/100 INR), need to divide by 100
-                    paid_fee = summary.get('totalPaid', {}).get('value', 0) / 100
-                    due_fee = summary.get('totalDue', {}).get('value', 0) / 100
-                    total_fee = paid_fee + due_fee
-                    
-                    total_remaining = summary.get('totalRemaining', {}).get('value', 0) / 100
-                    if total_remaining > total_fee:
-                        total_fee = total_remaining
-                    
-                    due_date_str = class_summary.get('earliestDueDate')
-                    
-                    student.total_fee = total_fee
-                    student.paid_fee = paid_fee
-                    
-                    if due_date_str and due_date_str != 'N/A':
-                        try:
-                            from django.utils.dateparse import parse_date, parse_datetime
-                            dt = parse_datetime(due_date_str)
-                            if dt:
-                                student.fee_due_date = dt.date()
-                            else:
-                                student.fee_due_date = parse_date(due_date_str) or student.fee_due_date
-                        except Exception:
-                            pass
-                    
-                    student.save()
-                    stats["synced"] += 1
-                else:
-                    stats["errors"] += 1
+                # 1. Attempt to auto-link if not already linked
+                if not student.lms_student_id and student.mobile:
+                    wise_user = wise.search_student_by_phone(student.mobile)
+                    if wise_user:
+                        wise_id = wise_user.get('_id') or wise_user.get('id')
+                        if wise_id:
+                            student.lms_student_id = wise_id
+                            student.save()
+                            stats["linked"] += 1
+
+                # 2. Sync fees for linked students
+                if student.lms_student_id:
+                    fee_summary = wise.get_student_fee_summary(student.lms_student_id)
+                    if fee_summary:
+                        summary_list = fee_summary.get('summary', [])
+                        summary = summary_list[0] if summary_list else {}
+                        
+                        class_summary_list = fee_summary.get('classWiseStudentSummary', [])
+                        class_summary = class_summary_list[0] if class_summary_list else {}
+                        
+                        # Values in Paisa (1/100 INR), need to divide by 100
+                        paid_fee = summary.get('totalPaid', {}).get('value', 0) / 100
+                        due_fee = summary.get('totalDue', {}).get('value', 0) / 100
+                        total_fee = paid_fee + due_fee
+                        
+                        total_remaining = summary.get('totalRemaining', {}).get('value', 0) / 100
+                        if total_remaining > total_fee:
+                            total_fee = total_remaining
+                        
+                        due_date_str = class_summary.get('earliestDueDate')
+                        
+                        student.total_fee = total_fee
+                        student.paid_fee = paid_fee
+                        
+                        if due_date_str and due_date_str != 'N/A':
+                            try:
+                                from django.utils.dateparse import parse_date, parse_datetime
+                                dt = parse_datetime(due_date_str)
+                                if dt:
+                                    student.fee_due_date = dt.date()
+                                else:
+                                    student.fee_due_date = parse_date(due_date_str) or student.fee_due_date
+                            except Exception:
+                                pass
+                        
+                        student.save()
+                        stats["synced"] += 1
+                    else:
+                        stats["errors"] += 1
             except Exception as e:
                 print(f"Error syncing fee for student {student.id}: {e}")
                 stats["errors"] += 1
                 
-        return response.Response({"message": "Fee sync completed", "stats": stats})
+        return response.Response({
+            "message": "Fee sync completed", 
+            "stats": {
+                "synced": stats["synced"],
+                "linked": stats["linked"],
+                "errors": stats["errors"]
+            }
+        })
 
 class AutoLinkWiseDataView(views.APIView):
     """
