@@ -182,6 +182,10 @@ class BDEReportView(APIView):
                 'id': inter.id,
                 'student_name': f"{inter.student.first_name} {inter.student.last_name}",
                 'student_id': inter.student.id,
+                'student_phone': inter.student.mobile,
+                'student_email': inter.student.email,
+                'student_crm_id': inter.student.crm_student_id,
+                'student_status': inter.student.lead_status,
                 'type': inter.interaction_type,
                 'notes': inter.notes,
                 'date': inter.date,
@@ -270,18 +274,42 @@ class WebhookReceiveView(APIView):
                 if campaign_id:
                     campaign = Campaign.objects.filter(id=campaign_id).first()
 
-                # Create Student Lead
-                student = Student.objects.create(
-                    user=user,
-                    crm_student_id=crm_id,
-                    first_name=first_name,
-                    last_name=last_name,
-                    email=email if "@webhook.temp" not in email else '',
-                    mobile=mobile,
-                    program_type=program,
-                    campaign=campaign,
-                    is_active=True
-                )
+                # Check if Student profile already exists for this user
+                student = Student.objects.filter(user=user).first()
+                if student:
+                    # Lead already exists! Update the lead information instead of crashing.
+                    student.first_name = first_name
+                    student.last_name = last_name
+                    if email and "@webhook.temp" not in email:
+                        student.email = email
+                    if mobile:
+                        student.mobile = mobile
+                    if program:
+                        student.program_type = program
+                    if campaign:
+                        student.campaign = campaign
+                    student.save()
+                    
+                    # Log system interaction
+                    LeadInteraction.objects.create(
+                        student=student,
+                        author=None,
+                        interaction_type='NOTE',
+                        notes=f"Re-engaged lead from webhook: {endpoint.name}. Campaign: {campaign.name if campaign else 'N/A'}."
+                    )
+                else:
+                    # Create Student Lead
+                    student = Student.objects.create(
+                        user=user,
+                        crm_student_id=crm_id,
+                        first_name=first_name,
+                        last_name=last_name,
+                        email=email if "@webhook.temp" not in email else '',
+                        mobile=mobile,
+                        program_type=program,
+                        campaign=campaign,
+                        is_active=True
+                    )
 
                 # Log Success
                 WebhookLog.objects.create(

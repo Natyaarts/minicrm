@@ -3,8 +3,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 const getBaseUrl = () => {
-  // Hardcoded tunnel URL to bypass Windows Firewall and WiFi isolation completely
-  return 'https://ten-coins-throw.loca.lt/api/';
+  // Point to the live production server domain
+  return 'https://natyaarts.org/api/';
 };
 
 const API_URL = getBaseUrl();

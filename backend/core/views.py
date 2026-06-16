@@ -425,23 +425,60 @@ class StudentViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def export_csv(self, request):
-        qs = self.get_queryset()
+        qs = self.filter_queryset(self.get_queryset())
         data = []
         for s in qs:
             total_paid = s.transactions.aggregate(total=Sum('amount'))['total'] or 0
-            data.append({
-                'ID': s.crm_student_id,
+            
+            # Map dynamic values list to a dictionary for simple lookup
+            dyn_values = {val.field.label: val.value for val in s.dynamic_values.all()}
+            
+            row = {
+                'CRM Student ID': s.crm_student_id,
                 'First Name': s.first_name,
                 'Last Name': s.last_name,
                 'Mobile': s.mobile,
                 'Email': s.email,
-                'Program': s.program_type.name,
+                'Program': s.program_type.name if s.program_type else 'N/A',
+                'Sub Program': s.sub_program.name if s.sub_program else 'N/A',
                 'Course': s.course.name if s.course else 'N/A',
                 'Batch': s.batch.name if s.batch else 'N/A',
-                'Status': 'Active' if s.is_active else 'Inactive',
-                'Total Paid': total_paid,
-            })
-        df = pd.DataFrame(data)
+                'Lead Status': s.lead_status,
+                'Academic Status': s.academic_status,
+                'Assigned To': f"{s.assigned_to.first_name} {s.assigned_to.last_name}".strip() or s.assigned_to.username if s.assigned_to else 'Unassigned',
+                'Campaign': s.campaign.name if s.campaign else 'N/A',
+                'Father/Husband Name': s.father_husband_name or '',
+                'Mother Name': s.mother_name or '',
+                'Date of Birth': s.dob or '',
+                'Gender': s.gender or '',
+                'Marital Status': s.marital_status or '',
+                'Permanent Address': s.perm_address or '',
+                'Correspondence Address': s.corr_address or '',
+                'Total Paid (CRM)': total_paid,
+                'Total Fee (Synced)': s.total_fee,
+                'Paid Fee (Synced)': s.paid_fee,
+                'Fee Due Date': s.fee_due_date or '',
+            }
+            
+            # Add dynamic field values as additional columns
+            for label, value in dyn_values.items():
+                row[label] = value
+                
+            data.append(row)
+            
+        if data:
+            df = pd.DataFrame(data)
+        else:
+            # Empty fallback dataframe with basic headers
+            df = pd.DataFrame(columns=[
+                'CRM Student ID', 'First Name', 'Last Name', 'Mobile', 'Email', 
+                'Program', 'Sub Program', 'Course', 'Batch', 'Lead Status', 
+                'Academic Status', 'Assigned To', 'Campaign', 'Father/Husband Name', 
+                'Mother Name', 'Date of Birth', 'Gender', 'Marital Status', 
+                'Permanent Address', 'Correspondence Address', 'Total Paid (CRM)', 
+                'Total Fee (Synced)', 'Paid Fee (Synced)', 'Fee Due Date'
+            ])
+            
         response = HttpResponse(content_type='text/csv')
         response['Content-Disposition'] = 'attachment; filename="students.csv"'
         df.to_csv(path_or_buf=response, index=False)
@@ -701,6 +738,42 @@ class StudentViewSet(viewsets.ModelViewSet):
             'discontinued_count': len(discontinued_data)
         })
 
+    @action(detail=False, methods=['get'])
+    def fee_defaulters(self, request):
+        from django.db.models import F
+        # Students where paid_fee < total_fee
+        qs = self.get_queryset().filter(paid_fee__lt=F('total_fee'))
+        
+        data = []
+        for s in qs:
+            data.append({
+                'id': s.id,
+                'name': f"{s.first_name} {s.last_name}",
+                'crm_student_id': s.crm_student_id,
+                'mobile': s.mobile,
+                'email': s.email,
+                'total_fee': s.total_fee,
+                'paid_fee': s.paid_fee,
+                'due_amount': s.total_fee - s.paid_fee,
+                'fee_due_date': s.fee_due_date.strftime('%Y-%m-%d') if s.fee_due_date else '',
+                'is_wise_integrated': bool(s.lms_student_id)
+            })
+            
+        return Response(data)
+
+    @action(detail=True, methods=['post'])
+    def mark_as_paid(self, request, pk=None):
+        student = self.get_object()
+        
+        if student.lms_student_id:
+            return Response({'error': 'Cannot manually mark Wise LMS integrated student as paid. Please sync from Wise LMS instead.'}, status=400)
+            
+        student.paid_fee = student.total_fee
+        if student.lead_status == 'PAYMENT_PENDING':
+            student.lead_status = 'ENROLLED'
+        student.save()
+        
+        return Response({'status': 'Student marked as fully paid'})
 
 class TransactionViewSet(viewsets.ModelViewSet):
     queryset = Transaction.objects.all()

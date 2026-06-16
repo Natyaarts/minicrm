@@ -909,6 +909,62 @@ class SyncWiseTeachersView(views.APIView):
                 "total_found": len(wise_teachers)
             }
         })
+class SyncWiseFeesView(views.APIView):
+    """
+    Syncs fee information from Wise LMS for all linked students.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if request.user.role not in ['ADMIN', 'SUPER_ADMIN', 'SALES']:
+            return response.Response({"error": "Unauthorized"}, status=403)
+            
+        from core.models import Student
+        wise = WiseService()
+        
+        linked_students = Student.objects.filter(lms_student_id__isnull=False)
+        stats = {"synced": 0, "errors": 0}
+        
+        for student in linked_students:
+            try:
+                fee_summary = wise.get_student_fee_summary(student.lms_student_id)
+                if fee_summary:
+                    summary_list = fee_summary.get('summary', [])
+                    summary = summary_list[0] if summary_list else {}
+                    
+                    class_summary_list = fee_summary.get('classWiseStudentSummary', [])
+                    class_summary = class_summary_list[0] if class_summary_list else {}
+                    
+                    # Values in Paisa (1/100 INR), need to divide by 100
+                    paid_fee = summary.get('totalPaid', {}).get('value', 0) / 100
+                    due_fee = summary.get('totalDue', {}).get('value', 0) / 100
+                    total_fee = paid_fee + due_fee
+                    
+                    total_remaining = summary.get('totalRemaining', {}).get('value', 0) / 100
+                    if total_remaining > total_fee:
+                        total_fee = total_remaining
+                    
+                    due_date_str = class_summary.get('earliestDueDate')
+                    
+                    student.total_fee = total_fee
+                    student.paid_fee = paid_fee
+                    
+                    if due_date_str and due_date_str != 'N/A':
+                        try:
+                            from django.utils.dateparse import parse_date
+                            student.fee_due_date = parse_date(due_date_str) or student.fee_due_date
+                        except Exception:
+                            pass
+                    
+                    student.save()
+                    stats["synced"] += 1
+                else:
+                    stats["errors"] += 1
+            except Exception as e:
+                print(f"Error syncing fee for student {student.id}: {e}")
+                stats["errors"] += 1
+                
+        return response.Response({"message": "Fee sync completed", "stats": stats})
 
 class AutoLinkWiseDataView(views.APIView):
     """

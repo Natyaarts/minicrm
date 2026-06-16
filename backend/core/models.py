@@ -107,6 +107,11 @@ class Student(models.Model):
     lms_course_id = models.CharField(max_length=100, blank=True, null=True)
     lms_course_names = models.CharField(max_length=500, blank=True, null=True)
     lms_batch_id = models.CharField(max_length=100, blank=True, null=True)
+    
+    # Fee Tracking
+    total_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0.0)
+    paid_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0.0)
+    fee_due_date = models.DateField(null=True, blank=True)
 
     def __str__(self):
         return f"{self.first_name} {self.last_name}"

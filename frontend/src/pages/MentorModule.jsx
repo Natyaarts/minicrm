@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import { motion } from 'framer-motion';
-import { FileText, User, Calendar, BookOpen, Search, X, Key, Edit, Users, History, RefreshCw, UserMinus, Download } from 'lucide-react';
+import { FileText, User, Calendar, BookOpen, Search, X, Key, Edit, Users, History, RefreshCw, UserMinus, Download, IndianRupee } from 'lucide-react';
 
 const MentorModule = () => {
     // Data State
@@ -70,6 +70,10 @@ const MentorModule = () => {
     // Break & Rejoin State
     const [breakMetrics, setBreakMetrics] = useState({ on_break_count: 0, rejoined_count: 0, on_break: [], rejoined: [] });
     const [isBreakModalOpen, setIsBreakModalOpen] = useState(false);
+    
+    // Fee State
+    const [feeDefaulters, setFeeDefaulters] = useState([]);
+    const [isFeeModalOpen, setIsFeeModalOpen] = useState(false);
     const [breakReason, setBreakReason] = useState('');
     const [breakStudentId, setBreakStudentId] = useState(null);
     const [breakStartDate, setBreakStartDate] = useState('');
@@ -77,6 +81,8 @@ const MentorModule = () => {
     const [isBreakListModalOpen, setIsBreakListModalOpen] = useState(false);
     const [breakListModalType, setBreakListModalType] = useState('on_break'); // 'on_break', 'rejoined', 'discontinued'
     const [modalSearchQuery, setModalSearchQuery] = useState('');
+    const [modalStartDate, setModalStartDate] = useState('');
+    const [modalEndDate, setModalEndDate] = useState('');
     const [modalSortConfig, setModalSortConfig] = useState({ key: 'date', direction: 'desc' });
     
     // Discontinued State
@@ -145,14 +151,25 @@ const MentorModule = () => {
             fetchWiseCourses();
         } else if (viewTab === 'dashboard') {
             fetchBreakMetrics();
+            fetchFeeDefaulters();
         }
     }, [viewTab, studentPage]);
 
     useEffect(() => {
         if (viewTab === 'dashboard') {
             fetchBreakMetrics();
+            fetchFeeDefaulters();
         }
     }, [breakStartDate, breakEndDate]);
+
+    const fetchFeeDefaulters = async () => {
+        try {
+            const res = await api.get('students/fee_defaulters/');
+            setFeeDefaulters(res.data);
+        } catch (err) {
+            console.error("Failed to fetch fee defaulters", err);
+        }
+    };
 
     const fetchBreakMetrics = async () => {
         try {
@@ -186,6 +203,20 @@ const MentorModule = () => {
                 (s.reason && s.reason.toLowerCase().includes(query)) ||
                 (s.crm_student_id && s.crm_student_id.toLowerCase().includes(query))
             );
+        }
+        
+        if (modalStartDate) {
+            displayList = displayList.filter(s => {
+                const dateToUse = breakListModalType === 'rejoined' ? s.rejoin_date : s.date;
+                return dateToUse && dateToUse >= modalStartDate;
+            });
+        }
+        
+        if (modalEndDate) {
+            displayList = displayList.filter(s => {
+                const dateToUse = breakListModalType === 'rejoined' ? s.rejoin_date : s.date;
+                return dateToUse && dateToUse <= modalEndDate;
+            });
         }
         
         displayList.sort((a, b) => {
@@ -942,6 +973,21 @@ const MentorModule = () => {
                                 </div>
                             </div>
                         </div>
+
+                        <div 
+                            onClick={() => setIsFeeModalOpen(true)}
+                            className="bg-white rounded-3xl p-6 border border-slate-200 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] cursor-pointer hover:shadow-lg transition-all hover:border-indigo-200"
+                        >
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-sm font-semibold text-slate-500 mb-1">Due Fees</p>
+                                    <p className="text-3xl font-black text-slate-800">{feeDefaulters.length}</p>
+                                </div>
+                                <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600">
+                                    <IndianRupee size={24} />
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
@@ -1077,6 +1123,22 @@ const MentorModule = () => {
                                         />
                                     </div>
                                     <button 
+                                        onClick={async () => {
+                                            try {
+                                                const res = await api.post('integrations/sync-wise-fees/');
+                                                alert(`Synced ${res.data.stats.synced} students. Errors: ${res.data.stats.errors}`);
+                                                fetchFeeDefaulters();
+                                                fetchStudentsWithPagination();
+                                            } catch(err) {
+                                                alert("Failed to sync fees");
+                                            }
+                                        }}
+                                        className="flex items-center justify-center gap-2 px-4 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-xl hover:bg-indigo-100 hover:text-indigo-800 transition-colors text-sm font-semibold shadow-sm whitespace-nowrap"
+                                    >
+                                        <RefreshCw size={16} />
+                                        Sync Wise Fees
+                                    </button>
+                                    <button 
                                         onClick={handleExportFilteredStudents}
                                         className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 hover:text-indigo-600 transition-colors text-sm font-semibold shadow-sm whitespace-nowrap"
                                     >
@@ -1095,6 +1157,9 @@ const MentorModule = () => {
                                         <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Student</th>
                                         <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-center">Program</th>
                                         <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-center">Course & Batch</th>
+                                        <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-center">Total Fee</th>
+                                        <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-center">Paid Fee</th>
+                                        <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-center">Due Date</th>
                                         <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-right">Actions</th>
                                     </tr>
                                 </thead>
@@ -1127,6 +1192,15 @@ const MentorModule = () => {
                                                     <span className="text-slate-800 font-bold">{student.course_name || student.lms_course_names || <span className="text-slate-300 italic text-xs font-normal">No Course</span>}</span>
                                                     <span className="text-xs text-slate-500">{student.batch_name || 'Unassigned Batch'}</span>
                                                 </div>
+                                            </td>
+                                            <td className="px-6 py-5 bg-white border-y border-slate-100 text-center font-bold text-slate-700">
+                                                ₹{student.total_fee || 0}
+                                            </td>
+                                            <td className="px-6 py-5 bg-white border-y border-slate-100 text-center font-bold text-emerald-600">
+                                                ₹{student.paid_fee || 0}
+                                            </td>
+                                            <td className="px-6 py-5 bg-white border-y border-slate-100 text-center text-sm text-slate-500">
+                                                {student.fee_due_date || '-'}
                                             </td>
                                             <td className="px-6 py-5 bg-white border-y border-r border-slate-100 rounded-r-2xl text-right">
                                                 <div className="flex justify-end gap-2">
@@ -1222,6 +1296,21 @@ const MentorModule = () => {
                                             <span className="text-slate-700 font-medium truncate block">
                                                 {student.batch_name || <span className="text-slate-400 italic">Unassigned</span>}
                                             </span>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-3 gap-2 text-xs border-t border-slate-100 pt-3">
+                                        <div>
+                                            <span className="block text-slate-400 font-semibold mb-0.5">Total Fee</span>
+                                            <span className="text-slate-700 font-bold">₹{student.total_fee || 0}</span>
+                                        </div>
+                                        <div>
+                                            <span className="block text-slate-400 font-semibold mb-0.5">Paid Fee</span>
+                                            <span className="text-emerald-600 font-bold">₹{student.paid_fee || 0}</span>
+                                        </div>
+                                        <div>
+                                            <span className="block text-slate-400 font-semibold mb-0.5">Due Date</span>
+                                            <span className="text-slate-500 font-medium">{student.fee_due_date || '-'}</span>
                                         </div>
                                     </div>
 
@@ -1575,6 +1664,9 @@ const MentorModule = () => {
                                         <th className="p-5 font-semibold text-slate-500 text-sm">Student Name</th>
                                         <th className="p-5 font-semibold text-slate-500 text-sm">Email</th>
                                         <th className="p-5 font-semibold text-slate-500 text-sm">Mobile</th>
+                                        <th className="p-5 font-semibold text-slate-500 text-sm text-center">Total Fee</th>
+                                        <th className="p-5 font-semibold text-slate-500 text-sm text-center">Paid Fee</th>
+                                        <th className="p-5 font-semibold text-slate-500 text-sm text-center">Due Date</th>
                                         <th className="p-5 font-semibold text-slate-500 text-sm text-right">Actions</th>
                                     </tr>
                                 </thead>
@@ -1586,6 +1678,9 @@ const MentorModule = () => {
                                             </td>
                                             <td className="p-5 text-slate-500">{student.email}</td>
                                             <td className="p-5 text-slate-500">{student.mobile}</td>
+                                            <td className="p-5 text-center font-bold text-slate-700">₹{student.total_fee || 0}</td>
+                                            <td className="p-5 text-center font-bold text-emerald-600">₹{student.paid_fee || 0}</td>
+                                            <td className="p-5 text-center text-sm text-slate-500">{student.fee_due_date || '-'}</td>
                                             <td className="p-5 text-right flex items-center justify-end gap-3">
                                                 {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.MENTOR?.edit) && (
                                                     <button
@@ -1628,7 +1723,7 @@ const MentorModule = () => {
                                     ))}
                                     {studentsInBatch.length === 0 && (
                                         <tr>
-                                            <td colSpan="4" className="p-12 text-center text-slate-400">
+                                            <td colSpan="7" className="p-12 text-center text-slate-400">
                                                 No students assigned to this batch yet.
                                             </td>
                                         </tr>
@@ -1661,6 +1756,21 @@ const MentorModule = () => {
                                             <span className={`font-bold ${student.lms_student_id ? 'text-emerald-600' : 'text-slate-400'}`}>
                                                 {student.lms_student_id ? 'Linked' : 'Not Linked'}
                                             </span>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-3 gap-2 text-xs border-t border-slate-100 pt-3">
+                                        <div>
+                                            <span className="block text-slate-400 font-semibold mb-0.5">Total Fee</span>
+                                            <span className="text-slate-700 font-bold">₹{student.total_fee || 0}</span>
+                                        </div>
+                                        <div>
+                                            <span className="block text-slate-400 font-semibold mb-0.5">Paid Fee</span>
+                                            <span className="text-emerald-600 font-bold">₹{student.paid_fee || 0}</span>
+                                        </div>
+                                        <div>
+                                            <span className="block text-slate-400 font-semibold mb-0.5">Due Date</span>
+                                            <span className="text-slate-500 font-medium">{student.fee_due_date || '-'}</span>
                                         </div>
                                     </div>
 
@@ -2418,8 +2528,8 @@ const MentorModule = () => {
                         </div>
                         <div className="p-6 overflow-y-auto flex-1 custom-scrollbar bg-slate-50/50">
                             <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-                                <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center gap-3">
-                                    <div className="relative flex-1 max-w-sm">
+                                <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row items-center gap-3">
+                                    <div className="relative flex-1 w-full sm:max-w-sm">
                                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                                         <input 
                                             type="text"
@@ -2428,6 +2538,31 @@ const MentorModule = () => {
                                             onChange={(e) => setModalSearchQuery(e.target.value)}
                                             className="w-full pl-9 pr-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 text-sm"
                                         />
+                                    </div>
+                                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                                        <input
+                                            type="date"
+                                            value={modalStartDate}
+                                            onChange={(e) => setModalStartDate(e.target.value)}
+                                            className="px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 text-sm w-full sm:w-auto text-slate-600"
+                                            title="Start Date"
+                                        />
+                                        <span className="text-slate-400">to</span>
+                                        <input
+                                            type="date"
+                                            value={modalEndDate}
+                                            onChange={(e) => setModalEndDate(e.target.value)}
+                                            className="px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 text-sm w-full sm:w-auto text-slate-600"
+                                            title="End Date"
+                                        />
+                                        {(modalStartDate || modalEndDate || modalSearchQuery) && (
+                                            <button 
+                                                onClick={() => { setModalStartDate(''); setModalEndDate(''); setModalSearchQuery(''); }}
+                                                className="px-3 py-2 text-xs font-bold text-slate-500 bg-slate-200 hover:bg-slate-300 rounded-xl transition-all whitespace-nowrap"
+                                            >
+                                                Clear
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                                 <table className="w-full text-left text-sm">
@@ -2638,6 +2773,94 @@ const MentorModule = () => {
                             )}
                         </div>
                     </motion.div>
+                </div>
+            )}
+
+            {isFeeModalOpen && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-[90]">
+                    <div className="bg-white rounded-3xl w-full max-w-4xl overflow-hidden shadow-2xl animate-fadeIn max-h-[90vh] flex flex-col">
+                        <div className="flex justify-between items-center p-6 border-b border-slate-100">
+                            <div>
+                                <h2 className="text-lg font-bold text-slate-800">
+                                    Students with Due Fees
+                                </h2>
+                                <p className="text-sm text-slate-500 mt-1">
+                                    {feeDefaulters.length} students have unpaid fees
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <button onClick={() => setIsFeeModalOpen(false)} className="text-slate-400 hover:text-slate-600 bg-slate-50 hover:bg-slate-100 p-2 rounded-full transition-all">
+                                    <X size={20} />
+                                </button>
+                            </div>
+                        </div>
+                        <div className="p-6 overflow-y-auto flex-1 custom-scrollbar bg-slate-50/50">
+                            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+                                {feeDefaulters.length > 0 ? (
+                                    <div className="overflow-x-auto min-h-[300px]">
+                                        <table className="w-full text-left">
+                                            <thead>
+                                                <tr className="border-b border-slate-200 bg-slate-50">
+                                                    <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Student</th>
+                                                    <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Total Fee</th>
+                                                    <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Paid</th>
+                                                    <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Due</th>
+                                                    <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Due Date</th>
+                                                    <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest text-right">Action</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {feeDefaulters.map((student) => (
+                                                    <tr key={student.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors last:border-0">
+                                                        <td className="px-4 py-3">
+                                                            <div className="font-bold text-slate-800">{student.name}</div>
+                                                            <div className="text-xs text-slate-500">{student.crm_student_id}</div>
+                                                            <div className="text-xs text-slate-400">{student.mobile}</div>
+                                                        </td>
+                                                        <td className="px-4 py-3 font-semibold text-slate-700">₹{student.total_fee}</td>
+                                                        <td className="px-4 py-3 font-semibold text-emerald-600">₹{student.paid_fee}</td>
+                                                        <td className="px-4 py-3 font-bold text-red-600">₹{student.due_amount}</td>
+                                                        <td className="px-4 py-3 text-sm text-slate-600">{student.fee_due_date || '-'}</td>
+                                                        <td className="px-4 py-3 text-right">
+                                                            {!student.is_wise_integrated ? (
+                                                                <button
+                                                                    onClick={async () => {
+                                                                        try {
+                                                                            await api.post(`students/${student.id}/mark_as_paid/`);
+                                                                            alert('Student marked as paid successfully');
+                                                                            fetchFeeDefaulters();
+                                                                            fetchStudentsWithPagination();
+                                                                        } catch(err) {
+                                                                            alert('Failed to mark as paid');
+                                                                        }
+                                                                    }}
+                                                                    className="px-3 py-1 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-lg text-xs font-bold transition-colors"
+                                                                >
+                                                                    Mark as Paid
+                                                                </button>
+                                                            ) : (
+                                                                <span className="text-xs text-slate-400 italic">Wise LMS</span>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                ) : (
+                                    <div className="p-8 text-center">
+                                        <div className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center text-emerald-500 mx-auto mb-3">
+                                            <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                            </svg>
+                                        </div>
+                                        <p className="text-slate-800 font-bold mb-1">All Clear!</p>
+                                        <p className="text-slate-500 text-sm">There are no students with due fees.</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

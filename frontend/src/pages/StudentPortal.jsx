@@ -72,6 +72,35 @@ const StudentPortal = () => {
         }
     }, [profile?.batch_id]);
 
+    const submitFinalExam = async (examId) => {
+        if (!profile?.id) {
+            alert("Student profile not found.");
+            return;
+        }
+        try {
+            setLoading(true);
+            const payload = {
+                exam: examId,
+                student: profile.id,
+                is_submitted: true,
+                answers_json: examAnswers
+            };
+            const res = await api.post('student-submissions/', payload);
+            const score = res.data?.score ?? 0;
+            setToast({ type: 'success', message: `Exam Submitted! Score: ${score}` });
+            setTakingExam(null);
+            setExamAnswers({});
+            // Refresh student profile/data
+            fetchMyData();
+        } catch (err) {
+            console.error("Exam submission failed", err);
+            alert("Failed to submit exam. Please check your connection.");
+        } finally {
+            setLoading(false);
+            setTimeout(() => setToast(null), 3000);
+        }
+    };
+
     const handleAdminSearch = async (e) => {
         e.preventDefault();
         if (!searchTerm.trim()) return;
@@ -549,9 +578,7 @@ const StudentPortal = () => {
                                 <button 
                                     onClick={() => {
                                         if (window.confirm("Are you sure you want to submit your exam?")) {
-                                            setToast({ type: 'success', message: 'Exam Submitted Successfully!' });
-                                            setTakingExam(null);
-                                            setTimeout(() => setToast(null), 3000);
+                                            submitFinalExam(takingExam.id);
                                         }
                                     }}
                                     className="px-6 py-2.5 bg-emerald-600 text-white rounded-lg font-bold text-xs uppercase tracking-wider hover:bg-emerald-700 transition-all shadow-sm"

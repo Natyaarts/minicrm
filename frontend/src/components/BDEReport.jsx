@@ -123,11 +123,35 @@ const BDEReport = ({ bdeId, onClose }) => {
                                             <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl shadow-sm">
                                                 <div className="flex justify-between items-start mb-2">
                                                     <div>
-                                                        <p className="text-xs font-bold text-slate-800">
+                                                        <p className="text-sm font-bold text-slate-800">
                                                             {item.type === 'CALL' ? 'Phone Call with' : 
                                                              item.type === 'WHATSAPP' ? 'WhatsApp with' : 
                                                              item.type === 'EMAIL' ? 'Email to' : 'Note on'} <span className="text-indigo-600">{item.student_name}</span>
                                                         </p>
+                                                        {(item.student_crm_id || item.student_phone) && (
+                                                            <div className="flex flex-wrap items-center gap-2 mt-1 mb-1.5 text-[11px] text-slate-500 font-medium">
+                                                                {item.student_crm_id && (
+                                                                    <span className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded text-[10px]">
+                                                                        ID: {item.student_crm_id}
+                                                                    </span>
+                                                                )}
+                                                                {item.student_phone && (
+                                                                    <span className="flex items-center gap-0.5 bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded text-[10px]">
+                                                                        <PhoneCall size={10} /> {item.student_phone}
+                                                                    </span>
+                                                                )}
+                                                                {item.student_email && (
+                                                                    <span className="text-slate-400 max-w-[150px] truncate">
+                                                                        {item.student_email}
+                                                                    </span>
+                                                                )}
+                                                                {item.student_status && (
+                                                                    <span className="bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase">
+                                                                        {item.student_status}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        )}
                                                         <p className="text-[10px] text-slate-500 mt-0.5">
                                                             {new Date(item.date).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
                                                         </p>

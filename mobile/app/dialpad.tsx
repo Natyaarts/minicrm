@@ -57,7 +57,7 @@ const Dialpad = () => {
       
       // Tell native Kotlin to start recording the call
       if (Platform.OS === 'android') {
-        const filePath = await startNativeRecording();
+        const filePath = await startNativeRecording(phoneNumber);
         console.log("Started recording:", filePath);
       }
     }, 2000);

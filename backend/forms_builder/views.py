@@ -7,6 +7,7 @@ class DynamicFieldViewSet(viewsets.ModelViewSet):
     queryset = DynamicField.objects.all()
     serializer_class = DynamicFieldSerializer
     permission_classes = [permissions.IsAuthenticated] # Or IsAdminUser for mutations
+    pagination_class = None
 
     def get_queryset(self):
         from django.db.models import Q

@@ -23,10 +23,10 @@ export const checkIsDefaultDialer = async () => {
     return false;
 };
 
-export const startNativeRecording = async () => {
+export const startNativeRecording = async (phoneNumber?: string) => {
     if (!CallRecordingModule) return null;
     try {
-        const filePath = await CallRecordingModule.startRecording();
+        const filePath = await CallRecordingModule.startRecording(phoneNumber || "");
         return filePath;
     } catch (e) {
         console.error(e);

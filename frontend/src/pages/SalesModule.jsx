@@ -3,7 +3,7 @@ import { useSearchParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Copy, Check, Search, FileText, User, Trash2, Edit2, RotateCcw, Trash, X, UserCircle } from 'lucide-react';
+import { Copy, Check, Search, FileText, User, Trash2, Edit2, RotateCcw, Trash, X, UserCircle, Download } from 'lucide-react';
 import { copyToClipboard } from '../utils/clipboard';
 import { compressImage } from '../utils/fileCompressor';
 import KanbanBoard from '../components/KanbanBoard';
@@ -208,6 +208,37 @@ const SalesModule = () => {
             setLoadingWise(false);
         }
     };
+
+    const handleExportLeads = async () => {
+        try {
+            setLoading(true);
+            const params = new URLSearchParams({
+                is_active: (!isTrashView).toString(),
+                search: searchTerm
+            });
+            
+            if (selectedProgram) params.append('program', selectedProgram);
+            if (selectedSubProgram) params.append('sub_program', selectedSubProgram);
+            if (selectedCourse) params.append('course', selectedCourse);
+            if (selectedStageFilter) params.append('lead_status', selectedStageFilter);
+            if (selectedAssigneeFilter) params.append('assigned_to', selectedAssigneeFilter);
+
+            const res = await api.get(`students/export_csv/?${params.toString()}`, { responseType: 'blob' });
+            const urlBlob = window.URL.createObjectURL(new Blob([res.data]));
+            const link = document.createElement('a');
+            link.href = urlBlob;
+            link.setAttribute('download', 'leads_export.csv');
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+        } catch (error) {
+            console.error("Export failed:", error);
+            alert("Failed to export leads.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const [isTrashView, setIsTrashView] = useState(false);
     const [editingStudent, setEditingStudent] = useState(null);
     const [editFormData, setEditFormData] = useState({});
@@ -946,6 +977,14 @@ const SalesModule = () => {
                                             Bulk Upload
                                         </button>
                                     )}
+                                    {activeTab === 'list' && (
+                                        <button
+                                            onClick={handleExportLeads}
+                                            className="px-3 py-1.5 bg-white border border-slate-200 text-slate-700 rounded-lg text-xs font-semibold hover:bg-slate-50 transition-colors flex items-center gap-1.5 shadow-sm"
+                                        >
+                                            <Download size={14} /> Export CSV
+                                        </button>
+                                    )}
                                     {selectedLeadIds.length > 0 && activeTab === 'list' && (
                                         <button
                                             onClick={() => setShowBulkAssignModal(true)}
@@ -1062,6 +1101,14 @@ const SalesModule = () => {
                                         <Trash2 size={14} />
                                         {isTrashView ? 'View Active' : 'View Trash'}
                                     </button>
+                                    {activeTab === 'list' && (
+                                        <button
+                                            onClick={handleExportLeads}
+                                            className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 transition-all flex-1 sm:flex-initial shadow-sm"
+                                        >
+                                            <Download size={14} /> Export CSV
+                                        </button>
+                                    )}
                                     <div className="relative flex-1 sm:flex-initial">
                                         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
                                         <input
