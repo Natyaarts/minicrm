@@ -291,7 +291,7 @@ class StudentViewSet(viewsets.ModelViewSet):
         if self.action in ['create', 'public_lookup', 'partial_update']:
             return [permissions.AllowAny()]
         # Allow students, mentors, teachers, and academic staff to view relevant profiles/lists
-        if self.request.user.is_authenticated and self.action in ['list', 'retrieve']:
+        if self.request.user.is_authenticated and self.action in ['list', 'retrieve', 'fee_defaulters', 'collected_fees', 'break_metrics']:
             if self.request.user.role in ['STUDENT', 'MENTOR', 'TEACHER', 'ACADEMIC', 'ACADEMIC_COORDINATOR']:
                 return [permissions.IsAuthenticated()]
         return super().get_permissions()
@@ -779,7 +779,8 @@ class StudentViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def collected_fees(self, request):
         from django.db.models import Q
-        from core.models import Transaction, MonthlyPayment
+        from core.models import Transaction, MonthlyPayment, Student
+        from integrations.utils import WiseService
         user = request.user
         
         start_date = request.query_params.get('start_date')
@@ -813,7 +814,32 @@ class StudentViewSet(viewsets.ModelViewSet):
         if end_date:
             mp_qs = mp_qs.filter(paid_date__lte=end_date)
             
-        # 3. Format & Merge
+        # 3. Query Wise LMS Live Transactions
+        wise = WiseService()
+        wise_txs = []
+        try:
+            if wise.api_key:
+                wise_tx_data = wise.get_institute_transactions(start_date=start_date, end_date=end_date)
+                if wise_tx_data and isinstance(wise_tx_data, dict):
+                    wise_txs = wise_tx_data.get('transactions') or []
+        except Exception as e:
+            print(f"Error fetching live Wise transactions: {e}")
+
+        # Build list of scoped students for matching and role-based filtering
+        students_qs = Student.objects.all()
+        if user.role in ['MENTOR', 'TEACHER']:
+            students_qs = students_qs.filter(
+                Q(batch__primary_mentor=user) | 
+                Q(batch__secondary_mentors=user) | 
+                Q(batch__teacher=user)
+            ).distinct()
+            
+        lms_to_student = {}
+        for s in students_qs.select_related('batch', 'batch__primary_mentor'):
+            if s.lms_student_id:
+                lms_to_student[str(s.lms_student_id)] = s
+
+        # 4. Format & Merge
         data = []
         for t in tx_qs:
             mentor_name = 'Not Assigned'
@@ -848,9 +874,59 @@ class StudentViewSet(viewsets.ModelViewSet):
                 'type': f"Manual ({p.month.strftime('%b %Y')})",
                 'ref_id': p.notes or 'N/A'
             })
+
+        for wtx in wise_txs:
+            w_student_id = str(wtx.get('studentId') or '')
+            
+            # Role-based filtering: if MENTOR/TEACHER, only show if student is in our scoped mapping
+            if user.role in ['MENTOR', 'TEACHER'] and w_student_id not in lms_to_student:
+                continue
+            
+            # Resolve student details
+            local_student = lms_to_student.get(w_student_id)
+            if local_student:
+                student_name = f"{local_student.first_name} {local_student.last_name}"
+                crm_student_id = local_student.crm_student_id
+                batch_name = local_student.batch.name if local_student.batch else 'Unassigned'
+                mentor_name = 'Not Assigned'
+                if local_student.batch and local_student.batch.primary_mentor:
+                    mentor_name = f"{local_student.batch.primary_mentor.first_name} {local_student.batch.primary_mentor.last_name}".strip() or local_student.batch.primary_mentor.username
+            else:
+                # Fallback to Wise API transaction data if we are an admin and student is not in CRM
+                student_name = wtx.get('student', {}).get('name') or 'Unknown Student'
+                crm_student_id = 'N/A'
+                batch_name = wtx.get('classroom', {}).get('name') or 'Wise Class'
+                mentor_name = 'Not Assigned'
+            
+            amount_obj = wtx.get('amount') or {}
+            if isinstance(amount_obj, dict):
+                amount_val = float(amount_obj.get('value', 0)) / 100.0
+            else:
+                amount_val = float(amount_obj) / 100.0
+                
+            # Format chargedAt
+            charged_at_str = wtx.get('chargedAt') or wtx.get('createdAt') or ''
+            formatted_date = ''
+            if charged_at_str:
+                try:
+                    formatted_date = charged_at_str.split('T')[0]
+                except Exception:
+                    formatted_date = charged_at_str
+                    
+            data.append({
+                'id': f"wise_{wtx.get('_id') or wtx.get('id')}",
+                'student_name': student_name,
+                'crm_student_id': crm_student_id,
+                'batch_name': batch_name,
+                'mentor_name': mentor_name,
+                'amount': amount_val,
+                'date': formatted_date,
+                'type': 'Wise LMS Sync',
+                'ref_id': wtx.get('_id') or wtx.get('id') or 'N/A'
+            })
             
         # Sort by date descending
-        data.sort(key=lambda x: x['date'], reverse=True)
+        data.sort(key=lambda x: x.get('date') or '', reverse=True)
         return Response(data)
 
     @action(detail=True, methods=['post'])
