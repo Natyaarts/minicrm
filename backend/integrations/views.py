@@ -57,9 +57,8 @@ class LMSProxyView(views.APIView):
                 paid_fee = summary.get('totalPaid', {}).get('value', 0) / 100
                 due_fee = summary.get('totalDue', {}).get('value', 0) / 100
                 
-                total_fee = paid_fee + due_fee
-                if total_remaining > total_fee:
-                     total_fee = total_remaining
+                # For the student portal, show the full course fee (paid + remaining)
+                total_fee = paid_fee + total_remaining
                 
                 next_due_date = class_summary.get('earliestDueDate')
                 if not next_due_date:
@@ -964,10 +963,6 @@ def _run_wise_sync_task():
                         paid_fee = summary.get('totalPaid', {}).get('value', 0) / 100
                         due_fee = summary.get('totalDue', {}).get('value', 0) / 100
                         total_fee = paid_fee + due_fee
-                        
-                        total_remaining = summary.get('totalRemaining', {}).get('value', 0) / 100
-                        if total_remaining > total_fee:
-                            total_fee = total_remaining
                         
                         due_date_str = class_summary.get('earliestDueDate')
                         
