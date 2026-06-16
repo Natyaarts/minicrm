@@ -786,6 +786,14 @@ class StudentViewSet(viewsets.ModelViewSet):
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
         
+        # Default to current month if no dates are provided
+        if not start_date or start_date == '':
+            import datetime
+            start_date = datetime.date.today().replace(day=1).strftime('%Y-%m-%d')
+        if not end_date or end_date == '':
+            import datetime
+            end_date = datetime.date.today().strftime('%Y-%m-%d')
+        
         # 1. Query Transactions
         tx_qs = Transaction.objects.all().select_related('student', 'student__batch', 'student__batch__primary_mentor')
         if user.role in ['MENTOR', 'TEACHER']:

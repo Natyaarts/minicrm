@@ -50,36 +50,59 @@ class WiseService:
 
     def get_institute_transactions(self, start_date=None, end_date=None):
         """
-        Fetches institute transactions from Wise LMS.
+        Fetches institute transactions from Wise LMS, handling pagination automatically.
         URL: /institutes/{institute_id}/fees/transactions
         """
         if not self.api_key:
             return None
             
-        try:
-            url = f"https://{self.host}/institutes/{self.institute_id}/fees/transactions"
-            params = {
-                "type": "PAYMENT,OFFLINE_PAYMENT",
-                "status": "CHARGED",
-                "populateParticipant": "true",
-                "populateClassroom": "true",
-                "page_size": 100,
-                "page_number": 1
-            }
-            if start_date:
-                params["startDate"] = start_date
-            if end_date:
-                params["endDate"] = end_date
-                
-            response = requests.get(url, headers=self.get_headers(), params=params, timeout=10)
-            if response.status_code == 200:
+        all_transactions = []
+        page = 1
+        headers = self.get_headers()
+        
+        while True:
+            try:
+                url = f"https://{self.host}/institutes/{self.institute_id}/fees/transactions"
+                params = {
+                    "type": "PAYMENT,OFFLINE_PAYMENT",
+                    "status": "CHARGED",
+                    "populateParticipant": "true",
+                    "populateClassroom": "true",
+                    "page_size": 50,
+                    "page_number": page
+                }
+                if start_date:
+                    params["startDate"] = start_date
+                if end_date:
+                    params["endDate"] = end_date
+                    
+                response = requests.get(url, headers=headers, params=params, timeout=10)
+                if response.status_code != 200:
+                    break
+                    
                 data = response.json()
-                if data.get('status') == 200:
-                    return data.get('data') or {}
-            return None
-        except Exception as e:
-            print(f"Wise API Transactions Error: {e}")
-            return None
+                if data.get('status') != 200:
+                    break
+                    
+                result_data = data.get('data') or {}
+                transactions = result_data.get('transactions') or []
+                if not transactions:
+                    break
+                    
+                all_transactions.extend(transactions)
+                
+                # If we retrieved fewer than page_size, we are done
+                if len(transactions) < 50:
+                    break
+                    
+                page += 1
+                if page > 100:  # safety break
+                    break
+            except Exception as e:
+                print(f"Wise API Transactions Error on page {page}: {e}")
+                break
+                
+        return {"transactions": all_transactions}
 
     # Keeping original get_student_details as a wrapper or deprecated
     def get_student_details(self, lms_student_id):
