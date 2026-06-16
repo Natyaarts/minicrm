@@ -922,7 +922,7 @@ class SyncWiseFeesView(views.APIView):
         from core.models import Student
         wise = WiseService()
         
-        linked_students = Student.objects.filter(lms_student_id__isnull=False)
+        linked_students = Student.objects.filter(lms_student_id__isnull=False).exclude(lms_student_id='')
         stats = {"synced": 0, "errors": 0}
         
         for student in linked_students:
