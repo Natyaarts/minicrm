@@ -1272,7 +1272,7 @@ const MentorModule = () => {
                                 <h2 className="text-xl font-bold text-slate-800">All Students</h2>
                                 <p className="text-sm text-slate-500">Showing {allStudents.length} students across all programs</p>
                             </div>
-                            <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+                            <div className="flex flex-col sm:flex-row flex-wrap gap-3 w-full lg:w-auto">
                                 <select
                                     className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100"
                                     value={studentFilterProgram}
@@ -1299,7 +1299,7 @@ const MentorModule = () => {
                                     <option value="ON_BREAK">On Break</option>
                                     <option value="DISCONTINUED">Discontinued</option>
                                 </select>
-                                <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+                                <div className="flex flex-col sm:flex-row flex-wrap gap-3 w-full sm:w-auto">
                                     <div className="relative w-full sm:w-64">
                                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                                         <input
@@ -1321,14 +1321,14 @@ const MentorModule = () => {
                                                 alert("Failed to sync fees");
                                             }
                                         }}
-                                        className="flex items-center justify-center gap-2 px-4 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-xl hover:bg-indigo-100 hover:text-indigo-800 transition-colors text-sm font-semibold shadow-sm whitespace-nowrap"
+                                        className="flex items-center justify-center gap-2 px-4 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-xl hover:bg-indigo-100 hover:text-indigo-800 transition-colors text-sm font-semibold shadow-sm whitespace-nowrap shrink-0"
                                     >
                                         <RefreshCw size={16} />
                                         Sync Wise Fees
                                     </button>
                                     <button 
                                         onClick={handleExportFilteredStudents}
-                                        className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 hover:text-indigo-600 transition-colors text-sm font-semibold shadow-sm whitespace-nowrap"
+                                        className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 hover:text-indigo-600 transition-colors text-sm font-semibold shadow-sm whitespace-nowrap shrink-0"
                                     >
                                         <Download size={16} />
                                         Export CSV
