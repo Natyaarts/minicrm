@@ -205,6 +205,7 @@ class StudentSerializer(serializers.ModelSerializer):
     # Financial fields
     total_paid = serializers.SerializerMethodField()
     total_due = serializers.SerializerMethodField()
+    monthly_payment_months = serializers.SerializerMethodField()
 
     # Read-only numeric IDs for frontend sync
     program_type_id = serializers.IntegerField(source='program_type.id', read_only=True)
@@ -229,6 +230,9 @@ class StudentSerializer(serializers.ModelSerializer):
         course_fee = obj.course.fee_amount if obj.course else 0
         paid = self.get_total_paid(obj)
         return max(0, course_fee - paid)
+
+    def get_monthly_payment_months(self, obj):
+        return [p.month.strftime('%Y-%m-%d') for p in obj.monthly_payments.all()]
 
     def create(self, validated_data):
         dynamic_values = validated_data.pop('dynamic_values', None)

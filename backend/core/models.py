@@ -267,3 +267,18 @@ class ExamResult(models.Model):
 
     def __str__(self):
         return f"{self.student} - {self.exam.title} - {self.marks_obtained}"
+
+class MonthlyPayment(models.Model):
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='monthly_payments')
+    month = models.DateField(help_text="First day of the paid month, e.g. YYYY-MM-01")
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    paid_date = models.DateField(default=datetime.date.today)
+    marked_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    notes = models.TextField(blank=True, null=True)
+
+    class Meta:
+        unique_together = ('student', 'month')
+        ordering = ['-month', '-paid_date']
+
+    def __str__(self):
+        return f"{self.student} - {self.month.strftime('%B %Y')} - {self.amount}"

@@ -22,7 +22,10 @@ function Dashboard() {
         batches: 0,
         revenue: 0,
         leads: 0,
-        revenue_distribution: []
+        revenue_distribution: [],
+        this_month_expected: 0,
+        this_month_collected: 0,
+        this_month_due: 0
     });
     const [distribution, setDistribution] = useState([]);
 
@@ -35,7 +38,11 @@ function Dashboard() {
                     batches: res.data.batches || 0,
                     revenue: res.data.revenue || 0,
                     leads: 0,
-                    revenue_distribution: res.data.revenue_distribution || []
+                    revenue_distribution: res.data.revenue_distribution || [],
+                    this_month_expected: res.data.this_month_expected || 0,
+                    this_month_collected: res.data.this_month_collected || 0,
+                    this_month_due: res.data.this_month_due || 0,
+                    expenses: res.data.expenses || 0
                 });
                 setDistribution(res.data.distribution || []);
             } catch (err) {
@@ -72,6 +79,9 @@ function Dashboard() {
         { title: 'Total Students', value: stats.students.toLocaleString(), icon: Users, color: 'from-blue-500 to-blue-600', show: true },
         { title: 'Active Batches', value: stats.batches.toLocaleString(), icon: GraduationCap, color: 'from-indigo-500 to-indigo-600', show: true },
         { title: 'Total Revenue', value: `₹${stats.revenue.toLocaleString()}`, icon: DollarSign, color: 'from-emerald-500 to-emerald-600', show: canViewAnalytics },
+        { title: 'Expected (This Month)', value: `₹${stats.this_month_expected.toLocaleString()}`, icon: DollarSign, color: 'from-sky-500 to-sky-600', show: canViewAnalytics },
+        { title: 'Collected (This Month)', value: `₹${stats.this_month_collected.toLocaleString()}`, icon: DollarSign, color: 'from-teal-500 to-teal-600', show: canViewAnalytics },
+        { title: 'Pending Dues (This Month)', value: `₹${stats.this_month_due.toLocaleString()}`, icon: DollarSign, color: 'from-amber-500 to-amber-600', show: canViewAnalytics },
         { title: 'Monthly Expenses', value: `₹${(stats.expenses || 0).toLocaleString()}`, icon: TrendingUp, color: 'from-rose-500 to-rose-600', show: canViewAnalytics },
         { title: 'Net Profit', value: `₹${(stats.revenue - (stats.expenses || 0)).toLocaleString()}`, icon: DollarSign, color: 'from-indigo-500 to-indigo-600', show: canViewAnalytics },
         { title: 'New Leads', value: (stats.leads || 0).toLocaleString(), icon: TrendingUp, color: 'from-pink-500 to-pink-600', show: canViewSales },

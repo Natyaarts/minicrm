@@ -345,7 +345,7 @@ class StudentViewSet(viewsets.ModelViewSet):
         # Staff/Internal View
         qs = Student.objects.select_related(
             'user', 'program_type', 'sub_program', 'course', 'batch'
-        ).prefetch_related('dynamic_values__field', 'documents', 'transactions').all()
+        ).prefetch_related('dynamic_values__field', 'documents', 'transactions', 'monthly_payments').all()
             
         # Resolve 'CONVERTED' to its ID
         converted_stage_id = 'CONVERTED'
@@ -458,6 +458,7 @@ class StudentViewSet(viewsets.ModelViewSet):
                 'Total Fee (Synced)': s.total_fee,
                 'Paid Fee (Synced)': s.paid_fee,
                 'Fee Due Date': s.fee_due_date or '',
+                'Monthly Payments (Paid Months)': ", ".join([p.month.strftime('%Y-%m-%d') for p in s.monthly_payments.all()]),
             }
             
             # Add dynamic field values as additional columns
@@ -476,7 +477,7 @@ class StudentViewSet(viewsets.ModelViewSet):
                 'Academic Status', 'Assigned To', 'Campaign', 'Father/Husband Name', 
                 'Mother Name', 'Date of Birth', 'Gender', 'Marital Status', 
                 'Permanent Address', 'Correspondence Address', 'Total Paid (CRM)', 
-                'Total Fee (Synced)', 'Paid Fee (Synced)', 'Fee Due Date'
+                'Total Fee (Synced)', 'Paid Fee (Synced)', 'Fee Due Date', 'Monthly Payments (Paid Months)'
             ])
             
         response = HttpResponse(content_type='text/csv')
@@ -775,6 +776,96 @@ class StudentViewSet(viewsets.ModelViewSet):
         
         return Response({'status': 'Student marked as fully paid'})
 
+    @action(detail=True, methods=['post'], url_path='mark-paid')
+    def mark_paid(self, request, pk=None):
+        student = self.get_object()
+        month_str = request.data.get('month') # expected format YYYY-MM-DD (first day of the month)
+        amount_val = request.data.get('amount')
+        notes = request.data.get('notes', '')
+
+        if not month_str:
+            return Response({'error': 'month is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from django.utils.dateparse import parse_date
+        month_date = parse_date(month_str)
+        if not month_date:
+            return Response({'error': 'Invalid date format'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Force it to be the first of the month
+        month_date = month_date.replace(day=1)
+
+        # Determine payment amount
+        if amount_val is not None:
+            try:
+                amount = float(amount_val)
+            except ValueError:
+                return Response({'error': 'Invalid amount'}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            # Fallback to student's course fee or total_fee
+            if student.course:
+                amount = float(student.course.fee_amount)
+            else:
+                amount = float(student.total_fee)
+
+        from core.models import MonthlyPayment
+        payment, created = MonthlyPayment.objects.update_or_create(
+            student=student,
+            month=month_date,
+            defaults={
+                'amount': amount,
+                'marked_by': request.user,
+                'notes': notes
+            }
+        )
+        return Response({
+            'status': 'Payment marked successfully',
+            'month': month_date.strftime('%Y-%m-%d'),
+            'amount': amount,
+            'created': created
+        })
+
+    @action(detail=True, methods=['post'], url_path='unmark-paid')
+    def unmark_paid(self, request, pk=None):
+        student = self.get_object()
+        month_str = request.data.get('month')
+
+        if not month_str:
+            return Response({'error': 'month is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from django.utils.dateparse import parse_date
+        month_date = parse_date(month_str)
+        if not month_date:
+            return Response({'error': 'Invalid date format'}, status=status.HTTP_400_BAD_REQUEST)
+
+        month_date = month_date.replace(day=1)
+
+        from core.models import MonthlyPayment
+        deleted_count, _ = MonthlyPayment.objects.filter(student=student, month=month_date).delete()
+
+        if deleted_count > 0:
+            return Response({'status': 'Payment unmarked successfully'})
+        else:
+            return Response({'error': 'No payment record found for this month'}, status=status.HTTP_404_NOT_FOUND)
+
+    @action(detail=True, methods=['get'], url_path='payment-history')
+    def payment_history(self, request, pk=None):
+        student = self.get_object()
+        from core.models import MonthlyPayment
+        payments = MonthlyPayment.objects.filter(student=student).order_by('-month')
+        
+        data = []
+        for p in payments:
+            data.append({
+                'id': p.id,
+                'month': p.month.strftime('%Y-%m-%d'),
+                'month_name': p.month.strftime('%B %Y'),
+                'amount': float(p.amount),
+                'paid_date': p.paid_date.strftime('%Y-%m-%d'),
+                'marked_by': p.marked_by.get_full_name() or p.marked_by.username if p.marked_by else 'System',
+                'notes': p.notes
+            })
+        return Response(data)
+
 class TransactionViewSet(viewsets.ModelViewSet):
     queryset = Transaction.objects.all()
     serializer_class = TransactionSerializer
@@ -988,6 +1079,41 @@ class DashboardStatsView(APIView):
         monthly_expenses = Expense.objects.filter(date__gte=first_day).aggregate(total=Sum('amount'))['total'] or 0
         total_expenses = Expense.objects.aggregate(total=Sum('amount'))['total'] or 0
 
+        # Calculate monthly expected, collected, due fee metrics
+        from core.models import MonthlyPayment
+        first_day_date = today.date().replace(day=1)
+        
+        # Expected monthly revenue: sum of course fees for active enrolled students
+        expected_monthly_revenue = student_qs.filter(course__isnull=False).aggregate(total=Sum('course__fee_amount'))['total'] or 0
+        
+        # Collected monthly revenue: sum of MonthlyPayment amount for these students for current month
+        collected_monthly_revenue = MonthlyPayment.objects.filter(
+            student__in=student_qs,
+            month=first_day_date
+        ).aggregate(total=Sum('amount'))['total'] or 0
+        
+        due_monthly_revenue = max(0, expected_monthly_revenue - collected_monthly_revenue)
+
+        # Batch fees breakdown
+        batch_fees = []
+        for b in batch_qs:
+            batch_students = student_qs.filter(batch=b)
+            b_expected = batch_students.filter(course__isnull=False).aggregate(total=Sum('course__fee_amount'))['total'] or 0
+            b_collected = MonthlyPayment.objects.filter(
+                student__in=batch_students,
+                month=first_day_date
+            ).aggregate(total=Sum('amount'))['total'] or 0
+            b_due = max(0, b_expected - b_collected)
+            
+            batch_fees.append({
+                "id": b.id,
+                "name": b.name,
+                "student_count": batch_students.count(),
+                "expected": float(b_expected),
+                "collected": float(b_collected),
+                "due": float(b_due)
+            })
+
         stats = {
             "students": student_qs.count(),
             "batches": batch_qs.count(),
@@ -997,6 +1123,10 @@ class DashboardStatsView(APIView):
             "revenue_distribution": list(trans_qs.values(name=F('student__program_type__name')).annotate(value=Sum('amount'))),
             "expenses": float(monthly_expenses),
             "total_expenses": float(total_expenses),
+            "this_month_expected": float(expected_monthly_revenue),
+            "this_month_collected": float(collected_monthly_revenue),
+            "this_month_due": float(due_monthly_revenue),
+            "batch_fees": batch_fees
         }
         return Response(stats)
 

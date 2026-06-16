@@ -102,6 +102,16 @@ const MentorModule = () => {
     const [isBatchHistoryModalOpen, setIsBatchHistoryModalOpen] = useState(false);
     const [batchHistoryData, setBatchHistoryData] = useState([]);
 
+    // Monthly payment states
+    const [isMarkPaidModalOpen, setIsMarkPaidModalOpen] = useState(false);
+    const [markPaidStudent, setMarkPaidStudent] = useState(null);
+    const [markPaidForm, setMarkPaidForm] = useState({ amount: '', notes: '' });
+    const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+    const [historyStudent, setHistoryStudent] = useState(null);
+    const [paymentHistory, setPaymentHistory] = useState([]);
+    const [historyLoading, setHistoryLoading] = useState(false);
+    const [dashboardStats, setDashboardStats] = useState(null);
+
     useEffect(() => {
         if (isAddStudentModalOpen) {
             fetchUnassignedStudents();
@@ -129,6 +139,7 @@ const MentorModule = () => {
         // Redundant fetchUser removed, using authUser from context
         fetchBatches();
         fetchMeta();
+        fetchDashboardStats();
     }, [batchPage]); // Re-fetch batches when page changes
 
     useEffect(() => {
@@ -152,6 +163,7 @@ const MentorModule = () => {
         } else if (viewTab === 'dashboard') {
             fetchBreakMetrics();
             fetchFeeDefaulters();
+            fetchDashboardStats();
         }
     }, [viewTab, studentPage]);
 
@@ -168,6 +180,104 @@ const MentorModule = () => {
             setFeeDefaulters(res.data);
         } catch (err) {
             console.error("Failed to fetch fee defaulters", err);
+        }
+    };
+
+    const fetchDashboardStats = async () => {
+        try {
+            const res = await api.get('dashboard-stats/');
+            setDashboardStats(res.data);
+        } catch (err) {
+            console.error("Failed to fetch dashboard stats", err);
+        }
+    };
+
+    const updateStudentPaymentState = (studentId, isPaid) => {
+        const monthStr = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-01`;
+        
+        const updateList = (list) => 
+            list.map(s => {
+                if (s.id === studentId) {
+                    const currentMonths = s.monthly_payment_months || [];
+                    const newMonths = isPaid 
+                        ? [...currentMonths.filter(m => m !== monthStr), monthStr]
+                        : currentMonths.filter(m => m !== monthStr);
+                    return { ...s, monthly_payment_months: newMonths };
+                }
+                return s;
+            });
+
+        setAllStudents(prev => updateList(prev));
+        setStudentsInBatch(prev => updateList(prev));
+    };
+
+    const openMarkPaidModal = (student) => {
+        setMarkPaidStudent(student);
+        setMarkPaidForm({
+            amount: student.total_fee || '',
+            notes: ''
+        });
+        setIsMarkPaidModalOpen(true);
+    };
+
+    const handleMarkPaidSubmit = async (e) => {
+        e.preventDefault();
+        if (!markPaidStudent) return;
+        setLoading(true);
+        try {
+            const monthStr = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-01`;
+            await api.post(`students/${markPaidStudent.id}/mark-paid/`, {
+                month: monthStr,
+                amount: markPaidForm.amount,
+                notes: markPaidForm.notes
+            });
+            alert(`Monthly payment marked successfully for ${markPaidStudent.first_name}`);
+            updateStudentPaymentState(markPaidStudent.id, true);
+            setIsMarkPaidModalOpen(false);
+            if (viewTab === 'dashboard') {
+                fetchDashboardStats();
+            }
+        } catch (err) {
+            console.error("Failed to mark monthly payment as paid", err);
+            alert(err.response?.data?.error || "Failed to mark payment");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleUnmarkPaid = async (student) => {
+        const monthStr = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-01`;
+        if (!window.confirm(`Are you sure you want to unmark this month's payment for ${student.first_name}?`)) return;
+        setLoading(true);
+        try {
+            await api.post(`students/${student.id}/unmark-paid/`, {
+                month: monthStr
+            });
+            alert(`Payment unmarked for ${student.first_name}`);
+            updateStudentPaymentState(student.id, false);
+            if (viewTab === 'dashboard') {
+                fetchDashboardStats();
+            }
+        } catch (err) {
+            console.error("Failed to unmark payment", err);
+            alert(err.response?.data?.error || "Failed to unmark payment");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const openHistoryModal = async (student) => {
+        setHistoryStudent(student);
+        setIsHistoryModalOpen(true);
+        setHistoryLoading(true);
+        try {
+            const res = await api.get(`students/${student.id}/payment-history/`);
+            setPaymentHistory(res.data);
+        } catch (err) {
+            console.error("Failed to fetch payment history", err);
+            alert("Failed to load payment history");
+        } finally {
+            setHistoryLoading(false);
         }
     };
 
@@ -821,6 +931,8 @@ const MentorModule = () => {
         }
     };
 
+    const currentMonthStr = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-01`;
+
     return (
         <div className="min-h-screen w-full bg-slate-50 font-sans text-slate-900 pb-10">
             {/* Top Minimal Navigation */}
@@ -987,6 +1099,60 @@ const MentorModule = () => {
                                     <IndianRupee size={24} />
                                 </div>
                             </div>
+                        </div>
+                    </div>
+
+                    {/* Batch Fees Breakdown */}
+                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm animate-fadeIn">
+                        <div className="mb-4">
+                            <h3 className="text-lg font-bold text-slate-800">Batch Fees Breakdown (Current Month)</h3>
+                            <p className="text-xs text-slate-500 mt-1">Expected, collected, and pending dues per batch for this month.</p>
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse">
+                                <thead>
+                                    <tr className="border-b border-slate-200 bg-slate-50 text-slate-400 font-bold text-xs uppercase tracking-wider">
+                                        <th className="p-4">Batch Name</th>
+                                        <th className="p-4 text-center">Student Count</th>
+                                        <th className="p-4 text-right">Expected Fee</th>
+                                        <th className="p-4 text-right">Collected Fee</th>
+                                        <th className="p-4 text-right">Pending Dues</th>
+                                        <th className="p-4">Collection Progress</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 text-sm">
+                                    {dashboardStats?.batch_fees?.map((b) => {
+                                        const progress = b.expected > 0 ? Math.round((b.collected / b.expected) * 100) : 0;
+                                        return (
+                                            <tr key={b.id} className="hover:bg-slate-50/50 transition-colors">
+                                                <td className="p-4 font-semibold text-slate-800">{b.name}</td>
+                                                <td className="p-4 text-center text-slate-600">{b.student_count}</td>
+                                                <td className="p-4 text-right font-medium text-slate-700">₹{b.expected?.toLocaleString()}</td>
+                                                <td className="p-4 text-right font-bold text-emerald-600">₹{b.collected?.toLocaleString()}</td>
+                                                <td className="p-4 text-right font-bold text-amber-600">₹{b.due?.toLocaleString()}</td>
+                                                <td className="p-4">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-24 bg-slate-100 h-2 rounded-full overflow-hidden shrink-0">
+                                                            <div 
+                                                                className="bg-emerald-500 h-full rounded-full shadow-sm" 
+                                                                style={{ width: `${Math.min(100, progress)}%` }}
+                                                            />
+                                                        </div>
+                                                        <span className="text-xs font-bold text-slate-500">{progress}%</span>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                    {(!dashboardStats?.batch_fees || dashboardStats.batch_fees.length === 0) && (
+                                        <tr>
+                                            <td colSpan="6" className="p-8 text-center text-slate-400">
+                                                No batch fee statistics available.
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
 
@@ -1160,6 +1326,7 @@ const MentorModule = () => {
                                         <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-center">Total Fee</th>
                                         <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-center">Paid Fee</th>
                                         <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-center">Due Date</th>
+                                        <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-center">Monthly Status</th>
                                         <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-right">Actions</th>
                                     </tr>
                                 </thead>
@@ -1201,6 +1368,42 @@ const MentorModule = () => {
                                             </td>
                                             <td className="px-6 py-5 bg-white border-y border-slate-100 text-center text-sm text-slate-500">
                                                 {student.fee_due_date || '-'}
+                                            </td>
+                                            <td className="px-6 py-5 bg-white border-y border-slate-100 text-center text-sm">
+                                                <div className="flex flex-col items-center gap-1">
+                                                    {student.monthly_payment_months?.includes(currentMonthStr) ? (
+                                                        <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-xs font-bold rounded border border-emerald-100">
+                                                            Paid
+                                                        </span>
+                                                    ) : (
+                                                        <span className="px-2 py-0.5 bg-slate-100 text-slate-500 text-xs font-bold rounded border border-slate-200">
+                                                            Unpaid
+                                                        </span>
+                                                    )}
+                                                    <div className="flex items-center gap-2">
+                                                        {student.monthly_payment_months?.includes(currentMonthStr) ? (
+                                                            <button
+                                                                onClick={() => handleUnmarkPaid(student)}
+                                                                className="text-[10px] font-bold text-red-500 hover:text-red-700 transition-colors uppercase tracking-wider"
+                                                            >
+                                                                Unmark
+                                                            </button>
+                                                        ) : (
+                                                            <button
+                                                                onClick={() => openMarkPaidModal(student)}
+                                                                className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 transition-colors uppercase tracking-wider"
+                                                            >
+                                                                Mark Paid
+                                                            </button>
+                                                        )}
+                                                        <button
+                                                            onClick={() => openHistoryModal(student)}
+                                                            className="text-[10px] font-bold text-slate-400 hover:text-slate-600 transition-colors uppercase tracking-wider flex items-center gap-0.5"
+                                                        >
+                                                            <History size={10} /> History
+                                                        </button>
+                                                    </div>
+                                                </div>
                                             </td>
                                             <td className="px-6 py-5 bg-white border-y border-r border-slate-100 rounded-r-2xl text-right">
                                                 <div className="flex justify-end gap-2">
@@ -1256,7 +1459,7 @@ const MentorModule = () => {
                                     ))}
                                     {allStudents.length === 0 && (
                                         <tr>
-                                            <td colSpan="4" className="text-center py-10 text-slate-400">
+                                            <td colSpan="8" className="text-center py-10 text-slate-400">
                                                 No students found matching your search.
                                             </td>
                                         </tr>
@@ -1311,6 +1514,44 @@ const MentorModule = () => {
                                         <div>
                                             <span className="block text-slate-400 font-semibold mb-0.5">Due Date</span>
                                             <span className="text-slate-500 font-medium">{student.fee_due_date || '-'}</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center justify-between text-xs border-t border-slate-100 pt-3">
+                                        <div>
+                                            <span className="block text-slate-400 font-semibold mb-1">Monthly Status</span>
+                                            {student.monthly_payment_months?.includes(currentMonthStr) ? (
+                                                <span className="inline-block px-2 py-0.5 bg-emerald-50 text-emerald-700 font-bold rounded border border-emerald-100">
+                                                    Paid
+                                                </span>
+                                            ) : (
+                                                <span className="inline-block px-2 py-0.5 bg-slate-100 text-slate-500 font-bold rounded border border-slate-200">
+                                                    Unpaid
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="flex gap-2">
+                                            {student.monthly_payment_months?.includes(currentMonthStr) ? (
+                                                <button
+                                                    onClick={() => handleUnmarkPaid(student)}
+                                                    className="px-2.5 py-1 text-[10px] font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg border border-red-100 transition-colors"
+                                                >
+                                                    Unmark
+                                                </button>
+                                            ) : (
+                                                <button
+                                                    onClick={() => openMarkPaidModal(student)}
+                                                    className="px-2.5 py-1 text-[10px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-100 transition-colors"
+                                                >
+                                                    Mark Paid
+                                                </button>
+                                            )}
+                                            <button
+                                                onClick={() => openHistoryModal(student)}
+                                                className="px-2.5 py-1 text-[10px] font-bold text-slate-600 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors flex items-center gap-1"
+                                            >
+                                                <History size={10} /> History
+                                            </button>
                                         </div>
                                     </div>
 
@@ -1661,12 +1902,13 @@ const MentorModule = () => {
                             <table className="w-full text-left">
                                 <thead className="bg-slate-50 border-b border-slate-200">
                                     <tr>
-                                        <th className="p-5 font-semibold text-slate-500 text-sm">Student Name</th>
+                                        <th className="p-5 font-semibold text-slate-505 text-sm">Student Name</th>
                                         <th className="p-5 font-semibold text-slate-500 text-sm">Email</th>
                                         <th className="p-5 font-semibold text-slate-500 text-sm">Mobile</th>
                                         <th className="p-5 font-semibold text-slate-500 text-sm text-center">Total Fee</th>
                                         <th className="p-5 font-semibold text-slate-500 text-sm text-center">Paid Fee</th>
                                         <th className="p-5 font-semibold text-slate-500 text-sm text-center">Due Date</th>
+                                        <th className="p-5 font-semibold text-slate-500 text-sm text-center">Monthly Status</th>
                                         <th className="p-5 font-semibold text-slate-500 text-sm text-right">Actions</th>
                                     </tr>
                                 </thead>
@@ -1681,6 +1923,42 @@ const MentorModule = () => {
                                             <td className="p-5 text-center font-bold text-slate-700">₹{student.total_fee || 0}</td>
                                             <td className="p-5 text-center font-bold text-emerald-600">₹{student.paid_fee || 0}</td>
                                             <td className="p-5 text-center text-sm text-slate-500">{student.fee_due_date || '-'}</td>
+                                            <td className="p-5 text-center text-sm">
+                                                <div className="flex flex-col items-center gap-1">
+                                                    {student.monthly_payment_months?.includes(currentMonthStr) ? (
+                                                        <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-xs font-bold rounded border border-emerald-100 animate-fadeIn">
+                                                            Paid
+                                                        </span>
+                                                    ) : (
+                                                        <span className="px-2 py-0.5 bg-slate-100 text-slate-500 text-xs font-bold rounded border border-slate-200 animate-fadeIn">
+                                                            Unpaid
+                                                        </span>
+                                                    )}
+                                                    <div className="flex items-center gap-2">
+                                                        {student.monthly_payment_months?.includes(currentMonthStr) ? (
+                                                            <button
+                                                                onClick={() => handleUnmarkPaid(student)}
+                                                                className="text-[10px] font-bold text-red-500 hover:text-red-700 transition-colors uppercase tracking-wider"
+                                                            >
+                                                                Unmark
+                                                            </button>
+                                                        ) : (
+                                                            <button
+                                                                onClick={() => openMarkPaidModal(student)}
+                                                                className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 transition-colors uppercase tracking-wider"
+                                                            >
+                                                                Mark Paid
+                                                            </button>
+                                                        )}
+                                                        <button
+                                                            onClick={() => openHistoryModal(student)}
+                                                            className="text-[10px] font-bold text-slate-400 hover:text-slate-600 transition-colors uppercase tracking-wider flex items-center gap-0.5"
+                                                        >
+                                                            <History size={10} /> History
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </td>
                                             <td className="p-5 text-right flex items-center justify-end gap-3">
                                                 {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.MENTOR?.edit) && (
                                                     <button
@@ -1723,7 +2001,7 @@ const MentorModule = () => {
                                     ))}
                                     {studentsInBatch.length === 0 && (
                                         <tr>
-                                            <td colSpan="7" className="p-12 text-center text-slate-400">
+                                            <td colSpan="8" className="p-12 text-center text-slate-400">
                                                 No students assigned to this batch yet.
                                             </td>
                                         </tr>
@@ -1771,6 +2049,44 @@ const MentorModule = () => {
                                         <div>
                                             <span className="block text-slate-400 font-semibold mb-0.5">Due Date</span>
                                             <span className="text-slate-500 font-medium">{student.fee_due_date || '-'}</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center justify-between text-xs border-t border-slate-100 pt-3">
+                                        <div>
+                                            <span className="block text-slate-400 font-semibold mb-1">Monthly Status</span>
+                                            {student.monthly_payment_months?.includes(currentMonthStr) ? (
+                                                <span className="inline-block px-2 py-0.5 bg-emerald-50 text-emerald-700 font-bold rounded border border-emerald-100">
+                                                    Paid
+                                                </span>
+                                            ) : (
+                                                <span className="inline-block px-2 py-0.5 bg-slate-100 text-slate-500 font-bold rounded border border-slate-200">
+                                                    Unpaid
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="flex gap-2">
+                                            {student.monthly_payment_months?.includes(currentMonthStr) ? (
+                                                <button
+                                                    onClick={() => handleUnmarkPaid(student)}
+                                                    className="px-2.5 py-1 text-[10px] font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg border border-red-100 transition-colors"
+                                                >
+                                                    Unmark
+                                                </button>
+                                            ) : (
+                                                <button
+                                                    onClick={() => openMarkPaidModal(student)}
+                                                    className="px-2.5 py-1 text-[10px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-100 transition-colors"
+                                                >
+                                                    Mark Paid
+                                                </button>
+                                            )}
+                                            <button
+                                                onClick={() => openHistoryModal(student)}
+                                                className="px-2.5 py-1 text-[10px] font-bold text-slate-600 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors flex items-center gap-1"
+                                            >
+                                                <History size={10} /> History
+                                            </button>
                                         </div>
                                     </div>
 
@@ -2859,6 +3175,130 @@ const MentorModule = () => {
                                     </div>
                                 )}
                             </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Mark Paid Modal */}
+            {isMarkPaidModalOpen && markPaidStudent && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-[90] animate-fadeIn">
+                    <div className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl animate-fadeIn">
+                        <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50/50">
+                            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                <span className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                                    <IndianRupee size={16} />
+                                </span>
+                                Mark Monthly Payment
+                            </h2>
+                            <button onClick={() => setIsMarkPaidModalOpen(false)} className="text-slate-400 hover:text-slate-600 bg-slate-100 hover:bg-slate-200 p-2 rounded-full transition-all">
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <form onSubmit={handleMarkPaidSubmit} className="p-6 space-y-4">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Student</label>
+                                <div className="text-sm font-semibold text-slate-800 bg-slate-50 px-4 py-2.5 rounded-xl border border-slate-100">
+                                    {markPaidStudent.first_name} {markPaidStudent.last_name} ({markPaidStudent.crm_student_id})
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Month</label>
+                                    <div className="text-sm font-semibold text-slate-800 bg-slate-50 px-4 py-2.5 rounded-xl border border-slate-100">
+                                        {new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' })}
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Amount (₹)</label>
+                                    <input
+                                        type="number"
+                                        step="0.01"
+                                        required
+                                        value={markPaidForm.amount}
+                                        onChange={(e) => setMarkPaidForm({ ...markPaidForm, amount: e.target.value })}
+                                        className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 transition-all text-sm font-bold text-slate-800"
+                                        placeholder="Enter amount"
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Notes (Optional)</label>
+                                <textarea
+                                    value={markPaidForm.notes}
+                                    onChange={(e) => setMarkPaidForm({ ...markPaidForm, notes: e.target.value })}
+                                    placeholder="Enter payment notes (e.g. cash, bank transfer details)..."
+                                    className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 transition-all resize-none h-24 text-sm"
+                                />
+                            </div>
+                            <div className="flex gap-3 justify-end pt-2">
+                                <button type="button" onClick={() => setIsMarkPaidModalOpen(false)} className="px-5 py-2.5 text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all">Cancel</button>
+                                <button type="submit" disabled={loading} className="px-5 py-2.5 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all shadow-md shadow-indigo-100 flex items-center gap-2">
+                                    {loading ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span> : 'Confirm Payment'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Payment History Modal */}
+            {isHistoryModalOpen && historyStudent && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-[90] animate-fadeIn">
+                    <div className="bg-white rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl animate-fadeIn max-h-[85vh] flex flex-col">
+                        <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50/50">
+                            <div>
+                                <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                    <span className="w-8 h-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center">
+                                        <History size={16} />
+                                    </span>
+                                    Payment History
+                                </h2>
+                                <p className="text-xs text-slate-500 mt-1">Payment logs for {historyStudent.first_name} {historyStudent.last_name}</p>
+                            </div>
+                            <button onClick={() => setIsHistoryModalOpen(false)} className="text-slate-400 hover:text-slate-600 bg-slate-100 hover:bg-slate-200 p-2 rounded-full transition-all">
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="p-6 overflow-y-auto flex-1 custom-scrollbar">
+                            {historyLoading ? (
+                                <div className="flex justify-center items-center py-12">
+                                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+                                </div>
+                            ) : paymentHistory.length === 0 ? (
+                                <div className="text-center py-12 text-slate-400">
+                                    <History size={40} className="mx-auto text-slate-300 mb-3" />
+                                    <p className="text-sm font-medium">No monthly payment history found.</p>
+                                </div>
+                            ) : (
+                                <div className="overflow-x-auto border border-slate-100 rounded-2xl shadow-sm bg-white">
+                                    <table className="w-full text-left text-sm">
+                                        <thead>
+                                            <tr className="border-b border-slate-100 bg-slate-50 text-slate-400 font-bold text-xs uppercase tracking-wider">
+                                                <th className="p-4">Month</th>
+                                                <th className="p-4">Paid Date</th>
+                                                <th className="p-4 text-right">Amount</th>
+                                                <th className="p-4">Marked By</th>
+                                                <th className="p-4">Notes</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100">
+                                            {paymentHistory.map((p) => (
+                                                <tr key={p.id} className="hover:bg-slate-50/50 transition-colors">
+                                                    <td className="p-4 font-semibold text-slate-800">{p.month_name}</td>
+                                                    <td className="p-4 text-slate-600">{p.paid_date}</td>
+                                                    <td className="p-4 text-right font-bold text-emerald-600">₹{p.amount?.toLocaleString()}</td>
+                                                    <td className="p-4 text-slate-600 font-medium">{p.marked_by}</td>
+                                                    <td className="p-4 text-slate-500 max-w-xs truncate" title={p.notes}>{p.notes || '-'}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+                        <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end">
+                            <button onClick={() => setIsHistoryModalOpen(false)} className="px-5 py-2.5 text-sm font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl transition-all shadow-sm">Close</button>
                         </div>
                     </div>
                 </div>
