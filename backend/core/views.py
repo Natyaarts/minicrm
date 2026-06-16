@@ -807,21 +807,44 @@ class StudentViewSet(viewsets.ModelViewSet):
             else:
                 amount = float(student.total_fee)
 
+        number_of_months_val = request.data.get('number_of_months', 1)
+        try:
+            number_of_months = int(number_of_months_val)
+            if number_of_months < 1:
+                number_of_months = 1
+        except (ValueError, TypeError):
+            number_of_months = 1
+
+        from decimal import Decimal
+        amount_per_month = round(Decimal(str(amount)) / Decimal(str(number_of_months)), 2)
+
         from core.models import MonthlyPayment
-        payment, created = MonthlyPayment.objects.update_or_create(
-            student=student,
-            month=month_date,
-            defaults={
-                'amount': amount,
-                'marked_by': request.user,
-                'notes': notes
-            }
-        )
+        import datetime
+
+        created_payments = []
+        for i in range(number_of_months):
+            # Calculate target month date
+            m = month_date.month - 1 + i
+            y = month_date.year + m // 12
+            m = m % 12 + 1
+            target_month = datetime.date(y, m, 1)
+
+            payment, created = MonthlyPayment.objects.update_or_create(
+                student=student,
+                month=target_month,
+                defaults={
+                    'amount': amount_per_month,
+                    'marked_by': request.user,
+                    'notes': f"{notes} (Part of {number_of_months}-month payment)".strip() if number_of_months > 1 else notes
+                }
+            )
+            created_payments.append(target_month.strftime('%Y-%m-%d'))
+
         return Response({
             'status': 'Payment marked successfully',
-            'month': month_date.strftime('%Y-%m-%d'),
-            'amount': amount,
-            'created': created
+            'months': created_payments,
+            'amount_per_month': float(amount_per_month),
+            'total_amount': amount
         })
 
     @action(detail=True, methods=['post'], url_path='unmark-paid')

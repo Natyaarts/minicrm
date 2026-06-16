@@ -105,7 +105,7 @@ const MentorModule = () => {
     // Monthly payment states
     const [isMarkPaidModalOpen, setIsMarkPaidModalOpen] = useState(false);
     const [markPaidStudent, setMarkPaidStudent] = useState(null);
-    const [markPaidForm, setMarkPaidForm] = useState({ amount: '', notes: '' });
+    const [markPaidForm, setMarkPaidForm] = useState({ amount: '', notes: '', numberOfMonths: 1 });
     const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
     const [historyStudent, setHistoryStudent] = useState(null);
     const [paymentHistory, setPaymentHistory] = useState([]);
@@ -192,17 +192,23 @@ const MentorModule = () => {
         }
     };
 
-    const updateStudentPaymentState = (studentId, isPaid) => {
-        const monthStr = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-01`;
-        
+    const updateStudentPaymentState = (studentId, monthsList, isPaid) => {
         const updateList = (list) => 
             list.map(s => {
                 if (s.id === studentId) {
-                    const currentMonths = s.monthly_payment_months || [];
-                    const newMonths = isPaid 
-                        ? [...currentMonths.filter(m => m !== monthStr), monthStr]
-                        : currentMonths.filter(m => m !== monthStr);
-                    return { ...s, monthly_payment_months: newMonths };
+                    let currentMonths = s.monthly_payment_months || [];
+                    if (isPaid) {
+                        // Add all months in monthsList that aren't already present
+                        monthsList.forEach(m => {
+                            if (!currentMonths.includes(m)) {
+                                currentMonths.push(m);
+                            }
+                        });
+                    } else {
+                        // Remove all months in monthsList
+                        currentMonths = currentMonths.filter(m => !monthsList.includes(m));
+                    }
+                    return { ...s, monthly_payment_months: [...currentMonths] };
                 }
                 return s;
             });
@@ -215,7 +221,8 @@ const MentorModule = () => {
         setMarkPaidStudent(student);
         setMarkPaidForm({
             amount: student.total_fee || '',
-            notes: ''
+            notes: '',
+            numberOfMonths: 1
         });
         setIsMarkPaidModalOpen(true);
     };
@@ -226,13 +233,18 @@ const MentorModule = () => {
         setLoading(true);
         try {
             const monthStr = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-01`;
-            await api.post(`students/${markPaidStudent.id}/mark-paid/`, {
+            const res = await api.post(`students/${markPaidStudent.id}/mark-paid/`, {
                 month: monthStr,
                 amount: markPaidForm.amount,
-                notes: markPaidForm.notes
+                notes: markPaidForm.notes,
+                number_of_months: markPaidForm.numberOfMonths
             });
             alert(`Monthly payment marked successfully for ${markPaidStudent.first_name}`);
-            updateStudentPaymentState(markPaidStudent.id, true);
+            
+            // Backend returns 'months' array containing all marked months
+            const markedMonths = res.data.months || [monthStr];
+            updateStudentPaymentState(markPaidStudent.id, markedMonths, true);
+            
             setIsMarkPaidModalOpen(false);
             if (viewTab === 'dashboard') {
                 fetchDashboardStats();
@@ -245,16 +257,26 @@ const MentorModule = () => {
         }
     };
 
-    const handleUnmarkPaid = async (student) => {
-        const monthStr = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-01`;
-        if (!window.confirm(`Are you sure you want to unmark this month's payment for ${student.first_name}?`)) return;
+    const handleUnmarkPaid = async (student, monthStr = null) => {
+        const targetMonth = monthStr || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-01`;
+        const dateObj = new Date(targetMonth + 'T00:00:00');
+        const formattedMonth = dateObj.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+
+        if (!window.confirm(`Are you sure you want to unmark the ${formattedMonth} payment for ${student.first_name}?`)) return;
         setLoading(true);
         try {
             await api.post(`students/${student.id}/unmark-paid/`, {
-                month: monthStr
+                month: targetMonth
             });
-            alert(`Payment unmarked for ${student.first_name}`);
-            updateStudentPaymentState(student.id, false);
+            alert(`Payment unmarked for ${formattedMonth}`);
+            updateStudentPaymentState(student.id, [targetMonth], false);
+            
+            // If the history modal is open for this student, refresh it
+            if (isHistoryModalOpen && historyStudent && historyStudent.id === student.id) {
+                const res = await api.get(`students/${student.id}/payment-history/`);
+                setPaymentHistory(res.data);
+            }
+
             if (viewTab === 'dashboard') {
                 fetchDashboardStats();
             }
@@ -3202,15 +3224,44 @@ const MentorModule = () => {
                                     {markPaidStudent.first_name} {markPaidStudent.last_name} ({markPaidStudent.crm_student_id})
                                 </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                 <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Month</label>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Start Month</label>
                                     <div className="text-sm font-semibold text-slate-800 bg-slate-50 px-4 py-2.5 rounded-xl border border-slate-100">
                                         {new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' })}
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Amount (₹)</label>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Duration</label>
+                                    <select
+                                        value={markPaidForm.numberOfMonths}
+                                        onChange={(e) => {
+                                            const months = parseInt(e.target.value) || 1;
+                                            const baseFee = markPaidStudent?.total_fee || 0;
+                                            setMarkPaidForm(prev => ({
+                                                ...prev,
+                                                numberOfMonths: months,
+                                                amount: (baseFee * months).toFixed(2)
+                                            }));
+                                        }}
+                                        className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 transition-all text-sm font-semibold text-slate-800 bg-white"
+                                    >
+                                        <option value={1}>1 Month</option>
+                                        <option value={2}>2 Months</option>
+                                        <option value={3}>3 Months</option>
+                                        <option value={4}>4 Months</option>
+                                        <option value={5}>5 Months</option>
+                                        <option value={6}>6 Months</option>
+                                        <option value={7}>7 Months</option>
+                                        <option value={8}>8 Months</option>
+                                        <option value={9}>9 Months</option>
+                                        <option value={10}>10 Months</option>
+                                        <option value={11}>11 Months</option>
+                                        <option value={12}>12 Months (1 Year)</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Total Amount (₹)</label>
                                     <input
                                         type="number"
                                         step="0.01"
@@ -3280,6 +3331,7 @@ const MentorModule = () => {
                                                 <th className="p-4 text-right">Amount</th>
                                                 <th className="p-4">Marked By</th>
                                                 <th className="p-4">Notes</th>
+                                                <th className="p-4 text-center">Action</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-100">
@@ -3290,6 +3342,14 @@ const MentorModule = () => {
                                                     <td className="p-4 text-right font-bold text-emerald-600">₹{p.amount?.toLocaleString()}</td>
                                                     <td className="p-4 text-slate-600 font-medium">{p.marked_by}</td>
                                                     <td className="p-4 text-slate-500 max-w-xs truncate" title={p.notes}>{p.notes || '-'}</td>
+                                                    <td className="p-4 text-center">
+                                                        <button
+                                                            onClick={() => handleUnmarkPaid(historyStudent, p.month)}
+                                                            className="text-[10px] font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg border border-red-100 px-2.5 py-1 transition-colors uppercase tracking-wider"
+                                                        >
+                                                            Unmark
+                                                        </button>
+                                                    </td>
                                                 </tr>
                                             ))}
                                         </tbody>
