@@ -990,6 +990,11 @@ def _run_wise_sync_task():
     finally:
         _is_syncing = False
         _sync_lock.release()
+        try:
+            from django import db
+            db.connections.close_all()
+        except Exception:
+            pass
 
 class SyncWiseFeesView(views.APIView):
     """
