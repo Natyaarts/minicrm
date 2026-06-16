@@ -1115,7 +1115,10 @@ const MentorModule = () => {
                             <div className="flex items-center justify-between">
                                 <div>
                                     <p className="text-sm font-semibold text-slate-500 mb-1">Due Fees</p>
-                                    <p className="text-3xl font-black text-slate-800">{feeDefaulters.length}</p>
+                                    <p className="text-3xl font-black text-slate-800">
+                                        ₹{feeDefaulters.reduce((sum, s) => sum + Number(s.due_amount || 0), 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </p>
+                                    <p className="text-xs text-slate-400 mt-1">{feeDefaulters.length} students have unpaid fees</p>
                                 </div>
                                 <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600">
                                     <IndianRupee size={24} />
@@ -3127,7 +3130,7 @@ const MentorModule = () => {
                                     Students with Due Fees
                                 </h2>
                                 <p className="text-sm text-slate-500 mt-1">
-                                    {feeDefaulters.length} students have unpaid fees
+                                    {feeDefaulters.length} students have unpaid fees (Total Dues: ₹{feeDefaulters.reduce((sum, s) => sum + Number(s.due_amount || 0), 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
                                 </p>
                             </div>
                             <div className="flex items-center gap-3">
