@@ -5,7 +5,7 @@ import { FontAwesome5 } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/build/legacy';
 import * as Sharing from 'expo-sharing';
 import client from '../src/api/client';
 import AsyncStorage from '@react-native-async-storage/async-storage';

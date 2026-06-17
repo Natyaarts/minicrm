@@ -5,8 +5,36 @@ import { router } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
 import { getStudents } from '../../src/api/sales';
 import client from '../../src/api/client';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function SalesScreen() {
+  const [user, setUser] = useState<any>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  useEffect(() => {
+    loadUser();
+  }, []);
+
+  const loadUser = async () => {
+    try {
+      const cached = await AsyncStorage.getItem('userInfo');
+      if (cached) {
+        setUser(JSON.parse(cached));
+      }
+      const res = await client.get('/auth/me/');
+      if (res.data) {
+        setUser(res.data);
+        await AsyncStorage.setItem('userInfo', JSON.stringify(res.data));
+      }
+    } catch (err) {
+      console.log('Failed to fetch user details in SalesScreen:', err);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const hasDialerAccess = user?.role === 'SALES' || user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';
+
   const [activeTab, setActiveTab] = useState<'single' | 'bulk' | 'view'>('view');
   const [students, setStudents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,17 +79,39 @@ export default function SalesScreen() {
   const [activeDynamicFieldId, setActiveDynamicFieldId] = useState<number | null>(null);
 
   useEffect(() => {
+    if (authLoading || !hasDialerAccess) return;
     if (activeTab === 'view') {
       const delayDebounceFn = setTimeout(() => {
         fetchData();
       }, 300);
       return () => clearTimeout(delayDebounceFn);
     }
-  }, [activeTab, search, filterStatus, currentPage]);
+  }, [activeTab, search, filterStatus, currentPage, authLoading, hasDialerAccess]);
 
   useEffect(() => {
+    if (authLoading || !hasDialerAccess) return;
     fetchProgramsInit();
-  }, []);
+  }, [authLoading, hasDialerAccess]);
+
+  if (authLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#3182CE" />
+      </View>
+    );
+  }
+
+  if (!hasDialerAccess) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center', padding: 20 }]}>
+        <FontAwesome5 name="lock" size={48} color="#A0AEC0" style={{ marginBottom: 16 }} />
+        <Text style={{ fontSize: 18, fontWeight: '900', color: '#1A202C', marginBottom: 8 }}>Restricted Access</Text>
+        <Text style={{ fontSize: 14, color: '#718096', textAlign: 'center', lineHeight: 20 }}>
+          This screen is reserved for Sales and administrative personnel.
+        </Text>
+      </View>
+    );
+  }
 
   const fetchProgramsInit = async () => {
     try {

@@ -1,16 +1,41 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StyleSheet, ScrollView, TouchableOpacity, TextInput, StatusBar } from 'react-native';
 import { Text, View } from '@/components/Themed';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import client from '../../src/api/client';
 
 export default function MenuHubScreen() {
   const router = useRouter();
   const [search, setSearch] = useState('');
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
+  const [user, setUser] = useState<any>(null);
+
+  useEffect(() => {
+    loadUser();
+  }, []);
+
+  const loadUser = async () => {
+    try {
+      const cached = await AsyncStorage.getItem('userInfo');
+      if (cached) {
+        setUser(JSON.parse(cached));
+      }
+      const res = await client.get('/auth/me/');
+      if (res.data) {
+        setUser(res.data);
+        await AsyncStorage.setItem('userInfo', JSON.stringify(res.data));
+      }
+    } catch (err) {
+      console.log('Failed to fetch user details in MenuHubScreen:', err);
+    }
+  };
+
+  const hasDialerAccess = user?.role === 'SALES' || user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';
 
   const menuGroups = [
     {
@@ -19,8 +44,12 @@ export default function MenuHubScreen() {
       accent: '#3182CE',
       items: [
         { title: 'Dashboard', icon: 'th-large', route: '/(tabs)' },
-        { title: 'Sales/Leads', icon: 'user-friends', route: '/(tabs)/two' },
-        { title: 'General Dialer', icon: 'phone-alt', route: '/dialpad?leadId=0' },
+        ...(hasDialerAccess
+          ? [
+              { title: 'Sales/Leads', icon: 'user-friends', route: '/(tabs)/two' },
+              { title: 'General Dialer', icon: 'phone-alt', route: '/dialpad?leadId=0' },
+            ]
+          : []),
         { title: 'Mentor Module', icon: 'chalkboard-teacher', route: '/module?title=Mentor Module&category=Academics' },
         { title: 'Student Portal', icon: 'user-graduate', route: '/module?title=Student Portal&category=Academics' },
         { title: 'Academic Hierarchy', icon: 'sitemap', route: '/module?title=Academic Hierarchy&category=Academics' },

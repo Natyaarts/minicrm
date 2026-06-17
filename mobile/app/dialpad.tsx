@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Dimensions, Platform, Linking, Alert, NativeModules, TextInput, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Dimensions, Platform, Linking, Alert, NativeModules, TextInput, ScrollView, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, router } from 'expo-router';
 import { startNativeRecording, stopNativeRecording, listenToCallEvents, requestCallPermissions, listenToCallState } from '../src/utils/CallManager';
 import client from '../src/api/client';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width } = Dimensions.get('window');
 
@@ -16,11 +17,38 @@ const Dialpad = () => {
   const [pipelineStatus, setPipelineStatus] = useState('INTERESTED');
   const [recordedFilePath, setRecordedFilePath] = useState<string | null>(null);
 
+  const [user, setUser] = useState<any>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
   // Use ref to keep track of current phoneNumber for asynchronous listener
   const phoneRef = useRef(phoneNumber);
   useEffect(() => {
     phoneRef.current = phoneNumber;
   }, [phoneNumber]);
+
+  useEffect(() => {
+    loadUser();
+  }, []);
+
+  const loadUser = async () => {
+    try {
+      const cached = await AsyncStorage.getItem('userInfo');
+      if (cached) {
+        setUser(JSON.parse(cached));
+      }
+      const res = await client.get('/auth/me/');
+      if (res.data) {
+        setUser(res.data);
+        await AsyncStorage.setItem('userInfo', JSON.stringify(res.data));
+      }
+    } catch (err) {
+      console.log('Failed to fetch user details in Dialpad:', err);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const hasDialerAccess = user?.role === 'SALES' || user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';
 
   useEffect(() => {
     let interval: any;
@@ -35,6 +63,7 @@ const Dialpad = () => {
   }, [callStatus]);
 
   useEffect(() => {
+    if (authLoading || !hasDialerAccess) return;
     const requestPermissions = async () => {
       if (Platform.OS === 'android') {
         const granted = await requestCallPermissions();
@@ -47,9 +76,11 @@ const Dialpad = () => {
       }
     };
     requestPermissions();
-  }, []);
+  }, [authLoading, hasDialerAccess]);
 
   useEffect(() => {
+    if (authLoading || !hasDialerAccess) return;
+
     // 1. Listen for events from our Kotlin MediaStore sync (which runs after stopRecording)
     const unsubscribeEvents = listenToCallEvents(async (path) => {
       console.log("Recording saved at:", path);
@@ -88,7 +119,27 @@ const Dialpad = () => {
       unsubscribeEvents();
       unsubscribeState();
     };
-  }, []);
+  }, [authLoading, hasDialerAccess]);
+
+  if (authLoading) {
+    return (
+      <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#3182CE" />
+      </SafeAreaView>
+    );
+  }
+
+  if (!hasDialerAccess) {
+    return (
+      <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center', padding: 20 }]}>
+        <Ionicons name="lock-closed" size={48} color="#A0AEC0" style={{ marginBottom: 16 }} />
+        <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#1A202C', marginBottom: 8 }}>Restricted Access</Text>
+        <Text style={{ fontSize: 14, color: '#718096', textAlign: 'center', lineHeight: 20 }}>
+          You do not have permission to access the recorded Dialpad.
+        </Text>
+      </SafeAreaView>
+    );
+  }
 
   const handlePress = (num: string) => {
     setPhoneNumber((prev) => prev + num);
