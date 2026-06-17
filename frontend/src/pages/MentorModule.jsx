@@ -76,6 +76,17 @@ const MentorModule = () => {
     const [isFeeModalOpen, setIsFeeModalOpen] = useState(false);
     const [collectedFees, setCollectedFees] = useState([]);
     const [isCollectedModalOpen, setIsCollectedModalOpen] = useState(false);
+
+    // Filter states for interactive fee modals
+    const [dueSearch, setDueSearch] = useState('');
+    const [dueFilterBatch, setDueFilterBatch] = useState('');
+    const [dueFilterMentor, setDueFilterMentor] = useState('');
+
+    const [collectedSearch, setCollectedSearch] = useState('');
+    const [collectedFilterBatch, setCollectedFilterBatch] = useState('');
+    const [collectedFilterMentor, setCollectedFilterMentor] = useState('');
+    const [collectedFilterType, setCollectedFilterType] = useState('All');
+
     const [breakReason, setBreakReason] = useState('');
     const [breakStudentId, setBreakStudentId] = useState(null);
     const [breakStartDate, setBreakStartDate] = useState('');
@@ -205,6 +216,68 @@ const MentorModule = () => {
             setCollectedFees(res.data);
         } catch (err) {
             console.error("Failed to fetch collected fees", err);
+        }
+    };
+
+    const exportDefaultersCSV = (defaultersList) => {
+        try {
+            const headers = ['Student Name', 'CRM Student ID', 'Mobile', 'Email', 'Batch', 'Assigned Mentor', 'Total Fee', 'Paid Fee', 'Due Amount', 'Due Date'];
+            const rows = defaultersList.map(s => [
+                s.name,
+                s.crm_student_id,
+                s.mobile || '',
+                s.email || '',
+                s.batch_name,
+                s.mentor_name,
+                s.total_fee,
+                s.paid_fee,
+                s.due_amount,
+                s.fee_due_date || ''
+            ]);
+            
+            let csvContent = "data:text/csv;charset=utf-8," 
+                + [headers.join(','), ...rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(','))].join('\n');
+            
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `due_fees_report_${new Date().toISOString().slice(0,10)}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } catch (err) {
+            console.error("Failed to export defaulters CSV", err);
+            alert("Failed to export CSV file");
+        }
+    };
+
+    const exportCollectedCSV = (collectedList) => {
+        try {
+            const headers = ['Student Name', 'CRM Student ID', 'Batch', 'Assigned Mentor', 'Amount', 'Payment Date', 'Type', 'Ref ID / Notes'];
+            const rows = collectedList.map(p => [
+                p.student_name,
+                p.crm_student_id || '',
+                p.batch_name,
+                p.mentor_name,
+                p.amount,
+                p.date,
+                p.type,
+                p.ref_id || ''
+            ]);
+            
+            let csvContent = "data:text/csv;charset=utf-8," 
+                + [headers.join(','), ...rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(','))].join('\n');
+            
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `collected_fees_report_${new Date().toISOString().slice(0,10)}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } catch (err) {
+            console.error("Failed to export collected CSV", err);
+            alert("Failed to export CSV file");
         }
     };
 
@@ -3164,170 +3237,348 @@ const MentorModule = () => {
                 </div>
             )}
 
-            {isFeeModalOpen && (
-                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-[90]">
-                    <div className="bg-white rounded-3xl w-full max-w-5xl overflow-hidden shadow-2xl animate-fadeIn max-h-[90vh] flex flex-col">
-                        <div className="flex justify-between items-center p-6 border-b border-slate-100">
-                            <div>
-                                <h2 className="text-lg font-bold text-slate-800">
-                                    Students with Due Fees
-                                </h2>
-                                <p className="text-sm text-slate-500 mt-1">
-                                    {feeDefaulters.length} students have unpaid fees (Total Dues: ₹{feeDefaulters.reduce((sum, s) => sum + Number(s.due_amount || 0), 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
-                                </p>
-                            </div>
-                            <div className="flex items-center gap-3">
-                                <button onClick={() => setIsFeeModalOpen(false)} className="text-slate-400 hover:text-slate-600 bg-slate-50 hover:bg-slate-100 p-2 rounded-full transition-all">
-                                    <X size={20} />
-                                </button>
-                            </div>
-                        </div>
-                        <div className="p-6 overflow-y-auto flex-1 custom-scrollbar bg-slate-50/50">
-                            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-                                {feeDefaulters.length > 0 ? (
-                                    <div className="overflow-x-auto min-h-[300px]">
-                                        <table className="w-full text-left">
-                                            <thead>
-                                                <tr className="border-b border-slate-200 bg-slate-50">
-                                                    <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Student</th>
-                                                    <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Batch</th>
-                                                    <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Assigned Mentor</th>
-                                                    <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Total Fee</th>
-                                                    <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Paid</th>
-                                                    <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Due</th>
-                                                    <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Due Date</th>
-                                                    <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest text-right">Action</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {feeDefaulters.map((student) => (
-                                                    <tr key={student.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors last:border-0">
-                                                        <td className="px-4 py-3">
-                                                            <div className="font-bold text-slate-800">{student.name}</div>
-                                                            <div className="text-xs text-slate-500">{student.crm_student_id}</div>
-                                                            <div className="text-xs text-slate-400">{student.mobile}</div>
-                                                        </td>
-                                                        <td className="px-4 py-3 text-sm text-slate-700 font-medium">{student.batch_name}</td>
-                                                        <td className="px-4 py-3 text-sm text-slate-600">{student.mentor_name}</td>
-                                                        <td className="px-4 py-3 font-semibold text-slate-700">₹{Number(student.total_fee).toFixed(2)}</td>
-                                                        <td className="px-4 py-3 font-semibold text-emerald-600">₹{Number(student.paid_fee).toFixed(2)}</td>
-                                                        <td className="px-4 py-3 font-bold text-red-600">₹{Number(student.due_amount).toFixed(2)}</td>
-                                                        <td className="px-4 py-3 text-sm text-slate-600">{student.fee_due_date || '-'}</td>
-                                                        <td className="px-4 py-3 text-right">
-                                                            {!student.is_wise_integrated ? (
-                                                                <button
-                                                                    onClick={async () => {
-                                                                        try {
-                                                                            await api.post(`students/${student.id}/mark_as_paid/`);
-                                                                            alert('Student marked as paid successfully');
-                                                                            fetchFeeDefaulters();
-                                                                            fetchStudentsWithPagination();
-                                                                        } catch(err) {
-                                                                            alert('Failed to mark as paid');
-                                                                        }
-                                                                    }}
-                                                                    className="px-3 py-1 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-lg text-xs font-bold transition-colors"
-                                                                >
-                                                                    Mark as Paid
-                                                                </button>
-                                                            ) : (
-                                                                <span className="text-xs text-slate-400 italic">Wise LMS</span>
-                                                            )}
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                ) : (
-                                    <div className="p-8 text-center">
-                                        <div className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center text-emerald-500 mx-auto mb-3">
-                                            <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                            </svg>
-                                        </div>
-                                        <p className="text-slate-800 font-bold mb-1">All Clear!</p>
-                                        <p className="text-slate-500 text-sm">There are no students with due fees.</p>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {isFeeModalOpen && (() => {
+                const filteredDefaulters = feeDefaulters.filter(student => {
+                    const matchesSearch = !dueSearch || 
+                        (student.name && student.name.toLowerCase().includes(dueSearch.toLowerCase())) || 
+                        (student.crm_student_id && student.crm_student_id.toLowerCase().includes(dueSearch.toLowerCase())) ||
+                        (student.mobile && student.mobile.includes(dueSearch));
+                    
+                    const matchesBatch = !dueFilterBatch || student.batch_name === dueFilterBatch;
+                    const matchesMentor = !dueFilterMentor || student.mentor_name === dueFilterMentor;
+                    
+                    return matchesSearch && matchesBatch && matchesMentor;
+                });
 
-            {isCollectedModalOpen && (
-                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-[90]">
-                    <div className="bg-white rounded-3xl w-full max-w-5xl overflow-hidden shadow-2xl animate-fadeIn max-h-[90vh] flex flex-col">
-                        <div className="flex justify-between items-center p-6 border-b border-slate-100">
-                            <div>
-                                <h2 className="text-lg font-bold text-slate-800">
-                                    Collected Fees History
-                                </h2>
-                                <p className="text-sm text-slate-500 mt-1">
-                                    {collectedFees.length} successful payments (Total Collected: ₹{collectedFees.reduce((sum, s) => sum + Number(s.amount || 0), 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
-                                </p>
-                            </div>
-                            <div className="flex items-center gap-3">
-                                <button onClick={() => setIsCollectedModalOpen(false)} className="text-slate-400 hover:text-slate-600 bg-slate-50 hover:bg-slate-100 p-2 rounded-full transition-all">
-                                    <X size={20} />
-                                </button>
-                            </div>
-                        </div>
-                        <div className="p-6 overflow-y-auto flex-1 custom-scrollbar bg-slate-50/50">
-                            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-                                {collectedFees.length > 0 ? (
-                                    <div className="overflow-x-auto min-h-[300px]">
-                                        <table className="w-full text-left">
-                                            <thead>
-                                                <tr className="border-b border-slate-200 bg-slate-50">
-                                                    <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Student</th>
-                                                    <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Batch</th>
-                                                    <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Assigned Mentor</th>
-                                                    <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Amount</th>
-                                                    <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Payment Date</th>
-                                                    <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Type</th>
-                                                    <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Ref ID / Notes</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {collectedFees.map((payment) => (
-                                                    <tr key={payment.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors last:border-0">
-                                                        <td className="px-4 py-3">
-                                                            <div className="font-bold text-slate-800">{payment.student_name}</div>
-                                                            <div className="text-xs text-slate-500">{payment.crm_student_id}</div>
-                                                        </td>
-                                                        <td className="px-4 py-3 text-sm text-slate-700 font-medium">{payment.batch_name}</td>
-                                                        <td className="px-4 py-3 text-sm text-slate-600">{payment.mentor_name}</td>
-                                                        <td className="px-4 py-3 font-bold text-emerald-600">₹{Number(payment.amount).toFixed(2)}</td>
-                                                        <td className="px-4 py-3 text-sm text-slate-600">{payment.date}</td>
-                                                        <td className="px-4 py-3 text-xs">
-                                                            <span className={`px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${payment.type.includes('Manual') ? 'bg-indigo-50 text-indigo-700' : 'bg-emerald-50 text-emerald-700'}`}>
-                                                                {payment.type}
-                                                            </span>
-                                                        </td>
-                                                        <td className="px-4 py-3 text-xs text-slate-500 max-w-[150px] truncate" title={payment.ref_id}>
-                                                            {payment.ref_id}
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
+                const totalDueManual = filteredDefaulters.filter(s => !s.is_wise_integrated).reduce((sum, s) => sum + Number(s.due_amount || 0), 0);
+                const totalDueWise = filteredDefaulters.filter(s => s.is_wise_integrated).reduce((sum, s) => sum + Number(s.due_amount || 0), 0);
+
+                return (
+                    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-[90]">
+                        <div className="bg-white rounded-3xl w-full max-w-5xl overflow-hidden shadow-2xl animate-fadeIn max-h-[90vh] flex flex-col">
+                            <div className="flex justify-between items-center p-6 border-b border-slate-100">
+                                <div>
+                                    <h2 className="text-lg font-bold text-slate-800">
+                                        Students with Due Fees
+                                    </h2>
+                                    <p className="text-sm text-slate-500 mt-1">
+                                        Showing {filteredDefaulters.length} of {feeDefaulters.length} students • Total Dues: <strong>₹{filteredDefaulters.reduce((sum, s) => sum + Number(s.due_amount || 0), 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                                    </p>
+                                    <div className="flex gap-4 mt-2 text-xs text-slate-400">
+                                        <span>Manual CRM Dues: <strong className="text-slate-600">₹{totalDueManual.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></span>
+                                        <span>Wise LMS Dues: <strong className="text-slate-600">₹{totalDueWise.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></span>
                                     </div>
-                                ) : (
-                                    <div className="p-8 text-center">
-                                        <div className="w-16 h-16 bg-slate-150 rounded-full flex items-center justify-center text-slate-400 mx-auto mb-3">
-                                            <IndianRupee size={24} />
-                                        </div>
-                                        <p className="text-slate-800 font-bold mb-1">No collections</p>
-                                        <p className="text-slate-500 text-sm">No fees were collected within the selected date range.</p>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <button
+                                        onClick={() => exportDefaultersCSV(filteredDefaulters)}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-lg text-xs font-bold transition-all border border-indigo-100"
+                                    >
+                                        <Download size={14} /> Export CSV
+                                    </button>
+                                    <button onClick={() => setIsFeeModalOpen(false)} className="text-slate-400 hover:text-slate-600 bg-slate-50 hover:bg-slate-100 p-2 rounded-full transition-all">
+                                        <X size={20} />
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Filters Row */}
+                            <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex flex-wrap gap-4 items-center">
+                                <div className="flex-1 min-w-[200px]">
+                                    <input
+                                        type="text"
+                                        placeholder="Search name, ID, phone..."
+                                        value={dueSearch}
+                                        onChange={(e) => setDueSearch(e.target.value)}
+                                        className="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-200 bg-white"
+                                    />
+                                </div>
+                                <div className="min-w-[150px]">
+                                    <select
+                                        value={dueFilterBatch}
+                                        onChange={(e) => setDueFilterBatch(e.target.value)}
+                                        className="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-200 bg-white"
+                                    >
+                                        <option value="">All Batches</option>
+                                        {[...new Set(feeDefaulters.map(s => s.batch_name))].filter(Boolean).map(batchName => (
+                                            <option key={batchName} value={batchName}>{batchName}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                {(authUser?.role === 'SUPER_ADMIN' || authUser?.role === 'ADMIN' || authUser?.is_superuser) && (
+                                    <div className="min-w-[150px]">
+                                        <select
+                                            value={dueFilterMentor}
+                                            onChange={(e) => setDueFilterMentor(e.target.value)}
+                                            className="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-200 bg-white"
+                                        >
+                                            <option value="">All Mentors</option>
+                                            {[...new Set(feeDefaulters.map(s => s.mentor_name))].filter(Boolean).map(mentorName => (
+                                                <option key={mentorName} value={mentorName}>{mentorName}</option>
+                                            ))}
+                                        </select>
                                     </div>
                                 )}
+                                {(dueSearch || dueFilterBatch || dueFilterMentor) && (
+                                    <button
+                                        onClick={() => {
+                                            setDueSearch('');
+                                            setDueFilterBatch('');
+                                            setDueFilterMentor('');
+                                        }}
+                                        className="px-3 py-1.5 text-sm text-slate-500 hover:text-slate-800 hover:underline"
+                                    >
+                                        Reset Filters
+                                    </button>
+                                )}
+                            </div>
+
+                            <div className="p-6 overflow-y-auto flex-1 custom-scrollbar bg-slate-50/50">
+                                <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+                                    {filteredDefaulters.length > 0 ? (
+                                        <div className="overflow-x-auto min-h-[300px]">
+                                            <table className="w-full text-left">
+                                                <thead>
+                                                    <tr className="border-b border-slate-200 bg-slate-50">
+                                                        <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Student</th>
+                                                        <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Batch</th>
+                                                        <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Assigned Mentor</th>
+                                                        <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Total Fee</th>
+                                                        <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Paid</th>
+                                                        <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Due</th>
+                                                        <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Due Date</th>
+                                                        <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest text-right">Action</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {filteredDefaulters.map((student) => (
+                                                        <tr key={student.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors last:border-0">
+                                                            <td className="px-4 py-3">
+                                                                <div className="font-bold text-slate-800">{student.name}</div>
+                                                                <div className="text-xs text-slate-500">{student.crm_student_id}</div>
+                                                                <div className="text-xs text-slate-400">{student.mobile}</div>
+                                                            </td>
+                                                            <td className="px-4 py-3 text-sm text-slate-700 font-medium">{student.batch_name}</td>
+                                                            <td className="px-4 py-3 text-sm text-slate-600">{student.mentor_name}</td>
+                                                            <td className="px-4 py-3 font-semibold text-slate-700">₹{Number(student.total_fee).toFixed(2)}</td>
+                                                            <td className="px-4 py-3 font-semibold text-emerald-600">₹{Number(student.paid_fee).toFixed(2)}</td>
+                                                            <td className="px-4 py-3 font-bold text-red-600">₹{Number(student.due_amount).toFixed(2)}</td>
+                                                            <td className="px-4 py-3 text-sm text-slate-600">{student.fee_due_date || '-'}</td>
+                                                            <td className="px-4 py-3 text-right">
+                                                                {!student.is_wise_integrated ? (
+                                                                    <button
+                                                                        onClick={async () => {
+                                                                            try {
+                                                                                await api.post(`students/${student.id}/mark_as_paid/`);
+                                                                                alert('Student marked as paid successfully');
+                                                                                fetchFeeDefaulters();
+                                                                                fetchStudentsWithPagination();
+                                                                            } catch(err) {
+                                                                                alert('Failed to mark as paid');
+                                                                            }
+                                                                        }}
+                                                                        className="px-3 py-1 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-lg text-xs font-bold transition-colors"
+                                                                    >
+                                                                        Mark as Paid
+                                                                    </button>
+                                                                ) : (
+                                                                    <span className="text-xs text-slate-400 italic">Wise LMS</span>
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    ) : (
+                                        <div className="p-8 text-center">
+                                            <div className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center text-emerald-500 mx-auto mb-3">
+                                                <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                                </svg>
+                                            </div>
+                                            <p className="text-slate-800 font-bold mb-1">No matches found</p>
+                                            <p className="text-slate-500 text-sm">Adjust filters or search parameters.</p>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
-            )}
+                );
+            })()}
+
+            {isCollectedModalOpen && (() => {
+                const filteredCollected = collectedFees.filter(payment => {
+                    const matchesSearch = !collectedSearch || 
+                        (payment.student_name && payment.student_name.toLowerCase().includes(collectedSearch.toLowerCase())) || 
+                        (payment.crm_student_id && payment.crm_student_id.toLowerCase().includes(collectedSearch.toLowerCase()));
+                    
+                    const matchesBatch = !collectedFilterBatch || payment.batch_name === collectedFilterBatch;
+                    const matchesMentor = !collectedFilterMentor || payment.mentor_name === collectedFilterMentor;
+                    
+                    let matchesType = true;
+                    if (collectedFilterType !== 'All') {
+                        if (collectedFilterType === 'Manual') {
+                            matchesType = payment.type.toLowerCase().includes('manual');
+                        } else if (collectedFilterType === 'Online/Wise Sync') {
+                            matchesType = payment.type.toLowerCase().includes('wise') || payment.type.toLowerCase().includes('lms') || payment.type.toLowerCase().includes('razorpay');
+                        }
+                    }
+                    
+                    return matchesSearch && matchesBatch && matchesMentor && matchesType;
+                });
+
+                const totalCollectedManual = filteredCollected.filter(p => p.type.toLowerCase().includes('manual')).reduce((sum, p) => sum + Number(p.amount || 0), 0);
+                const totalCollectedOnline = filteredCollected.filter(p => !p.type.toLowerCase().includes('manual')).reduce((sum, p) => sum + Number(p.amount || 0), 0);
+
+                return (
+                    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-[90]">
+                        <div className="bg-white rounded-3xl w-full max-w-5xl overflow-hidden shadow-2xl animate-fadeIn max-h-[90vh] flex flex-col">
+                            <div className="flex justify-between items-center p-6 border-b border-slate-100">
+                                <div>
+                                    <h2 className="text-lg font-bold text-slate-800">
+                                        Collected Fees History
+                                    </h2>
+                                    <p className="text-sm text-slate-500 mt-1">
+                                        Showing {filteredCollected.length} of {collectedFees.length} payments • Total Collected: <strong>₹{filteredCollected.reduce((sum, s) => sum + Number(s.amount || 0), 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                                    </p>
+                                    <div className="flex gap-4 mt-2 text-xs text-slate-400">
+                                        <span>Manual Collected: <strong className="text-slate-600">₹{totalCollectedManual.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></span>
+                                        <span>Online Sync Collected: <strong className="text-slate-600">₹{totalCollectedOnline.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></span>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <button
+                                        onClick={() => exportCollectedCSV(filteredCollected)}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-lg text-xs font-bold transition-all border border-emerald-100"
+                                    >
+                                        <Download size={14} /> Export CSV
+                                    </button>
+                                    <button onClick={() => setIsCollectedModalOpen(false)} className="text-slate-400 hover:text-slate-600 bg-slate-50 hover:bg-slate-100 p-2 rounded-full transition-all">
+                                        <X size={20} />
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Filters Row */}
+                            <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex flex-wrap gap-4 items-center">
+                                <div className="flex-1 min-w-[200px]">
+                                    <input
+                                        type="text"
+                                        placeholder="Search student name, ID..."
+                                        value={collectedSearch}
+                                        onChange={(e) => setCollectedSearch(e.target.value)}
+                                        className="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-200 bg-white"
+                                    />
+                                </div>
+                                <div className="min-w-[150px]">
+                                    <select
+                                        value={collectedFilterBatch}
+                                        onChange={(e) => setCollectedFilterBatch(e.target.value)}
+                                        className="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-200 bg-white"
+                                    >
+                                        <option value="">All Batches</option>
+                                        {[...new Set(collectedFees.map(p => p.batch_name))].filter(Boolean).map(batchName => (
+                                            <option key={batchName} value={batchName}>{batchName}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                {(authUser?.role === 'SUPER_ADMIN' || authUser?.role === 'ADMIN' || authUser?.is_superuser) && (
+                                    <div className="min-w-[150px]">
+                                        <select
+                                            value={collectedFilterMentor}
+                                            onChange={(e) => setCollectedFilterMentor(e.target.value)}
+                                            className="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-200 bg-white"
+                                        >
+                                            <option value="">All Mentors</option>
+                                            {[...new Set(collectedFees.map(p => p.mentor_name))].filter(Boolean).map(mentorName => (
+                                                <option key={mentorName} value={mentorName}>{mentorName}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+                                <div className="min-w-[150px]">
+                                    <select
+                                        value={collectedFilterType}
+                                        onChange={(e) => setCollectedFilterType(e.target.value)}
+                                        className="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-200 bg-white"
+                                    >
+                                        <option value="All">All Types</option>
+                                        <option value="Manual">Manual Payments</option>
+                                        <option value="Online/Wise Sync">Online / Wise Sync</option>
+                                    </select>
+                                </div>
+                                {(collectedSearch || collectedFilterBatch || collectedFilterMentor || collectedFilterType !== 'All') && (
+                                    <button
+                                        onClick={() => {
+                                            setCollectedSearch('');
+                                            setCollectedFilterBatch('');
+                                            setCollectedFilterMentor('');
+                                            setCollectedFilterType('All');
+                                        }}
+                                        className="px-3 py-1.5 text-sm text-slate-500 hover:text-slate-800 hover:underline"
+                                    >
+                                        Reset Filters
+                                    </button>
+                                )}
+                            </div>
+
+                            <div className="p-6 overflow-y-auto flex-1 custom-scrollbar bg-slate-50/50">
+                                <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+                                    {filteredCollected.length > 0 ? (
+                                        <div className="overflow-x-auto min-h-[300px]">
+                                            <table className="w-full text-left">
+                                                <thead>
+                                                    <tr className="border-b border-slate-200 bg-slate-50">
+                                                        <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Student</th>
+                                                        <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Batch</th>
+                                                        <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Assigned Mentor</th>
+                                                        <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Amount</th>
+                                                        <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Payment Date</th>
+                                                        <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Type</th>
+                                                        <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Ref ID / Notes</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {filteredCollected.map((payment) => (
+                                                        <tr key={payment.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors last:border-0">
+                                                            <td className="px-4 py-3">
+                                                                <div className="font-bold text-slate-800">{payment.student_name}</div>
+                                                                <div className="text-xs text-slate-500">{payment.crm_student_id}</div>
+                                                            </td>
+                                                            <td className="px-4 py-3 text-sm text-slate-700 font-medium">{payment.batch_name}</td>
+                                                            <td className="px-4 py-3 text-sm text-slate-600">{payment.mentor_name}</td>
+                                                            <td className="px-4 py-3 font-bold text-emerald-600">₹{Number(payment.amount).toFixed(2)}</td>
+                                                            <td className="px-4 py-3 text-sm text-slate-600">{payment.date}</td>
+                                                            <td className="px-4 py-3 text-xs">
+                                                                <span className={`px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${payment.type.includes('Manual') ? 'bg-indigo-50 text-indigo-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                                                                    {payment.type}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-4 py-3 text-xs text-slate-500 max-w-[150px] truncate" title={payment.ref_id}>
+                                                                {payment.ref_id}
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    ) : (
+                                        <div className="p-8 text-center">
+                                            <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 mx-auto mb-3">
+                                                <IndianRupee size={24} />
+                                            </div>
+                                            <p className="text-slate-800 font-bold mb-1">No collections</p>
+                                            <p className="text-slate-500 text-sm">No fees match the selected filters.</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
 
             {/* Mark Paid Modal */}
             {isMarkPaidModalOpen && markPaidStudent && (
