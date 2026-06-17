@@ -993,6 +993,14 @@ const HRMSModule = () => {
                                     <p className="font-bold text-slate-900">{selectedEmployee.department_name}</p>
                                 </div>
                                 <div className="bg-slate-50 p-4 rounded-2xl">
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Username</p>
+                                    <p className="font-bold text-slate-900">{selectedEmployee.username}</p>
+                                </div>
+                                <div className="bg-slate-50 p-4 rounded-2xl">
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Email Address</p>
+                                    <p className="font-bold text-slate-900">{selectedEmployee.email}</p>
+                                </div>
+                                <div className="bg-slate-50 p-4 rounded-2xl">
                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Joining Date</p>
                                     <p className="font-bold text-slate-900">{selectedEmployee.date_of_joining}</p>
                                 </div>

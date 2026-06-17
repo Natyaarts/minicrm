@@ -110,7 +110,7 @@ const ExpenseManagement = ({ authUser, employees }) => {
                                                 {exp.category}
                                             </div>
                                         </td>
-                                        <td className="p-4 font-black text-slate-900">${exp.amount}</td>
+                                        <td className="p-4 font-black text-slate-900">₹{exp.amount}</td>
                                         <td className="p-4 text-slate-500 font-medium">{new Date(exp.submitted_date).toLocaleDateString()}</td>
                                         <td className="p-4">{getStatusBadge(exp.status)}</td>
                                         {(authUser.role === 'SUPER_ADMIN' || authUser.role === 'ADMIN') && (
@@ -147,7 +147,7 @@ const ExpenseManagement = ({ authUser, employees }) => {
                                 <form onSubmit={handleSubmitExpense} className="space-y-5">
                                     <div className="grid grid-cols-2 gap-4">
                                         <div>
-                                            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Amount ($)</label>
+                                            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Amount (₹)</label>
                                             <input required type="number" step="0.01" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-emerald-400 focus:bg-white text-sm font-medium" value={newExpense.amount} onChange={e => setNewExpense({...newExpense, amount: e.target.value})} placeholder="0.00" />
                                         </div>
                                         <div>

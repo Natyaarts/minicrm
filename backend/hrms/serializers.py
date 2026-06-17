@@ -44,11 +44,11 @@ class DesignationSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'department', 'department_name', 'description', 'permission_role', 'created_at']
 
 class EmployeeProfileSerializer(serializers.ModelSerializer):
-    username = serializers.CharField(write_only=True)
-    password = serializers.CharField(write_only=True)
-    email = serializers.EmailField(write_only=True)
-    first_name = serializers.CharField(write_only=True)
-    last_name = serializers.CharField(write_only=True)
+    username = serializers.CharField(write_only=True, required=False)
+    password = serializers.CharField(write_only=True, required=False)
+    email = serializers.EmailField(write_only=True, required=False)
+    first_name = serializers.CharField(write_only=True, required=False)
+    last_name = serializers.CharField(write_only=True, required=False)
     
     # Read-only fields for display
     display_username = serializers.ReadOnlyField(source='user.username')
@@ -67,6 +67,15 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
             'date_of_joining', 'date_of_birth', 'gender', 'status', 'base_salary', 'additional_data'
         ]
         read_only_fields = ['id', 'status']
+
+    def validate(self, attrs):
+        # On create, check that required user fields are present
+        if not self.instance:
+            required_fields = ['username', 'email', 'first_name', 'last_name', 'password']
+            for field in required_fields:
+                if field not in attrs or not attrs[field]:
+                    raise serializers.ValidationError({field: "This field is required on employee creation."})
+        return attrs
 
     def create(self, validated_data):
         user_data = {
@@ -88,6 +97,50 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
         SalaryStructure.objects.create(employee=profile, base_salary=profile.base_salary)
         
         return profile
+
+    def update(self, instance, validated_data):
+        user = instance.user
+        
+        # Extract user data
+        username = validated_data.pop('username', None)
+        email = validated_data.pop('email', None)
+        first_name = validated_data.pop('first_name', None)
+        last_name = validated_data.pop('last_name', None)
+        password = validated_data.pop('password', None)
+        
+        # Update user fields
+        if username:
+            user.username = username
+        if email:
+            user.email = email
+        if first_name is not None:
+            user.first_name = first_name
+        if last_name is not None:
+            user.last_name = last_name
+        if password:
+            user.set_password(password)
+        user.save()
+        
+        # Update EmployeeProfile fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        
+        # Keep SalaryStructure in sync
+        from payroll.models import SalaryStructure
+        salary_structure, created = SalaryStructure.objects.get_or_create(employee=instance)
+        salary_structure.base_salary = instance.base_salary
+        salary_structure.save()
+        
+        return instance
+
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        ret['username'] = instance.user.username
+        ret['email'] = instance.user.email
+        ret['first_name'] = instance.user.first_name
+        ret['last_name'] = instance.user.last_name
+        return ret
 
 class TaskCommentSerializer(serializers.ModelSerializer):
     author_name = serializers.ReadOnlyField(source='author.get_full_name')
