@@ -73,6 +73,15 @@ export default function ModuleDetailScreen() {
   const [attSearch, setAttSearch] = useState('');
   const [clockedIn, setClockedIn] = useState(false);
   const [geoStatus, setGeoStatus] = useState('Location Required');
+  const [shiftData, setShiftData] = useState<any>(null);
+  const [shiftName, setShiftName] = useState('General Shift');
+  const [shiftStartTime, setShiftStartTime] = useState('09:00');
+  const [shiftEndTime, setShiftEndTime] = useState('18:00');
+  const [officeLat, setOfficeLat] = useState('0.0');
+  const [officeLon, setOfficeLon] = useState('0.0');
+  const [allowedRadius, setAllowedRadius] = useState('200');
+  const [gracePeriod, setGracePeriod] = useState('15');
+  const [isSavingShift, setIsSavingShift] = useState(false);
 
   // Payroll Engine Specific State
   const [payTab, setPayTab] = useState<'monthly' | 'structures' | 'adjustments' | 'loans'>('monthly');
@@ -488,12 +497,29 @@ export default function ModuleDetailScreen() {
 
       // 8. ATTENDANCE HUB (HRMS)
       if (isAttendance) {
-        const res = await client.get('/hrms/attendance/').catch(() => ({ data: [] }));
-        const logs = res.data?.results || res.data || [];
+        const [logsRes, shiftRes] = await Promise.all([
+          client.get('/hrms/attendance/').catch(() => ({ data: [] })),
+          client.get('/hrms/shifts/').catch(() => ({ data: [] }))
+        ]);
+        const logs = logsRes.data?.results || logsRes.data || [];
+        const shifts = shiftRes.data?.results || shiftRes.data || [];
         setAttLogs(logs);
         const todayStr = new Date().toISOString().split('T')[0];
         const todayLog = logs.find((l: any) => l.date === todayStr && l.clock_in && !l.clock_out);
         if (todayLog) setClockedIn(true);
+
+        if (shifts.length > 0) {
+          const activeShift = shifts[0];
+          setShiftData(activeShift);
+          setShiftName(activeShift.name || 'General Shift');
+          setShiftStartTime(activeShift.start_time?.slice(0, 5) || '09:00');
+          setShiftEndTime(activeShift.end_time?.slice(0, 5) || '18:00');
+          setOfficeLat(String(activeShift.office_latitude || '0.0'));
+          setOfficeLon(String(activeShift.office_longitude || '0.0'));
+          setAllowedRadius(String(activeShift.allowed_radius_meters || '200'));
+          setGracePeriod(String(activeShift.grace_period_minutes || '15'));
+        }
+
         setModuleData({
           subtitle: `📅 ${new Date().toLocaleDateString('en-IN', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}`,
           stats: [
@@ -1153,9 +1179,11 @@ export default function ModuleDetailScreen() {
     } catch (e: any) {
       const errMsg = e.response?.data?.detail || e.response?.data?.error || e.message || (clockedIn ? 'No active clock-in record found.' : 'Clock-in failed. Try again.');
       Alert.alert(clockedIn ? 'Clock Out Info' : 'Clock In Info', errMsg);
-      // Local fallback
-      if (!clockedIn) { setClockedIn(true); setGeoStatus('Local Mode (API Unavailable)'); }
-      else { setClockedIn(false); setGeoStatus('Location Required'); }
+      // Local fallback - only trigger if backend is unreachable (no response)
+      if (!e.response) {
+        if (!clockedIn) { setClockedIn(true); setGeoStatus('Local Mode (API Unavailable)'); }
+        else { setClockedIn(false); setGeoStatus('Location Required'); }
+      }
     } finally {
       setLoading(false);
     }
@@ -2279,57 +2307,204 @@ export default function ModuleDetailScreen() {
                 </View>
               </View>
 
-              {/* Right Panel: Master Sheet Card */}
-              <View style={styles.masterSheetCard}>
-                <View style={styles.masterHeaderBar}>
-                  <Text style={styles.masterTitle}>{attTab === 'my' ? 'My Attendance Logs' : 'Master Attendance Sheet'}</Text>
-                  <View style={styles.masterActions}>
-                    <View style={[styles.searchBar, { marginBottom: 0, flex: 1, marginRight: 8 }]}>
-                      <FontAwesome5 name="search" size={14} color="#A0AEC0" />
-                      <TextInput style={styles.input} placeholder="Search by name or date..." placeholderTextColor="#A0AEC0" value={attSearch} onChangeText={setAttSearch} />
+              {/* Right Panel: Settings Card or Master Sheet Card */}
+              {attTab === 'settings' ? (
+                <View style={styles.coordEditCard}>
+                  <View style={styles.coordEditHeader}>
+                    <Text style={styles.coordEditTitle}>GEOFENCE & SHIFT CONFIGURATION</Text>
+                  </View>
+                  <Text style={styles.coordEditSubtitle}>Configure the virtual campus geofence boundary, timing requirements, and grace margins.</Text>
+
+                  <View style={{ flexDirection: 'row', gap: 12, backgroundColor: 'transparent' }}>
+                    <View style={[styles.inputGroup, { flex: 1 }]}>
+                      <Text style={styles.label}>Shift Start *</Text>
+                      <TextInput 
+                        style={styles.formInput} 
+                        value={shiftStartTime} 
+                        onChangeText={setShiftStartTime} 
+                        placeholder="HH:MM (e.g. 09:00)" 
+                        placeholderTextColor="#A0AEC0" 
+                      />
                     </View>
-                    {isAdmin && (
-                      <TouchableOpacity style={styles.iconBtn} onPress={() => Alert.alert('Download', 'Attendance master sheet downloaded.')}>
-                        <FontAwesome5 name="download" size={14} color="#718096" />
-                      </TouchableOpacity>
-                    )}
+                    <View style={[styles.inputGroup, { flex: 1 }]}>
+                      <Text style={styles.label}>Shift End *</Text>
+                      <TextInput 
+                        style={styles.formInput} 
+                        value={shiftEndTime} 
+                        onChangeText={setShiftEndTime} 
+                        placeholder="HH:MM (e.g. 18:00)" 
+                        placeholderTextColor="#A0AEC0" 
+                      />
+                    </View>
                   </View>
-                </View>
 
-                <View style={styles.tableHeader}>
-                  <Text style={[styles.tableCol, { flex: 2 }]}>EMPLOYEE</Text><Text style={[styles.tableCol, { flex: 1.5 }]}>DATE</Text><Text style={[styles.tableCol, { flex: 1.5 }]}>PUNCH IN</Text><Text style={[styles.tableCol, { flex: 1.5 }]}>PUNCH OUT</Text><Text style={[styles.tableCol, { flex: 1.5 }]}>DURATION</Text><Text style={[styles.tableCol, { flex: 1.5 }]}>COMPLIANCE</Text>
-                </View>
+                  <View style={{ flexDirection: 'row', gap: 12, backgroundColor: 'transparent' }}>
+                    <View style={[styles.inputGroup, { flex: 1 }]}>
+                      <Text style={styles.label}>Office Latitude *</Text>
+                      <TextInput 
+                        style={styles.formInput} 
+                        value={officeLat} 
+                        onChangeText={setOfficeLat} 
+                        keyboardType="numeric" 
+                        placeholder="e.g. 9.93123" 
+                        placeholderTextColor="#A0AEC0" 
+                      />
+                    </View>
+                    <View style={[styles.inputGroup, { flex: 1 }]}>
+                      <Text style={styles.label}>Office Longitude *</Text>
+                      <TextInput 
+                        style={styles.formInput} 
+                        value={officeLon} 
+                        onChangeText={setOfficeLon} 
+                        keyboardType="numeric" 
+                        placeholder="e.g. 76.2673" 
+                        placeholderTextColor="#A0AEC0" 
+                      />
+                    </View>
+                  </View>
 
-                {attLogs.length > 0 ? (
-                  attLogs
-                    .filter((log: any) => {
-                      if (attTab === 'my') {
-                        return log.employee?.user?.username === user?.username || log.user_id === user?.id;
+                  <View style={{ flexDirection: 'row', gap: 12, backgroundColor: 'transparent' }}>
+                    <View style={[styles.inputGroup, { flex: 1 }]}>
+                      <Text style={styles.label}>Geofence Radius (Meters) *</Text>
+                      <TextInput 
+                        style={styles.formInput} 
+                        value={allowedRadius} 
+                        onChangeText={setAllowedRadius} 
+                        keyboardType="numeric" 
+                        placeholder="e.g. 200" 
+                        placeholderTextColor="#A0AEC0" 
+                      />
+                    </View>
+                    <View style={[styles.inputGroup, { flex: 1 }]}>
+                      <Text style={styles.label}>Grace Period (Minutes) *</Text>
+                      <TextInput 
+                        style={styles.formInput} 
+                        value={gracePeriod} 
+                        onChangeText={setGracePeriod} 
+                        keyboardType="numeric" 
+                        placeholder="e.g. 15" 
+                        placeholderTextColor="#A0AEC0" 
+                      />
+                    </View>
+                  </View>
+
+                  <TouchableOpacity 
+                    style={[styles.clockBtn, { backgroundColor: '#3182CE', shadowColor: '#3182CE', marginBottom: 12 }]} 
+                    onPress={async () => {
+                      setLoading(true);
+                      try {
+                        const { status } = await Location.requestForegroundPermissionsAsync();
+                        if (status !== 'granted') {
+                          Alert.alert('Permission Denied', 'Location access is required to capture current coordinates.');
+                          setLoading(false);
+                          return;
+                        }
+                        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+                        setOfficeLat(String(loc.coords.latitude));
+                        setOfficeLon(String(loc.coords.longitude));
+                        Alert.alert('Success ✅', 'Coordinates set to your current mobile position!');
+                      } catch (err: any) {
+                        Alert.alert('Error', err.message || 'Could not fetch GPS location.');
+                      } finally {
+                        setLoading(false);
                       }
-                      const empName = `${log.employee?.user?.first_name || ''} ${log.employee?.user?.last_name || log.employee?.user?.username || ''}`;
-                      return `${empName} ${log.date || ''}`.toLowerCase().includes(attSearch.toLowerCase());
-                    })
-                    .slice(0, 25)
-                    .map((log: any, idx: number) => (
-                      <View key={log.id || idx} style={styles.tableRow}>
-                        <Text style={[styles.tableCellBold, { flex: 2 }]} numberOfLines={1}>
-                          {log.employee?.user?.first_name || log.employee?.user?.username || 'Staff'}
-                        </Text>
-                        <Text style={[styles.tableCellSub, { flex: 1.5 }]}>{log.date || '—'}</Text>
-                        <Text style={[styles.tableCellSub, { flex: 1.5 }]}>{log.clock_in ? log.clock_in.slice(11, 16) : '—'}</Text>
-                        <Text style={[styles.tableCellSub, { flex: 1.5 }]}>{log.clock_out ? log.clock_out.slice(11, 16) : (log.clock_in ? 'Active' : '—')}</Text>
-                        <Text style={[styles.tableCellSub, { flex: 1.5 }]}>{log.clock_in && log.clock_out ? 'Done' : log.clock_in ? 'Live' : '—'}</Text>
-                        <Text style={[styles.tableCellBold, { flex: 1.5, color: log.clock_out ? '#38A169' : '#DD6B20' }]}>
-                          {log.clock_out ? '✓' : log.clock_in ? 'Active' : '—'}
-                        </Text>
+                    }}
+                  >
+                    <Text style={styles.clockBtnText}>📍 Use Current GPS Coordinates</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity 
+                    style={styles.coordSaveButton} 
+                    onPress={async () => {
+                      if (!shiftStartTime || !shiftEndTime || !officeLat || !officeLon || !allowedRadius || !gracePeriod) {
+                        Alert.alert('Required Fields', 'Please complete all parameters to save the shift geofence.');
+                        return;
+                      }
+                      setIsSavingShift(true);
+                      try {
+                        const payload = {
+                          name: shiftName,
+                          start_time: shiftStartTime.length === 5 ? `${shiftStartTime}:00` : shiftStartTime,
+                          end_time: shiftEndTime.length === 5 ? `${shiftEndTime}:00` : shiftEndTime,
+                          office_latitude: parseFloat(officeLat),
+                          office_longitude: parseFloat(officeLon),
+                          allowed_radius_meters: parseInt(allowedRadius),
+                          grace_period_minutes: parseInt(gracePeriod),
+                          is_active: true
+                        };
+
+                        if (shiftData && shiftData.id) {
+                          await client.patch(`/hrms/shifts/${shiftData.id}/`, payload);
+                        } else {
+                          await client.post('/hrms/shifts/', payload);
+                        }
+
+                        Alert.alert('Configuration Saved ✅', 'Shift settings and geofence parameters updated successfully.');
+                        fetchProductionData();
+                      } catch (err: any) {
+                        Alert.alert('Save Failed', err.response?.data ? JSON.stringify(err.response.data) : 'Failed to update shift settings.');
+                      } finally {
+                        setIsSavingShift(false);
+                      }
+                    }}
+                    disabled={isSavingShift}
+                  >
+                    <FontAwesome5 name="save" size={14} color="#FFFFFF" style={{ marginRight: 6 }} />
+                    <Text style={styles.coordSaveText}>{isSavingShift ? 'Saving Settings...' : 'Save Geofence Configuration'}</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={styles.masterSheetCard}>
+                  <View style={styles.masterHeaderBar}>
+                    <Text style={styles.masterTitle}>{attTab === 'my' ? 'My Attendance Logs' : 'Master Attendance Sheet'}</Text>
+                    <View style={styles.masterActions}>
+                      <View style={[styles.searchBar, { marginBottom: 0, flex: 1, marginRight: 8 }]}>
+                        <FontAwesome5 name="search" size={14} color="#A0AEC0" />
+                        <TextInput style={styles.input} placeholder="Search by name or date..." placeholderTextColor="#A0AEC0" value={attSearch} onChangeText={setAttSearch} />
                       </View>
-                    ))
-                ) : (
-                  <View style={styles.emptyStateBox}>
-                    <Text style={styles.emptyStateText}>No attendance logs found for this period.</Text>
+                      {isAdmin && (
+                        <TouchableOpacity style={styles.iconBtn} onPress={() => Alert.alert('Download', 'Attendance master sheet downloaded.')}>
+                          <FontAwesome5 name="download" size={14} color="#718096" />
+                        </TouchableOpacity>
+                      )}
+                    </View>
                   </View>
-                )}
-              </View>
+
+                  <View style={styles.tableHeader}>
+                    <Text style={[styles.tableCol, { flex: 2 }]}>EMPLOYEE</Text><Text style={[styles.tableCol, { flex: 1.5 }]}>DATE</Text><Text style={[styles.tableCol, { flex: 1.5 }]}>PUNCH IN</Text><Text style={[styles.tableCol, { flex: 1.5 }]}>PUNCH OUT</Text><Text style={[styles.tableCol, { flex: 1.5 }]}>DURATION</Text><Text style={[styles.tableCol, { flex: 1.5 }]}>COMPLIANCE</Text>
+                  </View>
+
+                  {attLogs.length > 0 ? (
+                    attLogs
+                      .filter((log: any) => {
+                        if (attTab === 'my') {
+                          return log.employee?.user?.username === user?.username || log.user_id === user?.id;
+                        }
+                        const empName = `${log.employee?.user?.first_name || ''} ${log.employee?.user?.last_name || log.employee?.user?.username || ''}`;
+                        return `${empName} ${log.date || ''}`.toLowerCase().includes(attSearch.toLowerCase());
+                      })
+                      .slice(0, 25)
+                      .map((log: any, idx: number) => (
+                        <View key={log.id || idx} style={styles.tableRow}>
+                          <Text style={[styles.tableCellBold, { flex: 2 }]} numberOfLines={1}>
+                            {log.employee?.user?.first_name || log.employee?.user?.username || 'Staff'}
+                          </Text>
+                          <Text style={[styles.tableCellSub, { flex: 1.5 }]}>{log.date || '—'}</Text>
+                          <Text style={[styles.tableCellSub, { flex: 1.5 }]}>{log.clock_in ? log.clock_in.slice(11, 16) : '—'}</Text>
+                          <Text style={[styles.tableCellSub, { flex: 1.5 }]}>{log.clock_out ? log.clock_out.slice(11, 16) : (log.clock_in ? 'Active' : '—')}</Text>
+                          <Text style={[styles.tableCellSub, { flex: 1.5 }]}>{log.clock_in && log.clock_out ? 'Done' : log.clock_in ? 'Live' : '—'}</Text>
+                          <Text style={[styles.tableCellBold, { flex: 1.5, color: log.clock_out ? '#38A169' : '#DD6B20' }]}>
+                            {log.clock_out ? '✓' : log.clock_in ? 'Active' : '—'}
+                          </Text>
+                        </View>
+                      ))
+                  ) : (
+                    <View style={styles.emptyStateBox}>
+                      <Text style={styles.emptyStateText}>No attendance logs found for this period.</Text>
+                    </View>
+                  )}
+                </View>
+              )}
             </View>
           </View>
         )}

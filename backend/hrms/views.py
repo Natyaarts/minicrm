@@ -124,15 +124,18 @@ class AttendanceViewSet(viewsets.ModelViewSet):
 
         # Auto-calculate status (LATE check)
         if shift:
-            # Combine today's date with shift start time for comparison
-            shift_start = datetime.combine(today, shift.start_time)
+            import pytz
+            kolkata = pytz.timezone('Asia/Kolkata')
+            # Localize now to Asia/Kolkata timezone
+            now_local = timezone.now().astimezone(kolkata)
+            today_local = now_local.date()
+            
+            # Combine local date with shift start time and localize
+            shift_start = kolkata.localize(datetime.combine(today_local, shift.start_time))
             # Add grace period
             allowed_time = shift_start + timezone.timedelta(minutes=shift.grace_period_minutes)
             
-            # Make sure both are aware or naive (Django timezone.now() is aware)
-            allowed_time = timezone.make_aware(allowed_time)
-            
-            if now > allowed_time:
+            if now_local > allowed_time:
                 attendance.status = 'LATE'
             else:
                 attendance.status = 'PRESENT'
