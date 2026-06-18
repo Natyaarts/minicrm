@@ -1239,7 +1239,10 @@ class DashboardStatsView(APIView):
     def get(self, request):
         user = request.user
         # Use Q for complex lookups if needed
-        from django.db.models import Q
+        from django.db.models import Q, OuterRef, Subquery, Case, When
+        from django.db.models.functions import Coalesce
+        from django.db import models
+        from decimal import Decimal
         
         # Base querysets
         student_qs = Student.objects.filter(is_active=True)
@@ -1279,29 +1282,47 @@ class DashboardStatsView(APIView):
 
         # Calculate monthly expected, collected, due fee metrics
         from core.models import MonthlyPayment
+        
         first_day_date = today.date().replace(day=1)
         
-        # Expected monthly revenue: sum of course fees for active enrolled students
-        expected_monthly_revenue = student_qs.filter(course__isnull=False).aggregate(total=Sum('course__fee_amount'))['total'] or 0
-        
-        # Collected monthly revenue: sum of MonthlyPayment amount for these students for current month
-        collected_monthly_revenue = MonthlyPayment.objects.filter(
-            student__in=student_qs,
+        # Subquery to calculate MonthlyPayment sum for current month for each student
+        monthly_pay_subquery = MonthlyPayment.objects.filter(
+            student=OuterRef('pk'),
             month=first_day_date
-        ).aggregate(total=Sum('amount'))['total'] or 0
+        ).values('student').annotate(
+            total=Sum('amount')
+        ).values('total')
         
-        due_monthly_revenue = max(0, expected_monthly_revenue - collected_monthly_revenue)
+        # Annotate student_qs with fallback calculations
+        student_fees_qs = student_qs.annotate(
+            current_month_collected=Coalesce(
+                Subquery(monthly_pay_subquery),
+                Decimal('0.00'),
+                output_field=models.DecimalField(max_digits=10, decimal_places=2)
+            ),
+            expected_fee=Case(
+                When(course__fee_amount__gt=0, then=F('course__fee_amount')),
+                default=F('total_fee'),
+                output_field=models.DecimalField(max_digits=10, decimal_places=2)
+            ),
+            collected_fee=Case(
+                When(course__fee_amount__gt=0, then=F('current_month_collected')),
+                default=F('paid_fee'),
+                output_field=models.DecimalField(max_digits=10, decimal_places=2)
+            )
+        )
+        
+        expected_monthly_revenue = student_fees_qs.aggregate(total=Sum('expected_fee'))['total'] or Decimal('0.00')
+        collected_monthly_revenue = student_fees_qs.aggregate(total=Sum('collected_fee'))['total'] or Decimal('0.00')
+        due_monthly_revenue = max(Decimal('0.00'), expected_monthly_revenue - collected_monthly_revenue)
 
         # Batch fees breakdown
         batch_fees = []
         for b in batch_qs:
-            batch_students = student_qs.filter(batch=b)
-            b_expected = batch_students.filter(course__isnull=False).aggregate(total=Sum('course__fee_amount'))['total'] or 0
-            b_collected = MonthlyPayment.objects.filter(
-                student__in=batch_students,
-                month=first_day_date
-            ).aggregate(total=Sum('amount'))['total'] or 0
-            b_due = max(0, b_expected - b_collected)
+            batch_students = student_fees_qs.filter(batch=b)
+            b_expected = batch_students.aggregate(total=Sum('expected_fee'))['total'] or Decimal('0.00')
+            b_collected = batch_students.aggregate(total=Sum('collected_fee'))['total'] or Decimal('0.00')
+            b_due = max(Decimal('0.00'), b_expected - b_collected)
             
             batch_fees.append({
                 "id": b.id,
