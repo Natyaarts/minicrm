@@ -168,6 +168,37 @@ export default function ModuleDetailScreen() {
   const isAssets = (title as string).toLowerCase().includes('asset');
   const isSales = (title as string).toLowerCase().includes('sales') || (title as string).toLowerCase().includes('leads');
   const [isDialerSetup, setIsDialerSetup] = useState(false);
+  const [user, setUser] = useState<any>(null);
+  const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
+
+  const loadUser = async () => {
+    try {
+      const cached = await AsyncStorage.getItem('userInfo');
+      if (cached) {
+        setUser(JSON.parse(cached));
+      }
+      const res = await client.get('/auth/me/');
+      if (res.data) {
+        setUser(res.data);
+        await AsyncStorage.setItem('userInfo', JSON.stringify(res.data));
+      }
+    } catch (err) {
+      console.log('Failed to fetch user details:', err);
+    }
+  };
+
+  useEffect(() => {
+    loadUser();
+  }, []);
+
+  useEffect(() => {
+    if (user && user.role !== 'SUPER_ADMIN' && user.role !== 'ADMIN') {
+      setAttTab('my');
+      setPayTab('monthly');
+      setLeaveTab('my');
+      setWfTab('employees');
+    }
+  }, [user]);
 
   useEffect(() => {
     if (isSales) {
@@ -996,17 +1027,21 @@ export default function ModuleDetailScreen() {
         if (!name) return;
         const [first, ...rest] = name.split(' ');
         const last = rest.join(' ') || 'User';
+        const generatedPassword = `Natya@${Math.floor(1000 + Math.random() * 9000)}`;
+        const generatedEmpId = `EMP-${Math.floor(10000 + Math.random() * 90000)}`;
+        const todayStr = new Date().toISOString().split('T')[0];
         try {
           await client.post('/hrms/employees/', {
-            user: {
-              username: name.toLowerCase().replace(/\s+/g, '') + Math.floor(Math.random()*100),
-              first_name: first,
-              last_name: last,
-              email: `${first.toLowerCase()}@natyaarts.org`
-            },
-            status: 'ACTIVE'
+            username: name.toLowerCase().replace(/\s+/g, '') + Math.floor(Math.random()*100),
+            password: generatedPassword,
+            first_name: first,
+            last_name: last,
+            email: `${first.toLowerCase()}@natyaarts.org`,
+            employee_id: generatedEmpId,
+            date_of_joining: todayStr,
+            base_salary: 0
           });
-          Alert.alert('Success', `Employee ${name} added to server!`);
+          Alert.alert('Success ✅', `Employee ${name} added!\n\nEmp ID: ${generatedEmpId}\nTemp Password: ${generatedPassword}`);
           fetchProductionData();
         } catch(e: any) {
           Alert.alert('Error', e.response?.data ? JSON.stringify(e.response.data) : 'Failed to add employee');
@@ -2101,20 +2136,22 @@ export default function ModuleDetailScreen() {
         {/* 7. WORKFORCE HUB SPECIFIC VIEW (HRMS) */}
         {isWorkforce && (
           <View style={styles.mentorContainer}>
-            <View style={styles.segmentContainer}>
-              <TouchableOpacity style={[styles.segmentButton, wfTab === 'employees' && styles.segmentActive]} onPress={() => setWfTab('employees')}>
-                <Text style={[styles.segmentText, wfTab === 'employees' && styles.segmentTextActive]}>Employees</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.segmentButton, wfTab === 'departments' && styles.segmentActive]} onPress={() => setWfTab('departments')}>
-                <Text style={[styles.segmentText, wfTab === 'departments' && styles.segmentTextActive]}>Departments</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.segmentButton, wfTab === 'designations' && styles.segmentActive]} onPress={() => setWfTab('designations')}>
-                <Text style={[styles.segmentText, wfTab === 'designations' && styles.segmentTextActive]}>Designations</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.segmentButton, wfTab === 'form' && styles.segmentActive]} onPress={() => setWfTab('form')}>
-                <Text style={[styles.segmentText, wfTab === 'form' && styles.segmentTextActive]}>Form Builder</Text>
-              </TouchableOpacity>
-            </View>
+            {isAdmin && (
+              <View style={styles.segmentContainer}>
+                <TouchableOpacity style={[styles.segmentButton, wfTab === 'employees' && styles.segmentActive]} onPress={() => setWfTab('employees')}>
+                  <Text style={[styles.segmentText, wfTab === 'employees' && styles.segmentTextActive]}>Employees</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.segmentButton, wfTab === 'departments' && styles.segmentActive]} onPress={() => setWfTab('departments')}>
+                  <Text style={[styles.segmentText, wfTab === 'departments' && styles.segmentTextActive]}>Departments</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.segmentButton, wfTab === 'designations' && styles.segmentActive]} onPress={() => setWfTab('designations')}>
+                  <Text style={[styles.segmentText, wfTab === 'designations' && styles.segmentTextActive]}>Designations</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.segmentButton, wfTab === 'form' && styles.segmentActive]} onPress={() => setWfTab('form')}>
+                  <Text style={[styles.segmentText, wfTab === 'form' && styles.segmentTextActive]}>Form Builder</Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
             <View style={styles.coordHeaderBar}>
               <View style={[styles.searchBar, { flex: 1, marginBottom: 0, marginRight: 12 }]}>
@@ -2124,10 +2161,12 @@ export default function ModuleDetailScreen() {
               <TouchableOpacity style={styles.iconBtn} onPress={() => Alert.alert('Refreshed', 'Workforce profiles synchronized with HRMS server.')}>
                 <FontAwesome5 name="sync" size={14} color="#718096" />
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.addCategoryBtn, { marginLeft: 8 }]} onPress={handleAddEmployee}>
-                <FontAwesome5 name="user-plus" size={12} color="#FFFFFF" />
-                <Text style={styles.addCategoryText}>Add Employee</Text>
-              </TouchableOpacity>
+              {isAdmin && (
+                <TouchableOpacity style={[styles.addCategoryBtn, { marginLeft: 8 }]} onPress={handleAddEmployee}>
+                  <FontAwesome5 name="user-plus" size={12} color="#FFFFFF" />
+                  <Text style={styles.addCategoryText}>Add Employee</Text>
+                </TouchableOpacity>
+              )}
             </View>
 
             {wfTab === 'employees' && (
@@ -2201,17 +2240,19 @@ export default function ModuleDetailScreen() {
         {/* 8. ATTENDANCE HUB SPECIFIC VIEW (HRMS) */}
         {isAttendance && (
           <View style={styles.mentorContainer}>
-            <View style={styles.segmentContainer}>
-              <TouchableOpacity style={[styles.segmentButton, attTab === 'my' && styles.segmentActive]} onPress={() => setAttTab('my')}>
-                <Text style={[styles.segmentText, attTab === 'my' && styles.segmentTextActive]}>My Logs</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.segmentButton, attTab === 'master' && styles.segmentActive]} onPress={() => setAttTab('master')}>
-                <Text style={[styles.segmentText, attTab === 'master' && styles.segmentTextActive]}>Master Sheet</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.segmentButton, attTab === 'settings' && styles.segmentActive]} onPress={() => setAttTab('settings')}>
-                <Text style={[styles.segmentText, attTab === 'settings' && styles.segmentTextActive]}>Settings</Text>
-              </TouchableOpacity>
-            </View>
+            {isAdmin && (
+              <View style={styles.segmentContainer}>
+                <TouchableOpacity style={[styles.segmentButton, attTab === 'my' && styles.segmentActive]} onPress={() => setAttTab('my')}>
+                  <Text style={[styles.segmentText, attTab === 'my' && styles.segmentTextActive]}>My Logs</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.segmentButton, attTab === 'master' && styles.segmentActive]} onPress={() => setAttTab('master')}>
+                  <Text style={[styles.segmentText, attTab === 'master' && styles.segmentTextActive]}>Master Sheet</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.segmentButton, attTab === 'settings' && styles.segmentActive]} onPress={() => setAttTab('settings')}>
+                  <Text style={[styles.segmentText, attTab === 'settings' && styles.segmentTextActive]}>Settings</Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
             <View style={styles.attendanceGridStack}>
               {/* Left Panel: Clock-in Card */}
@@ -2241,15 +2282,17 @@ export default function ModuleDetailScreen() {
               {/* Right Panel: Master Sheet Card */}
               <View style={styles.masterSheetCard}>
                 <View style={styles.masterHeaderBar}>
-                  <Text style={styles.masterTitle}>Master Attendance Sheet</Text>
+                  <Text style={styles.masterTitle}>{attTab === 'my' ? 'My Attendance Logs' : 'Master Attendance Sheet'}</Text>
                   <View style={styles.masterActions}>
                     <View style={[styles.searchBar, { marginBottom: 0, flex: 1, marginRight: 8 }]}>
                       <FontAwesome5 name="search" size={14} color="#A0AEC0" />
                       <TextInput style={styles.input} placeholder="Search by name or date..." placeholderTextColor="#A0AEC0" value={attSearch} onChangeText={setAttSearch} />
                     </View>
-                    <TouchableOpacity style={styles.iconBtn} onPress={() => Alert.alert('Download', 'Attendance master sheet downloaded.')}>
-                      <FontAwesome5 name="download" size={14} color="#718096" />
-                    </TouchableOpacity>
+                    {isAdmin && (
+                      <TouchableOpacity style={styles.iconBtn} onPress={() => Alert.alert('Download', 'Attendance master sheet downloaded.')}>
+                        <FontAwesome5 name="download" size={14} color="#718096" />
+                      </TouchableOpacity>
+                    )}
                   </View>
                 </View>
 
@@ -2260,6 +2303,9 @@ export default function ModuleDetailScreen() {
                 {attLogs.length > 0 ? (
                   attLogs
                     .filter((log: any) => {
+                      if (attTab === 'my') {
+                        return log.employee?.user?.username === user?.username || log.user_id === user?.id;
+                      }
                       const empName = `${log.employee?.user?.first_name || ''} ${log.employee?.user?.last_name || log.employee?.user?.username || ''}`;
                       return `${empName} ${log.date || ''}`.toLowerCase().includes(attSearch.toLowerCase());
                     })
@@ -2291,20 +2337,22 @@ export default function ModuleDetailScreen() {
         {/* 9. PAYROLL ENGINE SPECIFIC VIEW (HRMS) */}
         {isPayroll && (
           <View style={styles.mentorContainer}>
-            <View style={styles.segmentContainer}>
-              <TouchableOpacity style={[styles.segmentButton, payTab === 'monthly' && styles.segmentActive]} onPress={() => setPayTab('monthly')}>
-                <Text style={[styles.segmentText, payTab === 'monthly' && styles.segmentTextActive]}>Monthly Slips</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.segmentButton, payTab === 'structures' && styles.segmentActive]} onPress={() => setPayTab('structures')}>
-                <Text style={[styles.segmentText, payTab === 'structures' && styles.segmentTextActive]}>Salary Structures</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.segmentButton, payTab === 'adjustments' && styles.segmentActive]} onPress={() => setPayTab('adjustments')}>
-                <Text style={[styles.segmentText, payTab === 'adjustments' && styles.segmentTextActive]}>$ Adjustments & Incentives</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.segmentButton, payTab === 'loans' && styles.segmentActive]} onPress={() => setPayTab('loans')}>
-                <Text style={[styles.segmentText, payTab === 'loans' && styles.segmentTextActive]}>Loans & Advances</Text>
-              </TouchableOpacity>
-            </View>
+            {isAdmin && (
+              <View style={styles.segmentContainer}>
+                <TouchableOpacity style={[styles.segmentButton, payTab === 'monthly' && styles.segmentActive]} onPress={() => setPayTab('monthly')}>
+                  <Text style={[styles.segmentText, payTab === 'monthly' && styles.segmentTextActive]}>Monthly Slips</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.segmentButton, payTab === 'structures' && styles.segmentActive]} onPress={() => setPayTab('structures')}>
+                  <Text style={[styles.segmentText, payTab === 'structures' && styles.segmentTextActive]}>Salary Structures</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.segmentButton, payTab === 'adjustments' && styles.segmentActive]} onPress={() => setPayTab('adjustments')}>
+                  <Text style={[styles.segmentText, payTab === 'adjustments' && styles.segmentTextActive]}>$ Adjustments & Incentives</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.segmentButton, payTab === 'loans' && styles.segmentActive]} onPress={() => setPayTab('loans')}>
+                  <Text style={[styles.segmentText, payTab === 'loans' && styles.segmentTextActive]}>Loans & Advances</Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
             <View style={styles.masterSheetCard}>
               <View style={styles.masterHeaderBar}>
@@ -2327,6 +2375,9 @@ export default function ModuleDetailScreen() {
               {payslips.length > 0 ? (
                 payslips
                   .filter((s: any) => {
+                    if (!isAdmin) {
+                      return s.employee?.user?.username === user?.username || s.employee?.user?.id === user?.id;
+                    }
                     const empName = `${s.employee?.user?.first_name || s.employee?.user?.username || ''}`;
                     return empName.toLowerCase().includes(paySearch.toLowerCase()) ||
                       (s.period_month && String(s.period_month).includes(paySearch));
@@ -2358,14 +2409,16 @@ export default function ModuleDetailScreen() {
                   <Text style={styles.emptyStateText}>No payslips generated yet. Tap "Generate Slips" below to create payslips for all active employees.</Text>
                 </View>
               )}
-              <TouchableOpacity
-                style={[styles.coordSaveButton, { marginTop: 20 }]}
-                onPress={handleGenerateSlips}
-                disabled={generatingPayslips}
-              >
-                <FontAwesome5 name="file-invoice-dollar" size={14} color="#FFFFFF" />
-                <Text style={styles.coordSaveText}>{generatingPayslips ? 'Generating...' : '+ Generate Monthly Payslips'}</Text>
-              </TouchableOpacity>
+              {isAdmin && (
+                <TouchableOpacity
+                  style={[styles.coordSaveButton, { marginTop: 20 }]}
+                  onPress={handleGenerateSlips}
+                  disabled={generatingPayslips}
+                >
+                  <FontAwesome5 name="file-invoice-dollar" size={14} color="#FFFFFF" />
+                  <Text style={styles.coordSaveText}>{generatingPayslips ? 'Generating...' : '+ Generate Monthly Payslips'}</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         )}
@@ -2380,15 +2433,19 @@ export default function ModuleDetailScreen() {
               <TouchableOpacity style={[styles.segmentButton5, leaveTab === 'calendar' && styles.segmentActive]} onPress={() => setLeaveTab('calendar')}>
                 <Text style={[styles.segmentText5, leaveTab === 'calendar' && styles.segmentTextActive]}>Leave Calendar</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.segmentButton5, leaveTab === 'admin' && styles.segmentActive]} onPress={() => setLeaveTab('admin')}>
-                <Text style={[styles.segmentText5, leaveTab === 'admin' && styles.segmentTextActive]}>Admin Approval</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.segmentButton5, leaveTab === 'types' && styles.segmentActive]} onPress={() => setLeaveTab('types')}>
-                <Text style={[styles.segmentText5, leaveTab === 'types' && styles.segmentTextActive]}>Manage Types & Holidays</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.segmentButton5, leaveTab === 'policies' && styles.segmentActive]} onPress={() => setLeaveTab('policies')}>
-                <Text style={[styles.segmentText5, leaveTab === 'policies' && styles.segmentTextActive]}>Leave Policies</Text>
-              </TouchableOpacity>
+              {isAdmin && (
+                <>
+                  <TouchableOpacity style={[styles.segmentButton5, leaveTab === 'admin' && styles.segmentActive]} onPress={() => setLeaveTab('admin')}>
+                    <Text style={[styles.segmentText5, leaveTab === 'admin' && styles.segmentTextActive]}>Admin Approval</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.segmentButton5, leaveTab === 'types' && styles.segmentActive]} onPress={() => setLeaveTab('types')}>
+                    <Text style={[styles.segmentText5, leaveTab === 'types' && styles.segmentTextActive]}>Manage Types & Holidays</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.segmentButton5, leaveTab === 'policies' && styles.segmentActive]} onPress={() => setLeaveTab('policies')}>
+                    <Text style={[styles.segmentText5, leaveTab === 'policies' && styles.segmentTextActive]}>Leave Policies</Text>
+                  </TouchableOpacity>
+                </>
+              )}
             </View>
 
             {/* Leave Apply Form */}
@@ -2449,7 +2506,20 @@ export default function ModuleDetailScreen() {
                 <Text style={[styles.tableCol, { flex: 1.5 }]}>STATUS</Text>
                 <Text style={[styles.tableCol, { flex: 2 }]}>ACTIONS</Text>
               </View>
-              {leaveRequests.length > 0 ? leaveRequests.map((req: any, idx: number) => {
+              {leaveRequests.length > 0 ? leaveRequests
+                .filter((req: any) => {
+                  if (!isAdmin) {
+                    return req.employee?.user?.username === user?.username || req.user_id === user?.id;
+                  }
+                  if (leaveTab === 'my') {
+                    return req.employee?.user?.username === user?.username || req.user_id === user?.id;
+                  }
+                  if (leaveTab === 'admin') {
+                    return req.status === 'PENDING';
+                  }
+                  return true;
+                })
+                .map((req: any, idx: number) => {
                 const start = new Date(req.start_date);
                 const end = new Date(req.end_date);
                 const days = Math.max(1, Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1);
@@ -2469,20 +2539,24 @@ export default function ModuleDetailScreen() {
                       }]}>{req.status || 'PENDING'}</Text>
                     </View>
                     {req.status === 'PENDING' ? (
-                      <View style={{ flex: 2, flexDirection: 'row', gap: 6, backgroundColor: 'transparent' }}>
-                        <TouchableOpacity
-                          style={{ flex: 1, backgroundColor: '#C6F6D5', borderRadius: 8, alignItems: 'center', paddingVertical: 6 }}
-                          onPress={() => handleLeaveAction(req.id, 'approve')}
-                        >
-                          <Text style={{ color: '#22543D', fontSize: 11, fontWeight: '900' }}>✓ OK</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={{ flex: 1, backgroundColor: '#FFF5F5', borderRadius: 8, alignItems: 'center', paddingVertical: 6 }}
-                          onPress={() => handleLeaveAction(req.id, 'reject')}
-                        >
-                          <Text style={{ color: '#E53E3E', fontSize: 11, fontWeight: '900' }}>✗ No</Text>
-                        </TouchableOpacity>
-                      </View>
+                      isAdmin ? (
+                        <View style={{ flex: 2, flexDirection: 'row', gap: 6, backgroundColor: 'transparent' }}>
+                          <TouchableOpacity
+                            style={{ flex: 1, backgroundColor: '#C6F6D5', borderRadius: 8, alignItems: 'center', paddingVertical: 6 }}
+                            onPress={() => handleLeaveAction(req.id, 'approve')}
+                          >
+                            <Text style={{ color: '#22543D', fontSize: 11, fontWeight: '900' }}>✓ OK</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={{ flex: 1, backgroundColor: '#FFF5F5', borderRadius: 8, alignItems: 'center', paddingVertical: 6 }}
+                            onPress={() => handleLeaveAction(req.id, 'reject')}
+                          >
+                            <Text style={{ color: '#E53E3E', fontSize: 11, fontWeight: '900' }}>✗ No</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ) : (
+                        <Text style={[styles.tableCellSub, { flex: 2, fontSize: 11, fontStyle: 'italic', color: '#718096' }]}>Pending Approval</Text>
+                      )
                     ) : (
                       <Text style={[styles.tableCellSub, { flex: 2, fontSize: 11 }]}>{req.reviewed_by?.first_name || 'Reviewed'}</Text>
                     )}

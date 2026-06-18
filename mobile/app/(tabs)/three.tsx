@@ -52,11 +52,19 @@ export default function MenuHubScreen() {
           : []),
         { title: 'Mentor Module', icon: 'chalkboard-teacher', route: '/module?title=Mentor Module&category=Academics' },
         { title: 'Student Portal', icon: 'user-graduate', route: '/module?title=Student Portal&category=Academics' },
-        { title: 'Academic Hierarchy', icon: 'sitemap', route: '/module?title=Academic Hierarchy&category=Academics' },
-        { title: 'Coordinator Module', icon: 'user-tie', route: '/module?title=Coordinator Module&category=Academics' },
+        ...(user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || user?.role === 'ACADEMIC_COORDINATOR'
+          ? [
+              { title: 'Academic Hierarchy', icon: 'sitemap', route: '/module?title=Academic Hierarchy&category=Academics' },
+              { title: 'Coordinator Module', icon: 'user-tie', route: '/module?title=Coordinator Module&category=Academics' },
+            ]
+          : []),
         { title: 'Teacher Module', icon: 'book-reader', route: '/module?title=Teacher Module&category=Academics' },
-        { title: 'Courses', icon: 'book', route: '/module?title=Courses&category=Academics' },
-        { title: 'Analytics', icon: 'chart-line', route: '/module?title=Analytics&category=Academics' },
+        ...(user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN'
+          ? [
+              { title: 'Courses', icon: 'book', route: '/module?title=Courses&category=Academics' },
+              { title: 'Analytics', icon: 'chart-line', route: '/module?title=Analytics&category=Academics' },
+            ]
+          : []),
       ],
     },
     {
@@ -64,7 +72,9 @@ export default function MenuHubScreen() {
       color: isDark ? 'rgba(16, 185, 129, 0.15)' : '#E6FFFA',
       accent: '#319795',
       items: [
-        { title: 'Workforce Hub', icon: 'building', route: '/module?title=Workforce Hub&category=HRMS' },
+        ...(user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN'
+          ? [{ title: 'Workforce Hub', icon: 'building', route: '/module?title=Workforce Hub&category=HRMS' }]
+          : []),
         { title: 'Attendance', icon: 'clock', route: '/module?title=Attendance&category=HRMS' },
         { title: 'Payroll', icon: 'money-check-alt', route: '/module?title=Payroll&category=HRMS' },
         { title: 'Leave Management', icon: 'calendar-alt', route: '/module?title=Leave Management&category=HRMS' },
@@ -77,8 +87,12 @@ export default function MenuHubScreen() {
       accent: '#805AD5',
       items: [
         { title: 'Staff Directory', icon: 'address-book', route: '/module?title=Staff Directory&category=Administrative' },
-        { title: 'Finance Manager', icon: 'wallet', route: '/module?title=Finance Manager&category=Administrative' },
-        { title: 'Admin Panel', icon: 'cogs', route: '/module?title=Admin Panel&category=Administrative' },
+        ...(user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN'
+          ? [
+              { title: 'Finance Manager', icon: 'wallet', route: '/module?title=Finance Manager&category=Administrative' },
+              { title: 'Admin Panel', icon: 'cogs', route: '/module?title=Admin Panel&category=Administrative' },
+            ]
+          : []),
       ],
     },
   ];
