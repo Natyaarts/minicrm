@@ -2414,8 +2414,10 @@ const MentorModule = () => {
                                                     className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 transition-shadow"
                                                 />
                                                 <div className="flex-1 min-w-0">
-                                                    <span className="block text-sm font-semibold text-slate-700 group-hover:text-indigo-700 transition-colors truncate">{mentor.first_name} {mentor.last_name}</span>
-                                                    <span className="block text-xs text-slate-500 truncate">{mentor.email}</span>
+                                                    <span className="block text-sm font-semibold text-slate-700 group-hover:text-indigo-700 transition-colors truncate">
+                                                        {mentor.first_name || mentor.last_name ? `${mentor.first_name || ''} ${mentor.last_name || ''}`.trim() : mentor.username}
+                                                    </span>
+                                                    <span className="block text-xs text-slate-500 truncate">{mentor.email || `@${mentor.username}`}</span>
                                                 </div>
                                             </label>
                                         ))}
@@ -3115,7 +3117,9 @@ const MentorModule = () => {
                                 >
                                     <option value="">Select Mentor</option>
                                     {mentors.filter(m => m.id !== selectedBatch?.primary_mentor?.id && m.role === 'MENTOR').map(m => (
-                                        <option key={m.id} value={m.id}>{m.first_name} {m.last_name}</option>
+                                        <option key={m.id} value={m.id}>
+                                            {m.first_name || m.last_name ? `${m.first_name || ''} ${m.last_name || ''}`.trim() : m.username}
+                                        </option>
                                     ))}
                                 </select>
                             </div>
