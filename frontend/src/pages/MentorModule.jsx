@@ -1929,8 +1929,8 @@ const MentorModule = () => {
                                         </div>
                                         <div>
                                             <span className="block text-slate-400 font-semibold mb-0.5 uppercase tracking-wider text-[10px]">Teacher</span>
-                                            <span className="text-indigo-600 font-bold truncate block" title={batch.teacher_details?.username}>
-                                                {batch.teacher_details?.username || 'Not Assigned'}
+                                            <span className="text-indigo-600 font-bold truncate block" title={batch.teacher_details ? `@${batch.teacher_details.username}` : 'Not Assigned'}>
+                                                {batch.teacher_details ? `${batch.teacher_details.first_name || ''} ${batch.teacher_details.last_name || ''}`.trim() || batch.teacher_details.username : 'Not Assigned'}
                                             </span>
                                         </div>
                                     </div>
@@ -2029,7 +2029,7 @@ const MentorModule = () => {
                                         <span className={`text-xs sm:text-sm font-bold ${selectedBatch.teacher_details ? 'text-indigo-600' : 'text-slate-400 italic'}`}>
                                             {selectedBatch.teacher_details ? `${selectedBatch.teacher_details.first_name || ''} ${selectedBatch.teacher_details.last_name || ''} (@${selectedBatch.teacher_details.username})` : 'Not Assigned'}
                                         </span>
-                                        {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.MENTOR?.edit) && (
+                                        {(authUser?.role === 'SUPER_ADMIN' || authUser?.role === 'ADMIN' || authUser?.role === 'MENTOR' || selectedBatch.primary_mentor === authUser?.id || selectedBatch.secondary_mentors?.includes(authUser?.id) || authUser?.permissions?.MENTOR?.edit) && (
                                             <button 
                                                 onClick={() => setIsAssignTeacherModalOpen(true)}
                                                 className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-widest border-b border-indigo-200"
