@@ -344,9 +344,9 @@ const MentorModule = () => {
             updateStudentPaymentState(markPaidStudent.id, markedMonths, true);
             
             setIsMarkPaidModalOpen(false);
-            if (viewTab === 'dashboard') {
-                fetchDashboardStats();
-            }
+            fetchFeeDefaulters();
+            fetchCollectedFees();
+            fetchDashboardStats();
         } catch (err) {
             console.error("Failed to mark monthly payment as paid", err);
             alert(err.response?.data?.error || "Failed to mark payment");
@@ -375,9 +375,9 @@ const MentorModule = () => {
                 setPaymentHistory(res.data);
             }
 
-            if (viewTab === 'dashboard') {
-                fetchDashboardStats();
-            }
+            fetchFeeDefaulters();
+            fetchCollectedFees();
+            fetchDashboardStats();
         } catch (err) {
             console.error("Failed to unmark payment", err);
             alert(err.response?.data?.error || "Failed to unmark payment");
