@@ -85,16 +85,28 @@ def render_to_pdf(template_src, context):
     pdf.set_text_color(30, 41, 59)
     
     # Row 1
-    pdf.cell(65, 10, "Basic Salary", border='LB')
-    pdf.cell(30, 10, f"Rs.{p.basic_pay:.2f}", border='RB', align='R')
-    pdf.cell(65, 10, "LOP Deduction", border='B')
-    pdf.cell(30, 10, f"Rs.{p.lop_deduction:.2f}", border='RB', align='R', ln=True)
+    pdf.cell(65, 8, "Basic Salary", border='LB')
+    pdf.cell(30, 8, f"Rs.{p.basic_pay:.2f}", border='RB', align='R')
+    pdf.cell(65, 8, "LOP Deduction", border='B')
+    pdf.cell(30, 8, f"Rs.{p.lop_deduction:.2f}", border='RB', align='R', ln=True)
     
     # Row 2
-    pdf.cell(65, 10, "Allowances", border='LB')
-    pdf.cell(30, 10, f"Rs.{p.total_allowances:.2f}", border='RB', align='R')
-    pdf.cell(65, 10, "Loan Repayment", border='B')
-    pdf.cell(30, 10, f"Rs.{p.loan_deduction:.2f}", border='RB', align='R', ln=True)
+    pdf.cell(65, 8, "Allowances", border='LB')
+    pdf.cell(30, 8, f"Rs.{p.total_allowances:.2f}", border='RB', align='R')
+    pdf.cell(65, 8, "Loan Repayment", border='B')
+    pdf.cell(30, 8, f"Rs.{p.loan_deduction:.2f}", border='RB', align='R', ln=True)
+
+    # Row 3
+    pdf.cell(65, 8, "", border='LB')
+    pdf.cell(30, 8, "", border='RB', align='R')
+    pdf.cell(65, 8, "Provident Fund (PF)", border='B')
+    pdf.cell(30, 8, f"Rs.{p.provident_fund:.2f}", border='RB', align='R', ln=True)
+
+    # Row 4
+    pdf.cell(65, 8, "", border='LB')
+    pdf.cell(30, 8, "", border='RB', align='R')
+    pdf.cell(65, 8, "Professional Tax (PT)", border='B')
+    pdf.cell(30, 8, f"Rs.{p.professional_tax:.2f}", border='RB', align='R', ln=True)
     
     # Totals Row
     pdf.set_font('Helvetica', 'B', 10)

@@ -144,7 +144,11 @@ class PayslipViewSet(viewsets.ModelViewSet):
 
             # Create Payslip
             total_allowances = struct.total_allowances + extra_allowances
-            total_deductions = struct.total_deductions + extra_deductions + lop_deduction + loan_deduction
+            
+            pf_deduction = struct.provident_fund
+            pt_deduction = struct.professional_tax
+            
+            total_deductions = pf_deduction + pt_deduction + extra_deductions + lop_deduction + loan_deduction
             net_salary = (struct.base_salary + total_allowances) - total_deductions
             
             Payslip.objects.create(
@@ -153,6 +157,8 @@ class PayslipViewSet(viewsets.ModelViewSet):
                 year=year,
                 basic_pay=struct.base_salary,
                 total_allowances=total_allowances,
+                provident_fund=pf_deduction,
+                professional_tax=pt_deduction,
                 lop_deduction=lop_deduction,
                 loan_deduction=loan_deduction,
                 total_deductions=total_deductions,

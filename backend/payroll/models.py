@@ -45,6 +45,8 @@ class Payslip(models.Model):
     
     basic_pay = models.DecimalField(max_digits=12, decimal_places=2)
     total_allowances = models.DecimalField(max_digits=12, decimal_places=2)
+    provident_fund = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    professional_tax = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
     lop_deduction = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
     loan_deduction = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
     total_deductions = models.DecimalField(max_digits=12, decimal_places=2)
