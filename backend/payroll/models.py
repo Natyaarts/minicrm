@@ -12,6 +12,7 @@ class SalaryStructure(models.Model):
     # Statutory Deductions (can be expanded)
     provident_fund = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
     professional_tax = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    tax_regime = models.CharField(max_length=5, choices=[('OLD', 'Old Regime'), ('NEW', 'New Regime')], default='NEW')
     
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -47,6 +48,7 @@ class Payslip(models.Model):
     total_allowances = models.DecimalField(max_digits=12, decimal_places=2)
     provident_fund = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
     professional_tax = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    tds_deduction = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
     lop_deduction = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
     loan_deduction = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
     total_deductions = models.DecimalField(max_digits=12, decimal_places=2)
@@ -98,3 +100,45 @@ class EmployeeLoan(models.Model):
 
     def __str__(self):
         return f"Loan {self.employee.user.username} - Bal: {self.balance_amount}"
+
+class TaxDeclaration(models.Model):
+    REGIME_CHOICES = [
+        ('OLD', 'Old Regime'),
+        ('NEW', 'New Regime'),
+    ]
+    STATUS_CHOICES = [
+        ('PENDING', 'Pending Review'),
+        ('APPROVED', 'Approved'),
+        ('REJECTED', 'Rejected'),
+    ]
+    
+    employee = models.ForeignKey(EmployeeProfile, on_delete=models.CASCADE, related_name='tax_declarations')
+    financial_year = models.CharField(max_length=9)  # e.g., '2026-2027'
+    regime = models.CharField(max_length=5, choices=REGIME_CHOICES, default='NEW')
+    
+    # OLD Regime deductions
+    sec_80c = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, verbose_name="Section 80C")
+    sec_80d = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, verbose_name="Section 80D")
+    sec_24b = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, verbose_name="Section 24(b) Home Loan Interest")
+    sec_80ccd_1b = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, verbose_name="Section 80CCD(1B) NPS")
+    
+    sec_80e = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, verbose_name="Section 80E Education Loan")
+    sec_80g = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, verbose_name="Section 80G Donations")
+    sec_80tta = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, verbose_name="Section 80TTA Savings Interest")
+    
+    # HRA declarations
+    annual_rent = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    landlord_pan = models.CharField(max_length=10, blank=True, null=True)
+    
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='PENDING')
+    proof_file = models.FileField(upload_to='tax_proofs/', blank=True, null=True)
+    notes = models.TextField(blank=True, null=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('employee', 'financial_year')
+
+    def __str__(self):
+        return f"Tax Dec {self.financial_year} - {self.employee.user.get_full_name()}"

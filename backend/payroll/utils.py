@@ -107,6 +107,12 @@ def render_to_pdf(template_src, context):
     pdf.cell(30, 8, "", border='RB', align='R')
     pdf.cell(65, 8, "Professional Tax (PT)", border='B')
     pdf.cell(30, 8, f"Rs.{p.professional_tax:.2f}", border='RB', align='R', ln=True)
+
+    # Row 5
+    pdf.cell(65, 8, "", border='LB')
+    pdf.cell(30, 8, "", border='RB', align='R')
+    pdf.cell(65, 8, "TDS (Income Tax)", border='B')
+    pdf.cell(30, 8, f"Rs.{p.tds_deduction:.2f}", border='RB', align='R', ln=True)
     
     # Totals Row
     pdf.set_font('Helvetica', 'B', 10)

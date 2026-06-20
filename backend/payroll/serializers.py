@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import SalaryStructure, Payslip, BonusDeduction, EmployeeLoan
+from .models import SalaryStructure, Payslip, BonusDeduction, EmployeeLoan, TaxDeclaration
 
 class SalaryStructureSerializer(serializers.ModelSerializer):
     employee_name = serializers.ReadOnlyField(source='employee.user.get_full_name')
@@ -29,4 +29,12 @@ class EmployeeLoanSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = EmployeeLoan
+        fields = '__all__'
+
+class TaxDeclarationSerializer(serializers.ModelSerializer):
+    employee_name = serializers.ReadOnlyField(source='employee.user.get_full_name')
+    employee_id = serializers.ReadOnlyField(source='employee.employee_id')
+    
+    class Meta:
+        model = TaxDeclaration
         fields = '__all__'

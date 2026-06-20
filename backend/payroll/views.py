@@ -7,9 +7,10 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from hrms.models import EmployeeProfile, Attendance
-from .models import SalaryStructure, Payslip, BonusDeduction, EmployeeLoan
-from .serializers import SalaryStructureSerializer, PayslipSerializer, BonusDeductionSerializer, EmployeeLoanSerializer
+from .models import SalaryStructure, Payslip, BonusDeduction, EmployeeLoan, TaxDeclaration
+from .serializers import SalaryStructureSerializer, PayslipSerializer, BonusDeductionSerializer, EmployeeLoanSerializer, TaxDeclarationSerializer
 from .utils import render_to_pdf, number_to_words
+from .tax_calculator import calculate_monthly_tds
 
 class SalaryStructureViewSet(viewsets.ModelViewSet):
     queryset = SalaryStructure.objects.all()
@@ -148,7 +149,16 @@ class PayslipViewSet(viewsets.ModelViewSet):
             pf_deduction = struct.provident_fund
             pt_deduction = struct.professional_tax
             
-            total_deductions = pf_deduction + pt_deduction + extra_deductions + lop_deduction + loan_deduction
+            # Estimate financial year
+            if month in [1, 2, 3]:
+                fy = f"{year-1}-{year}"
+            else:
+                fy = f"{year}-{year+1}"
+                
+            monthly_gross = struct.base_salary + total_allowances
+            tds_deduction = calculate_monthly_tds(emp, monthly_gross, financial_year=fy)
+            
+            total_deductions = pf_deduction + pt_deduction + tds_deduction + extra_deductions + lop_deduction + loan_deduction
             net_salary = (struct.base_salary + total_allowances) - total_deductions
             
             Payslip.objects.create(
@@ -159,6 +169,7 @@ class PayslipViewSet(viewsets.ModelViewSet):
                 total_allowances=total_allowances,
                 provident_fund=pf_deduction,
                 professional_tax=pt_deduction,
+                tds_deduction=tds_deduction,
                 lop_deduction=lop_deduction,
                 loan_deduction=loan_deduction,
                 total_deductions=total_deductions,
@@ -217,3 +228,43 @@ class PayslipViewSet(viewsets.ModelViewSet):
             pdf['Content-Disposition'] = f'attachment; filename="{filename}"'
             return pdf
         return Response({"error": "PDF generation failed"}, status=400)
+
+class TaxDeclarationViewSet(viewsets.ModelViewSet):
+    serializer_class = TaxDeclarationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        user = self.request.user
+        if user.role in ['SUPER_ADMIN', 'ADMIN'] or user.is_superuser:
+            return TaxDeclaration.objects.all()
+        # Ordinary employee can only see their own
+        try:
+            return TaxDeclaration.objects.filter(employee__user=user)
+        except Exception:
+            return TaxDeclaration.objects.none()
+        
+    def perform_create(self, serializer):
+        try:
+            profile = self.request.user.hrms_profile
+        except Exception:
+            raise serializers.ValidationError("No Employee Profile associated with this user.")
+        serializer.save(employee=profile, status='PENDING')
+        
+    @action(detail=True, methods=['post'])
+    def verify(self, request, pk=None):
+        user = request.user
+        if user.role not in ['SUPER_ADMIN', 'ADMIN'] and not user.is_superuser:
+            return Response({"error": "Unauthorized. Only admins can verify tax declarations."}, status=403)
+            
+        declaration = self.get_object()
+        new_status = request.data.get('status')
+        notes = request.data.get('notes', '')
+        
+        if new_status not in ['APPROVED', 'REJECTED']:
+            return Response({"error": "Invalid status. Must be APPROVED or REJECTED."}, status=400)
+            
+        declaration.status = new_status
+        declaration.notes = notes
+        declaration.save()
+        
+        return Response(TaxDeclarationSerializer(declaration).data)

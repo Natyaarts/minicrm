@@ -74,6 +74,10 @@ const PayrollModule = () => {
                 const res = await api.get('payroll/loans/');
                 const data = res.data.results || res.data || [];
                 setLoans(data);
+            } else if (activeTab === 'declarations') {
+                const res = await api.get('payroll/tax-declarations/');
+                const data = res.data.results || res.data || [];
+                setDeclarations(data);
             }
         } catch (err) {
             console.error("Failed to fetch payroll data", err);
@@ -169,6 +173,81 @@ const PayrollModule = () => {
             alert("Advance/Loan recorded!");
         } catch (err) {
             alert("Failed to add loan");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const [declarations, setDeclarations] = useState([]);
+    const [decModal, setDecModal] = useState({
+        show: false,
+        regime: 'NEW',
+        sec_80c: '',
+        sec_80d: '',
+        sec_24b: '',
+        sec_80ccd_1b: '',
+        sec_80e: '',
+        sec_80g: '',
+        sec_80tta: '',
+        annual_rent: '',
+        landlord_pan: '',
+        financial_year: '2026-2027',
+        file: null
+    });
+
+    const handleCreateDeclaration = async () => {
+        setLoading(true);
+        const formData = new FormData();
+        formData.append('regime', decModal.regime);
+        formData.append('sec_80c', decModal.sec_80c || '0.00');
+        formData.append('sec_80d', decModal.sec_80d || '0.00');
+        formData.append('sec_24b', decModal.sec_24b || '0.00');
+        formData.append('sec_80ccd_1b', decModal.sec_80ccd_1b || '0.00');
+        formData.append('sec_80e', decModal.sec_80e || '0.00');
+        formData.append('sec_80g', decModal.sec_80g || '0.00');
+        formData.append('sec_80tta', decModal.sec_80tta || '0.00');
+        formData.append('annual_rent', decModal.annual_rent || '0.00');
+        formData.append('landlord_pan', decModal.landlord_pan || '');
+        formData.append('financial_year', decModal.financial_year);
+        if (decModal.file) {
+            formData.append('proof_file', decModal.file);
+        }
+        try {
+            await api.post('payroll/tax-declarations/', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+            setDecModal({
+                show: false,
+                regime: 'NEW',
+                sec_80c: '',
+                sec_80d: '',
+                sec_24b: '',
+                sec_80ccd_1b: '',
+                sec_80e: '',
+                sec_80g: '',
+                sec_80tta: '',
+                annual_rent: '',
+                landlord_pan: '',
+                financial_year: '2026-2027',
+                file: null
+            });
+            fetchData();
+            alert("Tax declaration submitted!");
+        } catch (err) {
+            alert(err.response?.data?.error || "Failed to submit declaration");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const verifyDeclaration = async (id, status, notes) => {
+        setLoading(true);
+        try {
+            await api.post(`payroll/tax-declarations/${id}/verify/`, { status, notes });
+            fetchData();
+            alert(`Declaration ${status.toLowerCase()} successfully!`);
+        } catch (err) {
+            alert("Failed to verify declaration");
         } finally {
             setLoading(false);
         }
@@ -299,6 +378,14 @@ const PayrollModule = () => {
                                 <Plus size={14} /> Record Loan
                             </button>
                         )}
+                        {activeTab === 'declarations' && (
+                            <button 
+                                onClick={() => setDecModal({ ...decModal, show: true })}
+                                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg font-semibold text-xs hover:bg-indigo-700 transition-all shadow-sm"
+                            >
+                                <Plus size={14} /> Submit Declaration
+                            </button>
+                        )}
                     </div>
                 )}
             </div>
@@ -312,6 +399,7 @@ const PayrollModule = () => {
                     { id: 'structures', label: 'Salary Structures', icon: Settings, adminOnly: true },
                     { id: 'adjustments', label: 'Adjustments & Incentives', icon: DollarSign, adminOnly: true },
                     { id: 'loans', label: 'Loans & Advances', icon: CreditCard, adminOnly: true },
+                    { id: 'declarations', label: 'Tax Declarations', icon: FileText },
                 ].filter(tab => !tab.adminOnly || authUser?.role === 'SUPER_ADMIN').map(tab => (
                     <button
                         key={tab.id}
@@ -335,7 +423,8 @@ const PayrollModule = () => {
                         {activeTab === 'payslips' ? "Historical Payslips" : 
                          activeTab === 'structures' ? "Configured Salary Components" : 
                          activeTab === 'adjustments' ? "Monthly Adjustments & Incentives" : 
-                         "Employee Loans & Advances"}
+                         activeTab === 'loans' ? "Employee Loans & Advances" :
+                         "Tax Investment Declarations"}
                     </h3>
                     <div className="flex items-center gap-3">
                         <button 
@@ -386,11 +475,19 @@ const PayrollModule = () => {
                                         <th className="px-5 py-3 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Amount</th>
                                         <th className="px-5 py-3 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Reason</th>
                                     </>
-                                ) : (
+                                ) : activeTab === 'loans' ? (
                                     <>
                                         <th className="px-5 py-3 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Loan Amount</th>
                                         <th className="px-5 py-3 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Monthly EMI</th>
                                         <th className="px-5 py-3 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Balance</th>
+                                        <th className="px-5 py-3 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+                                        <th className="px-5 py-3 text-right text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
+                                    </>
+                                ) : (
+                                    <>
+                                        <th className="px-5 py-3 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Financial Year</th>
+                                        <th className="px-5 py-3 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Regime</th>
+                                        <th className="px-5 py-3 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Deductions (80C / 80D / Rent)</th>
                                         <th className="px-5 py-3 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Status</th>
                                         <th className="px-5 py-3 text-right text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
                                     </>
@@ -458,7 +555,9 @@ const PayrollModule = () => {
                                                 </div>
                                                 <div>
                                                     <p className="text-sm font-semibold text-slate-800">{struct.employee_name}</p>
-                                                    <p className="text-[10px] font-medium text-slate-500 uppercase">Policy Configured</p>
+                                                    <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider ${struct.tax_regime === 'OLD' ? 'bg-amber-50 text-amber-600 border border-amber-100' : 'bg-indigo-50 text-indigo-600 border border-indigo-100'}`}>
+                                                        {struct.tax_regime === 'OLD' ? 'Old Regime' : 'New Regime'}
+                                                    </span>
                                                 </div>
                                             </div>
                                         </td>
@@ -499,7 +598,7 @@ const PayrollModule = () => {
                                         <td className="px-5 py-3 text-sm font-medium text-slate-500 italic">"{adj.reason}"</td>
                                     </tr>
                                 ))
-                            ) : (
+                            ) : activeTab === 'loans' ? (
                                 loans.map((loan) => (
                                     <tr key={loan.id} className="hover:bg-slate-50/50 transition-colors">
                                         <td className="px-5 py-3">
@@ -548,6 +647,86 @@ const PayrollModule = () => {
                                                 >
                                                     <Trash2 size={14} />
                                                 </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))
+                            ) : (
+                                declarations.map((dec) => (
+                                    <tr key={dec.id} className="hover:bg-slate-50/50 transition-colors">
+                                        <td className="px-5 py-3">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-xs font-bold">
+                                                    {dec.employee_name?.[0]}
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm font-semibold text-slate-800">{dec.employee_name}</p>
+                                                    <p className="text-[10px] font-medium text-slate-500 uppercase">{dec.employee_id}</p>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className="px-5 py-3 text-sm font-medium text-slate-600">{dec.financial_year}</td>
+                                        <td className="px-5 py-3">
+                                            <span className={`px-2.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider border ${
+                                                dec.regime === 'NEW' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-amber-50 text-amber-600 border-amber-100'
+                                            }`}>
+                                                {dec.regime === 'NEW' ? 'New Regime' : 'Old Regime'}
+                                            </span>
+                                        </td>
+                                        <td className="px-5 py-3 text-xs text-slate-600">
+                                            <div className="flex flex-col gap-0.5 font-medium">
+                                                <p>80C: ₹{Number(dec.sec_80c).toLocaleString()}</p>
+                                                <p>80D: ₹{Number(dec.sec_80d).toLocaleString()}</p>
+                                                <p>Rent: ₹{Number(dec.annual_rent).toLocaleString()}/yr</p>
+                                            </div>
+                                        </td>
+                                        <td className="px-5 py-3 text-sm">
+                                            <div className="flex flex-col gap-1">
+                                                <span className={`w-fit px-2.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider border ${
+                                                    dec.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 
+                                                    dec.status === 'REJECTED' ? 'bg-rose-50 text-rose-600 border-rose-100' : 
+                                                    'bg-amber-50 text-amber-600 border-amber-100'
+                                                }`}>
+                                                    {dec.status}
+                                                </span>
+                                                {dec.notes && <p className="text-[10px] text-slate-500 italic mt-0.5">Note: "{dec.notes}"</p>}
+                                            </div>
+                                        </td>
+                                        <td className="px-5 py-3 text-right">
+                                            <div className="flex justify-end gap-2 items-center">
+                                                {dec.proof_file && (
+                                                    <a 
+                                                        href={dec.proof_file} 
+                                                        target="_blank" 
+                                                        rel="noopener noreferrer"
+                                                        className="px-2.5 py-1.5 bg-slate-50 text-slate-600 rounded-lg hover:bg-slate-100 transition-colors border border-slate-200 text-xs font-semibold"
+                                                        title="View Proof File"
+                                                    >
+                                                        Proof File
+                                                    </a>
+                                                )}
+                                                {dec.status === 'PENDING' && authUser?.role === 'SUPER_ADMIN' && (
+                                                    <>
+                                                        <button 
+                                                            onClick={() => {
+                                                                const note = prompt("Enter verification note (optional):");
+                                                                verifyDeclaration(dec.id, 'APPROVED', note || '');
+                                                            }}
+                                                            className="px-2.5 py-1 bg-emerald-500 text-white rounded text-xs font-semibold hover:bg-emerald-600"
+                                                        >
+                                                            Approve
+                                                        </button>
+                                                        <button 
+                                                            onClick={() => {
+                                                                const note = prompt("Enter rejection reason (required):");
+                                                                if (note) verifyDeclaration(dec.id, 'REJECTED', note);
+                                                            }}
+                                                            className="px-2.5 py-1 bg-rose-500 text-white rounded text-xs font-semibold hover:bg-rose-600"
+                                                        >
+                                                            Reject
+                                                        </button>
+                                                    </>
+                                                )}
                                             </div>
                                         </td>
                                     </tr>
@@ -737,6 +916,17 @@ const PayrollModule = () => {
                                             className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-medium outline-none text-sm focus:border-indigo-400"
                                         />
                                     </div>
+                                    <div>
+                                        <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">Tax Regime</label>
+                                        <select 
+                                            value={editStruct.tax_regime || 'NEW'}
+                                            onChange={(e) => setEditStruct({...editStruct, tax_regime: e.target.value})}
+                                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-medium outline-none text-sm focus:border-indigo-400"
+                                        >
+                                            <option value="NEW">New Regime</option>
+                                            <option value="OLD">Old Regime</option>
+                                        </select>
+                                    </div>
                                 </div>
                             </div>
 
@@ -884,6 +1074,180 @@ const PayrollModule = () => {
                                     className="w-full py-2.5 bg-indigo-600 text-white rounded-lg font-semibold text-sm hover:bg-indigo-700 transition-all shadow-sm mt-4 disabled:opacity-50"
                                 >
                                     {loading ? "Processing..." : "Issue Loan"}
+                                </button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* Submit Declaration Modal */}
+            <AnimatePresence>
+                {decModal.show && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                        <motion.div 
+                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" 
+                            onClick={() => setDecModal({ ...decModal, show: false })}
+                        />
+                        <motion.div 
+                            initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
+                            className="bg-white rounded-xl p-6 w-full max-w-xl relative z-10 shadow-2xl max-h-[90vh] overflow-y-auto"
+                        >
+                            <h3 className="text-xl font-bold text-slate-800 mb-1">Submit Investment Declaration</h3>
+                            <p className="text-xs font-semibold text-slate-500 mb-4">Provide annual investment declarations for tax calculations.</p>
+                            
+                            <div className="space-y-4">
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">Financial Year</label>
+                                        <select 
+                                            value={decModal.financial_year}
+                                            onChange={(e) => setDecModal({ ...decModal, financial_year: e.target.value })}
+                                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-medium outline-none text-sm focus:border-indigo-400"
+                                        >
+                                            <option value="2025-2026">2025-2026</option>
+                                            <option value="2026-2027">2026-2027</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">Tax Regime Choice</label>
+                                        <select 
+                                            value={decModal.regime}
+                                            onChange={(e) => setDecModal({ ...decModal, regime: e.target.value })}
+                                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-medium outline-none text-sm focus:border-indigo-400"
+                                        >
+                                            <option value="NEW">New Regime (No deductions)</option>
+                                            <option value="OLD">Old Regime (With deductions)</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {decModal.regime === 'OLD' && (
+                                    <>
+                                        <div className="border-t border-slate-100 pt-4">
+                                            <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">Section 80 Deductions</h4>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div>
+                                                    <label className="text-[10px] font-semibold text-slate-500 block mb-1">Section 80C (PPF, LIC, ELSS, etc. - Max 1.5L)</label>
+                                                    <input 
+                                                        type="number" 
+                                                        placeholder="150000"
+                                                        value={decModal.sec_80c}
+                                                        onChange={(e) => setDecModal({ ...decModal, sec_80c: e.target.value })}
+                                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-medium outline-none text-sm focus:border-indigo-400"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="text-[10px] font-semibold text-slate-500 block mb-1">Section 80D (Medical Insurance - Max 25k/50k)</label>
+                                                    <input 
+                                                        type="number" 
+                                                        placeholder="25000"
+                                                        value={decModal.sec_80d}
+                                                        onChange={(e) => setDecModal({ ...decModal, sec_80d: e.target.value })}
+                                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-medium outline-none text-sm focus:border-indigo-400"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="text-[10px] font-semibold text-slate-500 block mb-1">Section 24(b) (Home Loan Int. - Max 2L)</label>
+                                                <input 
+                                                    type="number" 
+                                                    placeholder="200000"
+                                                    value={decModal.sec_24b}
+                                                    onChange={(e) => setDecModal({ ...decModal, sec_24b: e.target.value })}
+                                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-medium outline-none text-sm focus:border-indigo-400"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] font-semibold text-slate-500 block mb-1">Section 80CCD(1B) (NPS - Max 50k)</label>
+                                                <input 
+                                                    type="number" 
+                                                    placeholder="50000"
+                                                    value={decModal.sec_80ccd_1b}
+                                                    onChange={(e) => setDecModal({ ...decModal, sec_80ccd_1b: e.target.value })}
+                                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-medium outline-none text-sm focus:border-indigo-400"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-3 gap-3">
+                                            <div>
+                                                <label className="text-[10px] font-semibold text-slate-500 block mb-1">Sec 80E (Ed. Loan)</label>
+                                                <input 
+                                                    type="number" 
+                                                    value={decModal.sec_80e}
+                                                    onChange={(e) => setDecModal({ ...decModal, sec_80e: e.target.value })}
+                                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-medium outline-none text-sm focus:border-indigo-400"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] font-semibold text-slate-500 block mb-1">Sec 80G (Donations)</label>
+                                                <input 
+                                                    type="number" 
+                                                    value={decModal.sec_80g}
+                                                    onChange={(e) => setDecModal({ ...decModal, sec_80g: e.target.value })}
+                                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-medium outline-none text-sm focus:border-indigo-400"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] font-semibold text-slate-500 block mb-1">Sec 80TTA (Savings Int)</label>
+                                                <input 
+                                                    type="number" 
+                                                    value={decModal.sec_80tta}
+                                                    onChange={(e) => setDecModal({ ...decModal, sec_80tta: e.target.value })}
+                                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-medium outline-none text-sm focus:border-indigo-400"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="border-t border-slate-100 pt-4">
+                                            <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">House Rent Allowance (HRA) Details</h4>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div>
+                                                    <label className="text-[10px] font-semibold text-slate-500 block mb-1">Annual Rent Paid</label>
+                                                    <input 
+                                                        type="number" 
+                                                        placeholder="120000"
+                                                        value={decModal.annual_rent}
+                                                        onChange={(e) => setDecModal({ ...decModal, annual_rent: e.target.value })}
+                                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-medium outline-none text-sm focus:border-indigo-400"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="text-[10px] font-semibold text-slate-500 block mb-1">Landlord PAN (If Rent &gt; 1L/yr)</label>
+                                                    <input 
+                                                        type="text" 
+                                                        placeholder="ABCDE1234F"
+                                                        value={decModal.landlord_pan}
+                                                        onChange={(e) => setDecModal({ ...decModal, landlord_pan: e.target.value })}
+                                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-medium outline-none text-sm focus:border-indigo-400"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+
+                                <div className="border-t border-slate-100 pt-4">
+                                    <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">Upload Investment Proofs (PDF / Images)</label>
+                                    <input 
+                                        type="file" 
+                                        accept=".pdf,image/*"
+                                        onChange={(e) => setDecModal({ ...decModal, file: e.target.files[0] })}
+                                        className="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer animate-none"
+                                    />
+                                </div>
+
+                                <button 
+                                    onClick={handleCreateDeclaration}
+                                    disabled={loading}
+                                    className="w-full py-2.5 bg-indigo-600 text-white rounded-lg font-semibold text-sm hover:bg-indigo-700 transition-all shadow-sm mt-4 disabled:opacity-50"
+                                >
+                                    {loading ? "Submitting..." : "Submit Investment Declaration"}
                                 </button>
                             </div>
                         </motion.div>
