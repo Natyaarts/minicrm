@@ -2,7 +2,7 @@
   "expo": {
     "name": "Natya 360",
     "slug": "mobile",
-    "version": "1.0.6",
+    "version": "1.0.7",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "natyaerp",
@@ -19,7 +19,7 @@
     },
     "android": {
       "package": "com.natyaarts.mobile",
-      "versionCode": 8,
+      "versionCode": 9,
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.CAMERA",
