@@ -2490,8 +2490,16 @@ export default function ModuleDetailScreen() {
                             {log.employee?.user?.first_name || log.employee?.user?.username || 'Staff'}
                           </Text>
                           <Text style={[styles.tableCellSub, { flex: 1.5 }]}>{log.date || '—'}</Text>
-                          <Text style={[styles.tableCellSub, { flex: 1.5 }]}>{log.clock_in ? log.clock_in.slice(11, 16) : '—'}</Text>
-                          <Text style={[styles.tableCellSub, { flex: 1.5 }]}>{log.clock_out ? log.clock_out.slice(11, 16) : (log.clock_in ? 'Active' : '—')}</Text>
+                          <Text style={[styles.tableCellSub, { flex: 1.5 }]}>
+                            {log.clock_in && log.date
+                              ? new Date(`${log.date}T${log.clock_in}`).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+                              : '—'}
+                          </Text>
+                          <Text style={[styles.tableCellSub, { flex: 1.5 }]}>
+                            {log.clock_out && log.date
+                              ? new Date(`${log.date}T${log.clock_out}`).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+                              : (log.clock_in ? 'Active' : '—')}
+                          </Text>
                           <Text style={[styles.tableCellSub, { flex: 1.5 }]}>{log.clock_in && log.clock_out ? 'Done' : log.clock_in ? 'Live' : '—'}</Text>
                           <Text style={[styles.tableCellBold, { flex: 1.5, color: log.clock_out ? '#38A169' : '#DD6B20' }]}>
                             {log.clock_out ? '✓' : log.clock_in ? 'Active' : '—'}

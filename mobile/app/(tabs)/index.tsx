@@ -289,9 +289,15 @@ export default function AttendanceScreen() {
               <FontAwesome5 name="clock" size={16} color="#3B82F6" />
               <Text style={[styles.statusLabel, { color: isDark ? '#D1D5DB' : '#374151' }]}>Shift Clock In</Text>
               <Text style={[styles.statusValue, { color: isDark ? '#FFFFFF' : '#111827' }]}>
-                {attendance?.clock_in
-                  ? attendance.clock_in.substring(0, 5) // "09:30" from "09:30:00"
-                  : 'Pending'}
+                {attendance?.clock_in && attendance?.date
+                  ? (() => {
+                      const dt = new Date(`${attendance.date}T${attendance.clock_in}`);
+                      return dt.toLocaleString('en-IN', {
+                        day: 'numeric', month: 'short',
+                        hour: '2-digit', minute: '2-digit', hour12: true
+                      });
+                    })()
+                  : 'Not clocked in'}
               </Text>
             </View>
           )}
