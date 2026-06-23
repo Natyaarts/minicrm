@@ -1,8 +1,11 @@
 import client from './client';
 
-export const getAttendanceStatus = async () => {
+export const getAttendanceStatus = async (date) => {
   try {
-    const response = await client.get('/hrms/attendance/?my_only=true');
+    const params = { my_only: 'true' };
+    if (date) params.start_date = date; // only fetch today's record
+    if (date) params.end_date = date;
+    const response = await client.get('/hrms/attendance/', { params });
     // Usually returns a list of attendance records for today
     return response.data;
   } catch (error) {
@@ -10,6 +13,7 @@ export const getAttendanceStatus = async () => {
     return null;
   }
 };
+
 
 export const clockIn = async (latitude, longitude, photo) => {
   try {

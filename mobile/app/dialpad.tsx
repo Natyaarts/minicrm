@@ -160,10 +160,11 @@ const Dialpad = () => {
       }
     }
 
-    setCallStatus('CALLING');
-    
-    // Launch native system dialer to place the actual phone call
-    Linking.openURL(`tel:${phoneNumber}`).catch(err => {
+    // Launch native system dialer — the actual call happens in the system phone app
+    Linking.openURL(`tel:${phoneNumber}`).then(() => {
+      // Show the in-call overlay so user can come back and log the call
+      setCallStatus('CALLING');
+    }).catch(err => {
       Alert.alert('Call Error', 'Could not open native system dialer: ' + err.message);
     });
   };
@@ -281,27 +282,30 @@ const Dialpad = () => {
     return (
       <SafeAreaView style={styles.activeCallContainer}>
         <View style={styles.callHeader}>
-          <Text style={styles.callingText}>{callStatus === 'CALLING' ? 'Calling...' : formatDuration(callDuration)}</Text>
+          <Text style={styles.callingText}>Call in Progress</Text>
           <Text style={styles.activeNumberText}>{formatPhoneNumber(phoneNumber)}</Text>
-          <Text style={styles.callLabel}>Natya CRM Secure Call</Text>
+          <Text style={styles.callLabel}>Via System Phone App</Text>
+          <Text style={{ color: '#94A3B8', fontSize: 13, marginTop: 8, textAlign: 'center', paddingHorizontal: 30 }}>
+            Your call is active in the system phone app. Come back here when done to log the call.
+          </Text>
         </View>
 
         <View style={styles.callActions}>
-          <View style={styles.actionRow}>
-            <TouchableOpacity style={styles.actionButton}>
-              <Ionicons name="mic-off" size={28} color="#fff" />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.actionButton}>
-              <Ionicons name="keypad" size={28} color="#fff" />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.actionButton}>
-              <Ionicons name="volume-high" size={28} color="#fff" />
-            </TouchableOpacity>
-          </View>
-          
+          {/* Reopen system dialer if user accidentally navigated back */}
+          <TouchableOpacity
+            style={[styles.actionButton, { paddingHorizontal: 20, width: 'auto', flexDirection: 'row', gap: 8 }]}
+            onPress={() => Linking.openURL(`tel:${phoneNumber}`)}
+          >
+            <Ionicons name="call" size={20} color="#fff" />
+            <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>Open Phone App</Text>
+          </TouchableOpacity>
+
+          <View style={{ height: 40 }} />
+
           <TouchableOpacity style={styles.endCallButton} onPress={handleEndCall}>
             <Ionicons name="call" size={32} color="#fff" />
           </TouchableOpacity>
+          <Text style={{ color: '#94A3B8', fontSize: 12, marginTop: 12 }}>Tap to end & log call</Text>
         </View>
       </SafeAreaView>
     );

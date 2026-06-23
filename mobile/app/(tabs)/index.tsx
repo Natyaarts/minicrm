@@ -102,11 +102,12 @@ export default function AttendanceScreen() {
   const fetchStatus = async () => {
     setLoading(true);
     try {
-      const data = await getAttendanceStatus();
+      const today = new Date().toISOString().split('T')[0];
+      const data = await getAttendanceStatus(today);
       if (data) {
-        const today = new Date().toISOString().split('T')[0];
         const records = data.results || data || [];
-        const activeRecord = records.find((r: any) => r.clock_in && !r.clock_out);
+        // Only look at TODAY's records — filter by date to avoid stale previous days
+        const activeRecord = records.find((r: any) => r.date === today && r.clock_in && !r.clock_out);
         
         if (activeRecord) {
           setIsClockedIn(true);

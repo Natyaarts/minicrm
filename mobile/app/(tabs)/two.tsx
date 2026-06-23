@@ -3,6 +3,7 @@ import { StyleSheet, FlatList, TextInput, ActivityIndicator, TouchableOpacity, L
 import { FontAwesome5 } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
+import * as WebBrowser from 'expo-web-browser';
 import { getStudents } from '../../src/api/sales';
 import client from '../../src/api/client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -35,9 +36,10 @@ export default function SalesScreen() {
 
   const hasDialerAccess = user?.role === 'SALES' || user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';
 
-  const [activeTab, setActiveTab] = useState<'single' | 'bulk' | 'view'>('view');
+  const [activeTab, setActiveTab] = useState<'single' | 'bulk' | 'view' | 'web'>('view');
   const [students, setStudents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [search, setSearch] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [totalStudents, setTotalStudents] = useState(0);
@@ -45,7 +47,7 @@ export default function SalesScreen() {
   // Pagination & Filtering State for View Applications
   const [filterStatus, setFilterStatus] = useState('All');
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  const itemsPerPage = 50; // show 50 per page for better mobile coverage
 
   // Single Application Form State - Advanced Web Parity
   const [programsList, setProgramsList] = useState<any[]>([
@@ -82,11 +84,14 @@ export default function SalesScreen() {
     if (authLoading || !hasDialerAccess) return;
     if (activeTab === 'view') {
       const delayDebounceFn = setTimeout(() => {
-        fetchData();
+        // Reset list and fetch fresh page 1 on filter/search changes
+        setStudents([]);
+        setCurrentPage(1);
+        fetchData(1, true);
       }, 300);
       return () => clearTimeout(delayDebounceFn);
     }
-  }, [activeTab, search, filterStatus, currentPage, authLoading, hasDialerAccess]);
+  }, [activeTab, search, filterStatus, authLoading, hasDialerAccess]);
 
   useEffect(() => {
     if (authLoading || !hasDialerAccess) return;
@@ -124,9 +129,15 @@ export default function SalesScreen() {
     }
   };
 
-  const fetchData = async () => {
-    setLoading(true);
-    const params: any = { page: currentPage };
+  const fetchData = async (page = currentPage, reset = false) => {
+    if (reset) {
+      setLoading(true);
+    } else if (page > 1) {
+      setLoadingMore(true);
+    } else {
+      setLoading(true);
+    }
+    const params: any = { page, page_size: itemsPerPage };
     if (search) params.search = search;
     if (filterStatus !== 'All') {
       if (['ACTIVE', 'NEW', 'PENDING'].includes(filterStatus)) {
@@ -141,7 +152,7 @@ export default function SalesScreen() {
     let count = data.count || list.length;
     
     // If API returns empty, provide dummy list for demonstration
-    if (list.length === 0 && !search && filterStatus === 'All' && currentPage === 1) {
+    if (list.length === 0 && !search && filterStatus === 'All' && page === 1) {
       list = [
         { id: 1, first_name: 'Aarav', last_name: 'Menon', crm_student_id: 'NAT-2026-001', course_name: 'G 226 BNS', phone: '+91 98765 43210', status: 'ACTIVE', program: 'Natya' },
         { id: 2, first_name: 'Diya', last_name: 'Nair', crm_student_id: 'NAT-2026-002', course_name: 'G 244 BNS', phone: '+91 98765 43211', status: 'ACTIVE', program: 'Wise Import' },
@@ -150,15 +161,31 @@ export default function SalesScreen() {
       ];
       count = 4;
     }
-    setStudents(list);
+
+    // Append new page to existing list (infinite scroll), or reset
+    setStudents(prev => (reset || page === 1) ? list : [...prev, ...list]);
     setTotalStudents(count);
+    setCurrentPage(page);
     setLoading(false);
+    setLoadingMore(false);
   };
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await fetchData();
+    await fetchData(1, true);
     setRefreshing(false);
+  };
+
+  const handleLoadMore = () => {
+    if (!loadingMore && students.length < totalStudents) {
+      fetchData(currentPage + 1, false);
+    }
+  };
+
+  const handleOpenWebPortal = async () => {
+    await WebBrowser.openBrowserAsync('https://natyaarts.org', {
+      presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
+    });
   };
 
   const handleOpenProgramModal = () => {
@@ -403,19 +430,26 @@ export default function SalesScreen() {
         <Text style={styles.title}>SALES & ADMISSIONS</Text>
         
         {/* Segmented Toggle Bar */}
-        <View style={styles.segmentContainer}>
-          <TouchableOpacity style={[styles.segmentButton, activeTab === 'single' && styles.segmentActive]} onPress={() => setActiveTab('single')}>
-            <Text style={[styles.segmentText, activeTab === 'single' && styles.segmentTextActive]}>Single App</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={[styles.segmentButton, activeTab === 'bulk' && styles.segmentActive]} onPress={() => setActiveTab('bulk')}>
-            <Text style={[styles.segmentText, activeTab === 'bulk' && styles.segmentTextActive]}>Bulk Upload</Text>
-          </TouchableOpacity>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+          <View style={[styles.segmentContainer, { width: 'auto' }]}>
+            <TouchableOpacity style={[styles.segmentButton, activeTab === 'single' && styles.segmentActive]} onPress={() => setActiveTab('single')}>
+              <Text style={[styles.segmentText, activeTab === 'single' && styles.segmentTextActive]}>Single App</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity style={[styles.segmentButton, activeTab === 'bulk' && styles.segmentActive]} onPress={() => setActiveTab('bulk')}>
+              <Text style={[styles.segmentText, activeTab === 'bulk' && styles.segmentTextActive]}>Bulk Upload</Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity style={[styles.segmentButton, activeTab === 'view' && styles.segmentActive]} onPress={() => setActiveTab('view')}>
-            <Text style={[styles.segmentText, activeTab === 'view' && styles.segmentTextActive]}>View Apps</Text>
-          </TouchableOpacity>
-        </View>
+            <TouchableOpacity style={[styles.segmentButton, activeTab === 'view' && styles.segmentActive]} onPress={() => setActiveTab('view')}>
+              <Text style={[styles.segmentText, activeTab === 'view' && styles.segmentTextActive]}>View Apps</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={[styles.segmentButton, activeTab === 'web' && styles.segmentActive]} onPress={() => { setActiveTab('web'); handleOpenWebPortal(); }}>
+              <FontAwesome5 name="globe" size={12} color={activeTab === 'web' ? '#3182CE' : '#718096'} style={{ marginRight: 4 }} />
+              <Text style={[styles.segmentText, activeTab === 'web' && styles.segmentTextActive]}>Web Portal</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
 
         {/* Search & Filter Bar (Only visible in View Applications tab) */}
         {activeTab === 'view' && (
@@ -454,6 +488,29 @@ export default function SalesScreen() {
               contentContainerStyle={styles.list}
               refreshing={refreshing}
               onRefresh={handleRefresh}
+              onEndReached={handleLoadMore}
+              onEndReachedThreshold={0.3}
+              ListFooterComponent={
+                loadingMore ? (
+                  <View style={{ padding: 20, alignItems: 'center' }}>
+                    <ActivityIndicator size="small" color="#3182CE" />
+                    <Text style={{ color: '#718096', marginTop: 8, fontSize: 13 }}>Loading more...</Text>
+                  </View>
+                ) : students.length < totalStudents ? (
+                  <TouchableOpacity
+                    onPress={handleLoadMore}
+                    style={{ margin: 20, padding: 14, backgroundColor: '#EBF8FF', borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: '#BEE3F8' }}
+                  >
+                    <Text style={{ color: '#3182CE', fontWeight: '800', fontSize: 14 }}>
+                      Load More ({students.length} of {totalStudents})
+                    </Text>
+                  </TouchableOpacity>
+                ) : (
+                  <View style={{ padding: 16, alignItems: 'center' }}>
+                    <Text style={{ color: '#A0AEC0', fontSize: 13 }}>All {totalStudents} students loaded</Text>
+                  </View>
+                )
+              }
               ListEmptyComponent={
                 <View style={styles.emptyContainer}>
                   <FontAwesome5 name="user-slash" size={40} color="#CBD5E0" />
@@ -461,23 +518,6 @@ export default function SalesScreen() {
                 </View>
               }
             />
-
-            {/* Pagination Controls Bar */}
-            <View style={styles.paginationBar}>
-              <TouchableOpacity style={[styles.pageBtn, currentPage === 1 && styles.pageBtnDisabled]} disabled={currentPage === 1} onPress={() => setCurrentPage(currentPage - 1)}>
-                <FontAwesome5 name="chevron-left" size={12} color={currentPage === 1 ? '#A0AEC0' : '#1A202C'} />
-                <Text style={[styles.pageBtnText, currentPage === 1 && { color: '#A0AEC0' }]}>Prev</Text>
-              </TouchableOpacity>
-
-              <View style={styles.pageInfoBadge}>
-                <Text style={styles.pageInfoText}>Page <Text style={{ fontWeight: '900', color: '#3182CE' }}>{currentPage}</Text> of {totalPages}</Text>
-              </View>
-
-              <TouchableOpacity style={[styles.pageBtn, currentPage === totalPages && styles.pageBtnDisabled]} disabled={currentPage === totalPages} onPress={() => setCurrentPage(currentPage + 1)}>
-                <Text style={[styles.pageBtnText, currentPage === totalPages && { color: '#A0AEC0' }]}>Next</Text>
-                <FontAwesome5 name="chevron-right" size={12} color={currentPage === totalPages ? '#A0AEC0' : '#1A202C'} />
-              </TouchableOpacity>
-            </View>
           </View>
         )
       )}
