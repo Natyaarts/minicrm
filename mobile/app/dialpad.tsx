@@ -21,6 +21,7 @@ const Dialpad = () => {
   const [manualRecordingFile, setManualRecordingFile] = useState<any>(null); // manually picked file
   const [nextFollowupDate, setNextFollowupDate] = useState<Date | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [isProcessingRecording, setIsProcessingRecording] = useState(false);
 
   // Dynamic pipeline stages from web backend
   const [pipelineStages, setPipelineStages] = useState<any[]>([
@@ -176,12 +177,14 @@ const Dialpad = () => {
         if (callStarted) {
           callStarted = false;
           setCallStatus('POST_CALL');
+          setIsProcessingRecording(true);
           // Automatically stop recording when call hangs up
           const filePath = await stopNativeRecording();
           if (filePath) {
             console.log("Call auto-stopped recording. Path:", filePath);
             setRecordedFilePath(filePath);
           }
+          setIsProcessingRecording(false);
         }
       }
     });
@@ -254,9 +257,11 @@ const Dialpad = () => {
     setCallStatus('POST_CALL');
     
     if (Platform.OS === 'android') {
+      setIsProcessingRecording(true);
       const filePath = await stopNativeRecording();
       if (filePath) setRecordedFilePath(filePath);
       console.log("Stopped recording manually:", filePath);
+      setIsProcessingRecording(false);
     }
   };
 
@@ -481,10 +486,18 @@ const Dialpad = () => {
           )}
 
           <TouchableOpacity 
-            style={{ backgroundColor: '#10B981', padding: 16, borderRadius: 8, alignItems: 'center', marginTop: 30 }}
+            style={{ backgroundColor: isProcessingRecording ? '#A0AEC0' : '#10B981', padding: 16, borderRadius: 8, alignItems: 'center', marginTop: 30 }}
             onPress={handlePostCallSubmit}
+            disabled={isProcessingRecording}
           >
-            <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 16 }}>Save & Upload Log</Text>
+            {isProcessingRecording ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <ActivityIndicator color="#FFF" size="small" />
+                <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 16 }}>Scanning for Recording...</Text>
+              </View>
+            ) : (
+              <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 16 }}>Save & Upload Log</Text>
+            )}
           </TouchableOpacity>
 
           <TouchableOpacity 
