@@ -9,6 +9,8 @@ import { compressImage } from '../utils/fileCompressor';
 import KanbanBoard from '../components/KanbanBoard';
 import CRMDashboard from '../components/CRMDashboard';
 import BDEReport from '../components/BDEReport';
+import TeamReports from '../components/TeamReports';
+import CallAnalyticsDashboard from '../components/CallAnalyticsDashboard';
 import CRMTasks from '../components/CRMTasks';
 import CRMCampaigns from '../components/CRMCampaigns';
 
@@ -77,6 +79,8 @@ const SalesModule = () => {
         else if (location.pathname === '/crm/leads') setActiveTab('list');
         else if (location.pathname === '/crm/tasks') setActiveTab('tasks');
         else if (location.pathname === '/crm/campaigns') setActiveTab('campaigns');
+        else if (location.pathname === '/crm/reports') setActiveTab('reports');
+        else if (location.pathname === '/crm/analytics') setActiveTab('analytics');
         else if (location.pathname === '/sales') setActiveTab('dashboard');
     }, [location.pathname]);
 
@@ -867,11 +871,15 @@ const SalesModule = () => {
                          activeTab === 'kanban' || activeTab === 'list' ? 'Sales Pipeline & Leads' :
                          activeTab === 'dashboard' ? 'Sales Dashboard' :
                          activeTab === 'tasks' ? 'Tasks & Follow-ups' :
+                         activeTab === 'reports' ? 'Team Performance Reports' :
+                         activeTab === 'analytics' ? 'Call Analytics' :
                          activeTab === 'campaigns' ? 'Marketing Campaigns' : 'Sales Management'}
                     </h1>
                     <p className="text-xs text-slate-500 max-w-xl mx-auto">
                         {activeTab === 'single' || activeTab === 'bulk' ? 'Join our community of learners and achievers. Please fill out the form below to begin your journey.' :
                          activeTab === 'campaigns' ? 'Manage your marketing sources, track budgets, and analyze lead generation.' :
+                         activeTab === 'reports' ? 'View performance metrics, track call recordings, and review individual sales rep activity.' :
+                         activeTab === 'analytics' ? 'Detailed overview of incoming and outgoing calls, durations, and employee telephonic performance.' :
                          'Manage and track your leads, interactions, and sales processes effectively.'}
                     </p>
                 </motion.div>
@@ -1491,6 +1499,14 @@ const SalesModule = () => {
                         <div className="bg-slate-50 min-h-[500px]">
                             <CRMCampaigns />
                         </div>
+                    ) : activeTab === 'reports' && isAuthenticated ? (
+                        <div className="bg-slate-50 min-h-[500px]">
+                            <TeamReports onBdeClick={setSelectedBdeId} />
+                        </div>
+                    ) : activeTab === 'analytics' && isAuthenticated ? (
+                        <div className="bg-slate-50 min-h-[500px]">
+                            <CallAnalyticsDashboard />
+                        </div>
                     ) : activeTab === 'kanban' && isAuthenticated ? (
                         <div className="p-4 sm:p-6 bg-slate-50 min-h-[500px]">
                             <KanbanBoard 
@@ -2023,8 +2039,11 @@ const SalesModule = () => {
                                                     <p className="text-xs text-slate-600 whitespace-pre-wrap leading-relaxed">{interaction.notes}</p>
                                                     {interaction.audio_recording && (
                                                         <div className="mt-2">
-                                                            <audio controls className="h-8 w-full max-w-xs">
-                                                                <source src={interaction.audio_recording.startsWith('http') ? interaction.audio_recording : `${api.defaults.baseURL.split('/api')[0]}${interaction.audio_recording}`} type="audio/mp4" />
+                                                            <audio 
+                                                                controls 
+                                                                className="h-8 w-full max-w-xs"
+                                                                src={interaction.audio_recording.startsWith('http') ? interaction.audio_recording : `${api.defaults.baseURL.split('/api')[0]}${interaction.audio_recording}`}
+                                                            >
                                                                 Your browser does not support the audio element.
                                                             </audio>
                                                         </div>

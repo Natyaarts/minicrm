@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, TextInput, Platform, Linking, useColorScheme } from 'react-native';
+import { StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, TextInput, Platform, Linking, useColorScheme, Modal } from 'react-native';
 import { Text, View } from '@/components/Themed';
 import { FontAwesome5 } from '@expo/vector-icons';
 import * as Location from 'expo-location';
@@ -7,9 +7,17 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
+import * as WebBrowser from 'expo-web-browser';
 import client from '../src/api/client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { requestDefaultDialerRole, checkIsDefaultDialer } from '../src/utils/CallManager';
+
+const getLocalDateString = () => {
+  const d = new Date();
+  const offset = d.getTimezoneOffset();
+  const localDate = new Date(d.getTime() - (offset * 60 * 1000));
+  return localDate.toISOString().split('T')[0];
+};
 
 export default function ModuleDetailScreen() {
   const router = useRouter();
@@ -19,7 +27,7 @@ export default function ModuleDetailScreen() {
   const [loading, setLoading] = useState(true);
   
   // Mentor Module Specific State
-  const [mentorTab, setMentorTab] = useState<'batches' | 'students' | 'wise'>('batches');
+  const [mentorTab, setMentorTab] = useState<'dashboard' | 'batches' | 'students' | 'wise' | 'web'>('dashboard');
   const [mentorBatches, setMentorBatches] = useState<any[]>([]);
   const [mentorStudents, setMentorStudents] = useState<any[]>([]);
   const [mentorWise, setMentorWise] = useState<any[]>([]);
@@ -28,11 +36,22 @@ export default function ModuleDetailScreen() {
   const [mentorFilterCourse, setMentorFilterCourse] = useState('');
   const [mentorFilterStatus, setMentorFilterStatus] = useState('');
   const [isCreatingBatch, setIsCreatingBatch] = useState(false);
-  const [newBatchData, setNewBatchData] = useState({ name: '', courseId: '', startDate: new Date().toISOString().split('T')[0] });
+  const [newBatchData, setNewBatchData] = useState({ name: '', courseId: '', startDate: getLocalDateString() });
   const [mentorCourses, setMentorCourses] = useState<any[]>([]);
+  const [courseFilterModalVisible, setCourseFilterModalVisible] = useState(false);
+  const [courseSearchQuery, setCourseSearchQuery] = useState('');
+  
+  // Mentor Dashboard specific state
+  const [mentorDashboardStats, setMentorDashboardStats] = useState<any>(null);
+  const [selectedBatch, setSelectedBatch] = useState<any>(null);
+  const [selectedBatchStudents, setSelectedBatchStudents] = useState<any[]>([]);
+  const [mentorBreakMetrics, setMentorBreakMetrics] = useState<any>(null);
+  const [mentorFeeDefaulters, setMentorFeeDefaulters] = useState<any[]>([]);
+  const [mentorCollectedFees, setMentorCollectedFees] = useState<any[]>([]);
+  const [mentorDateFilter, setMentorDateFilter] = useState<'all' | 'this_month' | 'last_month'>('all');
 
   // Academic Hierarchy Specific State
-  const [academicTab, setAcademicTab] = useState<'overview' | 'batches' | 'teachers' | 'students' | 'wise'>('overview');
+  const [academicTab, setAcademicTab] = useState<'overview' | 'batches' | 'teachers' | 'students' | 'wise' | 'web'>('overview');
   const [academicBatches, setAcademicBatches] = useState<any[]>([]);
   const [academicTeachers, setAcademicTeachers] = useState<any[]>([]);
   const [academicStudents, setAcademicStudents] = useState<any[]>([]);
@@ -45,9 +64,114 @@ export default function ModuleDetailScreen() {
   // Coordinator Module Specific State
   const [coordStudents, setCoordStudents] = useState<any[]>([]);
   const [coordSearch, setCoordSearch] = useState('');
+  const [coordDebouncedSearch, setCoordDebouncedSearch] = useState('');
   const [selectedCoordStudent, setSelectedCoordStudent] = useState<any | null>(null);
   const [modalAcademicData, setModalAcademicData] = useState({ batch: '', rollNo: '', notes: '' });
   const [coordBatches, setCoordBatches] = useState<any[]>([]);
+  const [coordTab, setCoordTab] = useState<'list' | 'web'>('list');
+  const [coordPage, setCoordPage] = useState(1);
+  const [coordHasMore, setCoordHasMore] = useState(true);
+  const [coordLoadingMore, setCoordLoadingMore] = useState(false);
+  const [coordPrograms, setCoordPrograms] = useState<any[]>([]);
+  const [coordFilterProgram, setCoordFilterProgram] = useState('');
+
+  // Academic Assign Teacher State
+  const [assignTeacherModalVisible, setAssignTeacherModalVisible] = useState(false);
+  const [selectedBatchForAssign, setSelectedBatchForAssign] = useState<any>(null);
+  const [realTeachers, setRealTeachers] = useState<any[]>([]);
+
+  const fetchCoordinatorStudents = async (page: number, search: string, program: string, append: boolean = false) => {
+    if (page === 1) {
+      setLoading(true);
+    } else {
+      setCoordLoadingMore(true);
+    }
+
+    try {
+      let url = `/students/?lead_status=CONVERTED&page=${page}`;
+      if (search) url += `&search=${encodeURIComponent(search)}`;
+      if (program) url += `&program=${program}`;
+
+      const res = await client.get(url);
+      const data = res.data;
+      const results = data.results || data || [];
+      const hasNext = !!data.next;
+
+      if (append) {
+        setCoordStudents(prev => [...prev, ...results]);
+      } else {
+        setCoordStudents(results);
+      }
+      setCoordHasMore(hasNext);
+      setCoordPage(page);
+
+      const totalCount = data.count ?? (append ? coordStudents.length + results.length : results.length);
+      setModuleData(prev => ({
+        ...prev,
+        stats: [
+          { label: 'Pending Review', value: `${totalCount}` },
+          { label: 'Export Status', value: 'Ready' },
+          { label: 'Status', value: 'Connected' }
+        ]
+      }));
+    } catch (err) {
+      console.log('Failed to fetch coordinator students:', err);
+      if (!append) {
+        setCoordStudents([]);
+        setCoordHasMore(false);
+      }
+    } finally {
+      setLoading(false);
+      setCoordLoadingMore(false);
+    }
+  };
+
+  const handleAssignTeacher = async (batch: any) => {
+    setSelectedBatchForAssign(batch);
+    setLoading(true);
+    try {
+      let res = await client.get('/auth/teachers/');
+      let list = res.data?.results || res.data || [];
+      if (list.length === 0) {
+        res = await client.get('/auth/management/teachers/');
+        list = res.data?.results || res.data || [];
+      }
+      setRealTeachers(list);
+      setAssignTeacherModalVisible(true);
+    } catch (err) {
+      console.log('Failed to fetch teachers:', err);
+      const fallbackList = academicTeachers.length > 0 ? academicTeachers : [
+        { id: 1, first_name: 'Radhika', last_name: 'Menon', username: 'radhika' },
+        { id: 2, first_name: 'Hariharan', last_name: 'Iyer', username: 'hariharan' },
+        { id: 3, first_name: 'Vivek', last_name: 'Chacko', username: 'vivek' },
+        { id: 4, first_name: 'Ananya', last_name: 'Sharma', username: 'ananya' }
+      ];
+      setRealTeachers(fallbackList);
+      setAssignTeacherModalVisible(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const performTeacherAssignment = async (teacherId: number) => {
+    if (!selectedBatchForAssign) return;
+    setLoading(true);
+    setAssignTeacherModalVisible(false);
+    try {
+      await client.patch(`/batches/${selectedBatchForAssign.id}/`, {
+        teacher: teacherId
+      });
+      Alert.alert('Success ✅', 'Teacher assigned successfully!');
+      fetchProductionData();
+    } catch (err: any) {
+      console.log('Assign teacher error:', err);
+      const errMsg = err.response?.data ? JSON.stringify(err.response.data) : 'Failed to update batch teacher.';
+      Alert.alert('Error', errMsg);
+    } finally {
+      setLoading(false);
+      setSelectedBatchForAssign(null);
+    }
+  };
 
   // Teacher Module Specific State
   const [teacherBatches, setTeacherBatches] = useState<any[]>([]);
@@ -64,12 +188,12 @@ export default function ModuleDetailScreen() {
   const [analyticsTab, setAnalyticsTab] = useState<'overview' | 'teachers'>('overview');
 
   // Workforce Hub Specific State
-  const [wfTab, setWfTab] = useState<'employees' | 'departments' | 'designations' | 'form'>('employees');
+  const [wfTab, setWfTab] = useState<'employees' | 'departments' | 'designations' | 'form' | 'web'>('employees');
   const [wfSearch, setWfSearch] = useState('');
   const [wfEmployees, setWfEmployees] = useState<any[]>([]);
 
   // Attendance Hub Specific State
-  const [attTab, setAttTab] = useState<'my' | 'master' | 'settings'>('master');
+  const [attTab, setAttTab] = useState<'my' | 'master' | 'settings' | 'web'>('master');
   const [attSearch, setAttSearch] = useState('');
   const [clockedIn, setClockedIn] = useState(false);
   const [geoStatus, setGeoStatus] = useState('Location Required');
@@ -84,14 +208,14 @@ export default function ModuleDetailScreen() {
   const [isSavingShift, setIsSavingShift] = useState(false);
 
   // Payroll Engine Specific State
-  const [payTab, setPayTab] = useState<'monthly' | 'structures' | 'adjustments' | 'loans'>('monthly');
+  const [payTab, setPayTab] = useState<'monthly' | 'structures' | 'adjustments' | 'loans' | 'web'>('monthly');
   const [paySearch, setPaySearch] = useState('');
 
   // Leave Central Specific State
-  const [leaveTab, setLeaveTab] = useState<'my' | 'calendar' | 'admin' | 'types' | 'policies'>('my');
+  const [leaveTab, setLeaveTab] = useState<'my' | 'calendar' | 'admin' | 'types' | 'policies' | 'web'>('my');
 
   // Task Board Specific State
-  const [taskCol, setTaskCol] = useState<'todo' | 'progress' | 'review' | 'done'>('todo');
+  const [taskCol, setTaskCol] = useState<'todo' | 'progress' | 'review' | 'done' | 'web'>('todo');
   const [tasksList, setTasksList] = useState<any[]>([]);
 
   // Asset Management Specific State
@@ -125,7 +249,7 @@ export default function ModuleDetailScreen() {
     title: '',
     category: '',
     amount: '',
-    date: new Date().toISOString().split('T')[0],
+    date: getLocalDateString(),
     payment_method: 'CASH',
     description: ''
   });
@@ -215,6 +339,19 @@ export default function ModuleDetailScreen() {
     }
   }, [isSales]);
 
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setCoordDebouncedSearch(coordSearch);
+    }, 400);
+    return () => clearTimeout(handler);
+  }, [coordSearch]);
+
+  useEffect(() => {
+    if (isCoordinator) {
+      fetchCoordinatorStudents(1, coordDebouncedSearch, coordFilterProgram, false);
+    }
+  }, [coordDebouncedSearch, coordFilterProgram]);
+
   // Administrative / Other checkers
   const isStudent = (title as string).toLowerCase().includes('student');
   const isStaffDirectory = (title as string).toLowerCase().includes('staff') || (title as string).toLowerCase().includes('directory');
@@ -271,6 +408,41 @@ export default function ModuleDetailScreen() {
     }
   };
 
+  const fetchAllPages = async (url: string) => {
+    try {
+      const firstPage = await client.get(url);
+      const data = firstPage.data;
+      if (!data || !data.count) return { data: data?.results || data || [] };
+      let results = data.results || [];
+      if (data.next) {
+        const pageSize = results.length || 20;
+        const totalPages = Math.ceil(data.count / pageSize);
+        if (totalPages > 1) {
+          const promises = [];
+          for (let i = 2; i <= totalPages; i++) {
+            const sep = url.includes('?') ? '&' : '?';
+            // Catch individual promise failures so one 404 doesn't kill the whole fetch
+            promises.push(client.get(`${url}${sep}page=${i}`).catch(() => ({ data: { results: [] } })));
+          }
+          // Chunk promises to avoid overwhelming the server
+          const chunkSize = 15;
+          for (let i = 0; i < promises.length; i += chunkSize) {
+            const chunk = promises.slice(i, i + chunkSize);
+            const pages = await Promise.all(chunk);
+            pages.forEach(p => {
+              if (p && p.data && p.data.results) {
+                results = [...results, ...p.data.results];
+              }
+            });
+          }
+        }
+      }
+      return { data: results, count: data.count }; // Mock response format to match single request
+    } catch (e) {
+      return { data: [] };
+    }
+  };
+
   const fetchProductionData = async () => {
     setLoading(true);
     const t = (title as string).toLowerCase();
@@ -278,28 +450,41 @@ export default function ModuleDetailScreen() {
     try {
       // 1. MENTOR MODULE
       if (t.includes('mentor')) {
-        const [batchRes, stuRes, courseRes] = await Promise.all([
-          client.get('/batches/').catch(() => ({ data: [] })),
-          client.get('/students/').catch(() => ({ data: [] })),
-          client.get('/courses/').catch(() => ({ data: [] }))
+        const [batchRes, stuRes, courseRes, statsRes, breakRes, defaultersRes, collectedRes] = await Promise.all([
+          fetchAllPages('/batches/'),
+          fetchAllPages('/students/?lead_status=CONVERTED'),
+          client.get('/courses/').catch(() => ({ data: [] })),
+          client.get('/dashboard-stats/').catch(() => ({ data: null })),
+          client.get('/students/break_metrics/').catch(() => ({ data: { on_break_count: 0, rejoined_count: 0, discontinued_count: 0, on_break: [], rejoined: [], discontinued: [] } })),
+          client.get('/students/fee_defaulters/').catch(() => ({ data: [] })),
+          client.get('/students/collected_fees/').catch(() => ({ data: [] }))
         ]);
         const b = batchRes.data?.results || batchRes.data || [];
         const s = stuRes.data?.results || stuRes.data || [];
         const c = courseRes.data?.results || courseRes.data || [];
+        
+        setMentorDashboardStats({
+          ...statsRes.data,
+          batches: statsRes.data?.batches ?? batchRes.data?.count ?? b.length,
+          students: statsRes.data?.students ?? stuRes.data?.count ?? s.length
+        });
+        setMentorBreakMetrics(breakRes.data);
+        setMentorFeeDefaulters(defaultersRes.data);
+        setMentorCollectedFees(collectedRes.data);
 
         const finalBatches = b.length > 0 ? b : [
-          { name: 'G 226 BNS', course: 'G 226 BNS', students_count: 8, primary: 'None', teacher: 'Not Assigned', status: 'ACTIVE' },
-          { name: 'NATYA - CAREER ACADEMY', course: 'NATYA - CAREER ACADEMY', students_count: 0, primary: 'None', teacher: 'Not Assigned', status: 'ACTIVE' },
-          { name: 'G 244 BNS/G 244 BNS AB', course: 'G 244 BNS/G 244 BNS AB', students_count: 13, primary: 'None', teacher: 'Not Assigned', status: 'ACTIVE' },
-          { name: 'MUSIC THEORY (BVOC)', course: 'MUSIC THEORY (BVOC)', students_count: 0, primary: 'None', teacher: 'Not Assigned', status: 'ACTIVE' },
-          { name: 'CAMPUS DIP KUCH 01', course: 'CAMPUS DIP KUCH 01', students_count: 3, primary: 'None', teacher: 'Not Assigned', status: 'ACTIVE' },
-          { name: 'G 245 BNS', course: 'G 245 BNS', students_count: 5, primary: 'None', teacher: 'Not Assigned', status: 'ACTIVE' }
+          { name: 'G 226 BNS', course: 'G 226 BNS', student_count: 8, primary: 'None', teacher: 'Not Assigned', status: 'ACTIVE' },
+          { name: 'NATYA - CAREER ACADEMY', course: 'NATYA - CAREER ACADEMY', student_count: 0, primary: 'None', teacher: 'Not Assigned', status: 'ACTIVE' },
+          { name: 'G 244 BNS/G 244 BNS AB', course: 'G 244 BNS/G 244 BNS AB', student_count: 13, primary: 'None', teacher: 'Not Assigned', status: 'ACTIVE' },
+          { name: 'MUSIC THEORY (BVOC)', course: 'MUSIC THEORY (BVOC)', student_count: 0, primary: 'None', teacher: 'Not Assigned', status: 'ACTIVE' },
+          { name: 'CAMPUS DIP KUCH 01', course: 'CAMPUS DIP KUCH 01', student_count: 3, primary: 'None', teacher: 'Not Assigned', status: 'ACTIVE' },
+          { name: 'G 245 BNS', course: 'G 245 BNS', student_count: 5, primary: 'None', teacher: 'Not Assigned', status: 'ACTIVE' }
         ];
 
         const finalStudents = s.length > 0 ? s : [
-          { first_name: 'Aarav', last_name: 'Menon', crm_student_id: 'NAT-2026-001', course_name: 'G 226 BNS', phone: '+91 98765 43210', status: 'ACTIVE' },
-          { first_name: 'Diya', last_name: 'Nair', crm_student_id: 'NAT-2026-002', course_name: 'G 244 BNS', phone: '+91 98765 43211', status: 'ACTIVE' },
-          { first_name: 'Rohan', last_name: 'Kumar', crm_student_id: 'NAT-2026-003', course_name: 'CAMPUS DIP KUCH 01', phone: '+91 98765 43212', status: 'ACTIVE' }
+          { first_name: 'Aarav', last_name: 'Menon', crm_student_id: 'NAT-2026-001', course_name: 'G 226 BNS', phone: '+91 98765 43210', status: 'ACTIVE', total_fee: '15000', paid_fee: '5000', due_amount: '10000', fee_due_date: '2026-07-01' },
+          { first_name: 'Diya', last_name: 'Nair', crm_student_id: 'NAT-2026-002', course_name: 'G 244 BNS', phone: '+91 98765 43211', status: 'ACTIVE', total_fee: '12000', paid_fee: '12000', due_amount: '0', fee_due_date: null },
+          { first_name: 'Rohan', last_name: 'Kumar', crm_student_id: 'NAT-2026-003', course_name: 'CAMPUS DIP KUCH 01', phone: '+91 98765 43212', status: 'ON_BREAK', total_fee: '10000', paid_fee: '2000', due_amount: '8000', fee_due_date: '2026-06-15' }
         ];
 
         const finalCourses = c.length > 0 ? c : [
@@ -317,7 +502,11 @@ export default function ModuleDetailScreen() {
 
         setModuleData({
           subtitle: 'Manage your batches and track student progress.',
-          stats: [{ label: 'Active Batches', value: `${finalBatches.length}` }, { label: 'Total Students', value: `${finalStudents.length}` }, { label: 'Wise LMS Sync', value: 'Active' }],
+          stats: [
+            { label: 'Active Batches', value: `${statsRes.data?.batches ?? batchRes.data?.count ?? b.length}` },
+            { label: 'Total Students', value: `${statsRes.data?.students ?? stuRes.data?.count ?? s.length}` },
+            { label: 'Wise LMS Sync', value: 'Active' }
+          ],
           items: [], action: '+ Create Batch',
         });
         setLoading(false); return;
@@ -326,9 +515,9 @@ export default function ModuleDetailScreen() {
       // 2. ACADEMIC HIERARCHY MODULE
       if (t.includes('hierarchy')) {
         const [batchRes, empRes, stuRes, statsRes] = await Promise.all([
-          client.get('/batches/').catch(() => ({ data: [] })),
-          client.get('/hrms/employees/').catch(() => ({ data: [] })),
-          client.get('/students/').catch(() => ({ data: [] })),
+          fetchAllPages('/batches/'),
+          fetchAllPages('/auth/management/teachers/'),
+          fetchAllPages('/students/'),
           client.get('/dashboard-stats/').catch(() => ({ data: null }))
         ]);
         const b = batchRes.data?.results || batchRes.data || [];
@@ -337,22 +526,22 @@ export default function ModuleDetailScreen() {
         const dashStats = statsRes.data;
         if (dashStats) setAcademicStats(dashStats);
 
-        const finalBatches = b.length > 5 ? b : [
-          { name: 'G 226 BNS', course: 'G 226 BNS', students_count: 8, mentor: 'Smt. Radhika Menon', teacher: 'Dr. Ananya Sharma', status: 'ACTIVE' },
-          { name: 'NATYA - CAREER ACADEMY', course: 'NATYA - CAREER ACADEMY', students_count: 14, mentor: 'Shri Hariharan Iyer', teacher: 'Prof. Rajesh Nair', status: 'ACTIVE' },
-          { name: 'G 244 BNS/G 244 BNS AB', course: 'G 244 BNS/G 244 BNS AB', students_count: 13, mentor: 'Dr. Vivek Chacko', teacher: 'Guru Kalamandalam Suresh', status: 'ACTIVE' },
-          { name: 'MUSIC THEORY (BVOC)', course: 'MUSIC THEORY (BVOC)', students_count: 22, mentor: 'Smt. Radhika Menon', teacher: 'Dr. Meenakshi Sundaram', status: 'ACTIVE' },
-          { name: 'CAMPUS DIP KUCH 01', course: 'CAMPUS DIP KUCH 01', students_count: 9, mentor: 'Smt. Divya Pillai', teacher: 'Smt. Radhika Menon', status: 'ACTIVE' },
-          { name: 'G 245 BNS', course: 'G 245 BNS', students_count: 5, mentor: 'Shri Varma', teacher: 'Shri Hariharan Iyer', status: 'ACTIVE' },
-          { name: 'DIP BHARATHANATYAM 02', course: 'DIP BHARATHANATYAM 02', students_count: 16, mentor: 'Dr. Vivek Chacko', teacher: 'Dr. Vivek Chacko', status: 'ACTIVE' },
-          { name: 'MOHINIYATTAM ADV', course: 'MOHINIYATTAM ADV', students_count: 11, mentor: 'Smt. Divya Pillai', teacher: 'Smt. Lakshmi Gopal', status: 'ACTIVE' },
-          { name: 'NATTUVANGAM MASTERCLASS', course: 'NATTUVANGAM MASTERCLASS', students_count: 7, mentor: 'Shri Hariharan Iyer', teacher: 'Prof. Sunitha Rao', status: 'ACTIVE' },
-          { name: 'CARNATIC VOCAL 101', course: 'CARNATIC VOCAL 101', students_count: 19, mentor: 'Smt. Radhika Menon', teacher: 'Dr. Anand Krishnan', status: 'ACTIVE' },
-          { name: 'KATHAKALI FOUNDATION', course: 'KATHAKALI FOUNDATION', students_count: 6, mentor: 'Shri Varma', teacher: 'Guru Kalamandalam Suresh', status: 'ACTIVE' },
-          { name: 'FOLK DANCE ENSEMBLE', course: 'FOLK DANCE ENSEMBLE', students_count: 25, mentor: 'Smt. Divya Pillai', teacher: 'Smt. Divya Pillai', status: 'ACTIVE' }
+        const finalBatches = b.length > 0 ? b : [
+          { name: 'G 226 BNS', course: 'G 226 BNS', student_count: 8, mentor: 'Smt. Radhika Menon', teacher: 'Dr. Ananya Sharma', status: 'ACTIVE' },
+          { name: 'NATYA - CAREER ACADEMY', course: 'NATYA - CAREER ACADEMY', student_count: 14, mentor: 'Shri Hariharan Iyer', teacher: 'Prof. Rajesh Nair', status: 'ACTIVE' },
+          { name: 'G 244 BNS/G 244 BNS AB', course: 'G 244 BNS/G 244 BNS AB', student_count: 13, mentor: 'Dr. Vivek Chacko', teacher: 'Guru Kalamandalam Suresh', status: 'ACTIVE' },
+          { name: 'MUSIC THEORY (BVOC)', course: 'MUSIC THEORY (BVOC)', student_count: 22, mentor: 'Smt. Radhika Menon', teacher: 'Dr. Meenakshi Sundaram', status: 'ACTIVE' },
+          { name: 'CAMPUS DIP KUCH 01', course: 'CAMPUS DIP KUCH 01', student_count: 9, mentor: 'Smt. Divya Pillai', teacher: 'Smt. Radhika Menon', status: 'ACTIVE' },
+          { name: 'G 245 BNS', course: 'G 245 BNS', student_count: 5, mentor: 'Shri Varma', teacher: 'Shri Hariharan Iyer', status: 'ACTIVE' },
+          { name: 'DIP BHARATHANATYAM 02', course: 'DIP BHARATHANATYAM 02', student_count: 16, mentor: 'Dr. Vivek Chacko', teacher: 'Dr. Vivek Chacko', status: 'ACTIVE' },
+          { name: 'MOHINIYATTAM ADV', course: 'MOHINIYATTAM ADV', student_count: 11, mentor: 'Smt. Divya Pillai', teacher: 'Smt. Lakshmi Gopal', status: 'ACTIVE' },
+          { name: 'NATTUVANGAM MASTERCLASS', course: 'NATTUVANGAM MASTERCLASS', student_count: 7, mentor: 'Shri Hariharan Iyer', teacher: 'Prof. Sunitha Rao', status: 'ACTIVE' },
+          { name: 'CARNATIC VOCAL 101', course: 'CARNATIC VOCAL 101', student_count: 19, mentor: 'Smt. Radhika Menon', teacher: 'Dr. Anand Krishnan', status: 'ACTIVE' },
+          { name: 'KATHAKALI FOUNDATION', course: 'KATHAKALI FOUNDATION', student_count: 6, mentor: 'Shri Varma', teacher: 'Guru Kalamandalam Suresh', status: 'ACTIVE' },
+          { name: 'FOLK DANCE ENSEMBLE', course: 'FOLK DANCE ENSEMBLE', student_count: 25, mentor: 'Smt. Divya Pillai', teacher: 'Smt. Divya Pillai', status: 'ACTIVE' }
         ];
 
-        const finalTeachers = e.length > 5 ? e : [
+        const finalTeachers = e.length > 0 ? e : [
           { name: 'Dr. Ananya Sharma', designation: 'Senior Academic Dean', department: 'Academics', status: 'ACTIVE', phone: '+91 98765 11111' },
           { name: 'Prof. Rajesh Nair', designation: 'Head of Dance Curriculum', department: 'Academics', status: 'ACTIVE', phone: '+91 98765 22222' },
           { name: 'Guru Kalamandalam Suresh', designation: 'Master Kathakali Faculty', department: 'Dance Curriculum', status: 'ACTIVE', phone: '+91 98765 33333' },
@@ -367,7 +556,7 @@ export default function ModuleDetailScreen() {
           { name: 'Smt. Divya Pillai', designation: 'Academic Registrar & Mentor', department: 'Administration', status: 'ACTIVE', phone: '+91 98765 23232' }
         ];
 
-        const finalStudents = s.length > 5 ? s : [
+        const finalStudents = s.length > 0 ? s : [
           { first_name: 'Aarav', last_name: 'Menon', crm_student_id: 'NAT-2026-001', course_name: 'G 226 BNS', phone: '+91 98765 43210', status: 'ACTIVE' },
           { first_name: 'Diya', last_name: 'Nair', crm_student_id: 'NAT-2026-002', course_name: 'G 244 BNS', phone: '+91 98765 43211', status: 'ACTIVE' },
           { first_name: 'Rohan', last_name: 'Kumar', crm_student_id: 'NAT-2026-003', course_name: 'CAMPUS DIP KUCH 01', phone: '+91 98765 43212', status: 'ACTIVE' },
@@ -400,24 +589,22 @@ export default function ModuleDetailScreen() {
 
       // 3. COORDINATOR MODULE
       if (t.includes('coordinator')) {
-        const [stuRes, batchRes] = await Promise.all([
-          client.get('/students/').catch(() => ({ data: [] })),
-          client.get('/batches/').catch(() => ({ data: [] }))
+        const [batchRes, progRes] = await Promise.all([
+          fetchAllPages('/batches/'),
+          fetchAllPages('/programs/')
         ]);
-        const s = stuRes.data?.results || stuRes.data || [];
         const b = batchRes.data?.results || batchRes.data || [];
+        const p = progRes.data?.results || progRes.data || [];
 
         setCoordBatches(b);
+        setCoordPrograms(p);
+        
+        // Fetch coordinator students
+        fetchCoordinatorStudents(1, coordDebouncedSearch, coordFilterProgram, false);
 
-        const finalCoord = s.length > 0 ? s : [
-          { crm_student_id: 'WISE-9447986012', first_name: 'Elset', last_name: 'Thomas', program: 'Wise Import', initial_details: 'No Initial Data', academic_details: 'Pending...', phone: '+91 9447986012' },
-          { crm_student_id: 'WISE-9825387140', first_name: 'Honey', last_name: 'Thakkar', program: 'Wise Import', initial_details: 'No Initial Data', academic_details: 'Pending...', phone: '+91 9825387140' }
-        ];
-
-        setCoordStudents(finalCoord);
         setModuleData({
           subtitle: 'Review applications from Sales and enter Post-Admission Academic details.',
-          stats: [{ label: 'Pending Review', value: `${finalCoord.length}` }, { label: 'Wise Imports', value: `${finalCoord.length}` }, { label: 'Export Status', value: 'Ready' }],
+          stats: [{ label: 'Pending Review', value: `${coordStudents.length}` }, { label: 'Wise Imports', value: `${coordStudents.length}` }, { label: 'Export Status', value: 'Ready' }],
           items: [], action: 'Export Coordinator Records',
         });
         setLoading(false); return;
@@ -425,13 +612,13 @@ export default function ModuleDetailScreen() {
 
       // 4. TEACHER MODULE
       if (t.includes('teacher')) {
-        const res = await client.get('/batches/').catch(() => ({ data: [] }));
+        const res = await fetchAllPages('/batches/');
         const b = res.data?.results || res.data || [];
 
         const finalBatches = b.length > 0 ? b : [
-          { name: 'G 226 BNS', course: 'G 226 BNS', students_count: 8, progress: 0, status: 'ACTIVE' },
-          { name: 'NATYA - CAREER ACADEMY', course: 'NATYA - CAREER ACADEMY', students_count: 0, progress: 0, status: 'ACTIVE' },
-          { name: 'G 244 BNS/G 244 BNS AB', course: 'G 244 BNS/G 244 BNS AB', students_count: 13, progress: 0, status: 'ACTIVE' }
+          { name: 'G 226 BNS', course: 'G 226 BNS', student_count: 8, progress: 0, status: 'ACTIVE' },
+          { name: 'NATYA - CAREER ACADEMY', course: 'NATYA - CAREER ACADEMY', student_count: 0, progress: 0, status: 'ACTIVE' },
+          { name: 'G 244 BNS/G 244 BNS AB', course: 'G 244 BNS/G 244 BNS AB', student_count: 13, progress: 0, status: 'ACTIVE' }
         ];
 
         setTeacherBatches(finalBatches);
@@ -504,7 +691,7 @@ export default function ModuleDetailScreen() {
         const logs = logsRes.data?.results || logsRes.data || [];
         const shifts = shiftRes.data?.results || shiftRes.data || [];
         setAttLogs(logs);
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = getLocalDateString();
         const todayLog = logs.find((l: any) => l.date === todayStr && l.clock_in && !l.clock_out);
         if (todayLog) setClockedIn(true);
 
@@ -798,6 +985,46 @@ export default function ModuleDetailScreen() {
     }
   };
 
+  const fetchMentorMetrics = async () => {
+    if (!isMentor) return;
+    try {
+      let startDateStr = '';
+      let endDateStr = getLocalDateString();
+      if (mentorDateFilter === 'this_month') {
+        const d = new Date();
+        d.setDate(1);
+        startDateStr = d.toISOString().split('T')[0];
+      } else if (mentorDateFilter === 'last_month') {
+        const d = new Date();
+        d.setDate(0);
+        endDateStr = d.toISOString().split('T')[0];
+        d.setDate(1);
+        startDateStr = d.toISOString().split('T')[0];
+      }
+
+      let params = '';
+      if (startDateStr) params += `?start_date=${startDateStr}&end_date=${endDateStr}`;
+
+      const [breakRes, defaultersRes, collectedRes] = await Promise.all([
+        client.get(`/students/break_metrics/${params}`).catch(() => ({ data: { on_break_count: 0, rejoined_count: 0, discontinued_count: 0, on_break: [], rejoined: [], discontinued: [] } })),
+        client.get(`/students/fee_defaulters/${params}`).catch(() => ({ data: [] })),
+        client.get(`/students/collected_fees/${params}`).catch(() => ({ data: [] }))
+      ]);
+
+      setMentorBreakMetrics(breakRes.data);
+      setMentorFeeDefaulters(defaultersRes.data);
+      setMentorCollectedFees(collectedRes.data);
+    } catch (err) {
+      console.error("Failed to fetch mentor metrics", err);
+    }
+  };
+
+  useEffect(() => {
+    if (isMentor && !loading) {
+      fetchMentorMetrics();
+    }
+  }, [mentorDateFilter]);
+
   const startExam = async (exam: any) => {
     setLoading(true);
     try {
@@ -860,7 +1087,7 @@ export default function ModuleDetailScreen() {
         title: '',
         category: '',
         amount: '',
-        date: new Date().toISOString().split('T')[0],
+        date: getLocalDateString(),
         payment_method: 'CASH',
         description: ''
       });
@@ -940,13 +1167,13 @@ export default function ModuleDetailScreen() {
       const res = await client.post('/batches/', payload);
       Alert.alert('Success', `Batch "${res.data?.name || newBatchData.name}" created successfully!`);
       setIsCreatingBatch(false);
-      setNewBatchData({ name: '', courseId: '', startDate: new Date().toISOString().split('T')[0] });
+      setNewBatchData({ name: '', courseId: '', startDate: getLocalDateString() });
     } catch (e: any) {
       console.log('Create batch error:', e);
       const errMsg = e.response?.data ? JSON.stringify(e.response.data) : 'Failed to save batch record.';
       Alert.alert('Local Simulation Success', `Batch "${newBatchData.name}" saved in local cache!\n\nStatus: ${errMsg}`);
       setIsCreatingBatch(false);
-      setNewBatchData({ name: '', courseId: '', startDate: new Date().toISOString().split('T')[0] });
+      setNewBatchData({ name: '', courseId: '', startDate: getLocalDateString() });
     } finally {
       fetchProductionData();
     }
@@ -1034,16 +1261,7 @@ export default function ModuleDetailScreen() {
     ]);
   };
 
-  const handleAssignTeacher = (batchName: string) => {
-    Alert.prompt('Assign Teacher', `Enter teacher name or ID to assign to ${batchName}:`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Assign', onPress: (name: any) => {
-        if (name) {
-          Alert.alert('Success', `Teacher "${name}" assigned to batch ${batchName} successfully!`);
-        }
-      }}
-    ]);
-  };
+
 
   // HRMS Action Handlers
   const handleAddEmployee = () => {
@@ -1055,7 +1273,7 @@ export default function ModuleDetailScreen() {
         const last = rest.join(' ') || 'User';
         const generatedPassword = `Natya@${Math.floor(1000 + Math.random() * 9000)}`;
         const generatedEmpId = `EMP-${Math.floor(10000 + Math.random() * 90000)}`;
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = getLocalDateString();
         try {
           await client.post('/hrms/employees/', {
             username: name.toLowerCase().replace(/\s+/g, '') + Math.floor(Math.random()*100),
@@ -1314,17 +1532,32 @@ export default function ModuleDetailScreen() {
         {/* 1. MENTOR MODULE SPECIFIC VIEW */}
         {isMentor && (
           <View style={styles.mentorContainer}>
-            <View style={styles.segmentContainer}>
-              <TouchableOpacity style={[styles.segmentButton, mentorTab === 'batches' && styles.segmentActive]} onPress={() => setMentorTab('batches')}>
-                <Text style={[styles.segmentText, mentorTab === 'batches' && styles.segmentTextActive]}>Batches</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.segmentButton, mentorTab === 'students' && styles.segmentActive]} onPress={() => setMentorTab('students')}>
-                <Text style={[styles.segmentText, mentorTab === 'students' && styles.segmentTextActive]}>Full Student List</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.segmentButton, mentorTab === 'wise' && styles.segmentActive]} onPress={() => setMentorTab('wise')}>
-                <Text style={[styles.segmentText, mentorTab === 'wise' && styles.segmentTextActive]}>Wise LMS Batches</Text>
-              </TouchableOpacity>
-            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20, flexGrow: 0 }}>
+              <View style={[styles.segmentContainer, { marginBottom: 0, paddingHorizontal: 4 }]}>
+                <TouchableOpacity style={[styles.segmentButton, mentorTab === 'dashboard' && styles.segmentActive, { paddingHorizontal: 20 }]} onPress={() => setMentorTab('dashboard')}>
+                  <Text style={[styles.segmentText, mentorTab === 'dashboard' && styles.segmentTextActive]}>Dashboard</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.segmentButton, mentorTab === 'batches' && styles.segmentActive, { paddingHorizontal: 20 }]} onPress={() => setMentorTab('batches')}>
+                  <Text style={[styles.segmentText, mentorTab === 'batches' && styles.segmentTextActive]}>Batches</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.segmentButton, mentorTab === 'students' && styles.segmentActive, { paddingHorizontal: 20 }]} onPress={() => setMentorTab('students')}>
+                  <Text style={[styles.segmentText, mentorTab === 'students' && styles.segmentTextActive]}>Students</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.segmentButton, mentorTab === 'wise' && styles.segmentActive, { paddingHorizontal: 20 }]} onPress={() => setMentorTab('wise')}>
+                  <Text style={[styles.segmentText, mentorTab === 'wise' && styles.segmentTextActive]}>Wise LMS</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.segmentButton, mentorTab === 'web' && styles.segmentActive, { paddingHorizontal: 20 }]} 
+                  onPress={async () => {
+                    setMentorTab('web');
+                    await WebBrowser.openBrowserAsync('https://natyaarts.org/mentor');
+                    setMentorTab('batches');
+                  }}
+                >
+                  <Text style={[styles.segmentText, mentorTab === 'web' && styles.segmentTextActive]}>🌐 Web</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
 
             <View style={styles.mentorActionBar}>
               <TouchableOpacity style={styles.createBatchButton} onPress={handleMentorCreateBatch}>
@@ -1401,6 +1634,112 @@ export default function ModuleDetailScreen() {
               <TextInput style={styles.input} placeholder={`Search ${mentorTab}...`} placeholderTextColor="#A0AEC0" value={mentorSearch} onChangeText={setMentorSearch} />
             </View>
 
+            {mentorTab === 'dashboard' && (
+              <View>
+                {/* Date Filter Row */}
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12, flexGrow: 0 }} contentContainerStyle={{ gap: 8, paddingHorizontal: 2 }}>
+                  {[
+                    { key: 'all', label: 'All Time' },
+                    { key: 'this_month', label: 'This Month' },
+                    { key: 'last_month', label: 'Last Month' }
+                  ].map(filter => (
+                    <TouchableOpacity 
+                      key={filter.key}
+                      onPress={() => setMentorDateFilter(filter.key as any)}
+                      style={{
+                        paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
+                        backgroundColor: mentorDateFilter === filter.key ? '#3182CE' : (isDark ? '#2D3748' : '#EDF2F7'),
+                        borderWidth: 1, borderColor: mentorDateFilter === filter.key ? '#3182CE' : (isDark ? '#4A5568' : '#E2E8F0')
+                      }}
+                    >
+                      <Text style={{ fontSize: 13, fontWeight: 'bold', color: mentorDateFilter === filter.key ? '#FFF' : (isDark ? '#E2E8F0' : '#4A5568') }}>
+                        {filter.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+
+                <View style={styles.batchGrid}>
+                  {/* Total Batches */}
+                  <View style={styles.dashboardCard}>
+                    <Text style={[styles.statLabel, { fontSize: 11, marginBottom: 4 }]}>Total Batches</Text>
+                    <Text style={[styles.statValue, { color: isDark ? '#E2E8F0' : '#2D3748', fontSize: 24, marginTop: 4 }]}>
+                      {mentorDashboardStats?.batches ?? mentorBatches.length}
+                    </Text>
+                    <View style={[styles.iconContainer, { position: 'absolute', right: 12, top: 12, backgroundColor: 'rgba(99, 102, 241, 0.1)', height: 32, width: 32, marginBottom: 0 }]}>
+                      <FontAwesome5 name="book-open" size={14} color="#6366F1" />
+                    </View>
+                  </View>
+
+                  {/* Total Students */}
+                  <View style={styles.dashboardCard}>
+                    <Text style={[styles.statLabel, { fontSize: 11, marginBottom: 4 }]}>Total Students</Text>
+                    <Text style={[styles.statValue, { color: isDark ? '#E2E8F0' : '#2D3748', fontSize: 24, marginTop: 4 }]}>
+                      {mentorDashboardStats?.students ?? mentorStudents.length}
+                    </Text>
+                    <View style={[styles.iconContainer, { position: 'absolute', right: 12, top: 12, backgroundColor: 'rgba(59, 130, 246, 0.1)', height: 32, width: 32, marginBottom: 0 }]}>
+                      <FontAwesome5 name="users" size={14} color="#3B82F6" />
+                    </View>
+                  </View>
+
+                  {/* Students On Break */}
+                  <View style={styles.dashboardCard}>
+                    <Text style={[styles.statLabel, { fontSize: 11, marginBottom: 4 }]}>On Break</Text>
+                    <Text style={[styles.statValue, { color: isDark ? '#E2E8F0' : '#2D3748', fontSize: 24, marginTop: 4 }]}>
+                      {mentorBreakMetrics?.on_break_count ?? 0}
+                    </Text>
+                    <View style={[styles.iconContainer, { position: 'absolute', right: 12, top: 12, backgroundColor: 'rgba(245, 158, 11, 0.1)', height: 32, width: 32, marginBottom: 0 }]}>
+                      <FontAwesome5 name="user-clock" size={14} color="#F59E0B" />
+                    </View>
+                  </View>
+
+                  {/* Rejoined Students */}
+                  <View style={styles.dashboardCard}>
+                    <Text style={[styles.statLabel, { fontSize: 11, marginBottom: 4 }]}>Rejoined</Text>
+                    <Text style={[styles.statValue, { color: isDark ? '#E2E8F0' : '#2D3748', fontSize: 24, marginTop: 4 }]}>
+                      {mentorBreakMetrics?.rejoined_count ?? 0}
+                    </Text>
+                    <View style={[styles.iconContainer, { position: 'absolute', right: 12, top: 12, backgroundColor: 'rgba(16, 185, 129, 0.1)', height: 32, width: 32, marginBottom: 0 }]}>
+                      <FontAwesome5 name="calendar-check" size={14} color="#10B981" />
+                    </View>
+                  </View>
+
+                  {/* Discontinued Students */}
+                  <View style={styles.dashboardCardFull}>
+                    <Text style={[styles.statLabel, { fontSize: 12, marginBottom: 4 }]}>Discontinued Students</Text>
+                    <Text style={[styles.statValue, { color: isDark ? '#E2E8F0' : '#2D3748', fontSize: 24, marginTop: 4 }]}>
+                      {mentorBreakMetrics?.discontinued_count ?? 0}
+                    </Text>
+                    <View style={[styles.iconContainer, { position: 'absolute', right: 16, top: 16, backgroundColor: 'rgba(239, 68, 68, 0.1)', height: 36, width: 36, marginBottom: 0 }]}>
+                      <FontAwesome5 name="user-minus" size={16} color="#EF4444" />
+                    </View>
+                  </View>
+
+                  {/* Due Fees */}
+                  <View style={styles.dashboardCardFull}>
+                    <Text style={[styles.statLabel, { fontSize: 12, marginBottom: 4 }]}>Due Fees</Text>
+                    <Text style={[styles.statValue, { color: isDark ? '#E2E8F0' : '#2D3748', fontSize: 28, marginTop: 4 }]}>
+                      ₹{mentorFeeDefaulters.reduce((acc, curr) => acc + (parseFloat(curr.due_amount) || 0), 0).toLocaleString('en-IN')}
+                    </Text>
+                    <View style={[styles.iconContainer, { position: 'absolute', right: 16, top: 16, backgroundColor: 'rgba(139, 92, 246, 0.1)', height: 36, width: 36, marginBottom: 0 }]}>
+                      <FontAwesome5 name="rupee-sign" size={16} color="#8B5CF6" />
+                    </View>
+                  </View>
+
+                  {/* Collected Fees */}
+                  <View style={styles.dashboardCardFull}>
+                    <Text style={[styles.statLabel, { fontSize: 12, marginBottom: 4 }]}>Collected Fees</Text>
+                    <Text style={[styles.statValue, { color: isDark ? '#E2E8F0' : '#2D3748', fontSize: 28, marginTop: 4 }]}>
+                      ₹{mentorCollectedFees.reduce((acc, curr) => acc + (parseFloat(curr.amount) || 0), 0).toLocaleString('en-IN')}
+                    </Text>
+                    <View style={[styles.iconContainer, { position: 'absolute', right: 16, top: 16, backgroundColor: 'rgba(16, 185, 129, 0.1)', height: 36, width: 36, marginBottom: 0 }]}>
+                      <FontAwesome5 name="rupee-sign" size={16} color="#10B981" />
+                    </View>
+                  </View>
+                </View>
+              </View>
+            )}
+
             {mentorTab === 'batches' && (
               <View style={styles.batchGrid}>
                 {mentorBatches
@@ -1410,7 +1749,14 @@ export default function ModuleDetailScreen() {
                     return bName.toLowerCase().includes(mentorSearch.toLowerCase()) || cName.toLowerCase().includes(mentorSearch.toLowerCase());
                   })
                   .map((b, idx) => (
-                    <View key={idx} style={styles.batchCard}>
+                    <TouchableOpacity 
+                      key={idx} 
+                      style={styles.batchCard}
+                      onPress={() => {
+                        setSelectedBatch(b);
+                        setMentorTab('batchDetails');
+                      }}
+                    >
                       <View style={styles.batchCardHeader}>
                         <Text style={styles.batchName} numberOfLines={1}>{b.name || b.batch_name}</Text>
                         <View style={styles.batchBadge}>
@@ -1419,12 +1765,99 @@ export default function ModuleDetailScreen() {
                       </View>
                       <View style={styles.batchCardBody}>
                         <Text style={styles.batchDetailText}>• Course: <Text style={styles.batchDetailBold}>{b.course?.name || b.course}</Text></Text>
-                        <Text style={styles.batchDetailText}>• Students: <Text style={styles.batchDetailBold}>{b.students_count || b.students?.length || 0}</Text></Text>
+                        <Text style={styles.batchDetailText}>• Students: <Text style={styles.batchDetailBold}>{b.student_count || b.students?.length || 0}</Text></Text>
                         <Text style={styles.batchDetailText}>• Primary: <Text style={styles.batchDetailBold}>{b.primary || 'None'}</Text></Text>
-                        <Text style={styles.batchDetailText}>• Teacher: <Text style={styles.batchTeacherText}>{b.teacher || 'Not Assigned'}</Text></Text>
+                        <Text style={styles.batchDetailText}>• Teacher: <Text style={styles.batchTeacherText}>
+                          {b.teacher_details 
+                            ? `${b.teacher_details.first_name || ''} ${b.teacher_details.last_name || ''}`.trim() || b.teacher_details.username
+                            : (typeof b.teacher === 'string' ? b.teacher : 'Not Assigned')}
+                        </Text></Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+              </View>
+            )}
+
+            {mentorTab === 'batchDetails' && selectedBatch && (
+              <View style={{ backgroundColor: 'transparent' }}>
+                <TouchableOpacity onPress={() => setMentorTab('batches')} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+                  <FontAwesome5 name="arrow-left" size={16} color={isDark ? '#E2E8F0' : '#1A202C'} />
+                  <Text style={{ marginLeft: 8, fontSize: 16, fontWeight: 'bold', color: isDark ? '#E2E8F0' : '#1A202C' }}>Back to Batches</Text>
+                </TouchableOpacity>
+
+                <View style={[styles.heroCard, { backgroundColor: isDark ? '#2D3748' : '#FFFFFF', borderWidth: 1, borderColor: isDark ? '#4A5568' : '#E2E8F0' }]}>
+                  <Text style={{ fontSize: 22, fontWeight: '900', color: isDark ? '#FFFFFF' : '#1A202C', marginBottom: 4 }}>{selectedBatch.name || selectedBatch.batch_name}</Text>
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: isDark ? '#A0AEC0' : '#718096', marginBottom: 16 }}>{selectedBatch.course?.name || selectedBatch.course}</Text>
+                  
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
+                    <View style={{ width: '48%', marginBottom: 16 }}>
+                      <Text style={{ fontSize: 11, fontWeight: 'bold', color: isDark ? '#A0AEC0' : '#A0AEC0', textTransform: 'uppercase' }}>Start Date</Text>
+                      <Text style={{ fontSize: 16, fontWeight: '800', color: isDark ? '#E2E8F0' : '#2D3748', marginTop: 4 }}>{selectedBatch.start_date || 'N/A'}</Text>
+                    </View>
+                    <View style={{ width: '48%', marginBottom: 16 }}>
+                      <Text style={{ fontSize: 11, fontWeight: 'bold', color: isDark ? '#A0AEC0' : '#A0AEC0', textTransform: 'uppercase' }}>Total Students</Text>
+                      <Text style={{ fontSize: 16, fontWeight: '800', color: isDark ? '#E2E8F0' : '#2D3748', marginTop: 4 }}>{selectedBatch.student_count || selectedBatch.students?.length || 0}</Text>
+                    </View>
+                    <View style={{ width: '100%' }}>
+                      <Text style={{ fontSize: 11, fontWeight: 'bold', color: isDark ? '#A0AEC0' : '#A0AEC0', textTransform: 'uppercase' }}>Assigned Teacher</Text>
+                      <Text style={{ fontSize: 16, fontWeight: '800', color: '#3182CE', marginTop: 4 }}>
+                        {selectedBatch.teacher_details 
+                          ? `${selectedBatch.teacher_details.first_name || ''} ${selectedBatch.teacher_details.last_name || ''}`.trim() || selectedBatch.teacher_details.username
+                          : (typeof selectedBatch.teacher === 'string' ? selectedBatch.teacher : 'Not Assigned')}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+
+                <Text style={styles.sectionTitleAcc}>STUDENTS IN THIS BATCH</Text>
+                {mentorStudents
+                  .filter(s => {
+                    if (selectedBatch.id) {
+                      return s.batch === selectedBatch.id || s.batch_id === selectedBatch.id;
+                    }
+                    return s.batch_name === selectedBatch.name || s.course_name === (selectedBatch.course?.name || selectedBatch.course);
+                  })
+                  .map((s, idx) => (
+                    <View key={idx} style={[styles.itemCard, { flexDirection: 'column', alignItems: 'stretch', gap: 8, backgroundColor: isDark ? '#1A202C' : '#FFFFFF', borderColor: isDark ? '#2D3748' : '#E2E8F0' }]}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <View style={styles.itemInfo}>
+                          <Text style={[styles.itemName, { color: isDark ? '#E2E8F0' : '#1A202C' }]}>{s.first_name} {s.last_name}</Text>
+                          <Text style={[styles.itemDesc, { color: isDark ? '#A0AEC0' : '#718096' }]}>ID: {s.crm_student_id || s.username} | {s.course_name || 'General'}</Text>
+                        </View>
+                        <View style={[styles.badge, { backgroundColor: s.status === 'ON_BREAK' ? '#FEEBC8' : (s.status === 'DISCONTINUED' ? '#FED7D7' : '#C6F6D5') }]}>
+                          <Text style={[styles.badgeText, { color: s.status === 'ON_BREAK' ? '#C05621' : (s.status === 'DISCONTINUED' ? '#9B2C2C' : '#22543D') }]}>{s.status || s.academic_status || 'ACTIVE'}</Text>
+                        </View>
+                      </View>
+
+                      {/* Fee Data */}
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 4, paddingVertical: 8, borderTopWidth: 1, borderTopColor: isDark ? '#4A5568' : '#E2E8F0', borderBottomWidth: 1, borderBottomColor: isDark ? '#4A5568' : '#E2E8F0' }}>
+                        <View>
+                          <Text style={{ fontSize: 11, color: isDark ? '#A0AEC0' : '#718096' }}>Total Fee</Text>
+                          <Text style={{ fontSize: 13, fontWeight: 'bold', color: isDark ? '#E2E8F0' : '#2D3748' }}>₹{s.total_fee || '0'}</Text>
+                        </View>
+                        <View>
+                          <Text style={{ fontSize: 11, color: isDark ? '#A0AEC0' : '#718096' }}>Paid Fee</Text>
+                          <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#38A169' }}>₹{s.paid_fee || '0'}</Text>
+                        </View>
+                        <View>
+                          <Text style={{ fontSize: 11, color: isDark ? '#A0AEC0' : '#718096' }}>Due Amount</Text>
+                          <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#E53E3E' }}>₹{s.due_amount || '0'}</Text>
+                        </View>
+                        <View>
+                          <Text style={{ fontSize: 11, color: isDark ? '#A0AEC0' : '#718096' }}>Due Date</Text>
+                          <Text style={{ fontSize: 13, fontWeight: 'bold', color: isDark ? '#E2E8F0' : '#2D3748' }}>{s.fee_due_date || 'N/A'}</Text>
+                        </View>
                       </View>
                     </View>
                   ))}
+                  {mentorStudents.filter(s => {
+                    if (selectedBatch.id) {
+                      return s.batch === selectedBatch.id || s.batch_id === selectedBatch.id;
+                    }
+                    return s.batch_name === selectedBatch.name || s.course_name === (selectedBatch.course?.name || selectedBatch.course);
+                  }).length === 0 && (
+                    <Text style={{ color: isDark ? '#A0AEC0' : '#718096', textAlign: 'center', marginTop: 20 }}>No students found matching this batch.</Text>
+                  )}
               </View>
             )}
 
@@ -1449,30 +1882,20 @@ export default function ModuleDetailScreen() {
                   ))}
                 </ScrollView>
 
-                {/* Course Filters Row */}
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12, flexGrow: 0 }} contentContainerStyle={{ gap: 8, paddingHorizontal: 2 }}>
-                  <TouchableOpacity 
-                    onPress={() => setMentorFilterCourse('')}
-                    style={{
-                      paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16,
-                      backgroundColor: mentorFilterCourse === '' ? '#805AD5' : (isDark ? '#2D3748' : '#E2E8F0')
-                    }}
-                  >
-                    <Text style={{ fontSize: 12, fontWeight: 'bold', color: mentorFilterCourse === '' ? '#FFF' : (isDark ? '#A0AEC0' : '#4A5568') }}>All Courses</Text>
-                  </TouchableOpacity>
-                  {mentorCourses.map((c: any) => (
-                    <TouchableOpacity 
-                      key={c.id}
-                      onPress={() => setMentorFilterCourse(c.id.toString())}
-                      style={{
-                        paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16,
-                        backgroundColor: mentorFilterCourse === c.id.toString() ? '#805AD5' : (isDark ? '#2D3748' : '#E2E8F0')
-                      }}
-                    >
-                      <Text style={{ fontSize: 12, fontWeight: 'bold', color: mentorFilterCourse === c.id.toString() ? '#FFF' : (isDark ? '#A0AEC0' : '#4A5568') }}>{c.name}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
+                {/* Course Filter Searchable Button */}
+                <TouchableOpacity 
+                  onPress={() => { setCourseSearchQuery(''); setCourseFilterModalVisible(true); }}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                    paddingHorizontal: 16, paddingVertical: 12, borderRadius: 8, marginBottom: 12,
+                    backgroundColor: isDark ? '#2D3748' : '#EDF2F7', borderWidth: 1, borderColor: isDark ? '#4A5568' : '#CBD5E0'
+                  }}
+                >
+                  <Text style={{ fontSize: 14, fontWeight: 'bold', color: mentorFilterCourse === '' ? (isDark ? '#A0AEC0' : '#4A5568') : '#805AD5' }}>
+                    {mentorFilterCourse === '' ? 'Filter by Course: All Courses' : `Course: ${mentorCourses.find(c => c.id.toString() === mentorFilterCourse)?.name || 'Selected'}`}
+                  </Text>
+                  <FontAwesome5 name="chevron-down" size={12} color={isDark ? "#A0AEC0" : "#4A5568"} />
+                </TouchableOpacity>
 
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10, alignItems: 'center', backgroundColor: 'transparent' }}>
                   <TouchableOpacity onPress={handleExportCSV} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? '#2D3748' : '#EDF2F7', borderWidth: 1, borderColor: isDark ? '#4A5568' : '#CBD5E0', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, gap: 8 }}>
@@ -1486,18 +1909,76 @@ export default function ModuleDetailScreen() {
                 </View>
 
                 {mentorStudents
-                  .filter(s => s.first_name?.toLowerCase().includes(mentorSearch.toLowerCase()) || s.last_name?.toLowerCase().includes(mentorSearch.toLowerCase()))
+                  .filter(s => {
+                    const searchStr = mentorSearch.toLowerCase();
+                    const searchMatch = !searchStr || s.first_name?.toLowerCase().includes(searchStr) || s.last_name?.toLowerCase().includes(searchStr) || s.crm_student_id?.toLowerCase().includes(searchStr) || s.username?.toLowerCase().includes(searchStr);
+                    const statusMatch = mentorFilterStatus === '' || s.status === mentorFilterStatus || s.academic_status === mentorFilterStatus;
+                    let courseMatch = true;
+                    if (mentorFilterCourse !== '') {
+                      const selectedCourse = mentorCourses.find(c => c.id.toString() === mentorFilterCourse);
+                      courseMatch = (s.course_id?.toString() === mentorFilterCourse) || (s.course?.toString() === mentorFilterCourse) || (selectedCourse && s.course_name === selectedCourse.name);
+                    }
+                    return searchMatch && statusMatch && courseMatch;
+                  })
                   .map((s, idx) => (
-                    <View key={idx} style={styles.itemCard}>
-                      <View style={styles.itemInfo}>
-                        <Text style={styles.itemName}>{s.first_name} {s.last_name}</Text>
-                        <Text style={styles.itemDesc}>ID: {s.crm_student_id || s.username} | Course: {s.course_name || 'General'}</Text>
+                    <View key={idx} style={[styles.itemCard, { flexDirection: 'column', alignItems: 'stretch', gap: 8, backgroundColor: isDark ? '#1A202C' : '#FFFFFF', borderColor: isDark ? '#2D3748' : '#E2E8F0' }]}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <View style={styles.itemInfo}>
+                          <Text style={[styles.itemName, { color: isDark ? '#E2E8F0' : '#1A202C' }]}>{s.first_name} {s.last_name}</Text>
+                          <Text style={[styles.itemDesc, { color: isDark ? '#A0AEC0' : '#718096' }]}>ID: {s.crm_student_id || s.username} | {s.course_name || 'General'}</Text>
+                        </View>
+                        <View style={[styles.badge, { backgroundColor: s.status === 'ON_BREAK' ? '#FEEBC8' : (s.status === 'DISCONTINUED' ? '#FED7D7' : '#C6F6D5') }]}>
+                          <Text style={[styles.badgeText, { color: s.status === 'ON_BREAK' ? '#C05621' : (s.status === 'DISCONTINUED' ? '#9B2C2C' : '#22543D') }]}>{s.status || s.academic_status || 'ACTIVE'}</Text>
+                        </View>
                       </View>
-                      <View style={[styles.badge, { backgroundColor: '#C6F6D5' }]}>
-                        <Text style={[styles.badgeText, { color: '#22543D' }]}>{s.status || s.academic_status || 'ACTIVE'}</Text>
+
+                      {/* Fee Data */}
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 4, paddingVertical: 8, borderTopWidth: 1, borderTopColor: isDark ? '#4A5568' : '#E2E8F0', borderBottomWidth: 1, borderBottomColor: isDark ? '#4A5568' : '#E2E8F0' }}>
+                        <View>
+                          <Text style={{ fontSize: 11, color: isDark ? '#A0AEC0' : '#718096' }}>Total Fee</Text>
+                          <Text style={{ fontSize: 13, fontWeight: 'bold', color: isDark ? '#E2E8F0' : '#2D3748' }}>₹{s.total_fee || '0'}</Text>
+                        </View>
+                        <View>
+                          <Text style={{ fontSize: 11, color: isDark ? '#A0AEC0' : '#718096' }}>Paid Fee</Text>
+                          <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#38A169' }}>₹{s.paid_fee || '0'}</Text>
+                        </View>
+                        <View>
+                          <Text style={{ fontSize: 11, color: isDark ? '#A0AEC0' : '#718096' }}>Due Amount</Text>
+                          <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#E53E3E' }}>₹{s.due_amount || '0'}</Text>
+                        </View>
+                        <View>
+                          <Text style={{ fontSize: 11, color: isDark ? '#A0AEC0' : '#718096' }}>Due Date</Text>
+                          <Text style={{ fontSize: 13, fontWeight: 'bold', color: isDark ? '#E2E8F0' : '#2D3748' }}>{s.fee_due_date || 'N/A'}</Text>
+                        </View>
+                      </View>
+
+                      {/* Action Buttons */}
+                      <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
+                        <TouchableOpacity style={{ backgroundColor: '#ED8936', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          <FontAwesome5 name="pause-circle" size={12} color="#fff" />
+                          <Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold' }}>Take Break</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={{ backgroundColor: '#E53E3E', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          <FontAwesome5 name="times-circle" size={12} color="#fff" />
+                          <Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold' }}>Discontinue</Text>
+                        </TouchableOpacity>
                       </View>
                     </View>
                   ))}
+                  
+                  {mentorStudents.filter(s => {
+                    const searchStr = mentorSearch.toLowerCase();
+                    const searchMatch = !searchStr || s.first_name?.toLowerCase().includes(searchStr) || s.last_name?.toLowerCase().includes(searchStr) || s.crm_student_id?.toLowerCase().includes(searchStr) || s.username?.toLowerCase().includes(searchStr);
+                    const statusMatch = mentorFilterStatus === '' || s.status === mentorFilterStatus || s.academic_status === mentorFilterStatus;
+                    let courseMatch = true;
+                    if (mentorFilterCourse !== '') {
+                      const selectedCourse = mentorCourses.find(c => c.id.toString() === mentorFilterCourse);
+                      courseMatch = (s.course_id?.toString() === mentorFilterCourse) || (s.course?.toString() === mentorFilterCourse) || (selectedCourse && s.course_name === selectedCourse.name);
+                    }
+                    return searchMatch && statusMatch && courseMatch;
+                  }).length === 0 && (
+                    <Text style={{ color: isDark ? '#A0AEC0' : '#718096', textAlign: 'center', marginTop: 20 }}>No students found matching your filters.</Text>
+                  )}
               </View>
             )}
 
@@ -1519,7 +2000,7 @@ export default function ModuleDetailScreen() {
                       </View>
                       <View style={styles.batchCardBody}>
                         <Text style={styles.batchDetailText}>• Course: <Text style={styles.batchDetailBold}>{w.course?.name || w.course}</Text></Text>
-                        <Text style={styles.batchDetailText}>• Students: <Text style={styles.batchDetailBold}>{w.students_count || w.students?.length || 0}</Text></Text>
+                        <Text style={styles.batchDetailText}>• Students: <Text style={styles.batchDetailBold}>{w.student_count || w.students?.length || 0}</Text></Text>
                         <Text style={styles.batchDetailText}>• LMS ID: <Text style={styles.batchDetailBold}>{w.lms_id || 'WISE-GRP-2026'}</Text></Text>
                         <Text style={styles.batchDetailText}>• Teacher: <Text style={styles.batchTeacherText}>{w.teacher || 'Not Assigned'}</Text></Text>
                         <TouchableOpacity
@@ -1548,23 +2029,35 @@ export default function ModuleDetailScreen() {
         {/* 2. ACADEMIC HIERARCHY SPECIFIC VIEW */}
         {isAcademic && (
           <View style={styles.mentorContainer}>
-            <View style={styles.segmentContainer}>
-              <TouchableOpacity style={[styles.segmentButton5, academicTab === 'overview' && styles.segmentActive]} onPress={() => { setAcademicTab('overview'); setAcademicPage(1); setAcademicFilter('All'); }}>
-                <Text style={[styles.segmentText5, academicTab === 'overview' && styles.segmentTextActive]}>Overview</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.segmentButton5, academicTab === 'batches' && styles.segmentActive]} onPress={() => { setAcademicTab('batches'); setAcademicPage(1); setAcademicFilter('All'); }}>
-                <Text style={[styles.segmentText5, academicTab === 'batches' && styles.segmentTextActive]}>Batches</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.segmentButton5, academicTab === 'teachers' && styles.segmentActive]} onPress={() => { setAcademicTab('teachers'); setAcademicPage(1); setAcademicFilter('All'); }}>
-                <Text style={[styles.segmentText5, academicTab === 'teachers' && styles.segmentTextActive]}>Teachers</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.segmentButton5, academicTab === 'students' && styles.segmentActive]} onPress={() => { setAcademicTab('students'); setAcademicPage(1); setAcademicFilter('All'); }}>
-                <Text style={[styles.segmentText5, academicTab === 'students' && styles.segmentTextActive]}>Students</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.segmentButton5, academicTab === 'wise' && styles.segmentActive]} onPress={() => { setAcademicTab('wise'); setAcademicPage(1); setAcademicFilter('All'); }}>
-                <Text style={[styles.segmentText5, academicTab === 'wise' && styles.segmentTextActive]}>Wise LMS</Text>
-              </TouchableOpacity>
-            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20, flexGrow: 0 }}>
+              <View style={[styles.segmentContainer, { marginBottom: 0, paddingHorizontal: 4 }]}>
+                <TouchableOpacity style={[styles.segmentButton, academicTab === 'overview' && styles.segmentActive, { paddingHorizontal: 20 }]} onPress={() => { setAcademicTab('overview'); setAcademicPage(1); setAcademicFilter('All'); }}>
+                  <Text style={[styles.segmentText, academicTab === 'overview' && styles.segmentTextActive]}>Overview</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.segmentButton, academicTab === 'batches' && styles.segmentActive, { paddingHorizontal: 20 }]} onPress={() => { setAcademicTab('batches'); setAcademicPage(1); setAcademicFilter('All'); }}>
+                  <Text style={[styles.segmentText, academicTab === 'batches' && styles.segmentTextActive]}>Batches</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.segmentButton, academicTab === 'teachers' && styles.segmentActive, { paddingHorizontal: 20 }]} onPress={() => { setAcademicTab('teachers'); setAcademicPage(1); setAcademicFilter('All'); }}>
+                  <Text style={[styles.segmentText, academicTab === 'teachers' && styles.segmentTextActive]}>Teachers</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.segmentButton, academicTab === 'students' && styles.segmentActive, { paddingHorizontal: 20 }]} onPress={() => { setAcademicTab('students'); setAcademicPage(1); setAcademicFilter('All'); }}>
+                  <Text style={[styles.segmentText, academicTab === 'students' && styles.segmentTextActive]}>Students</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.segmentButton, academicTab === 'wise' && styles.segmentActive, { paddingHorizontal: 20 }]} onPress={() => { setAcademicTab('wise'); setAcademicPage(1); setAcademicFilter('All'); }}>
+                  <Text style={[styles.segmentText, academicTab === 'wise' && styles.segmentTextActive]}>Wise</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.segmentButton, academicTab === 'web' && styles.segmentActive, { paddingHorizontal: 20 }]} 
+                  onPress={async () => {
+                    setAcademicTab('web');
+                    await WebBrowser.openBrowserAsync('https://natyaarts.org/academic');
+                    setAcademicTab('overview');
+                  }}
+                >
+                  <Text style={[styles.segmentText, academicTab === 'web' && styles.segmentTextActive]}>🌐 Web</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
 
             {academicTab !== 'overview' && (
               <View style={{ backgroundColor: 'transparent' }}>
@@ -1619,9 +2112,13 @@ export default function ModuleDetailScreen() {
                       </View>
                       <View style={styles.batchCardBody}>
                         <Text style={styles.batchDetailText}>• Course: <Text style={styles.batchDetailBold}>{b.course?.name || b.course}</Text></Text>
-                        <Text style={styles.batchDetailText}>• Students: <Text style={styles.batchDetailBold}>{b.students_count || b.students?.length || 0}</Text></Text>
+                        <Text style={styles.batchDetailText}>• Students: <Text style={styles.batchDetailBold}>{b.student_count || b.students?.length || 0}</Text></Text>
                         <Text style={styles.batchDetailText}>• Mentor: <Text style={styles.batchDetailBold}>{b.mentor || 'Assigned'}</Text></Text>
-                        <Text style={styles.batchDetailText}>• Teacher: <Text style={styles.batchTeacherText}>{b.teacher || 'Not Assigned'}</Text></Text>
+                        <Text style={styles.batchDetailText}>• Teacher: <Text style={styles.batchTeacherText}>
+                          {b.teacher_details 
+                            ? `${b.teacher_details.first_name || ''} ${b.teacher_details.last_name || ''}`.trim() || b.teacher_details.username
+                            : (typeof b.teacher === 'string' ? b.teacher : 'Not Assigned')}
+                        </Text></Text>
                       </View>
                     </View>
                   ))}
@@ -1637,12 +2134,10 @@ export default function ModuleDetailScreen() {
                 const matchesFilter = academicFilter === 'All' || b.status === academicFilter || cName.includes(academicFilter) || bName.includes(academicFilter) || String(b.department || '').includes(academicFilter);
                 return matchesSearch && matchesFilter;
               });
-              const totalPages = Math.ceil(filtered.length / academicItemsPerPage) || 1;
-              const paginated = filtered.slice((academicPage - 1) * academicItemsPerPage, academicPage * academicItemsPerPage);
               return (
                 <View style={{ backgroundColor: 'transparent' }}>
                   <View style={styles.batchGrid}>
-                    {paginated.map((b, idx) => (
+                    {filtered.map((b, idx) => (
                       <View key={idx} style={styles.batchCard}>
                         <View style={styles.batchCardHeader}>
                           <Text style={styles.batchName} numberOfLines={1}>{b.name || b.batch_name}</Text>
@@ -1652,26 +2147,18 @@ export default function ModuleDetailScreen() {
                         </View>
                         <View style={styles.batchCardBody}>
                           <Text style={styles.batchDetailText}>• Course: <Text style={styles.batchDetailBold}>{b.course?.name || b.course}</Text></Text>
-                          <Text style={styles.batchDetailText}>• Students: <Text style={styles.batchDetailBold}>{b.students_count || b.students?.length || 0}</Text></Text>
-                          <Text style={styles.batchDetailText}>• Teacher: <Text style={styles.batchTeacherText}>{b.teacher || 'Not Assigned'}</Text></Text>
-                          <TouchableOpacity onPress={() => handleAssignTeacher(b.name || b.batch_name || 'Batch')} style={{ marginTop: 8, alignSelf: 'flex-start', paddingVertical: 4, paddingHorizontal: 8, backgroundColor: '#EBF8FF', borderRadius: 4 }}>
+                          <Text style={styles.batchDetailText}>• Students: <Text style={styles.batchDetailBold}>{b.student_count || b.students?.length || 0}</Text></Text>
+                          <Text style={styles.batchDetailText}>• Teacher: <Text style={styles.batchTeacherText}>
+                            {b.teacher_details 
+                              ? `${b.teacher_details.first_name || ''} ${b.teacher_details.last_name || ''}`.trim() || b.teacher_details.username
+                              : (typeof b.teacher === 'string' ? b.teacher : 'Not Assigned')}
+                          </Text></Text>
+                          <TouchableOpacity onPress={() => handleAssignTeacher(b)} style={{ marginTop: 8, alignSelf: 'flex-start', paddingVertical: 4, paddingHorizontal: 8, backgroundColor: '#EBF8FF', borderRadius: 4 }}>
                             <Text style={{ fontSize: 11, color: '#3182CE', fontWeight: 'bold' }}>+ Assign Teacher</Text>
                           </TouchableOpacity>
                         </View>
                       </View>
                     ))}
-                  </View>
-                  {/* Pagination Bar */}
-                  <View style={styles.paginationBar}>
-                    <TouchableOpacity style={[styles.pageBtn, academicPage === 1 && styles.pageBtnDisabled]} disabled={academicPage === 1} onPress={() => setAcademicPage(academicPage - 1)}>
-                      <FontAwesome5 name="chevron-left" size={12} color={academicPage === 1 ? '#A0AEC0' : '#1A202C'} />
-                      <Text style={[styles.pageBtnText, academicPage === 1 && { color: '#A0AEC0' }]}>Prev</Text>
-                    </TouchableOpacity>
-                    <View style={styles.pageInfoBadge}><Text style={styles.pageInfoText}>Page <Text style={{ fontWeight: '900', color: '#3182CE' }}>{academicPage}</Text> of {totalPages}</Text></View>
-                    <TouchableOpacity style={[styles.pageBtn, academicPage === totalPages && styles.pageBtnDisabled]} disabled={academicPage === totalPages} onPress={() => setAcademicPage(academicPage + 1)}>
-                      <Text style={[styles.pageBtnText, academicPage === totalPages && { color: '#A0AEC0' }]}>Next</Text>
-                      <FontAwesome5 name="chevron-right" size={12} color={academicPage === totalPages ? '#A0AEC0' : '#1A202C'} />
-                    </TouchableOpacity>
                   </View>
                 </View>
               );
@@ -1683,34 +2170,23 @@ export default function ModuleDetailScreen() {
                 const matchesFilter = academicFilter === 'All' || t.status === academicFilter || t.department?.includes(academicFilter) || t.designation?.includes(academicFilter);
                 return matchesSearch && matchesFilter;
               });
-              const totalPages = Math.ceil(filtered.length / academicItemsPerPage) || 1;
-              const paginated = filtered.slice((academicPage - 1) * academicItemsPerPage, academicPage * academicItemsPerPage);
               return (
                 <View style={{ backgroundColor: 'transparent' }}>
                   <View style={styles.studentListContainer}>
-                    {paginated.map((t, idx) => (
-                      <View key={idx} style={styles.itemCard}>
-                        <View style={styles.itemInfo}>
-                          <Text style={styles.itemName}>{t.name}</Text>
-                          <Text style={styles.itemDesc}>{t.designation} • {t.department}</Text>
+                    {filtered.map((t, idx) => {
+                      const tName = t.name || t.full_name || `${t.first_name || ''} ${t.last_name || ''}`.trim() || t.display_username || t.username || 'Unknown Employee';
+                      return (
+                        <View key={idx} style={styles.itemCard}>
+                          <View style={styles.itemInfo}>
+                            <Text style={styles.itemName}>{tName}</Text>
+                            <Text style={styles.itemDesc}>{t.role || t.designation || 'Faculty'} • {t.email || t.department || 'Academics'}</Text>
+                          </View>
+                          <View style={[styles.badge, { backgroundColor: '#EBF8FF' }]}>
+                            <Text style={[styles.badgeText, { color: '#3182CE' }]}>{t.status || (t.is_active ? 'ACTIVE' : 'INACTIVE')}</Text>
+                          </View>
                         </View>
-                        <View style={[styles.badge, { backgroundColor: '#EBF8FF' }]}>
-                          <Text style={[styles.badgeText, { color: '#3182CE' }]}>{t.status || 'ACTIVE'}</Text>
-                        </View>
-                      </View>
-                    ))}
-                  </View>
-                  {/* Pagination Bar */}
-                  <View style={styles.paginationBar}>
-                    <TouchableOpacity style={[styles.pageBtn, academicPage === 1 && styles.pageBtnDisabled]} disabled={academicPage === 1} onPress={() => setAcademicPage(academicPage - 1)}>
-                      <FontAwesome5 name="chevron-left" size={12} color={academicPage === 1 ? '#A0AEC0' : '#1A202C'} />
-                      <Text style={[styles.pageBtnText, academicPage === 1 && { color: '#A0AEC0' }]}>Prev</Text>
-                    </TouchableOpacity>
-                    <View style={styles.pageInfoBadge}><Text style={styles.pageInfoText}>Page <Text style={{ fontWeight: '900', color: '#3182CE' }}>{academicPage}</Text> of {totalPages}</Text></View>
-                    <TouchableOpacity style={[styles.pageBtn, academicPage === totalPages && styles.pageBtnDisabled]} disabled={academicPage === totalPages} onPress={() => setAcademicPage(academicPage + 1)}>
-                      <Text style={[styles.pageBtnText, academicPage === totalPages && { color: '#A0AEC0' }]}>Next</Text>
-                      <FontAwesome5 name="chevron-right" size={12} color={academicPage === totalPages ? '#A0AEC0' : '#1A202C'} />
-                    </TouchableOpacity>
+                      );
+                    })}
                   </View>
                 </View>
               );
@@ -1722,12 +2198,10 @@ export default function ModuleDetailScreen() {
                 const matchesFilter = academicFilter === 'All' || s.status === academicFilter || s.course_name?.includes(academicFilter);
                 return matchesSearch && matchesFilter;
               });
-              const totalPages = Math.ceil(filtered.length / academicItemsPerPage) || 1;
-              const paginated = filtered.slice((academicPage - 1) * academicItemsPerPage, academicPage * academicItemsPerPage);
               return (
                 <View style={{ backgroundColor: 'transparent' }}>
                   <View style={styles.studentListContainer}>
-                    {paginated.map((s, idx) => (
+                    {filtered.map((s, idx) => (
                       <View key={idx} style={styles.itemCard}>
                         <View style={styles.itemInfo}>
                           <Text style={styles.itemName}>{s.first_name} {s.last_name}</Text>
@@ -1738,18 +2212,6 @@ export default function ModuleDetailScreen() {
                         </View>
                       </View>
                     ))}
-                  </View>
-                  {/* Pagination Bar */}
-                  <View style={styles.paginationBar}>
-                    <TouchableOpacity style={[styles.pageBtn, academicPage === 1 && styles.pageBtnDisabled]} disabled={academicPage === 1} onPress={() => setAcademicPage(academicPage - 1)}>
-                      <FontAwesome5 name="chevron-left" size={12} color={academicPage === 1 ? '#A0AEC0' : '#1A202C'} />
-                      <Text style={[styles.pageBtnText, academicPage === 1 && { color: '#A0AEC0' }]}>Prev</Text>
-                    </TouchableOpacity>
-                    <View style={styles.pageInfoBadge}><Text style={styles.pageInfoText}>Page <Text style={{ fontWeight: '900', color: '#3182CE' }}>{academicPage}</Text> of {totalPages}</Text></View>
-                    <TouchableOpacity style={[styles.pageBtn, academicPage === totalPages && styles.pageBtnDisabled]} disabled={academicPage === totalPages} onPress={() => setAcademicPage(academicPage + 1)}>
-                      <Text style={[styles.pageBtnText, academicPage === totalPages && { color: '#A0AEC0' }]}>Next</Text>
-                      <FontAwesome5 name="chevron-right" size={12} color={academicPage === totalPages ? '#A0AEC0' : '#1A202C'} />
-                    </TouchableOpacity>
                   </View>
                 </View>
               );
@@ -1763,38 +2225,26 @@ export default function ModuleDetailScreen() {
                 const matchesFilter = academicFilter === 'All' || w.status === academicFilter || cName.includes(academicFilter);
                 return matchesSearch && matchesFilter;
               });
-              const totalPages = Math.ceil(filtered.length / academicItemsPerPage) || 1;
-              const paginated = filtered.slice((academicPage - 1) * academicItemsPerPage, academicPage * academicItemsPerPage);
               return (
                 <View style={{ backgroundColor: 'transparent' }}>
                   <View style={styles.batchGrid}>
-                    {paginated.map((w, idx) => (
-                      <View key={idx} style={[styles.batchCard, { borderColor: '#BEE3F8', borderWidth: 2 }]}>
+                    {filtered.map((w, idx) => (
+                      <View key={idx} style={styles.batchCard}>
                         <View style={styles.batchCardHeader}>
                           <Text style={styles.batchName} numberOfLines={1}>{w.name || w.batch_name}</Text>
                           <View style={[styles.batchBadge, { backgroundColor: '#EBF8FF' }]}>
-                            <Text style={[styles.batchBadgeText, { color: '#3182CE' }]}>{w.status || 'WISE SYNCED'}</Text>
+                            <Text style={[styles.batchBadgeText, { color: '#3182CE' }]}>{w.status || 'SYNCED'}</Text>
                           </View>
                         </View>
                         <View style={styles.batchCardBody}>
-                          <Text style={styles.batchDetailText}>• Course: <Text style={styles.batchDetailBold}>{w.course?.name || w.course}</Text></Text>
-                          <Text style={styles.batchDetailText}>• Students: <Text style={styles.batchDetailBold}>{w.students_count || w.students?.length || 0}</Text></Text>
-                          <Text style={styles.batchDetailText}>• LMS ID: <Text style={styles.batchDetailBold}>{w.lms_id || 'WISE-GRP-2026'}</Text></Text>
+                          <Text style={styles.batchDetailText}>• LMS Course: <Text style={styles.batchDetailBold}>{w.course?.name || w.course || 'Auto-mapped'}</Text></Text>
+                          <Text style={styles.batchDetailText}>• Members: <Text style={styles.batchDetailBold}>{w.student_count || w.students?.length || 0} Students, 1 Teacher</Text></Text>
+                          <TouchableOpacity style={{ marginTop: 8, alignSelf: 'flex-start', paddingVertical: 4, paddingHorizontal: 8, backgroundColor: '#EDF2F7', borderRadius: 4 }}>
+                            <Text style={{ fontSize: 11, color: '#4A5568', fontWeight: 'bold' }}>View on Wise</Text>
+                          </TouchableOpacity>
                         </View>
                       </View>
                     ))}
-                  </View>
-                  {/* Pagination Bar */}
-                  <View style={styles.paginationBar}>
-                    <TouchableOpacity style={[styles.pageBtn, academicPage === 1 && styles.pageBtnDisabled]} disabled={academicPage === 1} onPress={() => setAcademicPage(academicPage - 1)}>
-                      <FontAwesome5 name="chevron-left" size={12} color={academicPage === 1 ? '#A0AEC0' : '#1A202C'} />
-                      <Text style={[styles.pageBtnText, academicPage === 1 && { color: '#A0AEC0' }]}>Prev</Text>
-                    </TouchableOpacity>
-                    <View style={styles.pageInfoBadge}><Text style={styles.pageInfoText}>Page <Text style={{ fontWeight: '900', color: '#3182CE' }}>{academicPage}</Text> of {totalPages}</Text></View>
-                    <TouchableOpacity style={[styles.pageBtn, academicPage === totalPages && styles.pageBtnDisabled]} disabled={academicPage === totalPages} onPress={() => setAcademicPage(academicPage + 1)}>
-                      <Text style={[styles.pageBtnText, academicPage === totalPages && { color: '#A0AEC0' }]}>Next</Text>
-                      <FontAwesome5 name="chevron-right" size={12} color={academicPage === totalPages ? '#A0AEC0' : '#1A202C'} />
-                    </TouchableOpacity>
                   </View>
                 </View>
               );
@@ -1805,88 +2255,153 @@ export default function ModuleDetailScreen() {
         {/* 3. COORDINATOR MODULE SPECIFIC VIEW */}
         {isCoordinator && (
           <View style={styles.mentorContainer}>
-            <View style={styles.coordHeaderBar}>
-              <View style={[styles.searchBar, { flex: 1, marginBottom: 0, marginRight: 12 }]}>
-                <FontAwesome5 name="search" size={16} color="#A0AEC0" />
-                <TextInput style={styles.input} placeholder="Search students..." placeholderTextColor="#A0AEC0" value={coordSearch} onChangeText={setCoordSearch} />
-              </View>
-              <TouchableOpacity style={styles.exportCoordButton} onPress={() => Alert.alert('Exporting', 'Coordinator records exported to CSV/Excel successfully!')}>
-                <FontAwesome5 name="file-export" size={14} color="#FFFFFF" />
-                <Text style={styles.exportCoordText}>Export</Text>
+            {/* Segment Controller */}
+            <View style={styles.segmentContainer}>
+              <TouchableOpacity 
+                style={[styles.segmentButton, coordTab === 'list' && styles.segmentActive]} 
+                onPress={() => setCoordTab('list')}
+              >
+                <Text style={[styles.segmentText, coordTab === 'list' && styles.segmentTextActive]}>Student List</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.segmentButton, coordTab === 'web' && styles.segmentActive]} 
+                onPress={async () => {
+                  setCoordTab('web');
+                  await WebBrowser.openBrowserAsync('https://natyaarts.org/coordinator');
+                  setCoordTab('list');
+                }}
+              >
+                <Text style={[styles.segmentText, coordTab === 'web' && styles.segmentTextActive]}>🌐 Web Portal</Text>
               </TouchableOpacity>
             </View>
 
-            {selectedCoordStudent && (
-              <View style={styles.coordEditCard}>
-                <View style={styles.coordEditHeader}>
-                  <Text style={styles.coordEditTitle}>POST-ADMISSION ACADEMIC ENTRY</Text>
-                  <TouchableOpacity onPress={() => setSelectedCoordStudent(null)}>
-                    <FontAwesome5 name="times" size={16} color="#A0AEC0" />
+            {coordTab === 'list' ? (
+              <>
+                <View style={styles.coordHeaderBar}>
+                  <View style={[styles.searchBar, { flex: 1, marginBottom: 0, marginRight: 12 }]}>
+                    <FontAwesome5 name="search" size={16} color="#A0AEC0" />
+                    <TextInput style={styles.input} placeholder="Search students..." placeholderTextColor="#A0AEC0" value={coordSearch} onChangeText={setCoordSearch} />
+                  </View>
+                  <TouchableOpacity style={styles.exportCoordButton} onPress={() => Alert.alert('Exporting', 'Coordinator records exported to CSV/Excel successfully!')}>
+                    <FontAwesome5 name="file-export" size={14} color="#FFFFFF" />
+                    <Text style={styles.exportCoordText}>Export</Text>
                   </TouchableOpacity>
                 </View>
-                <Text style={styles.coordEditSubtitle}>Student: <Text style={{ color: '#1A202C', fontWeight: '800' }}>{selectedCoordStudent.first_name} {selectedCoordStudent.last_name}</Text> ({selectedCoordStudent.crm_student_id})</Text>
 
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Batch Allocation *</Text>
-                  <TextInput style={styles.formInput} value={modalAcademicData.batch} onChangeText={(text) => setModalAcademicData({...modalAcademicData, batch: text})} placeholder="e.g. G 226 BNS" placeholderTextColor="#A0AEC0" />
+                {/* Program Filter Pills */}
+                <View style={{ marginBottom: 16 }}>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 10 }}>
+                    <TouchableOpacity 
+                      style={[styles.brandPill, coordFilterProgram === '' && styles.brandPillActive]} 
+                      onPress={() => setCoordFilterProgram('')}
+                    >
+                      <Text style={[styles.brandPillText, coordFilterProgram === '' && styles.brandPillTextActive]}>All Programs</Text>
+                    </TouchableOpacity>
+                    {coordPrograms.map((prog: any) => (
+                      <TouchableOpacity 
+                        key={prog.id} 
+                        style={[styles.brandPill, String(coordFilterProgram) === String(prog.id) && styles.brandPillActive]} 
+                        onPress={() => setCoordFilterProgram(String(prog.id))}
+                      >
+                        <Text style={[styles.brandPillText, String(coordFilterProgram) === String(prog.id) && styles.brandPillTextActive]}>{prog.name}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
                 </View>
 
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Academic Roll Number *</Text>
-                  <TextInput style={styles.formInput} value={modalAcademicData.rollNo} onChangeText={(text) => setModalAcademicData({...modalAcademicData, rollNo: text})} placeholder="e.g. NAT-2026-101" placeholderTextColor="#A0AEC0" />
+                {selectedCoordStudent && (
+                  <View style={styles.coordEditCard}>
+                    <View style={styles.coordEditHeader}>
+                      <Text style={styles.coordEditTitle}>POST-ADMISSION ACADEMIC ENTRY</Text>
+                      <TouchableOpacity onPress={() => setSelectedCoordStudent(null)}>
+                        <FontAwesome5 name="times" size={16} color="#A0AEC0" />
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={styles.coordEditSubtitle}>Student: <Text style={{ color: '#1A202C', fontWeight: '800' }}>{selectedCoordStudent.first_name} {selectedCoordStudent.last_name}</Text> ({selectedCoordStudent.crm_student_id})</Text>
+
+                    <View style={styles.inputGroup}>
+                      <Text style={styles.label}>Batch Allocation *</Text>
+                      <TextInput style={styles.formInput} value={modalAcademicData.batch} onChangeText={(text) => setModalAcademicData({...modalAcademicData, batch: text})} placeholder="e.g. G 226 BNS" placeholderTextColor="#A0AEC0" />
+                    </View>
+
+                    <View style={styles.inputGroup}>
+                      <Text style={styles.label}>Academic Roll Number *</Text>
+                      <TextInput style={styles.formInput} value={modalAcademicData.rollNo} onChangeText={(text) => setModalAcademicData({...modalAcademicData, rollNo: text})} placeholder="e.g. NAT-2026-101" placeholderTextColor="#A0AEC0" />
+                    </View>
+
+                    <View style={styles.inputGroup}>
+                      <Text style={styles.label}>Coordinator Remarks</Text>
+                      <TextInput style={styles.formInput} value={modalAcademicData.notes} onChangeText={(text) => setModalAcademicData({...modalAcademicData, notes: text})} placeholder="Enter academic evaluation notes" placeholderTextColor="#A0AEC0" />
+                    </View>
+
+                    <TouchableOpacity style={styles.coordSaveButton} onPress={handleCoordSaveData}>
+                      <FontAwesome5 name="check-circle" size={14} color="#FFFFFF" />
+                      <Text style={styles.coordSaveText}>Save Academic Details</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                <View style={styles.coordList}>
+                  {coordStudents.map((s, idx) => (
+                    <View key={idx} style={styles.coordCard}>
+                      <View style={styles.coordCardHeader}>
+                        <View style={styles.coordIdBadge}>
+                          <Text style={styles.coordIdText}>{s.crm_student_id}</Text>
+                        </View>
+                        <Text style={styles.coordPhoneText}>{s.phone || s.mobile}</Text>
+                      </View>
+                      <Text style={styles.coordNameText}>{s.first_name} {s.last_name}</Text>
+                      <View style={styles.coordDetailsGrid}>
+                        <View style={styles.coordDetailCol}>
+                          <Text style={styles.coordDetailLabel}>PROGRAM</Text>
+                          <Text style={styles.coordDetailValue}>{s.program_name || s.program || 'Wise Import'}</Text>
+                        </View>
+                        <View style={styles.coordDetailCol}>
+                          <Text style={styles.coordDetailLabel}>INITIAL DETAILS</Text>
+                          <Text style={[styles.coordDetailValue, { color: '#A0AEC0', fontStyle: 'italic' }]}>{s.initial_details || 'No Initial Data'}</Text>
+                        </View>
+                        <View style={styles.coordDetailCol}>
+                          <Text style={styles.coordDetailLabel}>ACADEMIC DETAILS</Text>
+                          <Text style={[styles.coordDetailValue, { color: '#38A169' }]}>{s.academic_details || s.lms_student_id ? `Active (${s.lms_student_id})` : 'Pending...'}</Text>
+                        </View>
+                      </View>
+                      <View style={styles.coordActionsBar}>
+                        <TouchableOpacity style={styles.coordActionButton} onPress={() => Alert.alert('Link Copied', `Admission link for ${s.first_name} copied to clipboard.`)}>
+                          <FontAwesome5 name="link" size={12} color="#3182CE" />
+                          <Text style={styles.coordActionText}>COPY LINK</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={[styles.coordActionButton, { backgroundColor: '#C6F6D5', borderColor: '#9AE6B4' }]} onPress={() => handleCoordEnterData(s)}>
+                          <FontAwesome5 name="edit" size={12} color="#22543D" />
+                          <Text style={[styles.coordActionText, { color: '#22543D' }]}>Enter Data</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))}
                 </View>
 
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Coordinator Remarks</Text>
-                  <TextInput style={styles.formInput} value={modalAcademicData.notes} onChangeText={(text) => setModalAcademicData({...modalAcademicData, notes: text})} placeholder="Enter academic evaluation notes" placeholderTextColor="#A0AEC0" />
-                </View>
-
-                <TouchableOpacity style={styles.coordSaveButton} onPress={handleCoordSaveData}>
-                  <FontAwesome5 name="check-circle" size={14} color="#FFFFFF" />
-                  <Text style={styles.coordSaveText}>Save Academic Details</Text>
-                </TouchableOpacity>
+                {coordHasMore && (
+                  <TouchableOpacity 
+                    style={styles.loadMoreButton} 
+                    onPress={() => fetchCoordinatorStudents(coordPage + 1, coordDebouncedSearch, coordFilterProgram, true)}
+                    disabled={coordLoadingMore}
+                  >
+                    {coordLoadingMore ? (
+                      <ActivityIndicator color="#FFFFFF" />
+                    ) : (
+                      <>
+                        <FontAwesome5 name="plus" size={12} color="#FFFFFF" style={{ marginRight: 6 }} />
+                        <Text style={styles.loadMoreText}>Load More</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                )}
+              </>
+            ) : (
+              <View style={{ padding: 40, alignItems: 'center', justifyContent: 'center' }}>
+                <ActivityIndicator size="large" color="#3182CE" />
+                <Text style={{ marginTop: 12, color: '#718096', fontWeight: 'bold' }}>Opening Web Portal...</Text>
               </View>
             )}
-
-            <View style={styles.coordList}>
-              {coordStudents
-                .filter(s => `${s.first_name} ${s.last_name}`.toLowerCase().includes(coordSearch.toLowerCase()) || s.crm_student_id?.toLowerCase().includes(coordSearch.toLowerCase()))
-                .map((s, idx) => (
-                  <View key={idx} style={styles.coordCard}>
-                    <View style={styles.coordCardHeader}>
-                      <View style={styles.coordIdBadge}>
-                        <Text style={styles.coordIdText}>{s.crm_student_id}</Text>
-                      </View>
-                      <Text style={styles.coordPhoneText}>{s.phone}</Text>
-                    </View>
-                    <Text style={styles.coordNameText}>{s.first_name} {s.last_name}</Text>
-                    <View style={styles.coordDetailsGrid}>
-                      <View style={styles.coordDetailCol}>
-                        <Text style={styles.coordDetailLabel}>PROGRAM</Text>
-                        <Text style={styles.coordDetailValue}>{s.program || 'Wise Import'}</Text>
-                      </View>
-                      <View style={styles.coordDetailCol}>
-                        <Text style={styles.coordDetailLabel}>INITIAL DETAILS</Text>
-                        <Text style={[styles.coordDetailValue, { color: '#A0AEC0', fontStyle: 'italic' }]}>{s.initial_details || 'No Initial Data'}</Text>
-                      </View>
-                      <View style={styles.coordDetailCol}>
-                        <Text style={styles.coordDetailLabel}>ACADEMIC DETAILS</Text>
-                        <Text style={[styles.coordDetailValue, { color: '#38A169' }]}>{s.academic_details || 'Pending...'}</Text>
-                      </View>
-                    </View>
-                    <View style={styles.coordActionsBar}>
-                      <TouchableOpacity style={styles.coordActionButton} onPress={() => Alert.alert('Link Copied', `Admission link for ${s.first_name} copied to clipboard.`)}>
-                        <FontAwesome5 name="link" size={12} color="#3182CE" />
-                        <Text style={styles.coordActionText}>COPY LINK</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={[styles.coordActionButton, { backgroundColor: '#C6F6D5', borderColor: '#9AE6B4' }]} onPress={() => handleCoordEnterData(s)}>
-                        <FontAwesome5 name="edit" size={12} color="#22543D" />
-                        <Text style={[styles.coordActionText, { color: '#22543D' }]}>Enter Data</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ))}
-            </View>
           </View>
         )}
 
@@ -1919,7 +2434,7 @@ export default function ModuleDetailScreen() {
                           <FontAwesome5 name="user-friends" size={12} color="#718096" />
                           <Text style={styles.teacherLabel}>Students</Text>
                         </View>
-                        <Text style={styles.teacherValue}>{b.students_count || 0}</Text>
+                        <Text style={styles.teacherValue}>{b.student_count || 0}</Text>
                       </View>
 
                       <View style={styles.teacherBatchRow}>
@@ -2164,22 +2679,40 @@ export default function ModuleDetailScreen() {
         {/* 7. WORKFORCE HUB SPECIFIC VIEW (HRMS) */}
         {isWorkforce && (
           <View style={styles.mentorContainer}>
-            {isAdmin && (
-              <View style={styles.segmentContainer}>
-                <TouchableOpacity style={[styles.segmentButton, wfTab === 'employees' && styles.segmentActive]} onPress={() => setWfTab('employees')}>
-                  <Text style={[styles.segmentText, wfTab === 'employees' && styles.segmentTextActive]}>Employees</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.segmentButton, wfTab === 'departments' && styles.segmentActive]} onPress={() => setWfTab('departments')}>
-                  <Text style={[styles.segmentText, wfTab === 'departments' && styles.segmentTextActive]}>Departments</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.segmentButton, wfTab === 'designations' && styles.segmentActive]} onPress={() => setWfTab('designations')}>
-                  <Text style={[styles.segmentText, wfTab === 'designations' && styles.segmentTextActive]}>Designations</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.segmentButton, wfTab === 'form' && styles.segmentActive]} onPress={() => setWfTab('form')}>
-                  <Text style={[styles.segmentText, wfTab === 'form' && styles.segmentTextActive]}>Form Builder</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20, flexGrow: 0 }}>
+              <View style={[styles.segmentContainer, { marginBottom: 0, paddingHorizontal: 4 }]}>
+                {isAdmin ? (
+                  <>
+                    <TouchableOpacity style={[styles.segmentButton, wfTab === 'employees' && styles.segmentActive, { paddingHorizontal: 20 }]} onPress={() => setWfTab('employees')}>
+                      <Text style={[styles.segmentText, wfTab === 'employees' && styles.segmentTextActive]}>Employees</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.segmentButton, wfTab === 'departments' && styles.segmentActive, { paddingHorizontal: 20 }]} onPress={() => setWfTab('departments')}>
+                      <Text style={[styles.segmentText, wfTab === 'departments' && styles.segmentTextActive]}>Depts</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.segmentButton, wfTab === 'designations' && styles.segmentActive, { paddingHorizontal: 20 }]} onPress={() => setWfTab('designations')}>
+                      <Text style={[styles.segmentText, wfTab === 'designations' && styles.segmentTextActive]}>Roles</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.segmentButton, wfTab === 'form' && styles.segmentActive, { paddingHorizontal: 20 }]} onPress={() => setWfTab('form')}>
+                      <Text style={[styles.segmentText, wfTab === 'form' && styles.segmentTextActive]}>Form</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <TouchableOpacity style={[styles.segmentButton, wfTab === 'employees' && styles.segmentActive, { paddingHorizontal: 20 }]} onPress={() => setWfTab('employees')}>
+                    <Text style={[styles.segmentText, wfTab === 'employees' && styles.segmentTextActive]}>Employees</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity 
+                  style={[styles.segmentButton, wfTab === 'web' && styles.segmentActive, { paddingHorizontal: 20 }]} 
+                  onPress={async () => {
+                    setWfTab('web');
+                    await WebBrowser.openBrowserAsync('https://natyaarts.org/hrms');
+                    setWfTab('employees');
+                  }}
+                >
+                  <Text style={[styles.segmentText, wfTab === 'web' && styles.segmentTextActive]}>🌐 Web</Text>
                 </TouchableOpacity>
               </View>
-            )}
+            </ScrollView>
 
             <View style={styles.coordHeaderBar}>
               <View style={[styles.searchBar, { flex: 1, marginBottom: 0, marginRight: 12 }]}>
@@ -2199,17 +2732,20 @@ export default function ModuleDetailScreen() {
 
             {wfTab === 'employees' && (
               <View style={styles.studentListContainer}>
-                {wfEmployees.length > 0 ? wfEmployees.map((e, idx) => (
-                  <View key={idx} style={styles.itemCard}>
-                    <View style={styles.itemInfo}>
-                      <Text style={styles.itemName}>{e.name || (e.user ? `${e.user.first_name} ${e.user.last_name}` : 'Staff Member')}</Text>
-                      <Text style={styles.itemDesc}>{e.designation?.name || e.designation || 'Faculty'} • {e.department?.name || e.department || 'Academics'}</Text>
+                {wfEmployees.length > 0 ? wfEmployees.map((e, idx) => {
+                  const eName = e.name || e.full_name || `${e.first_name || ''} ${e.last_name || ''}`.trim() || e.display_username || e.username || 'Staff Member';
+                  return (
+                    <View key={idx} style={styles.itemCard}>
+                      <View style={styles.itemInfo}>
+                        <Text style={styles.itemName}>{eName}</Text>
+                        <Text style={styles.itemDesc}>{e.designation_name || e.designation?.name || e.designation || 'Faculty'} • {e.department_name || e.department?.name || e.department || 'Academics'}</Text>
+                      </View>
+                      <View style={[styles.badge, { backgroundColor: '#EBF8FF' }]}>
+                        <Text style={[styles.badgeText, { color: '#3182CE' }]}>{e.status || 'ACTIVE'}</Text>
+                      </View>
                     </View>
-                    <View style={[styles.badge, { backgroundColor: '#EBF8FF' }]}>
-                      <Text style={[styles.badgeText, { color: '#3182CE' }]}>{e.status || 'ACTIVE'}</Text>
-                    </View>
-                  </View>
-                )) : (
+                  );
+                }) : (
                   <View style={styles.emptyStateBox}>
                     <Text style={styles.emptyStateText}>No employee records found matching your search.</Text>
                   </View>
@@ -2268,19 +2804,35 @@ export default function ModuleDetailScreen() {
         {/* 8. ATTENDANCE HUB SPECIFIC VIEW (HRMS) */}
         {isAttendance && (
           <View style={styles.mentorContainer}>
-            {isAdmin && (
-              <View style={styles.segmentContainer}>
+            <View style={styles.segmentContainer}>
+              {isAdmin ? (
+                <>
+                  <TouchableOpacity style={[styles.segmentButton, attTab === 'my' && styles.segmentActive]} onPress={() => setAttTab('my')}>
+                    <Text style={[styles.segmentText, attTab === 'my' && styles.segmentTextActive]}>My Logs</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.segmentButton, attTab === 'master' && styles.segmentActive]} onPress={() => setAttTab('master')}>
+                    <Text style={[styles.segmentText, attTab === 'master' && styles.segmentTextActive]}>Master</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.segmentButton, attTab === 'settings' && styles.segmentActive]} onPress={() => setAttTab('settings')}>
+                    <Text style={[styles.segmentText, attTab === 'settings' && styles.segmentTextActive]}>Settings</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
                 <TouchableOpacity style={[styles.segmentButton, attTab === 'my' && styles.segmentActive]} onPress={() => setAttTab('my')}>
                   <Text style={[styles.segmentText, attTab === 'my' && styles.segmentTextActive]}>My Logs</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.segmentButton, attTab === 'master' && styles.segmentActive]} onPress={() => setAttTab('master')}>
-                  <Text style={[styles.segmentText, attTab === 'master' && styles.segmentTextActive]}>Master Sheet</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.segmentButton, attTab === 'settings' && styles.segmentActive]} onPress={() => setAttTab('settings')}>
-                  <Text style={[styles.segmentText, attTab === 'settings' && styles.segmentTextActive]}>Settings</Text>
-                </TouchableOpacity>
-              </View>
-            )}
+              )}
+              <TouchableOpacity 
+                style={[styles.segmentButton, attTab === 'web' && styles.segmentActive]} 
+                onPress={async () => {
+                  setAttTab('web');
+                  await WebBrowser.openBrowserAsync('https://natyaarts.org/hrms');
+                  setAttTab('my');
+                }}
+              >
+                <Text style={[styles.segmentText, attTab === 'web' && styles.segmentTextActive]}>🌐 Web</Text>
+              </TouchableOpacity>
+            </View>
 
             <View style={styles.attendanceGridStack}>
               {/* Left Panel: Clock-in Card */}
@@ -2492,12 +3044,18 @@ export default function ModuleDetailScreen() {
                           <Text style={[styles.tableCellSub, { flex: 1.5 }]}>{log.date || '—'}</Text>
                           <Text style={[styles.tableCellSub, { flex: 1.5 }]}>
                             {log.clock_in && log.date
-                              ? new Date(`${log.date}T${log.clock_in}`).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+                              ? (() => {
+                                  const tPart = (log.clock_in || '').split('.')[0];
+                                  return new Date(`${log.date}T${tPart}`).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+                                })()
                               : '—'}
                           </Text>
                           <Text style={[styles.tableCellSub, { flex: 1.5 }]}>
                             {log.clock_out && log.date
-                              ? new Date(`${log.date}T${log.clock_out}`).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+                              ? (() => {
+                                  const tPart = (log.clock_out || '').split('.')[0];
+                                  return new Date(`${log.date}T${tPart}`).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+                                })()
                               : (log.clock_in ? 'Active' : '—')}
                           </Text>
                           <Text style={[styles.tableCellSub, { flex: 1.5 }]}>{log.clock_in && log.clock_out ? 'Done' : log.clock_in ? 'Live' : '—'}</Text>
@@ -2520,22 +3078,32 @@ export default function ModuleDetailScreen() {
         {/* 9. PAYROLL ENGINE SPECIFIC VIEW (HRMS) */}
         {isPayroll && (
           <View style={styles.mentorContainer}>
-            {isAdmin && (
-              <View style={styles.segmentContainer}>
-                <TouchableOpacity style={[styles.segmentButton, payTab === 'monthly' && styles.segmentActive]} onPress={() => setPayTab('monthly')}>
-                  <Text style={[styles.segmentText, payTab === 'monthly' && styles.segmentTextActive]}>Monthly Slips</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.segmentButton, payTab === 'structures' && styles.segmentActive]} onPress={() => setPayTab('structures')}>
-                  <Text style={[styles.segmentText, payTab === 'structures' && styles.segmentTextActive]}>Salary Structures</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.segmentButton, payTab === 'adjustments' && styles.segmentActive]} onPress={() => setPayTab('adjustments')}>
-                  <Text style={[styles.segmentText, payTab === 'adjustments' && styles.segmentTextActive]}>$ Adjustments & Incentives</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.segmentButton, payTab === 'loans' && styles.segmentActive]} onPress={() => setPayTab('loans')}>
-                  <Text style={[styles.segmentText, payTab === 'loans' && styles.segmentTextActive]}>Loans & Advances</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20, flexGrow: 0 }}>
+            <View style={[styles.segmentContainer, { marginBottom: 0, paddingHorizontal: 4 }]}>
+              <TouchableOpacity style={[styles.segmentButton, payTab === 'monthly' && styles.segmentActive, { paddingHorizontal: 20 }]} onPress={() => setPayTab('monthly')}>
+                <Text style={[styles.segmentText, payTab === 'monthly' && styles.segmentTextActive]}>Monthly Pay</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.segmentButton, payTab === 'structures' && styles.segmentActive, { paddingHorizontal: 20 }]} onPress={() => setPayTab('structures')}>
+                <Text style={[styles.segmentText, payTab === 'structures' && styles.segmentTextActive]}>Structures</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.segmentButton, payTab === 'adjustments' && styles.segmentActive, { paddingHorizontal: 20 }]} onPress={() => setPayTab('adjustments')}>
+                <Text style={[styles.segmentText, payTab === 'adjustments' && styles.segmentTextActive]}>Adjustments</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.segmentButton, payTab === 'loans' && styles.segmentActive, { paddingHorizontal: 20 }]} onPress={() => setPayTab('loans')}>
+                <Text style={[styles.segmentText, payTab === 'loans' && styles.segmentTextActive]}>Loans</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.segmentButton, payTab === 'web' && styles.segmentActive, { paddingHorizontal: 20 }]} 
+                onPress={async () => {
+                  setPayTab('web');
+                  await WebBrowser.openBrowserAsync('https://natyaarts.org/payroll');
+                  setPayTab('monthly');
+                }}
+              >
+                  <Text style={[styles.segmentText, payTab === 'web' && styles.segmentTextActive]}>🌐 Web</Text>
                 </TouchableOpacity>
               </View>
-            )}
+            </ScrollView>
 
             <View style={styles.masterSheetCard}>
               <View style={styles.masterHeaderBar}>
@@ -2609,27 +3177,39 @@ export default function ModuleDetailScreen() {
         {/* 10. LEAVE CENTRAL SPECIFIC VIEW (HRMS) */}
         {isLeave && (
           <View style={styles.mentorContainer}>
-            <View style={styles.segmentContainer}>
-              <TouchableOpacity style={[styles.segmentButton5, leaveTab === 'my' && styles.segmentActive]} onPress={() => setLeaveTab('my')}>
-                <Text style={[styles.segmentText5, leaveTab === 'my' && styles.segmentTextActive]}>My Requests</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.segmentButton5, leaveTab === 'calendar' && styles.segmentActive]} onPress={() => setLeaveTab('calendar')}>
-                <Text style={[styles.segmentText5, leaveTab === 'calendar' && styles.segmentTextActive]}>Leave Calendar</Text>
-              </TouchableOpacity>
-              {isAdmin && (
-                <>
-                  <TouchableOpacity style={[styles.segmentButton5, leaveTab === 'admin' && styles.segmentActive]} onPress={() => setLeaveTab('admin')}>
-                    <Text style={[styles.segmentText5, leaveTab === 'admin' && styles.segmentTextActive]}>Admin Approval</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[styles.segmentButton5, leaveTab === 'types' && styles.segmentActive]} onPress={() => setLeaveTab('types')}>
-                    <Text style={[styles.segmentText5, leaveTab === 'types' && styles.segmentTextActive]}>Manage Types & Holidays</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[styles.segmentButton5, leaveTab === 'policies' && styles.segmentActive]} onPress={() => setLeaveTab('policies')}>
-                    <Text style={[styles.segmentText5, leaveTab === 'policies' && styles.segmentTextActive]}>Leave Policies</Text>
-                  </TouchableOpacity>
-                </>
-              )}
-            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20, flexGrow: 0 }}>
+              <View style={[styles.segmentContainer, { marginBottom: 0, paddingHorizontal: 4 }]}>
+                <TouchableOpacity style={[styles.segmentButton, leaveTab === 'my' && styles.segmentActive, { paddingHorizontal: 20 }]} onPress={() => setLeaveTab('my')}>
+                  <Text style={[styles.segmentText, leaveTab === 'my' && styles.segmentTextActive]}>My Requests</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.segmentButton, leaveTab === 'calendar' && styles.segmentActive, { paddingHorizontal: 20 }]} onPress={() => setLeaveTab('calendar')}>
+                  <Text style={[styles.segmentText, leaveTab === 'calendar' && styles.segmentTextActive]}>Calendar</Text>
+                </TouchableOpacity>
+                {isAdmin && (
+                  <>
+                    <TouchableOpacity style={[styles.segmentButton, leaveTab === 'admin' && styles.segmentActive, { paddingHorizontal: 20 }]} onPress={() => setLeaveTab('admin')}>
+                      <Text style={[styles.segmentText, leaveTab === 'admin' && styles.segmentTextActive]}>Approvals</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.segmentButton, leaveTab === 'types' && styles.segmentActive, { paddingHorizontal: 20 }]} onPress={() => setLeaveTab('types')}>
+                      <Text style={[styles.segmentText, leaveTab === 'types' && styles.segmentTextActive]}>Holidays</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.segmentButton, leaveTab === 'policies' && styles.segmentActive, { paddingHorizontal: 20 }]} onPress={() => setLeaveTab('policies')}>
+                      <Text style={[styles.segmentText, leaveTab === 'policies' && styles.segmentTextActive]}>Policies</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
+                <TouchableOpacity 
+                  style={[styles.segmentButton, leaveTab === 'web' && styles.segmentActive, { paddingHorizontal: 20 }]} 
+                  onPress={async () => {
+                    setLeaveTab('web');
+                    await WebBrowser.openBrowserAsync('https://natyaarts.org/hrms');
+                    setLeaveTab('my');
+                  }}
+                >
+                  <Text style={[styles.segmentText, leaveTab === 'web' && styles.segmentTextActive]}>🌐 Web</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
 
             {/* Leave Apply Form */}
             {leaveApplying && (
@@ -2764,17 +3344,27 @@ export default function ModuleDetailScreen() {
               </TouchableOpacity>
             </View>
             <View style={styles.segmentContainer}>
-              <TouchableOpacity style={[styles.segmentButton, taskCol === 'todo' && styles.segmentActive]} onPress={() => setTaskCol('todo')}>
-                <Text style={[styles.segmentText, taskCol === 'todo' && styles.segmentTextActive]}>To Do ({tasksList.filter(t=>t.status==='todo').length})</Text>
+              <TouchableOpacity style={[styles.segmentButton5, taskCol === 'todo' && styles.segmentActive]} onPress={() => setTaskCol('todo')}>
+                <Text style={[styles.segmentText5, taskCol === 'todo' && styles.segmentTextActive]}>To Do ({tasksList.filter(t=>t.status==='todo').length})</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.segmentButton, taskCol === 'progress' && styles.segmentActive]} onPress={() => setTaskCol('progress')}>
-                <Text style={[styles.segmentText, taskCol === 'progress' && styles.segmentTextActive]}>In Progress ({tasksList.filter(t=>t.status==='progress').length})</Text>
+              <TouchableOpacity style={[styles.segmentButton5, taskCol === 'progress' && styles.segmentActive]} onPress={() => setTaskCol('progress')}>
+                <Text style={[styles.segmentText5, taskCol === 'progress' && styles.segmentTextActive]}>Progress ({tasksList.filter(t=>t.status==='progress').length})</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.segmentButton, taskCol === 'review' && styles.segmentActive]} onPress={() => setTaskCol('review')}>
-                <Text style={[styles.segmentText, taskCol === 'review' && styles.segmentTextActive]}>In Review ({tasksList.filter(t=>t.status==='review').length})</Text>
+              <TouchableOpacity style={[styles.segmentButton5, taskCol === 'review' && styles.segmentActive]} onPress={() => setTaskCol('review')}>
+                <Text style={[styles.segmentText5, taskCol === 'review' && styles.segmentTextActive]}>Review ({tasksList.filter(t=>t.status==='review').length})</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.segmentButton, taskCol === 'done' && styles.segmentActive]} onPress={() => setTaskCol('done')}>
-                <Text style={[styles.segmentText, taskCol === 'done' && styles.segmentTextActive]}>Done ({tasksList.filter(t=>t.status==='done').length})</Text>
+              <TouchableOpacity style={[styles.segmentButton5, taskCol === 'done' && styles.segmentActive]} onPress={() => setTaskCol('done')}>
+                <Text style={[styles.segmentText5, taskCol === 'done' && styles.segmentTextActive]}>Done ({tasksList.filter(t=>t.status==='done').length})</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.segmentButton5, taskCol === 'web' && styles.segmentActive]} 
+                onPress={async () => {
+                  setTaskCol('web');
+                  await WebBrowser.openBrowserAsync('https://natyaarts.org/hrms');
+                  setTaskCol('todo');
+                }}
+              >
+                <Text style={[styles.segmentText5, taskCol === 'web' && styles.segmentTextActive]}>🌐 Web</Text>
               </TouchableOpacity>
             </View>
 
@@ -3451,11 +4041,203 @@ export default function ModuleDetailScreen() {
           </Text>
         </View>
       </ScrollView>
+
+      {/* Course Filter Modal */}
+      <Modal
+        visible={courseFilterModalVisible}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setCourseFilterModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: isDark ? '#1A202C' : '#FFFFFF', borderColor: isDark ? '#2D3748' : '#E2E8F0' }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: isDark ? '#E2E8F0' : '#2D3748' }]}>Select Course</Text>
+              <TouchableOpacity onPress={() => setCourseFilterModalVisible(false)} style={styles.modalCloseBtn}>
+                <FontAwesome5 name="times" size={18} color={isDark ? "#A0AEC0" : "#718096"} />
+              </TouchableOpacity>
+            </View>
+            <View style={{ paddingHorizontal: 20, paddingBottom: 16 }}>
+              <TextInput
+                style={[styles.searchInput, { backgroundColor: isDark ? '#2D3748' : '#EDF2F7', color: isDark ? '#E2E8F0' : '#2D3748', borderColor: isDark ? '#4A5568' : '#E2E8F0', borderWidth: 1, padding: 12, borderRadius: 8, marginBottom: 12 }]}
+                placeholder="Search courses..."
+                placeholderTextColor={isDark ? "#A0AEC0" : "#A0AEC0"}
+                value={courseSearchQuery}
+                onChangeText={setCourseSearchQuery}
+              />
+              <ScrollView style={{ maxHeight: 300 }}>
+                <TouchableOpacity 
+                  onPress={() => { setMentorFilterCourse(''); setCourseFilterModalVisible(false); }}
+                  style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: isDark ? '#2D3748' : '#EDF2F7' }}
+                >
+                  <Text style={{ color: mentorFilterCourse === '' ? '#805AD5' : (isDark ? '#E2E8F0' : '#2D3748'), fontWeight: mentorFilterCourse === '' ? 'bold' : 'normal' }}>All Courses</Text>
+                </TouchableOpacity>
+                {mentorCourses
+                  .filter((c: any) => c.name.toLowerCase().includes(courseSearchQuery.toLowerCase()))
+                  .map((c: any) => (
+                    <TouchableOpacity 
+                      key={c.id}
+                      onPress={() => { setMentorFilterCourse(c.id.toString()); setCourseFilterModalVisible(false); }}
+                      style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: isDark ? '#2D3748' : '#EDF2F7' }}
+                    >
+                      <Text style={{ color: mentorFilterCourse === c.id.toString() ? '#805AD5' : (isDark ? '#E2E8F0' : '#2D3748'), fontWeight: mentorFilterCourse === c.id.toString() ? 'bold' : 'normal' }}>{c.name}</Text>
+                    </TouchableOpacity>
+                  ))}
+              </ScrollView>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Assign Teacher Modal */}
+      <Modal
+        visible={assignTeacherModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setAssignTeacherModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Assign Teacher</Text>
+              <TouchableOpacity onPress={() => setAssignTeacherModalVisible(false)} style={styles.modalCloseBtn}>
+                <FontAwesome5 name="times" size={16} color="#A0AEC0" />
+              </TouchableOpacity>
+            </View>
+            
+            <Text style={styles.modalSubTitle}>
+              Select a teacher to assign to batch: <Text style={{ fontWeight: 'bold', color: '#2D3748' }}>{selectedBatchForAssign?.name}</Text>
+            </Text>
+
+            <ScrollView style={styles.teacherListScroll} showsVerticalScrollIndicator={false}>
+              {realTeachers.length > 0 ? (
+                realTeachers.map((t) => {
+                  const teacherId = t.id;
+                  const teacherName = t.first_name 
+                    ? `${t.first_name} ${t.last_name || ''}`.trim()
+                    : t.user 
+                      ? `${t.user.first_name || ''} ${t.user.last_name || ''}`.trim() || t.user.username 
+                      : t.username || 'Unnamed Teacher';
+                  const teacherEmail = t.email || t.user?.email || 'No email provided';
+
+                  return (
+                    <TouchableOpacity
+                      key={teacherId}
+                      style={styles.teacherItemCard}
+                      onPress={() => performTeacherAssignment(teacherId)}
+                    >
+                      <View style={styles.teacherItemIcon}>
+                        <FontAwesome5 name="user-tie" size={16} color="#3182CE" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.teacherItemName}>{teacherName}</Text>
+                        <Text style={styles.teacherItemEmail}>{teacherEmail}</Text>
+                      </View>
+                      <FontAwesome5 name="chevron-right" size={12} color="#CBD5E0" />
+                    </TouchableOpacity>
+                  );
+                })
+              ) : (
+                <View style={styles.emptyStateBox}>
+                  <Text style={styles.emptyStateText}>No teachers available.</Text>
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  loadMoreButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#3182CE',
+    paddingVertical: 12,
+    borderRadius: 10,
+    marginTop: 16,
+    marginBottom: 24,
+  },
+  loadMoreText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    width: '100%',
+    maxHeight: '80%',
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.1,
+    shadowRadius: 20,
+    elevation: 5,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#1A202C',
+  },
+  modalCloseBtn: {
+    padding: 4,
+  },
+  modalSubTitle: {
+    fontSize: 14,
+    color: '#718096',
+    marginBottom: 20,
+    lineHeight: 20,
+  },
+  teacherListScroll: {
+    maxHeight: 400,
+  },
+  teacherItemCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    marginBottom: 10,
+    backgroundColor: '#FFFFFF',
+  },
+  teacherItemIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#EBF8FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  teacherItemName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#2D3748',
+  },
+  teacherItemEmail: {
+    fontSize: 12,
+    color: '#A0AEC0',
+    marginTop: 2,
+  },
   container: { flex: 1, backgroundColor: '#F7FAFC' },
   header: { flexDirection: 'row', alignItems: 'center', padding: 20, paddingTop: 60, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#E2E8F0' },
   backButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#F7FAFC', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E2E8F0', marginRight: 16 },
@@ -3491,6 +4273,8 @@ const styles = StyleSheet.create({
   overviewStatNumber: { fontSize: 28, fontWeight: '900' },
   sectionTitleAcc: { fontSize: 14, fontWeight: '900', color: '#1A202C', letterSpacing: 1.5, marginBottom: 16, marginLeft: 4 },
   batchGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', backgroundColor: 'transparent' },
+  dashboardCard: { width: '48%', backgroundColor: '#FFFFFF', borderRadius: 20, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: '#E2E8F0', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 6, elevation: 2 },
+  dashboardCardFull: { width: '100%', backgroundColor: '#FFFFFF', borderRadius: 20, padding: 20, marginBottom: 16, borderWidth: 1, borderColor: '#E2E8F0', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 6, elevation: 2 },
   batchCard: { width: '100%', backgroundColor: '#FFFFFF', borderRadius: 20, padding: 20, marginBottom: 16, borderWidth: 1, borderColor: '#E2E8F0', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 6, elevation: 2 },
   batchCardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, backgroundColor: 'transparent' },
   batchName: { flex: 1, fontSize: 16, fontWeight: '900', color: '#1A202C', marginRight: 10 },

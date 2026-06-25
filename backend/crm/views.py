@@ -131,6 +131,24 @@ class LeadInteractionViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         interaction = serializer.save(author=self.request.user)
         
+        # Manually update new fields if provided
+        call_duration = self.request.data.get('call_duration')
+        if call_duration is not None:
+            try:
+                interaction.call_duration = int(call_duration)
+            except ValueError:
+                pass
+        
+        call_direction = self.request.data.get('call_direction')
+        if call_direction in ['INCOMING', 'OUTGOING']:
+            interaction.call_direction = call_direction
+            
+        call_status = self.request.data.get('call_status')
+        if call_status in ['CONNECTED', 'MISSED', 'REJECTED', 'UNANSWERED']:
+            interaction.call_status = call_status
+            
+        interaction.save()
+
         pipeline_status = self.request.data.get('pipeline_status')
         if pipeline_status:
             interaction.student.lead_status = pipeline_status
@@ -214,12 +232,24 @@ class TaskViewSet(viewsets.ModelViewSet):
         queryset = super().get_queryset()
         student_id = self.request.query_params.get('student_id', None)
         status_param = self.request.query_params.get('status', None)
-        
+        assigned_to_me = self.request.query_params.get('assigned_to_me', None)
+        due_date_after = self.request.query_params.get('due_date_after', None)
+        ordering = self.request.query_params.get('ordering', 'due_date')
+
         if student_id:
             queryset = queryset.filter(student_id=student_id)
         if status_param:
             queryset = queryset.filter(status=status_param)
-            
+        if assigned_to_me == 'true':
+            queryset = queryset.filter(assigned_to=self.request.user)
+        if due_date_after:
+            queryset = queryset.filter(due_date__date__gte=due_date_after)
+
+        # Safe ordering
+        allowed_orderings = ['due_date', '-due_date', 'created_at', '-created_at']
+        if ordering in allowed_orderings:
+            queryset = queryset.order_by(ordering)
+
         return queryset
 
 class WebhookReceiveView(APIView):
@@ -334,3 +364,209 @@ class WebhookReceiveView(APIView):
                 error_message=error_msg
             )
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+
+from django.db.models import Sum, Count, Q
+from django.utils.dateparse import parse_date
+from datetime import timedelta
+
+
+
+class CallAnalyticsView(APIView):
+
+    permission_classes = [permissions.IsAuthenticated]
+
+
+
+    def get(self, request):
+
+        interactions = LeadInteraction.objects.filter(interaction_type='CALL')
+
+        start_date_str = request.query_params.get('start_date')
+        end_date_str = request.query_params.get('end_date')
+        
+        if start_date_str:
+            start_date = parse_date(start_date_str)
+            if start_date:
+                interactions = interactions.filter(date__date__gte=start_date)
+        if end_date_str:
+            end_date = parse_date(end_date_str)
+            if end_date:
+                interactions = interactions.filter(date__date__lte=end_date)
+
+        total_incoming = interactions.filter(call_direction='INCOMING').count()
+
+        total_outgoing = interactions.filter(call_direction='OUTGOING').count()
+
+        
+
+        missed = interactions.filter(call_status__in=['MISSED', 'UNANSWERED']).count()
+
+        rejected = interactions.filter(call_status='REJECTED').count()
+
+
+
+        duration_incoming = interactions.filter(call_direction='INCOMING').aggregate(Sum('call_duration'))['call_duration__sum'] or 0
+
+        duration_outgoing = interactions.filter(call_direction='OUTGOING').aggregate(Sum('call_duration'))['call_duration__sum'] or 0
+
+        
+
+        total_calls = interactions.count()
+
+        total_duration = duration_incoming + duration_outgoing
+
+
+
+        never_attended = missed + rejected
+
+        unique_clients = interactions.values('student').distinct().count()
+
+        connected_calls = interactions.filter(call_status='CONNECTED').count()
+
+        unique_connected_calls = interactions.filter(call_status='CONNECTED').values('student').distinct().count()
+
+
+
+        employees = {}
+
+        for inter in interactions.select_related('author'):
+
+            author_id = inter.author.id if inter.author else 0
+
+            if author_id not in employees:
+
+                employees[author_id] = {
+
+                    'id': author_id,
+
+                    'name': f"{inter.author.first_name} {inter.author.last_name}".strip() if inter.author else 'Unknown',
+
+                    'total_calls': 0,
+
+                    'total_duration': 0,
+
+                    'connected_calls': 0,
+
+                    'connected_duration': 0,
+
+                    'unique_clients_set': set(),
+
+                    'unique_connected_set': set()
+
+                }
+
+            
+
+            emp = employees[author_id]
+
+            emp['total_calls'] += 1
+
+            emp['total_duration'] += inter.call_duration
+
+            if inter.student_id:
+
+                emp['unique_clients_set'].add(inter.student_id)
+
+            
+
+            if inter.call_status == 'CONNECTED':
+
+                emp['connected_calls'] += 1
+
+                emp['connected_duration'] += inter.call_duration
+
+                if inter.student_id:
+
+                    emp['unique_connected_set'].add(inter.student_id)
+
+
+
+        employee_summary = []
+
+        for i, (k, v) in enumerate(employees.items()):
+
+            avg_duration = round(v['connected_duration'] / v['connected_calls']) if v['connected_calls'] > 0 else 0
+
+            employee_summary.append({
+
+                'sr_no': i + 1,
+
+                'id': v['id'],
+
+                'name': v['name'] or 'Unknown',
+
+                'total_calls': v['total_calls'],
+
+                'total_duration': v['total_duration'],
+
+                'connected_calls': v['connected_calls'],
+
+                'connected_duration': v['connected_duration'],
+
+                'avg_duration': avg_duration,
+
+                'unique_clients': len(v['unique_clients_set']),
+
+                'unique_connected': len(v['unique_connected_set'])
+
+            })
+
+
+
+        history = []
+        for inter in interactions.select_related('author', 'student').order_by('-date')[:50]:
+            history.append({
+                'id': inter.id,
+                'date': inter.date,
+                'employee': f"{inter.author.first_name} {inter.author.last_name}".strip() if inter.author else 'Unknown',
+                'client': f"{inter.student.first_name} {inter.student.last_name}".strip() if inter.student else 'Unknown',
+                'direction': inter.call_direction,
+                'status': inter.call_status,
+                'duration': inter.call_duration
+            })
+
+        return Response({
+            'history': history,
+            'summary': {
+
+                'incoming_calls': total_incoming,
+
+                'incoming_duration': duration_incoming,
+
+                'outgoing_calls': total_outgoing,
+
+                'outgoing_duration': duration_outgoing,
+
+                'missed_calls': missed,
+
+                'rejected_calls': rejected,
+
+                'total_calls': total_calls,
+
+                'total_duration': total_duration
+
+            },
+
+            'quick_stats': {
+
+                'never_attended': never_attended,
+
+                'not_pickup': missed,
+
+                'connected': connected_calls,
+
+                'unique_connected': unique_connected_calls,
+
+                'unique_clients': unique_clients,
+
+                'working_hours': total_duration
+
+            },
+
+            'employee_summary': employee_summary
+
+        })
+

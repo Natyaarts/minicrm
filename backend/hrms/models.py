@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
 
 class Department(models.Model):
     name = models.CharField(max_length=100, unique=True)
@@ -123,7 +124,7 @@ class Attendance(models.Model):
     )
 
     employee = models.ForeignKey(EmployeeProfile, on_delete=models.CASCADE, related_name='attendance_records')
-    date = models.DateField(auto_now_add=True)
+    date = models.DateField(default=timezone.now)
     clock_in = models.TimeField(null=True, blank=True)
     clock_out = models.TimeField(null=True, blank=True)
     

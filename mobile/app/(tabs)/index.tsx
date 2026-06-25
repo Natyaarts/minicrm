@@ -86,23 +86,52 @@ export default function AttendanceScreen() {
 
   const fetchStats = async () => {
     try {
+      const token = await AsyncStorage.getItem('userToken');
+      if (!token) return;
+
       const res = await client.get('/dashboard-stats/');
       if (res.data) {
         setStats(res.data);
       }
       
-      const tasksRes = await client.get('/crm/tasks/', { params: { status: 'PENDING' } });
+      // Fetch only MY upcoming pending tasks (assigned to me, due from today onwards)
+      const today = getLocalDateString();
+      const tasksRes = await client.get('/crm/tasks/', {
+        params: {
+          status: 'PENDING',
+          assigned_to_me: 'true',
+          due_date_after: today,
+          ordering: 'due_date',      // soonest first
+        }
+      });
       const tasksData = tasksRes.data?.results || tasksRes.data || [];
-      setTasks(tasksData.slice(0, 3));
+      setTasks(tasksData.slice(0, 5)); // show up to 5
     } catch (e) {
       console.log('Failed to fetch dashboard stats', e);
     }
   };
 
+
+  const getLocalDateString = () => {
+    const d = new Date();
+    const offset = d.getTimezoneOffset();
+    const localDate = new Date(d.getTime() - (offset * 60 * 1000));
+    return localDate.toISOString().split('T')[0];
+  };
+
   const fetchStatus = async () => {
     setLoading(true);
     try {
-      const today = new Date().toISOString().split('T')[0];
+      // Guard: skip if not authenticated yet
+      const token = await AsyncStorage.getItem('userToken');
+      if (!token) {
+        setIsClockedIn(false);
+        setAttendance(null);
+        setLoading(false);
+        return;
+      }
+
+      const today = getLocalDateString();
       const data = await getAttendanceStatus(today);
       if (data) {
         const records = data.results || data || [];
@@ -116,13 +145,19 @@ export default function AttendanceScreen() {
           setIsClockedIn(false);
           setAttendance(null);
         }
+      } else {
+        setIsClockedIn(false);
+        setAttendance(null);
       }
     } catch (err) {
       console.error('fetchStatus failed:', err);
+      setIsClockedIn(false);
+      setAttendance(null);
     } finally {
       setLoading(false);
     }
   };
+
 
   const handleAttendance = async () => {
     setLoading(true);
@@ -188,11 +223,7 @@ export default function AttendanceScreen() {
         const res = await clockIn(loc.coords.latitude, loc.coords.longitude, base64Photo);
         
         if (res.success) {
-          if (res.data.is_face_verified) {
-             Alert.alert('Success', `Clocked in! Identity verified securely (Confidence: ${res.data.verification_confidence}%).`);
-          } else {
-             Alert.alert('Warning', 'Clocked in, but Face Verification failed or no reference profile photo exists.');
-          }
+          Alert.alert('Success', 'Clocked in successfully!');
           await fetchStatus();
         } else {
           Alert.alert('Error', res.error);
@@ -291,7 +322,8 @@ export default function AttendanceScreen() {
               <Text style={[styles.statusValue, { color: isDark ? '#FFFFFF' : '#111827' }]}>
                 {attendance?.clock_in && attendance?.date
                   ? (() => {
-                      const dt = new Date(`${attendance.date}T${attendance.clock_in}`);
+                      const timePart = (attendance.clock_in || '').split('.')[0];
+                      const dt = new Date(`${attendance.date}T${timePart}`);
                       return dt.toLocaleString('en-IN', {
                         day: 'numeric', month: 'short',
                         hour: '2-digit', minute: '2-digit', hour12: true
@@ -375,23 +407,31 @@ export default function AttendanceScreen() {
           </View>
           
           <View style={[styles.tasksCard, { backgroundColor: isDark ? '#1F2937' : '#FFFFFF', borderColor: isDark ? '#374151' : '#E5E7EB' }]}>
-             <Text style={[styles.tasksHeader, { color: isDark ? '#D1D5DB' : '#374151' }]}>My Upcoming Follow-ups</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={[styles.tasksHeader, { color: isDark ? '#D1D5DB' : '#374151', marginBottom: 0 }]}>
+                📅 My Upcoming Follow-ups
+              </Text>
+              <TouchableOpacity onPress={() => router.push('/(tabs)/two' as any)}>
+                <Text style={{ color: '#F59E0B', fontSize: 11, fontWeight: '800' }}>ALL LEADS &gt;</Text>
+              </TouchableOpacity>
+            </View>
              {tasks.length > 0 ? tasks.map(task => (
                 <TouchableOpacity key={task.id} style={[styles.taskItem, { borderTopColor: isDark ? '#374151' : '#F3F4F6' }]} onPress={() => router.push(`/lead-details?leadId=${task.student}` as any)}>
                    <View style={{flex: 1}}>
                       <Text style={[styles.taskTitle, { color: isDark ? '#F9FAFB' : '#111827' }]} numberOfLines={1}>{task.title}</Text>
                       <Text style={styles.taskDate}>
-                         <FontAwesome5 name="clock" size={10} color="#F59E0B" /> {new Date(task.due_date).toLocaleString([], {month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit'})}
+                        <FontAwesome5 name="clock" size={10} color="#F59E0B" /> {task.due_date ? new Date(task.due_date).toLocaleString([], {month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit'}) : 'No due date'}
                       </Text>
                    </View>
                    <FontAwesome5 name="chevron-right" size={14} color="#9CA3AF" />
                 </TouchableOpacity>
              )) : (
-                <Text style={styles.emptyTaskText}>No pending follow-ups.</Text>
+                <Text style={styles.emptyTaskText}>🎉 No upcoming follow-ups today!</Text>
              )}
           </View>
         </View>
       )}
+
 
       {/* Geofence Alert Info */}
       <View style={[styles.infoCard, { backgroundColor: isDark ? '#1E3A8A' : '#EFF6FF', borderColor: isDark ? '#3B82F6' : '#BFDBFE' }]}>

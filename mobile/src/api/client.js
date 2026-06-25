@@ -32,4 +32,19 @@ client.interceptors.request.use(
   }
 );
 
+// Interceptor to handle 401 (stale/expired token) globally
+client.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    if (error.response?.status === 401) {
+      // Token is invalid or expired — clear it silently
+      await AsyncStorage.multiRemove(['userToken', 'userInfo']);
+      // Don't re-throw as a hard error — return null-like rejection
+      // The caller's catch block will handle it gracefully
+    }
+    return Promise.reject(error);
+  }
+);
+
 export default client;
+

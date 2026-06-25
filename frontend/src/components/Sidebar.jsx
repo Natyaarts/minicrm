@@ -1,5 +1,5 @@
-import { Link, useLocation } from 'react-router-dom';
-import { useState } from 'react';
+import React, { useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
     LayoutDashboard,
     Users,
@@ -22,7 +22,8 @@ import {
     CalendarDays,
     Wallet,
     CheckSquare,
-    Star
+    Star,
+    PieChart
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -52,6 +53,8 @@ const sidebarSections = [
             { icon: Users, label: 'Pipeline', path: '/crm/pipeline', module: 'SALES' },
             { icon: ClipboardEdit, label: 'Leads Table', path: '/crm/leads', module: 'SALES' },
             { icon: CheckSquare, label: 'Tasks', path: '/crm/tasks', module: 'SALES' },
+            { icon: BarChart2, label: 'Team Reports', path: '/crm/reports', module: 'SALES' },
+            { icon: PieChart, label: 'Call Analytics', path: '/crm/analytics', module: 'SALES' },
             { icon: GraduationCap, label: 'Mentor Module', path: '/mentor', module: 'MENTOR' },
             { icon: UserSquare2, label: 'Student Portal', path: '/student', module: 'STUDENT' },
             { icon: Sparkles, label: 'App Creator', path: '/crm/builder', module: 'ADMIN' },

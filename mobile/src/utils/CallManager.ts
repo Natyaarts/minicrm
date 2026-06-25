@@ -6,20 +6,22 @@ const callRecordingEmitter = CallRecordingModule ? new NativeEventEmitter(CallRe
 export const requestCallPermissions = async () => {
     if (Platform.OS !== 'android') return true;
     try {
+        // READ_PHONE_STATE and RECORD_AUDIO are enough for call state listening + recording.
+        // READ_CALL_LOG requires being the default phone app — skip it as non-blocking.
         const grants = await PermissionsAndroid.requestMultiple([
             PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE,
-            PermissionsAndroid.PERMISSIONS.READ_CALL_LOG,
             PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
         ]);
         
-        return (
-            grants[PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE] === PermissionsAndroid.RESULTS.GRANTED &&
-            grants[PermissionsAndroid.PERMISSIONS.READ_CALL_LOG] === PermissionsAndroid.RESULTS.GRANTED &&
-            grants[PermissionsAndroid.PERMISSIONS.RECORD_AUDIO] === PermissionsAndroid.RESULTS.GRANTED
-        );
+        // Only RECORD_AUDIO is strictly needed for call recording — still allow calling even if denied
+        const audioGranted = grants[PermissionsAndroid.PERMISSIONS.RECORD_AUDIO] === PermissionsAndroid.RESULTS.GRANTED;
+        const phoneStateGranted = grants[PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE] === PermissionsAndroid.RESULTS.GRANTED;
+
+        console.log('Permissions — RECORD_AUDIO:', audioGranted, 'READ_PHONE_STATE:', phoneStateGranted);
+        return true; // Always allow calling — permissions are for recording enhancement only
     } catch (err) {
-        console.warn(err);
-        return false;
+        console.warn('Permission request error:', err);
+        return true; // Don't block calling on permission errors
     }
 };
 

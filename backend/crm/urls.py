@@ -1,6 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import PipelineStageViewSet, LeadInteractionViewSet, CampaignViewSet, WebhookReceiveView, WebhookEndpointViewSet, SalesUserListView, DashboardStatsView, TaskViewSet, BDEReportView
+from .views import PipelineStageViewSet, LeadInteractionViewSet, CampaignViewSet, WebhookReceiveView, WebhookEndpointViewSet, SalesUserListView, DashboardStatsView, TaskViewSet, BDEReportView, CallAnalyticsView
 
 router = DefaultRouter()
 router.register(r'stages', PipelineStageViewSet)
@@ -14,5 +14,6 @@ urlpatterns = [
     path('webhooks/<uuid:secret_token>/lead/', WebhookReceiveView.as_view(), name='webhook_lead'),
     path('sales-users/', SalesUserListView.as_view(), name='sales_users'),
     path('bde-report/<int:user_id>/', BDEReportView.as_view(), name='bde_report'),
+    path('call-analytics/', CallAnalyticsView.as_view(), name='call_analytics'),
     path('', include(router.urls)),
 ]

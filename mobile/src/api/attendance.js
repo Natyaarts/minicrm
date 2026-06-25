@@ -9,10 +9,11 @@ export const getAttendanceStatus = async (date) => {
     // Usually returns a list of attendance records for today
     return response.data;
   } catch (error) {
-    console.error('Failed to fetch attendance', error);
+    console.warn('Failed to fetch attendance:', error?.response?.status || error?.message);
     return null;
   }
 };
+
 
 
 export const clockIn = async (latitude, longitude, photo) => {

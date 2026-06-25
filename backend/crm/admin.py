@@ -6,10 +6,19 @@ class PipelineStageAdmin(admin.ModelAdmin):
     list_display = ('name', 'order', 'is_default')
     list_editable = ('order', 'is_default')
 
+from django.utils.safestring import mark_safe
+
 @admin.register(LeadInteraction)
 class LeadInteractionAdmin(admin.ModelAdmin):
-    list_display = ('student', 'author', 'interaction_type', 'date')
+    list_display = ('student', 'author', 'interaction_type', 'date', 'audio_recording_display')
     list_filter = ('interaction_type', 'date')
+    readonly_fields = ('audio_recording_display',)
+
+    def audio_recording_display(self, obj):
+        if obj.audio_recording:
+            return mark_safe(f'<audio src="{obj.audio_recording.url}" controls>Your browser does not support the audio element.</audio>')
+        return "No Recording"
+    audio_recording_display.short_description = "Call Recording"
 
 @admin.register(Campaign)
 class CampaignAdmin(admin.ModelAdmin):

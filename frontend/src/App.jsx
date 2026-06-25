@@ -56,6 +56,8 @@ function App() {
           <Route path="/crm/leads" element={<SalesModule />} />
           <Route path="/crm/tasks" element={<SalesModule />} />
           <Route path="/crm/campaigns" element={<SalesModule />} />
+          <Route path="/crm/reports" element={<SalesModule />} />
+          <Route path="/crm/analytics" element={<SalesModule />} />
           <Route path="/mentor" element={<MentorModule />} />
           <Route path="/student" element={<StudentPortal />} />
           <Route path="/academic" element={<AcademicModule />} />

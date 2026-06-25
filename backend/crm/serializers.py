@@ -9,10 +9,17 @@ class PipelineStageSerializer(serializers.ModelSerializer):
 class LeadInteractionSerializer(serializers.ModelSerializer):
     author_name = serializers.CharField(source='author.first_name', read_only=True)
     author_last_name = serializers.CharField(source='author.last_name', read_only=True)
+    student_name = serializers.SerializerMethodField()
+    student_phone = serializers.CharField(source='student.mobile', read_only=True)
 
     class Meta:
         model = LeadInteraction
         fields = '__all__'
+
+    def get_student_name(self, obj):
+        if obj.student:
+            return f"{obj.student.first_name} {obj.student.last_name}".strip()
+        return None
 
 class CampaignSerializer(serializers.ModelSerializer):
     lead_count = serializers.SerializerMethodField()

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, FlatList, TextInput, ActivityIndicator, TouchableOpacity, Linking, ScrollView, Alert, Modal, Pressable, Text, View } from 'react-native';
+import { StyleSheet, FlatList, TextInput, ActivityIndicator, TouchableOpacity, Linking, ScrollView, Alert, Modal, Pressable, Text, View, useColorScheme } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
@@ -9,12 +9,50 @@ import client from '../../src/api/client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function SalesScreen() {
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
+
   const [user, setUser] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [stats, setStats] = useState<any>(null);
 
   useEffect(() => {
     loadUser();
+    fetchStats();
+    fetchPipelineStages();
   }, []);
+
+  const fetchStats = async () => {
+    try {
+      const res = await client.get('/crm/dashboard-stats/');
+      if (res.data) {
+        setStats(res.data);
+      }
+    } catch (e) {
+      console.log('Failed to fetch crm dashboard stats:', e);
+    }
+  };
+
+  // Pipeline stages — fetched dynamically from web backend
+  const [pipelineStages, setPipelineStages] = useState<any[]>([
+    { id: 'NEW', name: 'New' },
+    { id: 'FOLLOW_UP', name: 'Follow Up' },
+    { id: 'PAYMENT_PENDING', name: 'Payment Pending' },
+    { id: 'ENROLLED', name: 'Enrolled' },
+    { id: 'DROPPED', name: 'Dropped' },
+  ]);
+
+  const fetchPipelineStages = async () => {
+    try {
+      const res = await client.get('/crm/stages/');
+      const data = res.data?.results || res.data || [];
+      if (data.length > 0) {
+        setPipelineStages(data);
+      }
+    } catch (e) {
+      console.log('Failed to fetch pipeline stages, using defaults:', e);
+    }
+  };
 
   const loadUser = async () => {
     try {
@@ -45,9 +83,9 @@ export default function SalesScreen() {
   const [totalStudents, setTotalStudents] = useState(0);
 
   // Pagination & Filtering State for View Applications
-  const [filterStatus, setFilterStatus] = useState('All');
+  const [selectedFilter, setSelectedFilter] = useState<any>({ label: 'All', type: 'all', value: 'All' });
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 50; // show 50 per page for better mobile coverage
+  const itemsPerPage = 50;
 
   // Single Application Form State - Advanced Web Parity
   const [programsList, setProgramsList] = useState<any[]>([
@@ -80,18 +118,28 @@ export default function SalesScreen() {
   const [modalItems, setModalItems] = useState<any[]>([]);
   const [activeDynamicFieldId, setActiveDynamicFieldId] = useState<number | null>(null);
 
+  // Dynamic filter list — stages from web backend + program filters
+  const filterOptions = [
+    { label: 'All', type: 'all', value: 'All' },
+    ...pipelineStages.map(stage => ({
+      label: stage.name,
+      type: 'lead_status',
+      value: stage.id
+    })),
+    ...programsList.map(prog => ({ label: prog.name, type: 'program', value: prog.id }))
+  ];
+
   useEffect(() => {
     if (authLoading || !hasDialerAccess) return;
     if (activeTab === 'view') {
       const delayDebounceFn = setTimeout(() => {
-        // Reset list and fetch fresh page 1 on filter/search changes
         setStudents([]);
         setCurrentPage(1);
         fetchData(1, true);
       }, 300);
       return () => clearTimeout(delayDebounceFn);
     }
-  }, [activeTab, search, filterStatus, authLoading, hasDialerAccess]);
+  }, [activeTab, search, selectedFilter, authLoading, hasDialerAccess]);
 
   useEffect(() => {
     if (authLoading || !hasDialerAccess) return;
@@ -100,18 +148,18 @@ export default function SalesScreen() {
 
   if (authLoading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#3182CE" />
+      <View style={[styles.loadingContainer, isDark && styles.darkBg]}>
+        <ActivityIndicator size="large" color="#FBBF24" />
       </View>
     );
   }
 
   if (!hasDialerAccess) {
     return (
-      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center', padding: 20 }]}>
+      <View style={[styles.container, isDark && styles.darkBg, { justifyContent: 'center', alignItems: 'center', padding: 20 }]}>
         <FontAwesome5 name="lock" size={48} color="#A0AEC0" style={{ marginBottom: 16 }} />
-        <Text style={{ fontSize: 18, fontWeight: '900', color: '#1A202C', marginBottom: 8 }}>Restricted Access</Text>
-        <Text style={{ fontSize: 14, color: '#718096', textAlign: 'center', lineHeight: 20 }}>
+        <Text style={[{ fontSize: 18, fontWeight: '900', color: '#1A202C', marginBottom: 8 }, isDark && styles.darkText]}>Restricted Access</Text>
+        <Text style={[{ fontSize: 14, color: '#718096', textAlign: 'center', lineHeight: 20 }, isDark && styles.darkSubText]}>
           This screen is reserved for Sales and administrative personnel.
         </Text>
       </View>
@@ -139,11 +187,13 @@ export default function SalesScreen() {
     }
     const params: any = { page, page_size: itemsPerPage };
     if (search) params.search = search;
-    if (filterStatus !== 'All') {
-      if (['ACTIVE', 'NEW', 'PENDING'].includes(filterStatus)) {
-        params.status = filterStatus;
-      } else {
-        params.program = filterStatus;
+    
+    // Apply filters matching backend params
+    if (selectedFilter && selectedFilter.type !== 'all') {
+      if (selectedFilter.type === 'lead_status') {
+        params.lead_status = selectedFilter.value;
+      } else if (selectedFilter.type === 'program') {
+        params.program = selectedFilter.value;
       }
     }
     
@@ -151,8 +201,7 @@ export default function SalesScreen() {
     let list = data.results || [];
     let count = data.count || list.length;
     
-    // If API returns empty, provide dummy list for demonstration
-    if (list.length === 0 && !search && filterStatus === 'All' && page === 1) {
+    if (list.length === 0 && !search && selectedFilter.type === 'all' && page === 1) {
       list = [
         { id: 1, first_name: 'Aarav', last_name: 'Menon', crm_student_id: 'NAT-2026-001', course_name: 'G 226 BNS', phone: '+91 98765 43210', status: 'ACTIVE', program: 'Natya' },
         { id: 2, first_name: 'Diya', last_name: 'Nair', crm_student_id: 'NAT-2026-002', course_name: 'G 244 BNS', phone: '+91 98765 43211', status: 'ACTIVE', program: 'Wise Import' },
@@ -162,7 +211,6 @@ export default function SalesScreen() {
       count = 4;
     }
 
-    // Append new page to existing list (infinite scroll), or reset
     setStudents(prev => (reset || page === 1) ? list : [...prev, ...list]);
     setTotalStudents(count);
     setCurrentPage(page);
@@ -172,7 +220,7 @@ export default function SalesScreen() {
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await fetchData(1, true);
+    await Promise.all([fetchData(1, true), fetchStats()]);
     setRefreshing(false);
   };
 
@@ -183,9 +231,15 @@ export default function SalesScreen() {
   };
 
   const handleOpenWebPortal = async () => {
-    await WebBrowser.openBrowserAsync('https://natyaarts.org', {
-      presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
-    });
+    try {
+      await WebBrowser.openBrowserAsync('https://natyaarts.org/crm/dashboard', {
+        presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
+      });
+    } catch (err) {
+      console.warn('Failed to open web portal:', err);
+    } finally {
+      setActiveTab('view');
+    }
   };
 
   const handleOpenProgramModal = () => {
@@ -232,7 +286,6 @@ export default function SalesScreen() {
       setCoursesList([]);
       setDynamicFieldsList([]);
 
-      // Fetch Sub-programs
       try {
         const subRes = await client.get(`/sub-programs/?program=${item.id}`);
         if (subRes.data && subRes.data.length > 0) {
@@ -245,7 +298,6 @@ export default function SalesScreen() {
           ]);
         }
 
-        // Fetch dynamic fields for program
         const fieldsRes = await client.get(`/forms/fields/?program=${item.id}&field_group=INITIAL`);
         const fieldData = Array.isArray(fieldsRes.data) ? fieldsRes.data : (fieldsRes.data?.results || []);
         if (fieldData.length > 0) {
@@ -372,81 +424,89 @@ export default function SalesScreen() {
     }
   };
 
-  // Filter and Paginate Logic
-  const totalPages = Math.ceil(totalStudents / itemsPerPage) || 1;
-  const paginatedStudents = students;
-
   const renderStudent = ({ item }: { item: any }) => (
-    <TouchableOpacity style={styles.card}>
+    <TouchableOpacity 
+      style={[styles.card, isDark && styles.darkCard]}
+      onPress={() => router.push({ pathname: '/lead-details', params: { leadId: item.id } } as any)}
+    >
       <View style={styles.cardHeader}>
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>{item.first_name?.[0] || item.username?.[0] || '?'}</Text>
         </View>
         <View style={styles.headerInfo}>
-          <Text style={styles.name}>{item.first_name} {item.last_name}</Text>
-          <Text style={styles.id}>{item.crm_student_id || item.username} • <Text style={{ color: '#3182CE', fontWeight: '800' }}>{item.program || 'Wise Import'}</Text></Text>
+          <Text style={[styles.name, isDark && styles.darkText]}>{item.first_name} {item.last_name}</Text>
+          <Text style={[styles.id, isDark && styles.darkSubText]}>
+            {item.crm_student_id || item.username} • <Text style={{ color: '#FBBF24', fontWeight: '800' }}>{item.program_name || item.program || 'Wise Import'}</Text>
+          </Text>
         </View>
-        <View style={[styles.badge, { backgroundColor: item.status === 'ACTIVE' ? '#C6F6D5' : item.status === 'NEW' ? '#EBF8FF' : '#FEFCBF' }]}>
-          <Text style={[styles.badgeText, { color: item.status === 'ACTIVE' ? '#22543D' : item.status === 'NEW' ? '#2B6CB0' : '#744210' }]}>
-            {item.status || 'NEW'}
+        <View style={[styles.badge, { backgroundColor: item.lead_status === 'ENROLLED' || item.status === 'ACTIVE' ? '#C6F6D5' : item.lead_status === 'NEW' || item.status === 'NEW' ? '#EBF8FF' : '#FEFCBF' }]}>
+          <Text style={[styles.badgeText, { color: item.lead_status === 'ENROLLED' || item.status === 'ACTIVE' ? '#22543D' : item.lead_status === 'NEW' || item.status === 'NEW' ? '#2B6CB0' : '#744210' }]}>
+            {item.lead_status || item.status || 'NEW'}
           </Text>
         </View>
       </View>
 
       <View style={styles.cardBody}>
         <View style={styles.infoRow}>
-          <FontAwesome5 name="graduation-cap" size={14} color="#718096" />
-          <Text style={styles.infoText}>{item.course_name || item.course?.name || 'No Course Assigned'}</Text>
+          <FontAwesome5 name="graduation-cap" size={14} color={isDark ? '#94A3B8' : '#718096'} />
+          <Text style={[styles.infoText, isDark && styles.darkSubText]}>{item.course_name || item.course?.name || 'No Course Assigned'}</Text>
         </View>
         <View style={styles.infoRow}>
-          <FontAwesome5 name="phone" size={14} color="#718096" />
-          <Text style={styles.infoText}>{item.phone || item.user?.phone || 'No Phone'}</Text>
+          <FontAwesome5 name="phone" size={14} color={isDark ? '#94A3B8' : '#718096'} />
+          <Text style={[styles.infoText, isDark && styles.darkSubText]}>{item.phone || item.mobile || item.user?.phone || 'No Phone'}</Text>
         </View>
       </View>
 
       <View style={styles.cardActions}>
         <TouchableOpacity 
-          style={styles.actionButton} 
-          onPress={() => item.phone && router.push({ pathname: '/dialpad', params: { leadId: item.id, phone: item.phone } } as any)}
+          style={[styles.actionButton, isDark && { backgroundColor: '#1E293B' }]} 
+          onPress={() => {
+            const studentPhone = item.phone || item.mobile || '';
+            if (studentPhone) {
+              router.push({ pathname: '/dialpad', params: { leadId: item.id, phone: studentPhone } } as any);
+            } else {
+              Alert.alert('No Phone', 'This lead does not have a registered phone number.');
+            }
+          }}
         >
           <FontAwesome5 name="phone-alt" size={14} color="#3182CE" />
           <Text style={styles.actionText}>Call</Text>
         </TouchableOpacity>
         <TouchableOpacity 
-          style={[styles.actionButton, { backgroundColor: '#F7FAFC' }]} 
+          style={[styles.actionButton, { backgroundColor: isDark ? '#334155' : '#F7FAFC' }]} 
           onPress={() => router.push({ pathname: '/lead-details', params: { leadId: item.id } } as any)}
         >
-          <FontAwesome5 name="eye" size={14} color="#4A5568" />
-          <Text style={[styles.actionText, { color: '#4A5568' }]}>Details</Text>
+          <FontAwesome5 name="eye" size={14} color={isDark ? '#E2E8F0' : '#4A5568'} />
+          <Text style={[styles.actionText, { color: isDark ? '#E2E8F0' : '#4A5568' }]}>Details</Text>
         </TouchableOpacity>
       </View>
     </TouchableOpacity>
   );
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, isDark && styles.darkBg]}>
       {/* Header & Segmented Tabs */}
-      <View style={styles.header}>
-        <Text style={styles.title}>SALES & ADMISSIONS</Text>
+      <View style={[styles.header, isDark && styles.darkHeader]}>
+        <Text style={[styles.title, isDark && styles.darkTitle]}>SALES & ADMISSIONS</Text>
         
         {/* Segmented Toggle Bar */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
-          <View style={[styles.segmentContainer, { width: 'auto' }]}>
-            <TouchableOpacity style={[styles.segmentButton, activeTab === 'single' && styles.segmentActive]} onPress={() => setActiveTab('single')}>
-              <Text style={[styles.segmentText, activeTab === 'single' && styles.segmentTextActive]}>Single App</Text>
+          <View style={[styles.segmentContainer, isDark && styles.darkSegmentContainer, { width: 'auto' }]}>
+            <TouchableOpacity style={[styles.segmentButton, activeTab === 'single' && (isDark ? styles.darkSegmentActive : styles.segmentActive)]} onPress={() => setActiveTab('single')}>
+              <Text style={[styles.segmentText, activeTab === 'single' && (isDark ? styles.darkSegmentTextActive : styles.segmentTextActive)]}>Single App</Text>
             </TouchableOpacity>
             
-            <TouchableOpacity style={[styles.segmentButton, activeTab === 'bulk' && styles.segmentActive]} onPress={() => setActiveTab('bulk')}>
-              <Text style={[styles.segmentText, activeTab === 'bulk' && styles.segmentTextActive]}>Bulk Upload</Text>
+            <TouchableOpacity style={[styles.segmentButton, activeTab === 'bulk' && (isDark ? styles.darkSegmentActive : styles.segmentActive)]} onPress={() => setActiveTab('bulk')}>
+              <Text style={[styles.segmentText, activeTab === 'bulk' && (isDark ? styles.darkSegmentTextActive : styles.segmentTextActive)]}>Bulk Upload</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={[styles.segmentButton, activeTab === 'view' && styles.segmentActive]} onPress={() => setActiveTab('view')}>
-              <Text style={[styles.segmentText, activeTab === 'view' && styles.segmentTextActive]}>View Apps</Text>
+            <TouchableOpacity style={[styles.segmentButton, activeTab === 'view' && (isDark ? styles.darkSegmentActive : styles.segmentActive)]} onPress={() => setActiveTab('view')}>
+              <Text style={[styles.segmentText, activeTab === 'view' && (isDark ? styles.darkSegmentTextActive : styles.segmentTextActive)]}>View Apps</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={[styles.segmentButton, activeTab === 'web' && styles.segmentActive]} onPress={() => { setActiveTab('web'); handleOpenWebPortal(); }}>
-              <FontAwesome5 name="globe" size={12} color={activeTab === 'web' ? '#3182CE' : '#718096'} style={{ marginRight: 4 }} />
-              <Text style={[styles.segmentText, activeTab === 'web' && styles.segmentTextActive]}>Web Portal</Text>
+            <TouchableOpacity style={[styles.segmentButton, activeTab === 'web' && (isDark ? styles.darkSegmentActive : styles.segmentActive)]} onPress={() => { setActiveTab('web'); handleOpenWebPortal(); }}>
+              <FontAwesome5 name="globe" size={12} color={activeTab === 'web' ? '#FBBF24' : '#718096'} style={{ marginRight: 4 }} />
+              <Text style={[styles.segmentText, activeTab === 'web' && (isDark ? styles.darkSegmentTextActive : styles.segmentTextActive)]}>Web Portal</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -454,21 +514,66 @@ export default function SalesScreen() {
         {/* Search & Filter Bar (Only visible in View Applications tab) */}
         {activeTab === 'view' && (
           <View style={{ backgroundColor: 'transparent' }}>
-            <View style={styles.searchBar}>
+            <View style={[styles.searchBar, isDark && styles.darkHeader]}>
               <FontAwesome5 name="search" size={16} color="#A0AEC0" />
-              <TextInput style={styles.input} placeholder="Search applications..." placeholderTextColor="#A0AEC0" value={search} onChangeText={(text) => { setSearch(text); setCurrentPage(1); }} />
+              <TextInput 
+                style={[styles.input, isDark && styles.darkText]} 
+                placeholder="Search applications..." 
+                placeholderTextColor="#A0AEC0" 
+                value={search} 
+                onChangeText={(text) => { setSearch(text); setCurrentPage(1); }} 
+              />
             </View>
 
             {/* Filter Pills ScrollView */}
             <View style={styles.filterContainer}>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
-                {['All', 'ACTIVE', 'NEW', 'PENDING', 'Wise Import', 'Natya'].map((filter, idx) => (
-                  <TouchableOpacity key={idx} style={[styles.filterPill, filterStatus === filter && styles.filterPillActive]} onPress={() => { setFilterStatus(filter); setCurrentPage(1); }}>
-                    <Text style={[styles.filterPillText, filterStatus === filter && styles.filterPillTextActive]}>{filter}</Text>
-                  </TouchableOpacity>
-                ))}
+                {filterOptions.map((filter, idx) => {
+                  const isActive = (selectedFilter.type === filter.type && selectedFilter.value === filter.value);
+                  return (
+                    <TouchableOpacity 
+                      key={idx} 
+                      style={[
+                        styles.filterPill, 
+                        isDark && styles.darkFilterPill,
+                        isActive && styles.filterPillActive
+                      ]} 
+                      onPress={() => { setSelectedFilter(filter); setCurrentPage(1); }}
+                    >
+                      <Text style={[
+                        styles.filterPillText, 
+                        isDark && styles.darkFilterPillText,
+                        isActive && styles.filterPillTextActive
+                      ]}>
+                        {filter.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </ScrollView>
             </View>
+
+            {/* Sales Dashboard Stats Grid */}
+            {stats && (
+              <View style={styles.statsRowGrid}>
+                <View style={[styles.miniStatCard, isDark && styles.darkStatCard]}>
+                  <Text style={styles.miniStatLabel}>Total Leads</Text>
+                  <Text style={[styles.miniStatValue, { color: '#3182CE' }]}>{stats.total_leads}</Text>
+                </View>
+                <View style={[styles.miniStatCard, isDark && styles.darkStatCard]}>
+                  <Text style={styles.miniStatLabel}>Unassigned</Text>
+                  <Text style={[styles.miniStatValue, { color: '#E53E3E' }]}>{stats.unassigned_leads}</Text>
+                </View>
+                <View style={[styles.miniStatCard, isDark && styles.darkStatCard]}>
+                  <Text style={styles.miniStatLabel}>Contacted</Text>
+                  <Text style={[styles.miniStatValue, { color: '#38A169' }]}>{stats.contacted_leads}</Text>
+                </View>
+                <View style={[styles.miniStatCard, isDark && styles.darkStatCard]}>
+                  <Text style={styles.miniStatLabel}>Revenue</Text>
+                  <Text style={[styles.miniStatValue, { color: '#D69E2E' }]}>₹{stats.revenue}</Text>
+                </View>
+              </View>
+            )}
           </View>
         )}
       </View>
@@ -476,13 +581,13 @@ export default function SalesScreen() {
       {/* TAB CONTENT: 1. VIEW APPLICATIONS */}
       {activeTab === 'view' && (
         loading && !refreshing ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#3182CE" />
+          <View style={[styles.loadingContainer, isDark && styles.darkBg]}>
+            <ActivityIndicator size="large" color="#FBBF24" />
           </View>
         ) : (
           <View style={{ flex: 1, backgroundColor: 'transparent' }}>
             <FlatList
-              data={paginatedStudents}
+              data={students}
               renderItem={renderStudent}
               keyExtractor={(item, index) => item.id?.toString() || index.toString()}
               contentContainerStyle={styles.list}
@@ -493,15 +598,15 @@ export default function SalesScreen() {
               ListFooterComponent={
                 loadingMore ? (
                   <View style={{ padding: 20, alignItems: 'center' }}>
-                    <ActivityIndicator size="small" color="#3182CE" />
+                    <ActivityIndicator size="small" color="#FBBF24" />
                     <Text style={{ color: '#718096', marginTop: 8, fontSize: 13 }}>Loading more...</Text>
                   </View>
                 ) : students.length < totalStudents ? (
                   <TouchableOpacity
                     onPress={handleLoadMore}
-                    style={{ margin: 20, padding: 14, backgroundColor: '#EBF8FF', borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: '#BEE3F8' }}
+                    style={{ margin: 20, padding: 14, backgroundColor: isDark ? '#1E293B' : '#EBF8FF', borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: isDark ? '#334155' : '#BEE3F8' }}
                   >
-                    <Text style={{ color: '#3182CE', fontWeight: '800', fontSize: 14 }}>
+                    <Text style={{ color: isDark ? '#FBBF24' : '#3182CE', fontWeight: '800', fontSize: 14 }}>
                       Load More ({students.length} of {totalStudents})
                     </Text>
                   </TouchableOpacity>
@@ -525,18 +630,18 @@ export default function SalesScreen() {
       {/* TAB CONTENT: 2. SINGLE APPLICATION FORM */}
       {activeTab === 'single' && (
         <ScrollView style={styles.formScroll} contentContainerStyle={styles.formContainer}>
-          <View style={styles.formCard}>
+          <View style={[styles.formCard, isDark && styles.darkCard]}>
             <View style={styles.stepBadge}><Text style={styles.stepBadgeText}>STEP 1: PROGRAM SELECTION</Text></View>
-            <Text style={styles.formHeader}>SELECT ACADEMIC TRACK</Text>
+            <Text style={[styles.formHeader, isDark && styles.darkText]}>SELECT ACADEMIC TRACK</Text>
             
             {/* PROGRAM SELECTION FIELD */}
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Program Selection</Text>
+              <Text style={[styles.label, isDark && styles.darkText]}>Program Selection</Text>
               <Text style={styles.subLabel}>Select Program *</Text>
-              <TouchableOpacity style={styles.programSelectorBtn} onPress={handleOpenProgramModal}>
+              <TouchableOpacity style={[styles.programSelectorBtn, isDark && styles.darkHeader]} onPress={handleOpenProgramModal}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                   <FontAwesome5 name="university" size={16} color="#3182CE" style={{ marginRight: 12 }} />
-                  <Text style={styles.programSelectorText}>{program}</Text>
+                  <Text style={[styles.programSelectorText, isDark && styles.darkText]}>{program}</Text>
                 </View>
                 <FontAwesome5 name="chevron-down" size={14} color="#718096" />
               </TouchableOpacity>
@@ -545,12 +650,12 @@ export default function SalesScreen() {
             {/* SUB-PROGRAM / CATEGORY SELECTION FIELD */}
             {subProgramsList.length > 0 && (
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>Category / Sub-Program</Text>
+                <Text style={[styles.label, isDark && styles.darkText]}>Category / Sub-Program</Text>
                 <Text style={styles.subLabel}>Select Category *</Text>
-                <TouchableOpacity style={styles.programSelectorBtn} onPress={handleOpenSubProgramModal}>
+                <TouchableOpacity style={[styles.programSelectorBtn, isDark && styles.darkHeader]} onPress={handleOpenSubProgramModal}>
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                     <FontAwesome5 name="layer-group" size={16} color="#805AD5" style={{ marginRight: 12 }} />
-                    <Text style={styles.programSelectorText}>{selectedSubProgramObj?.name || '-- Select Category --'}</Text>
+                    <Text style={[styles.programSelectorText, isDark && styles.darkText]}>{selectedSubProgramObj?.name || '-- Select Category --'}</Text>
                   </View>
                   <FontAwesome5 name="chevron-down" size={14} color="#718096" />
                 </TouchableOpacity>
@@ -560,61 +665,63 @@ export default function SalesScreen() {
             {/* COURSE / SUBJECT SELECTION FIELD */}
             {coursesList.length > 0 && (
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>Course / Subject</Text>
+                <Text style={[styles.label, isDark && styles.darkText]}>Course / Subject</Text>
                 <Text style={styles.subLabel}>Select Course *</Text>
-                <TouchableOpacity style={styles.programSelectorBtn} onPress={handleOpenCourseModal}>
+                <TouchableOpacity style={[styles.programSelectorBtn, isDark && styles.darkHeader]} onPress={handleOpenCourseModal}>
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                     <FontAwesome5 name="graduation-cap" size={16} color="#38A169" style={{ marginRight: 12 }} />
-                    <Text style={styles.programSelectorText}>{selectedCourseObj?.name || course || '-- Select Course --'}</Text>
+                    <Text style={[styles.programSelectorText, isDark && styles.darkText]}>{selectedCourseObj?.name || course || '-- Select Course --'}</Text>
                   </View>
                   <FontAwesome5 name="chevron-down" size={14} color="#718096" />
                 </TouchableOpacity>
               </View>
             )}
 
-            <View style={[styles.stepBadge, { marginTop: 20, backgroundColor: '#EBF8FF' }]}><Text style={[styles.stepBadgeText, { color: '#2B6CB0' }]}>STEP 2: APPLICANT DETAILS</Text></View>
-            <Text style={styles.formHeader}>CORE & DYNAMIC FIELDS</Text>
+            <View style={[styles.stepBadge, { marginTop: 20, backgroundColor: isDark ? '#1E293B' : '#EBF8FF' }]}>
+              <Text style={[styles.stepBadgeText, { color: isDark ? '#FBBF24' : '#2B6CB0' }]}>STEP 2: APPLICANT DETAILS</Text>
+            </View>
+            <Text style={[styles.formHeader, isDark && styles.darkText]}>CORE & DYNAMIC FIELDS</Text>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>First Name *</Text>
-              <TextInput style={styles.formInput} placeholder="Enter first name" placeholderTextColor="#A0AEC0" value={firstName} onChangeText={setFirstName} />
+              <Text style={[styles.label, isDark && styles.darkText]}>First Name *</Text>
+              <TextInput style={[styles.formInput, isDark && styles.darkInput]} placeholder="Enter first name" placeholderTextColor="#A0AEC0" value={firstName} onChangeText={setFirstName} />
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Last Name</Text>
-              <TextInput style={styles.formInput} placeholder="Enter last name" placeholderTextColor="#A0AEC0" value={lastName} onChangeText={setLastName} />
+              <Text style={[styles.label, isDark && styles.darkText]}>Last Name</Text>
+              <TextInput style={[styles.formInput, isDark && styles.darkInput]} placeholder="Enter last name" placeholderTextColor="#A0AEC0" value={lastName} onChangeText={setLastName} />
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Phone Number *</Text>
-              <TextInput style={styles.formInput} placeholder="Enter phone number" placeholderTextColor="#A0AEC0" keyboardType="phone-pad" value={phone} onChangeText={setPhone} />
+              <Text style={[styles.label, isDark && styles.darkText]}>Phone Number *</Text>
+              <TextInput style={[styles.formInput, isDark && styles.darkInput]} placeholder="Enter phone number" placeholderTextColor="#A0AEC0" keyboardType="phone-pad" value={phone} onChangeText={setPhone} />
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Email Address</Text>
-              <TextInput style={styles.formInput} placeholder="Enter email address" placeholderTextColor="#A0AEC0" keyboardType="email-address" autoCapitalize="none" value={email} onChangeText={setEmail} />
+              <Text style={[styles.label, isDark && styles.darkText]}>Email Address</Text>
+              <TextInput style={[styles.formInput, isDark && styles.darkInput]} placeholder="Enter email address" placeholderTextColor="#A0AEC0" keyboardType="email-address" autoCapitalize="none" value={email} onChangeText={setEmail} />
             </View>
 
             {coursesList.length === 0 && (
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>Interested Course</Text>
-                <TextInput style={styles.formInput} placeholder="e.g. Bharatanatyam Advanced" placeholderTextColor="#A0AEC0" value={course} onChangeText={setCourse} />
+                <Text style={[styles.label, isDark && styles.darkText]}>Interested Course</Text>
+                <TextInput style={[styles.formInput, isDark && styles.darkInput]} placeholder="e.g. Bharatanatyam Advanced" placeholderTextColor="#A0AEC0" value={course} onChangeText={setCourse} />
               </View>
             )}
 
             {/* DYNAMIC FIELDS RENDERER */}
             {dynamicFieldsList.map((field, idx) => (
               <View key={idx} style={styles.inputGroup}>
-                <Text style={styles.label}>{field.label} {field.is_required ? '*' : ''}</Text>
+                <Text style={[styles.label, isDark && styles.darkText]}>{field.label} {field.is_required ? '*' : ''}</Text>
                 {field.field_type === 'dropdown' ? (
-                  <TouchableOpacity style={styles.formInput} onPress={() => handleOpenDynamicFieldModal(field)}>
-                    <Text style={{ color: dynamicValues[field.id] ? '#1A202C' : '#A0AEC0', fontSize: 15 }}>
+                  <TouchableOpacity style={[styles.formInput, isDark && styles.darkInput]} onPress={() => handleOpenDynamicFieldModal(field)}>
+                    <Text style={{ color: dynamicValues[field.id] ? (isDark ? '#FFF' : '#1A202C') : '#A0AEC0', fontSize: 15 }}>
                       {dynamicValues[field.id] || `Select ${field.label}`}
                     </Text>
                   </TouchableOpacity>
                 ) : (
                   <TextInput
-                    style={styles.formInput}
+                    style={[styles.formInput, isDark && styles.darkInput]}
                     placeholder={field.placeholder || `Enter ${field.label.toLowerCase()}`}
                     placeholderTextColor="#A0AEC0"
                     value={dynamicValues[field.id] || ''}
@@ -641,12 +748,12 @@ export default function SalesScreen() {
       {/* TAB CONTENT: 3. BULK UPLOAD */}
       {activeTab === 'bulk' && (
         <View style={styles.bulkContainer}>
-          <View style={styles.bulkCard}>
+          <View style={[styles.bulkCard, isDark && styles.darkCard]}>
             <View style={styles.uploadIconContainer}>
               <FontAwesome5 name="file-csv" size={48} color="#3182CE" />
             </View>
-            <Text style={styles.bulkTitle}>Bulk Import Student Applications</Text>
-            <Text style={styles.bulkDesc}>
+            <Text style={[styles.bulkTitle, isDark && styles.darkText]}>Bulk Import Student Applications</Text>
+            <Text style={[styles.bulkDesc, isDark && styles.darkSubText]}>
               Upload a CSV file containing multiple student records. The system will automatically validate and queue them for batch insertion into the production database.
             </Text>
             
@@ -655,7 +762,7 @@ export default function SalesScreen() {
               <Text style={styles.uploadButtonText}>Select CSV File</Text>
             </TouchableOpacity>
 
-            <View style={styles.templateBox}>
+            <View style={[styles.templateBox, isDark && styles.darkHeader]}>
               <FontAwesome5 name="info-circle" size={14} color="#718096" />
               <Text style={styles.templateText}>Required columns: first_name, last_name, phone, email, course, program</Text>
             </View>
@@ -663,7 +770,7 @@ export default function SalesScreen() {
         </View>
       )}
 
-      {/* SELECTION MODAL (REPLACES ALERT.ALERT FOR UNLIMITED BACKEND DROPDOWN ITEMS) */}
+      {/* SELECTION MODAL */}
       <Modal
         animationType="slide"
         transparent={true}
@@ -671,9 +778,9 @@ export default function SalesScreen() {
         onRequestClose={() => setModalVisible(false)}
       >
         <Pressable style={styles.modalOverlay} onPress={() => setModalVisible(false)}>
-          <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
+          <Pressable style={[styles.modalContent, isDark && styles.darkModalContent]} onPress={(e) => e.stopPropagation()}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitleText}>{modalTitle}</Text>
+              <Text style={[styles.modalTitleText, isDark && styles.darkText]}>{modalTitle}</Text>
               <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.modalCloseBtn}>
                 <FontAwesome5 name="times" size={18} color="#A0AEC0" />
               </TouchableOpacity>
@@ -684,8 +791,8 @@ export default function SalesScreen() {
               keyExtractor={(item, idx) => item.id?.toString() || idx.toString()}
               contentContainerStyle={{ padding: 24 }}
               renderItem={({ item }) => (
-                <TouchableOpacity style={styles.modalItemBtn} onPress={() => handleSelectItem(item)}>
-                  <Text style={styles.modalItemText}>{item.name || item}</Text>
+                <TouchableOpacity style={[styles.modalItemBtn, isDark && styles.darkModalItemBtn]} onPress={() => handleSelectItem(item)}>
+                  <Text style={[styles.modalItemText, isDark && styles.darkText]}>{item.name || item}</Text>
                   <FontAwesome5 name="chevron-right" size={14} color="#CBD5E0" />
                 </TouchableOpacity>
               )}
@@ -704,24 +811,35 @@ export default function SalesScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F7FAFC' },
+  darkBg: { backgroundColor: '#0F172A' },
   header: { padding: 20, paddingTop: 60, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#E2E8F0' },
+  darkHeader: { backgroundColor: '#1E293B', borderBottomColor: '#334155' },
   title: { fontSize: 12, fontWeight: '900', color: '#4A5568', letterSpacing: 2, marginBottom: 16 },
+  darkTitle: { color: '#94A3B8' },
   segmentContainer: { flexDirection: 'row', backgroundColor: '#EDF2F7', borderRadius: 16, padding: 4, marginBottom: 16 },
-  segmentButton: { flex: 1, paddingVertical: 12, borderRadius: 14, alignItems: 'center', backgroundColor: 'transparent' },
+  darkSegmentContainer: { backgroundColor: '#0F172A' },
+  segmentButton: { paddingHorizontal: 16, paddingVertical: 12, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent', minWidth: 110, flexDirection: 'row' },
   segmentActive: { backgroundColor: '#FFFFFF', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
+  darkSegmentActive: { backgroundColor: '#1E293B' },
   segmentText: { fontSize: 13, fontWeight: '700', color: '#718096' },
   segmentTextActive: { color: '#3182CE', fontWeight: '900' },
+  darkSegmentTextActive: { color: '#FBBF24', fontWeight: '900' },
   searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F7FAFC', borderRadius: 16, paddingHorizontal: 16, paddingVertical: 12, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 12 },
   input: { flex: 1, marginLeft: 12, fontSize: 16, color: '#1A202C', fontWeight: '600' },
+  darkText: { color: '#FFFFFF' },
+  darkSubText: { color: '#94A3B8' },
   filterContainer: { backgroundColor: 'transparent', marginBottom: 4 },
   filterScroll: { gap: 8, paddingRight: 10 },
   filterPill: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 14, backgroundColor: '#EDF2F7', borderWidth: 1, borderColor: '#E2E8F0' },
+  darkFilterPill: { backgroundColor: '#1E293B', borderColor: '#334155' },
   filterPillActive: { backgroundColor: '#3182CE', borderColor: '#3182CE' },
   filterPillText: { fontSize: 12, fontWeight: '700', color: '#718096' },
+  darkFilterPillText: { color: '#94A3B8' },
   filterPillTextActive: { color: '#FFFFFF', fontWeight: '900' },
   list: { padding: 20 },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   card: { backgroundColor: '#FFFFFF', borderRadius: 20, padding: 20, marginBottom: 15, borderWidth: 1, borderColor: '#E2E8F0', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 5, elevation: 2 },
+  darkCard: { backgroundColor: '#1E293B', borderColor: '#334155' },
   cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 15, backgroundColor: 'transparent' },
   avatar: { width: 45, height: 45, borderRadius: 15, backgroundColor: '#EBF8FF', alignItems: 'center', justifyContent: 'center' },
   avatarText: { fontSize: 20, fontWeight: '900', color: '#3182CE' },
@@ -738,12 +856,6 @@ const styles = StyleSheet.create({
   actionText: { marginLeft: 8, fontSize: 13, fontWeight: '900', color: '#3182CE' },
   emptyContainer: { alignItems: 'center', marginTop: 100, backgroundColor: 'transparent' },
   emptyText: { marginTop: 15, fontSize: 16, color: '#A0AEC0', fontWeight: '600' },
-  paginationBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16, backgroundColor: '#FFFFFF', borderTopWidth: 1, borderTopColor: '#E2E8F0' },
-  pageBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 16, backgroundColor: '#F7FAFC', borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0' },
-  pageBtnDisabled: { opacity: 0.5 },
-  pageBtnText: { fontSize: 13, fontWeight: '800', color: '#1A202C' },
-  pageInfoBadge: { paddingVertical: 6, paddingHorizontal: 16, backgroundColor: '#EBF8FF', borderRadius: 12 },
-  pageInfoText: { fontSize: 12, fontWeight: '700', color: '#2B6CB0' },
   formScroll: { flex: 1 },
   formContainer: { padding: 20, paddingBottom: 40 },
   formCard: { backgroundColor: '#FFFFFF', borderRadius: 24, padding: 24, borderWidth: 1, borderColor: '#E2E8F0', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.03, shadowRadius: 10, elevation: 2 },
@@ -756,6 +868,7 @@ const styles = StyleSheet.create({
   programSelectorBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#F7FAFC', borderRadius: 16, paddingHorizontal: 16, paddingVertical: 16, borderWidth: 1, borderColor: '#E2E8F0' },
   programSelectorText: { fontSize: 15, fontWeight: '800', color: '#1A202C' },
   formInput: { backgroundColor: '#F7FAFC', borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14, fontSize: 15, color: '#1A202C', borderWidth: 1, borderColor: '#E2E8F0' },
+  darkInput: { backgroundColor: '#0F172A', borderColor: '#334155', color: '#FFFFFF' },
   submitButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#3182CE', paddingVertical: 18, borderRadius: 18, marginTop: 10, shadowColor: '#3182CE', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.25, shadowRadius: 10, elevation: 5 },
   submitButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '900', marginRight: 10 },
   bulkContainer: { flex: 1, padding: 20 },
@@ -769,9 +882,16 @@ const styles = StyleSheet.create({
   templateText: { marginLeft: 8, fontSize: 11, color: '#718096', fontWeight: '600' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(26, 32, 44, 0.6)', justifyContent: 'flex-end' },
   modalContent: { backgroundColor: '#FFFFFF', borderTopLeftRadius: 32, borderTopRightRadius: 32, maxHeight: '80%', shadowColor: '#000', shadowOffset: { width: 0, height: -10 }, shadowOpacity: 0.1, shadowRadius: 20, elevation: 10 },
+  darkModalContent: { backgroundColor: '#1E293B' },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingVertical: 20, borderBottomWidth: 1, borderBottomColor: '#E2E8F0', backgroundColor: 'transparent' },
   modalTitleText: { fontSize: 18, fontWeight: '900', color: '#1A202C' },
   modalCloseBtn: { padding: 8, borderRadius: 16, backgroundColor: '#F7FAFC' },
   modalItemBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 16, paddingHorizontal: 20, backgroundColor: '#F7FAFC', borderRadius: 16, marginBottom: 12, borderWidth: 1, borderColor: '#EDF2F7' },
+  darkModalItemBtn: { backgroundColor: '#0F172A', borderColor: '#334155' },
   modalItemText: { fontSize: 16, fontWeight: '700', color: '#2D3748' },
+  statsRowGrid: { flexDirection: 'row', justifyContent: 'space-between', gap: 8, marginTop: 12, marginBottom: 4, paddingHorizontal: 2 },
+  miniStatCard: { flex: 1, backgroundColor: '#EDF2F7', borderRadius: 12, paddingVertical: 10, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E2E8F0' },
+  darkStatCard: { backgroundColor: '#1E293B', borderColor: '#334155' },
+  miniStatLabel: { fontSize: 9, fontWeight: '700', color: '#718096', marginBottom: 2, textAlign: 'center' },
+  miniStatValue: { fontSize: 13, fontWeight: '900', textAlign: 'center' },
 });

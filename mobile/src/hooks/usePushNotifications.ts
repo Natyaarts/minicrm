@@ -20,6 +20,12 @@ export function usePushNotifications() {
   const responseListener = useRef<any>(undefined);
 
   useEffect(() => {
+    const isExpoGo = Constants.appOwnership === 'expo' || (Constants.executionEnvironment as string) === 'store-client';
+    if (isExpoGo) {
+      console.log('Push notifications registration bypassed in Expo Go client.');
+      return;
+    }
+
     registerForPushNotificationsAsync().then(token => {
       if (token) {
         setExpoPushToken(token);
