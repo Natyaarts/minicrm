@@ -124,7 +124,7 @@ const CallAnalyticsDashboard = () => {
                     <select value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} className="px-3 py-1.5 text-sm border border-slate-300 rounded bg-slate-50 outline-none text-slate-700 focus:border-orange-500 focus:ring-1 focus:ring-orange-500">
                         <option value="">All Employees</option>
                         {salesUsers.map(u => (
-                            <option key={u.id} value={u.id}>{u.first_name} {u.last_name}</option>
+                            <option key={u.id} value={u.id}>{u.name}</option>
                         ))}
                     </select>
                     <select value={direction} onChange={(e) => setDirection(e.target.value)} className="px-3 py-1.5 text-sm border border-slate-300 rounded bg-slate-50 outline-none text-slate-700 focus:border-orange-500 focus:ring-1 focus:ring-orange-500">
