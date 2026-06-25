@@ -442,7 +442,7 @@ const CallAnalyticsDashboard = () => {
                                         <td className="px-4 py-3 text-center">
                                             {call.recording_url ? (
                                                 <audio controls controlsList="nodownload noplaybackrate" className="h-8 w-48">
-                                                    <source src={`http://localhost:8000${call.recording_url}`} type="audio/mpeg" />
+                                                    <source src={call.recording_url.startsWith('http') ? call.recording_url : `${api.defaults.baseURL.split('/api')[0]}${call.recording_url}`} type="audio/mpeg" />
                                                     Your browser does not support the audio element.
                                                 </audio>
                                             ) : (
