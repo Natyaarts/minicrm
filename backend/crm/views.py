@@ -538,7 +538,7 @@ class CallAnalyticsView(APIView):
                 'direction': inter.call_direction,
                 'status': inter.call_status,
                 'duration': inter.call_duration,
-                'recording_url': inter.audio_recording.url if inter.audio_recording else None
+                'recording_url': request.build_absolute_uri(inter.audio_recording.url) if inter.audio_recording else None
             })
 
         return Response({
