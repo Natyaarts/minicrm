@@ -395,6 +395,18 @@ class CallAnalyticsView(APIView):
             end_date = parse_date(end_date_str)
             if end_date:
                 interactions = interactions.filter(date__date__lte=end_date)
+                
+        employee_id = request.query_params.get('employee_id')
+        if employee_id:
+            interactions = interactions.filter(author_id=employee_id)
+            
+        direction = request.query_params.get('direction')
+        if direction:
+            interactions = interactions.filter(call_direction=direction)
+            
+        status = request.query_params.get('status')
+        if status:
+            interactions = interactions.filter(call_status=status)
 
         total_incoming = interactions.filter(call_direction='INCOMING').count()
 
@@ -525,7 +537,8 @@ class CallAnalyticsView(APIView):
                 'client': f"{inter.student.first_name} {inter.student.last_name}".strip() if inter.student else 'Unknown',
                 'direction': inter.call_direction,
                 'status': inter.call_status,
-                'duration': inter.call_duration
+                'duration': inter.call_duration,
+                'recording_url': inter.audio_recording.url if inter.audio_recording else None
             })
 
         return Response({

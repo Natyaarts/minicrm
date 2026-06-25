@@ -9,6 +9,22 @@ const CallAnalyticsDashboard = () => {
     const [activeTab, setActiveTab] = useState('summary');
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
+    const [employeeId, setEmployeeId] = useState('');
+    const [direction, setDirection] = useState('');
+    const [status, setStatus] = useState('');
+    const [salesUsers, setSalesUsers] = useState([]);
+
+    useEffect(() => {
+        const fetchUsers = async () => {
+            try {
+                const res = await api.get('/crm/sales-users/');
+                setSalesUsers(res.data);
+            } catch (err) {
+                console.error("Failed to load sales users", err);
+            }
+        };
+        fetchUsers();
+    }, []);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -16,7 +32,10 @@ const CallAnalyticsDashboard = () => {
                 setLoading(true);
                 let url = '/crm/call-analytics/?';
                 if (startDate) url += `start_date=${startDate}&`;
-                if (endDate) url += `end_date=${endDate}`;
+                if (endDate) url += `end_date=${endDate}&`;
+                if (employeeId) url += `employee_id=${employeeId}&`;
+                if (direction) url += `direction=${direction}&`;
+                if (status) url += `status=${status}&`;
                 const res = await api.get(url);
                 setData(res.data);
             } catch (err) {
@@ -26,7 +45,36 @@ const CallAnalyticsDashboard = () => {
             }
         };
         fetchData();
-    }, [startDate, endDate]);
+    }, [startDate, endDate, employeeId, direction, status]);
+
+    const exportToCSV = () => {
+        if (!data) return;
+        
+        let csvContent = "data:text/csv;charset=utf-8,";
+        
+        if (activeTab === 'history') {
+            csvContent += "Date & Time,Sales Executive,Client Name,Direction,Status,Duration\n";
+            data.history.forEach(call => {
+                const dateStr = new Date(call.date).toLocaleString().replace(/,/g, '');
+                const row = `${dateStr},${call.employee},${call.client},${call.direction},${call.status || 'UNKNOWN'},${call.duration}s`;
+                csvContent += row + "\n";
+            });
+        } else {
+            csvContent += "Sr. No.,Employee,Total Calls,Total Duration (s),Connected Calls,Connected Duration (s),Unique Clients\n";
+            data.employee_summary.forEach(emp => {
+                const row = `${emp.sr_no},${emp.name},${emp.total_calls},${emp.total_duration},${emp.connected_calls},${emp.connected_duration},${emp.unique_clients}`;
+                csvContent += row + "\n";
+            });
+        }
+
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `call_analytics_${activeTab}_${new Date().getTime()}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
 
     const formatDuration = (seconds) => {
         if (!seconds) return '0h 0m 0s';
@@ -55,24 +103,52 @@ const CallAnalyticsDashboard = () => {
 
     return (
         <div className="p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto bg-slate-50 min-h-screen">
-            <div className="mb-6 flex justify-between items-center border-b border-slate-200 pb-4">
-                <div className="flex gap-6">
-                    <button onClick={() => setActiveTab('summary')} className={`pb-2 font-semibold flex items-center gap-2 ${activeTab === 'summary' ? 'text-orange-500 border-b-2 border-orange-500' : 'text-slate-500 hover:text-slate-800'}`}>
-                        <span className="w-6 h-6 bg-orange-100 rounded flex items-center justify-center text-orange-600"><BarChart2 size={14}/></span> Summary
+            {/* Tabs Row */}
+            <div className="mb-4 flex border-b border-slate-200">
+                <div className="flex gap-8">
+                    <button onClick={() => setActiveTab('summary')} className={`pb-3 font-semibold flex items-center gap-2 ${activeTab === 'summary' ? 'text-orange-500 border-b-2 border-orange-500' : 'text-slate-500 hover:text-slate-800'}`}>
+                        <span className={`w-6 h-6 rounded flex items-center justify-center ${activeTab === 'summary' ? 'bg-orange-100 text-orange-600' : 'bg-slate-100 text-slate-500'}`}><BarChart2 size={14}/></span> Summary
                     </button>
-                    <button onClick={() => setActiveTab('history')} className={`pb-2 font-semibold flex items-center gap-2 ${activeTab === 'history' ? 'text-orange-500 border-b-2 border-orange-500' : 'text-slate-500 hover:text-slate-800'}`}>
+                    <button onClick={() => setActiveTab('history')} className={`pb-3 font-semibold flex items-center gap-2 ${activeTab === 'history' ? 'text-orange-500 border-b-2 border-orange-500' : 'text-slate-500 hover:text-slate-800'}`}>
                         Call History
                     </button>
-                    <button onClick={() => setActiveTab('analysis')} className={`pb-2 font-semibold flex items-center gap-2 ${activeTab === 'analysis' ? 'text-orange-500 border-b-2 border-orange-500' : 'text-slate-500 hover:text-slate-800'}`}>
+                    <button onClick={() => setActiveTab('analysis')} className={`pb-3 font-semibold flex items-center gap-2 ${activeTab === 'analysis' ? 'text-orange-500 border-b-2 border-orange-500' : 'text-slate-500 hover:text-slate-800'}`}>
                         Analysis
                     </button>
                 </div>
-                <div className="flex items-center gap-2">
-                    <div className="flex items-center bg-white border border-slate-300 rounded overflow-hidden">
-                        <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="px-3 py-1 text-sm outline-none border-r border-slate-300" />
-                        <span className="px-2 text-slate-400">to</span>
-                        <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="px-3 py-1 text-sm outline-none" />
+            </div>
+
+            {/* Filters Row */}
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-4 bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
+                <div className="flex flex-wrap items-center gap-3">
+                    <select value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} className="px-3 py-1.5 text-sm border border-slate-300 rounded bg-slate-50 outline-none text-slate-700 focus:border-orange-500 focus:ring-1 focus:ring-orange-500">
+                        <option value="">All Employees</option>
+                        {salesUsers.map(u => (
+                            <option key={u.id} value={u.id}>{u.first_name} {u.last_name}</option>
+                        ))}
+                    </select>
+                    <select value={direction} onChange={(e) => setDirection(e.target.value)} className="px-3 py-1.5 text-sm border border-slate-300 rounded bg-slate-50 outline-none text-slate-700 focus:border-orange-500 focus:ring-1 focus:ring-orange-500">
+                        <option value="">All Directions</option>
+                        <option value="INCOMING">Incoming</option>
+                        <option value="OUTGOING">Outgoing</option>
+                    </select>
+                    <select value={status} onChange={(e) => setStatus(e.target.value)} className="px-3 py-1.5 text-sm border border-slate-300 rounded bg-slate-50 outline-none text-slate-700 focus:border-orange-500 focus:ring-1 focus:ring-orange-500">
+                        <option value="">All Statuses</option>
+                        <option value="CONNECTED">Connected</option>
+                        <option value="MISSED">Missed/Unanswered</option>
+                        <option value="REJECTED">Rejected</option>
+                    </select>
+                    <div className="flex items-center bg-slate-50 border border-slate-300 rounded overflow-hidden focus-within:border-orange-500 focus-within:ring-1 focus-within:ring-orange-500">
+                        <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="px-3 py-1.5 text-sm outline-none bg-transparent border-r border-slate-300 text-slate-700" />
+                        <span className="px-2 text-slate-400 text-sm">to</span>
+                        <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="px-3 py-1.5 text-sm outline-none bg-transparent text-slate-700" />
                     </div>
+                </div>
+                <div>
+                    <button onClick={exportToCSV} className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded shadow-sm transition-colors flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        Export Excel
+                    </button>
                 </div>
             </div>
 
@@ -263,31 +339,70 @@ const CallAnalyticsDashboard = () => {
             )}
 
             {activeTab === 'analysis' && (
-                <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-6 mb-8">
-                    <h3 className="font-bold text-slate-800 text-lg mb-6">Employee Performance (Calls)</h3>
-                    <div className="h-96 w-full">
-                        {data.employee_summary && data.employee_summary.length > 0 ? (
-                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart
-                                    data={data.employee_summary}
-                                    margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-                                >
-                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} />
-                                    <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} />
-                                    <Tooltip 
-                                        cursor={{fill: '#F1F5F9'}} 
-                                        contentStyle={{borderRadius: '8px', border: '1px solid #E2E8F0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}}
-                                    />
-                                    <Legend wrapperStyle={{paddingTop: '20px'}} />
-                                    <Bar dataKey="total_calls" name="Total Calls" fill="#94A3B8" radius={[4, 4, 0, 0]} barSize={40} />
-                                    <Bar dataKey="connected_calls" name="Connected Calls" fill="#F97316" radius={[4, 4, 0, 0]} barSize={40} />
-                                </BarChart>
-                            </ResponsiveContainer>
-                        ) : (
-                            <div className="h-full flex items-center justify-center text-slate-400">No employee data available for analysis</div>
-                        )}
-                    </div>
+                <div className="space-y-6 mb-8">
+                    {data.employee_summary && data.employee_summary.length > 0 ? (
+                        <>
+                            {/* Chart 1: Call Volumes */}
+                            <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-6">
+                                <h3 className="font-bold text-slate-800 text-lg mb-6">Employee Performance (Calls)</h3>
+                                <div className="h-80 w-full">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <BarChart data={data.employee_summary} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} />
+                                            <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} />
+                                            <Tooltip cursor={{fill: '#F1F5F9'}} contentStyle={{borderRadius: '8px', border: '1px solid #E2E8F0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}} />
+                                            <Legend wrapperStyle={{paddingTop: '20px'}} />
+                                            <Bar dataKey="total_calls" name="Total Calls" fill="#94A3B8" radius={[4, 4, 0, 0]} barSize={40} />
+                                            <Bar dataKey="connected_calls" name="Connected Calls" fill="#F97316" radius={[4, 4, 0, 0]} barSize={40} />
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            </div>
+                            
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                {/* Chart 2: Durations */}
+                                <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-6">
+                                    <h3 className="font-bold text-slate-800 text-lg mb-6">Duration Performance (Seconds)</h3>
+                                    <div className="h-80 w-full">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <BarChart data={data.employee_summary} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                                                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} />
+                                                <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} />
+                                                <Tooltip cursor={{fill: '#F1F5F9'}} contentStyle={{borderRadius: '8px', border: '1px solid #E2E8F0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}} />
+                                                <Legend wrapperStyle={{paddingTop: '20px'}} />
+                                                <Bar dataKey="total_duration" name="Total Duration (s)" fill="#CBD5E1" radius={[4, 4, 0, 0]} barSize={30} />
+                                                <Bar dataKey="connected_duration" name="Connected Duration (s)" fill="#10B981" radius={[4, 4, 0, 0]} barSize={30} />
+                                            </BarChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                </div>
+
+                                {/* Chart 3: Client Engagement */}
+                                <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-6">
+                                    <h3 className="font-bold text-slate-800 text-lg mb-6">Client Engagement</h3>
+                                    <div className="h-80 w-full">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <BarChart data={data.employee_summary} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                                                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} />
+                                                <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} />
+                                                <Tooltip cursor={{fill: '#F1F5F9'}} contentStyle={{borderRadius: '8px', border: '1px solid #E2E8F0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}} />
+                                                <Legend wrapperStyle={{paddingTop: '20px'}} />
+                                                <Bar dataKey="unique_clients" name="Unique Clients Contacted" fill="#6366F1" radius={[4, 4, 0, 0]} barSize={30} />
+                                                <Bar dataKey="unique_connected" name="Unique Clients Connected" fill="#8B5CF6" radius={[4, 4, 0, 0]} barSize={30} />
+                                            </BarChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                </div>
+                            </div>
+                        </>
+                    ) : (
+                        <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-6 h-96 flex items-center justify-center text-slate-400">
+                            No employee data available for analysis
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -306,6 +421,7 @@ const CallAnalyticsDashboard = () => {
                                     <th className="px-4 py-3 font-semibold">Direction</th>
                                     <th className="px-4 py-3 font-semibold">Status</th>
                                     <th className="px-4 py-3 font-semibold">Duration</th>
+                                    <th className="px-4 py-3 font-semibold text-center">Recording</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
@@ -323,11 +439,21 @@ const CallAnalyticsDashboard = () => {
                                             </span>
                                         </td>
                                         <td className="px-4 py-3">{formatDuration(call.duration)}</td>
+                                        <td className="px-4 py-3 text-center">
+                                            {call.recording_url ? (
+                                                <audio controls controlsList="nodownload noplaybackrate" className="h-8 w-48">
+                                                    <source src={`http://localhost:8000${call.recording_url}`} type="audio/mpeg" />
+                                                    Your browser does not support the audio element.
+                                                </audio>
+                                            ) : (
+                                                <span className="text-slate-400 text-xs italic">No audio</span>
+                                            )}
+                                        </td>
                                     </tr>
                                 ))}
                                 {(!data?.history || data.history.length === 0) && (
                                     <tr>
-                                        <td colSpan="6" className="px-4 py-8 text-center text-slate-500">No call history available for selected dates.</td>
+                                        <td colSpan="7" className="px-4 py-8 text-center text-slate-500">No call history available for selected dates.</td>
                                     </tr>
                                 )}
                             </tbody>
