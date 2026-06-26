@@ -11,22 +11,6 @@ from .serializers import PipelineStageSerializer, LeadInteractionSerializer, Cam
 
 User = get_user_model()
 
-class BulkConvertAllView(APIView):
-    permission_classes = [permissions.AllowAny]
-
-    def get(self, request):
-        stage = PipelineStage.objects.filter(name__iexact='CONVERTED').first()
-        if not stage:
-            stage = PipelineStage.objects.filter(name__icontains='convert').first()
-        if not stage:
-            return Response({"error": "No converted stage found"}, status=status.HTTP_400_BAD_REQUEST)
-        
-        students = Student.objects.all()
-        count = students.count()
-        students.update(lead_status=str(stage.id))
-        
-        return Response({"message": f"Successfully marked {count} leads as CONVERTED!", "stage_id": stage.id}, status=status.HTTP_200_OK)
-
 class DashboardStatsView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
