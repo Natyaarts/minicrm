@@ -43,6 +43,7 @@ const Dialpad = () => {
   // Use refs to keep track of current state for asynchronous listeners
   const phoneRef = useRef(phoneNumber);
   const callStatusRef = useRef(callStatus);
+  const callStartTimeRef = useRef<number>(0);
 
   useEffect(() => {
     phoneRef.current = phoneNumber;
@@ -115,12 +116,17 @@ const Dialpad = () => {
   useEffect(() => {
     let interval: any;
     if (callStatus === 'ACTIVE') {
+      // If we don't have a start time yet (e.g. manual dial), set it now
+      if (callStartTimeRef.current === 0) {
+        callStartTimeRef.current = Date.now();
+      }
       interval = setInterval(() => {
-        setCallDuration((prev) => prev + 1);
+        setCallDuration(Math.floor((Date.now() - callStartTimeRef.current) / 1000));
       }, 1000);
     } else if (callStatus === 'IDLE') {
       // Only reset when returning to idle — preserve duration for POST_CALL review
       setCallDuration(0);
+      callStartTimeRef.current = 0;
     }
     return () => clearInterval(interval);
   }, [callStatus]);
@@ -168,6 +174,7 @@ const Dialpad = () => {
       if (state === 'OFFHOOK') {
         if (callStatusRef.current === 'CALLING' || callStatusRef.current === 'ACTIVE') {
           callStarted = true;
+          callStartTimeRef.current = Date.now();
           setCallStatus('ACTIVE');
           // Automatically start recording when call is active
           const filePath = await startNativeRecording(phoneRef.current);
@@ -176,6 +183,8 @@ const Dialpad = () => {
       } else if (state === 'IDLE') {
         if (callStarted) {
           callStarted = false;
+          const elapsed = Math.max(0, Math.floor((Date.now() - callStartTimeRef.current) / 1000));
+          setCallDuration(elapsed);
           setCallStatus('POST_CALL');
           setIsProcessingRecording(true);
           // Automatically stop recording when call hangs up

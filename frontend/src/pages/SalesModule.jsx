@@ -1215,6 +1215,9 @@ const SalesModule = () => {
                                                         </div>
                                                     </td>
                                                     <td className="px-6 py-3.5">
+                                                        <div className="text-slate-700 text-xs">{student.assigned_to_name || '-'}</div>
+                                                    </td>
+                                                    <td className="px-6 py-3.5">
                                                         <div className="font-semibold text-slate-900">₹{student.total_paid || 0}</div>
                                                     </td>
                                                     <td className="px-6 py-3.5">
