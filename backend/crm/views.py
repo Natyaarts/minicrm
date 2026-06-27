@@ -1,4 +1,5 @@
 from rest_framework import viewsets, permissions, status, serializers
+from rest_framework.decorators import action
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.contrib.auth import get_user_model
@@ -173,6 +174,83 @@ class CampaignViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
+
+    @action(detail=True, methods=['post'])
+    def bulk_upload(self, request, pk=None):
+        import csv
+        import io
+        
+        campaign = self.get_object()
+        file = request.FILES.get('file')
+        if not file:
+            return Response({'error': 'No file provided'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            decoded_file = file.read().decode('utf-8-sig')
+            io_string = io.StringIO(decoded_file)
+            reader = csv.DictReader(io_string)
+            
+            leads_created = 0
+            for row in reader:
+                # Clean up column headers (lowercase, strip whitespace)
+                clean_row = {str(k).strip().lower(): v for k, v in row.items() if k}
+                
+                # Extract Name
+                raw_name = clean_row.get('name', clean_row.get('first_name', '')).strip()
+                name_parts = raw_name.split(' ', 1)
+                first_name = name_parts[0]
+                last_name = name_parts[1] if len(name_parts) > 1 else clean_row.get('last_name', '').strip()
+                
+                email = clean_row.get('email', '').strip()
+                mobile = clean_row.get('contact', clean_row.get('mobile', '')).strip()
+                place = clean_row.get('place', '').strip()
+                tag = clean_row.get('tag', '').strip()
+                
+                
+                if first_name or mobile or email:
+                    default_program = Program.objects.first()
+                    
+                    import uuid
+                    base_username = mobile if mobile else email if email else first_name
+                    username = f"{base_username}_{str(uuid.uuid4())[:8]}" if base_username else f"lead_{str(uuid.uuid4())[:8]}"
+                    
+                    User = get_user_model()
+                    user = User.objects.create_user(
+                        username=username,
+                        email=email,
+                        first_name=first_name,
+                        last_name=last_name,
+                        role='STUDENT',
+                        password='Password@123'
+                    )
+                    
+                    # Generate unique CRM Student ID
+                    import uuid
+                    crm_id = f"LEAD-{str(uuid.uuid4())[:8].upper()}"
+                    
+                    Student.objects.create(
+                        user=user,
+                        crm_student_id=crm_id,
+                        first_name=first_name,
+                        last_name=last_name,
+                        email=email,
+                        mobile=mobile,
+                        perm_city=place,
+                        lms_course_names=tag,
+                        campaign=campaign,
+                        program_type=default_program,
+                        lead_status='2' # Assuming '2' is NEW status, or we can look it up. Let's look it up.
+                    )
+                    leads_created += 1
+                    
+            # Actually, let's make sure lead_status uses the pipeline stage ID for NEW
+            stage = PipelineStage.objects.filter(name__iexact='New').first()
+            stage_id = str(stage.id) if stage else '2'
+            Student.objects.filter(campaign=campaign, lead_status='2').update(lead_status=stage_id)
+
+            return Response({'message': f'Successfully uploaded {leads_created} leads'})
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 from django.shortcuts import get_object_or_404
 
@@ -583,3 +661,109 @@ class CallAnalyticsView(APIView):
 
         })
 
+
+
+class MarketingDashboardView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from django.db.models import Count, Sum
+        from datetime import datetime, timedelta
+        from django.utils import timezone
+        
+        start_date_str = request.query_params.get('start_date')
+        end_date_str = request.query_params.get('end_date')
+
+        # Summary Stats
+        campaigns = Campaign.objects.all()
+        students = Student.objects.filter(is_active=True, campaign__isnull=False)
+
+        if start_date_str:
+            try:
+                start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+                campaigns = campaigns.filter(created_at__date__gte=start_date)
+                students = students.filter(user__date_joined__date__gte=start_date)
+            except ValueError:
+                pass
+        
+        if end_date_str:
+            try:
+                end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+                campaigns = campaigns.filter(created_at__date__lte=end_date)
+                students = students.filter(user__date_joined__date__lte=end_date)
+            except ValueError:
+                pass
+
+        total_spend = campaigns.aggregate(total=Sum('budget'))['total'] or 0
+        total_leads = students.count()
+        
+        # Assuming ENROLLED (id 4 or name Enrolled) is converted.
+        total_converted = students.filter(lead_status__in=['ENROLLED', '4', 'Converted']).count()
+
+        # Chart Data
+        from django.db.models.functions import TruncDate
+        
+        daily_leads_qs = students
+        if not start_date_str:
+            # Default to 30 days if no start date provided
+            thirty_days_ago = timezone.now().date() - timedelta(days=30)
+            daily_leads_qs = students.filter(user__date_joined__date__gte=thirty_days_ago)
+            
+        daily_leads = daily_leads_qs.annotate(date=TruncDate('user__date_joined')).values('date').annotate(count=Count('id')).order_by('date')
+        
+        chart_data = []
+        for d in daily_leads:
+            # d['date'] is a datetime.date object
+            chart_data.append({
+                'date': str(d['date']),
+                'leads': d['count']
+            })
+
+        # Sales Team Report
+        sales_reps = User.objects.filter(role='SALES')
+        sales_report = []
+        for rep in sales_reps:
+            rep_leads = Student.objects.filter(assigned_to=rep)
+            assigned = rep_leads.count()
+            contacted = rep_leads.filter(crm_interactions__isnull=False).distinct().count()
+            converted = rep_leads.filter(lead_status__in=['ENROLLED', '4', 'Converted']).count()
+            conversion_rate = round((converted / assigned * 100), 2) if assigned > 0 else 0
+            
+            sales_report.append({
+                'id': rep.id,
+                'name': f"{rep.first_name} {rep.last_name}".strip() or rep.username,
+                'assigned': assigned,
+                'contacted': contacted,
+                'converted': converted,
+                'conversion_rate': conversion_rate
+            })
+
+        return Response({
+            'summary': {
+                'total_spend': total_spend,
+                'total_leads': total_leads,
+                'total_converted': total_converted
+            },
+            'chart_data': chart_data,
+            'sales_report': sales_report
+        })
+
+class BulkAssignLeadsView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        lead_ids = request.data.get('lead_ids', [])
+        sales_user_id = request.data.get('sales_user_id')
+
+        if not lead_ids or not sales_user_id:
+            return Response({'error': 'lead_ids and sales_user_id are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            sales_user = User.objects.get(id=sales_user_id, role='SALES')
+            students = Student.objects.filter(id__in=lead_ids)
+            updated = students.update(assigned_to=sales_user)
+            return Response({'message': f'Successfully assigned {updated} leads to {sales_user.username}'})
+        except User.DoesNotExist:
+            return Response({'error': 'Sales user not found'}, status=status.HTTP_404_BAD_REQUEST)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

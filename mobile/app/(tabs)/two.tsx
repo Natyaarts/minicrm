@@ -487,7 +487,22 @@ export default function SalesScreen() {
     <View style={[styles.container, isDark && styles.darkBg]}>
       {/* Header & Segmented Tabs */}
       <View style={[styles.header, isDark && styles.darkHeader]}>
-        <Text style={[styles.title, isDark && styles.darkTitle]}>SALES & ADMISSIONS</Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <Text style={[styles.title, isDark && styles.darkTitle, { marginBottom: 0 }]}>SALES & ADMISSIONS</Text>
+            <TouchableOpacity 
+              style={{ backgroundColor: '#F6AD55', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, flexDirection: 'row', alignItems: 'center' }}
+              onPress={async () => {
+                const { selectRecordingFolder } = await import('../../src/utils/CallManager');
+                const uri = await selectRecordingFolder();
+                if (uri) {
+                  Alert.alert('Folder Mapped', 'Call recordings will now be scanned from this folder!');
+                }
+              }}
+            >
+              <FontAwesome5 name="folder-open" size={12} color="#fff" style={{ marginRight: 6 }} />
+              <Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold' }}>Map Folder</Text>
+            </TouchableOpacity>
+        </View>
         
         {/* Segmented Toggle Bar */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>

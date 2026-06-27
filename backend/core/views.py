@@ -417,6 +417,10 @@ class StudentViewSet(viewsets.ModelViewSet):
         if academic_status:
             qs = qs.filter(academic_status=academic_status)
 
+        campaign_only = self.request.query_params.get('campaign_only')
+        if campaign_only == 'true':
+            qs = qs.filter(campaign__isnull=False)
+
         return qs.order_by('-id')
 
     def perform_destroy(self, instance):

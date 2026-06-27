@@ -6,22 +6,34 @@ const callRecordingEmitter = CallRecordingModule ? new NativeEventEmitter(CallRe
 export const requestCallPermissions = async () => {
     if (Platform.OS !== 'android') return true;
     try {
-        // READ_PHONE_STATE and RECORD_AUDIO are enough for call state listening + recording.
-        // READ_CALL_LOG requires being the default phone app — skip it as non-blocking.
-        const grants = await PermissionsAndroid.requestMultiple([
+        const permissionsToRequest = [
             PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE,
             PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
-        ]);
+        ];
         
-        // Only RECORD_AUDIO is strictly needed for call recording — still allow calling even if denied
+        if (Platform.Version >= 33) {
+            permissionsToRequest.push(PermissionsAndroid.PERMISSIONS.READ_MEDIA_AUDIO);
+        } else {
+            permissionsToRequest.push(PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE);
+        }
+
+        const grants = await PermissionsAndroid.requestMultiple(permissionsToRequest);
+        
         const audioGranted = grants[PermissionsAndroid.PERMISSIONS.RECORD_AUDIO] === PermissionsAndroid.RESULTS.GRANTED;
         const phoneStateGranted = grants[PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE] === PermissionsAndroid.RESULTS.GRANTED;
+        
+        let storageGranted = false;
+        if (Platform.Version >= 33) {
+            storageGranted = grants[PermissionsAndroid.PERMISSIONS.READ_MEDIA_AUDIO] === PermissionsAndroid.RESULTS.GRANTED;
+        } else {
+            storageGranted = grants[PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE] === PermissionsAndroid.RESULTS.GRANTED;
+        }
 
-        console.log('Permissions — RECORD_AUDIO:', audioGranted, 'READ_PHONE_STATE:', phoneStateGranted);
-        return true; // Always allow calling — permissions are for recording enhancement only
+        console.log('Permissions — RECORD_AUDIO:', audioGranted, 'READ_PHONE_STATE:', phoneStateGranted, 'STORAGE:', storageGranted);
+        return true; 
     } catch (err) {
         console.warn('Permission request error:', err);
-        return true; // Don't block calling on permission errors
+        return true; 
     }
 };
 
@@ -56,6 +68,17 @@ export const requestDefaultDialerRole = async () => {
 export const checkIsDefaultDialer = async () => {
     if (Platform.OS !== 'android') return false;
     return false;
+};
+
+export const selectRecordingFolder = async () => {
+    if (!CallRecordingModule) return null;
+    try {
+        const folderUri = await CallRecordingModule.selectRecordingFolder();
+        return folderUri;
+    } catch (e) {
+        console.error('Failed to select recording folder:', e);
+        return null;
+    }
 };
 
 export const startNativeRecording = async (phoneNumber?: string) => {

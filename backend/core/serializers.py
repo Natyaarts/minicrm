@@ -193,6 +193,7 @@ class StudentSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source='user.username', read_only=True)
     lms_course_names = serializers.CharField(read_only=True)
     campaign_name = serializers.CharField(source='campaign.name', read_only=True)
+    created_at = serializers.DateTimeField(source='user.date_joined', read_only=True)
     
     # Assignment
     assigned_to_name = serializers.SerializerMethodField()
