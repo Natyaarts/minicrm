@@ -24,7 +24,7 @@ import { useAuth } from '../context/AuthContext';
 const LeaveModule = () => {
     const { user: authUser } = useAuth();
     const [activeTab, setActiveTab] = useState('my-requests');
-    const [adminFilter, setAdminFilter] = useState('PENDING');
+    const [adminFilter, setAdminFilter] = useState('PENDING_MANAGER');
     const [leaveTypes, setLeaveTypes] = useState([]);
     const [balances, setBalances] = useState([]);
     const [requests, setRequests] = useState([]);
@@ -100,7 +100,8 @@ const LeaveModule = () => {
         switch (status) {
             case 'APPROVED': return 'bg-emerald-50 text-emerald-600 border-emerald-100';
             case 'REJECTED': return 'bg-rose-50 text-rose-600 border-rose-100';
-            case 'PENDING': return 'bg-amber-50 text-amber-600 border-amber-100';
+            case 'PENDING_MANAGER': return 'bg-orange-50 text-orange-600 border-orange-100';
+            case 'PENDING_HR': return 'bg-blue-50 text-blue-600 border-blue-100';
             default: return 'bg-slate-50 text-slate-400 border-slate-100';
         }
     };
@@ -427,10 +428,14 @@ const LeaveModule = () => {
                 {[
                     { id: 'my-requests', label: 'My Requests', icon: Clock },
                     { id: 'calendar', label: 'Leave Calendar', icon: Calendar },
-                    { id: 'admin-panel', label: 'Admin Approval', icon: CheckCircle2, adminOnly: true },
+                    { id: 'admin-panel', label: 'Team Approvals', icon: CheckCircle2, managerOrAdmin: true },
                     { id: 'settings', label: 'Manage Types & Holidays', icon: Settings, adminOnly: true },
                     { id: 'policy', label: 'Leave Policies', icon: Info },
-                ].filter(tab => !tab.adminOnly || authUser?.role === 'SUPER_ADMIN').map(tab => (
+                ].filter(tab => {
+                    if (tab.adminOnly) return authUser?.role === 'SUPER_ADMIN';
+                    if (tab.managerOrAdmin) return authUser?.role === 'SUPER_ADMIN' || requests.some(r => r.user_id !== authUser?.id);
+                    return true;
+                }).map(tab => (
                     <button
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id)}
@@ -447,10 +452,10 @@ const LeaveModule = () => {
             {/* Content Table / Calendar / Settings */}
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden min-h-[400px]">
                 {activeTab === 'admin-panel' && (
-                    <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+                    <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50 flex-wrap gap-4">
                         <h3 className="text-lg font-bold text-slate-800">Process Requests</h3>
-                        <div className="flex gap-2 bg-white p-1 rounded-lg border border-slate-200 shadow-sm">
-                            {['PENDING', 'APPROVED', 'REJECTED'].map(status => (
+                        <div className="flex gap-2 bg-white p-1 rounded-lg border border-slate-200 shadow-sm flex-wrap">
+                            {['PENDING_MANAGER', 'PENDING_HR', 'APPROVED', 'REJECTED'].map(status => (
                                 <button
                                     key={status}
                                     onClick={() => setAdminFilter(status)}
@@ -458,7 +463,7 @@ const LeaveModule = () => {
                                         adminFilter === status ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'
                                     }`}
                                 >
-                                    {status}
+                                    {status.replace('_', ' ')}
                                 </button>
                             ))}
                         </div>
@@ -514,20 +519,26 @@ const LeaveModule = () => {
                                         </span>
                                     </td>
                                     <td className="px-5 py-4 text-right">
-                                        {activeTab === 'admin-panel' && req.status === 'PENDING' ? (
+                                        {activeTab === 'admin-panel' && (req.status === 'PENDING_MANAGER' || req.status === 'PENDING_HR') ? (
                                             <div className="flex justify-end gap-2">
-                                                <button 
-                                                    onClick={() => handleAction(req.id, 'approve')}
-                                                    className="p-1.5 bg-emerald-50 text-emerald-600 rounded-md hover:bg-emerald-100 transition-colors"
-                                                >
-                                                    <Check size={16} strokeWidth={2.5} />
-                                                </button>
+                                                {((req.status === 'PENDING_MANAGER' && req.user_id !== authUser?.id) || 
+                                                  (req.status === 'PENDING_HR' && authUser?.role === 'SUPER_ADMIN') ||
+                                                  (req.status === 'PENDING_MANAGER' && authUser?.role === 'SUPER_ADMIN')) && (
+                                                    <button 
+                                                        onClick={() => handleAction(req.id, 'approve')}
+                                                        className="p-1.5 bg-emerald-50 text-emerald-600 rounded-md hover:bg-emerald-100 transition-colors"
+                                                        title="Approve"
+                                                    >
+                                                        <Check size={16} strokeWidth={2.5} />
+                                                    </button>
+                                                )}
                                                 <button 
                                                     onClick={() => {
                                                         const reason = prompt("Enter rejection reason:");
                                                         if(reason) handleAction(req.id, 'reject', reason);
                                                     }}
                                                     className="p-1.5 bg-rose-50 text-rose-600 rounded-md hover:bg-rose-100 transition-colors"
+                                                    title="Reject"
                                                 >
                                                     <X size={16} strokeWidth={2.5} />
                                                 </button>

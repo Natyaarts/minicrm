@@ -29,7 +29,8 @@ class LeaveBalance(models.Model):
 
 class LeaveRequest(models.Model):
     STATUS_CHOICES = (
-        ('PENDING', 'Pending'),
+        ('PENDING_MANAGER', 'Pending Manager'),
+        ('PENDING_HR', 'Pending HR'),
         ('APPROVED', 'Approved'),
         ('REJECTED', 'Rejected'),
         ('CANCELLED', 'Cancelled'),
@@ -40,7 +41,8 @@ class LeaveRequest(models.Model):
     start_date = models.DateField()
     end_date = models.DateField()
     reason = models.TextField()
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING_MANAGER')
+    manager_approved_by = models.ForeignKey(EmployeeProfile, on_delete=models.SET_NULL, null=True, blank=True, related_name='manager_approved_leaves')
     approved_by = models.ForeignKey(EmployeeProfile, on_delete=models.SET_NULL, null=True, blank=True, related_name='approved_leaves')
     rejection_reason = models.TextField(blank=True)
     applied_at = models.DateTimeField(auto_now_add=True)
