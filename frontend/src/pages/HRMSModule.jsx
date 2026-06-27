@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import api from '../api/axios';
 import { 
     Users, 
@@ -177,6 +178,36 @@ const HRMSModule = () => {
             fetchData();
         } catch (err) {
             alert("Failed to delete field");
+        }
+    };
+
+    const handleDocumentUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const docType = prompt("Enter document type (e.g. Resume, ID Proof):", "ID Proof");
+        if (!docType) {
+            e.target.value = '';
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('employee', newEmployee.id);
+        formData.append('document_type', docType);
+        formData.append('file', file);
+
+        try {
+            const res = await api.post('hrms/documents/', formData);
+            setNewEmployee({
+                ...newEmployee,
+                documents: [...(newEmployee.documents || []), res.data]
+            });
+            alert("Document uploaded successfully!");
+        } catch (err) {
+            console.error("Upload error:", err.response?.data || err);
+            alert("Failed to upload document. " + (err.response?.data?.file?.[0] || ""));
+        } finally {
+            e.target.value = '';
         }
     };
 
@@ -716,7 +747,7 @@ const HRMSModule = () => {
             )}
 
             {/* Modal (Add Employee) */}
-            {showAddEmployee && (
+            {showAddEmployee && createPortal((
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 sm:p-6">
                     <motion.div 
                         initial={{ scale: 0.95, opacity: 0, y: 20 }}
@@ -812,7 +843,7 @@ const HRMSModule = () => {
                                         <div>
                                             <label className="block text-xs font-semibold text-slate-600 mb-1.5">Department</label>
                                             <select required className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 transition-all font-semibold text-slate-800 text-sm appearance-none cursor-pointer" 
-                                                value={newEmployee.department} onChange={(e) => setNewEmployee({...newEmployee, department: e.target.value})}>
+                                                value={newEmployee.department || ''} onChange={(e) => setNewEmployee({...newEmployee, department: e.target.value, designation: ''})}>
                                                 <option value="" disabled>Select Department</option>
                                                 {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                                             </select>
@@ -820,9 +851,9 @@ const HRMSModule = () => {
                                         <div>
                                             <label className="block text-xs font-semibold text-slate-600 mb-1.5">Designation / Role</label>
                                             <select required className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 transition-all font-semibold text-slate-800 text-sm appearance-none cursor-pointer" 
-                                                value={newEmployee.designation} onChange={(e) => setNewEmployee({...newEmployee, designation: e.target.value})}>
+                                                value={newEmployee.designation || ''} onChange={(e) => setNewEmployee({...newEmployee, designation: e.target.value})}>
                                                 <option value="" disabled>Select Role</option>
-                                                {designations.filter(d => d.department == newEmployee.department).map(d => (
+                                                {designations.filter(d => String(d.department) === String(newEmployee.department)).map(d => (
                                                     <option key={d.id} value={d.id}>{d.name}</option>
                                                 ))}
                                             </select>
@@ -906,9 +937,25 @@ const HRMSModule = () => {
                                         </div>
                                         <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 text-center">
                                             <p className="text-sm text-slate-600 font-medium mb-3">Upload employee documents (Offer Letter, ID Proofs, Resumes, etc.)</p>
-                                            <button type="button" className="px-4 py-2 bg-white border border-slate-200 shadow-sm rounded-lg text-sm font-bold text-indigo-600 hover:bg-indigo-50 transition-colors">
+                                            
+                                            {newEmployee.documents && newEmployee.documents.length > 0 && (
+                                                <div className="mb-4 text-left space-y-2 max-h-40 overflow-y-auto">
+                                                    {newEmployee.documents.map(doc => (
+                                                        <div key={doc.id} className="flex justify-between items-center p-3 bg-white rounded-lg border border-slate-100 shadow-sm">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="w-8 h-8 rounded bg-indigo-50 flex items-center justify-center text-indigo-600 font-bold text-[10px]">DOC</div>
+                                                                <span className="text-xs font-bold text-slate-700">{doc.document_type}</span>
+                                                            </div>
+                                                            <a href={doc.file} target="_blank" rel="noreferrer" className="text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-2 py-1 rounded">View</a>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+
+                                            <label className="inline-block cursor-pointer px-4 py-2 bg-white border border-slate-200 shadow-sm rounded-lg text-sm font-bold text-indigo-600 hover:bg-indigo-50 transition-colors">
                                                 + Upload Document
-                                            </button>
+                                                <input type="file" className="hidden" onChange={handleDocumentUpload} accept=".pdf,.doc,.docx,.jpg,.png,.jpeg" />
+                                            </label>
                                         </div>
                                     </div>
                                 )}
@@ -958,16 +1005,16 @@ const HRMSModule = () => {
                         </div>
                     </motion.div>
                 </div>
-            )}
+            ), document.body)}
             {/* Modal (View Profile) */}
-            {showViewProfile && selectedEmployee && (
+            {showViewProfile && selectedEmployee && createPortal((
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
                     <motion.div 
                         initial={{ scale: 0.9, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
-                        className="bg-white w-full max-w-xl rounded-3xl shadow-2xl overflow-hidden"
+                        className="bg-white w-full max-w-xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
                     >
-                        <div className="p-8">
+                        <div className="p-8 overflow-y-auto flex-1 custom-scrollbar">
                             <div className="flex justify-between items-start mb-8">
                                 <div className="flex items-center gap-4">
                                     <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-rose-600 to-rose-400 flex items-center justify-center text-white font-black text-3xl">
@@ -1053,7 +1100,7 @@ const HRMSModule = () => {
                         </div>
                     </motion.div>
                 </div>
-            )}
+            ), document.body)}
         </div>
     );
 };

@@ -56,6 +56,11 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
     department_name = serializers.ReadOnlyField(source='department.name')
     designation_name = serializers.ReadOnlyField(source='designation.name')
     reporting_to_name = serializers.ReadOnlyField(source='reporting_to.user.get_full_name')
+    documents = serializers.SerializerMethodField()
+
+    def get_documents(self, obj):
+        from .serializers import EmployeeDocumentSerializer
+        return EmployeeDocumentSerializer(obj.documents.all(), many=True).data
     
     class Meta:
         model = EmployeeProfile
@@ -64,7 +69,7 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
             'display_username', 'full_name', 'employee_id', 'department', 
             'department_name', 'designation', 'designation_name', 
             'reporting_to', 'reporting_to_name',
-            'date_of_joining', 'date_of_birth', 'gender', 'status', 'base_salary', 'additional_data'
+            'date_of_joining', 'date_of_birth', 'gender', 'status', 'base_salary', 'additional_data', 'documents'
         ]
         read_only_fields = ['id', 'status']
 

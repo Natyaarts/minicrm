@@ -212,7 +212,7 @@ export default function ModuleDetailScreen() {
   const [paySearch, setPaySearch] = useState('');
 
   // Leave Central Specific State
-  const [leaveTab, setLeaveTab] = useState<'my' | 'calendar' | 'admin' | 'types' | 'policies' | 'web'>('my');
+  const [leaveTab, setLeaveTab] = useState<'my' | 'team' | 'calendar' | 'admin' | 'types' | 'policies' | 'web'>('my');
 
   // Task Board Specific State
   const [taskCol, setTaskCol] = useState<'todo' | 'progress' | 'review' | 'done' | 'web'>('todo');
@@ -303,6 +303,7 @@ export default function ModuleDetailScreen() {
   const [isDialerSetup, setIsDialerSetup] = useState(false);
   const [user, setUser] = useState<any>(null);
   const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
+  const isManager = leaveRequests.some((req: any) => req.status === 'PENDING_MANAGER' && req.employee?.user?.username !== user?.username);
 
   const loadUser = async () => {
     try {
@@ -3185,10 +3186,15 @@ export default function ModuleDetailScreen() {
                 <TouchableOpacity style={[styles.segmentButton, leaveTab === 'calendar' && styles.segmentActive, { paddingHorizontal: 20 }]} onPress={() => setLeaveTab('calendar')}>
                   <Text style={[styles.segmentText, leaveTab === 'calendar' && styles.segmentTextActive]}>Calendar</Text>
                 </TouchableOpacity>
+                {isManager && (
+                  <TouchableOpacity style={[styles.segmentButton, leaveTab === 'team' && styles.segmentActive, { paddingHorizontal: 20 }]} onPress={() => setLeaveTab('team')}>
+                    <Text style={[styles.segmentText, leaveTab === 'team' && styles.segmentTextActive]}>Team Approvals</Text>
+                  </TouchableOpacity>
+                )}
                 {isAdmin && (
                   <>
                     <TouchableOpacity style={[styles.segmentButton, leaveTab === 'admin' && styles.segmentActive, { paddingHorizontal: 20 }]} onPress={() => setLeaveTab('admin')}>
-                      <Text style={[styles.segmentText, leaveTab === 'admin' && styles.segmentTextActive]}>Approvals</Text>
+                      <Text style={[styles.segmentText, leaveTab === 'admin' && styles.segmentTextActive]}>HR Approvals</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={[styles.segmentButton, leaveTab === 'types' && styles.segmentActive, { paddingHorizontal: 20 }]} onPress={() => setLeaveTab('types')}>
                       <Text style={[styles.segmentText, leaveTab === 'types' && styles.segmentTextActive]}>Holidays</Text>
@@ -3271,14 +3277,14 @@ export default function ModuleDetailScreen() {
               </View>
               {leaveRequests.length > 0 ? leaveRequests
                 .filter((req: any) => {
-                  if (!isAdmin) {
-                    return req.employee?.user?.username === user?.username || req.user_id === user?.id;
-                  }
                   if (leaveTab === 'my') {
                     return req.employee?.user?.username === user?.username || req.user_id === user?.id;
                   }
+                  if (leaveTab === 'team') {
+                    return req.status === 'PENDING_MANAGER' && req.employee?.user?.username !== user?.username;
+                  }
                   if (leaveTab === 'admin') {
-                    return req.status === 'PENDING';
+                    return req.status === 'PENDING_HR';
                   }
                   return true;
                 })
@@ -3296,13 +3302,12 @@ export default function ModuleDetailScreen() {
                     <Text style={[styles.tableCellBold, { flex: 1, textAlign: 'center' }]}>{days}</Text>
                     <View style={[styles.tableCellBadge, { flex: 1.5 }]}>
                       <Text style={[styles.badgeValText, {
-                        backgroundColor: req.status === 'APPROVED' ? '#C6F6D5' : req.status === 'REJECTED' ? '#FFF5F5' : '#FEEBC8',
-                        color: req.status === 'APPROVED' ? '#22543D' : req.status === 'REJECTED' ? '#E53E3E' : '#744210',
+                        backgroundColor: req.status === 'APPROVED' ? '#C6F6D5' : req.status === 'REJECTED' ? '#FFF5F5' : req.status === 'PENDING_HR' ? '#BEE3F8' : '#FEEBC8',
+                        color: req.status === 'APPROVED' ? '#22543D' : req.status === 'REJECTED' ? '#E53E3E' : req.status === 'PENDING_HR' ? '#3182CE' : '#DD6B20',
                         fontSize: 10
-                      }]}>{req.status || 'PENDING'}</Text>
+                      }]}>{req.status}</Text>
                     </View>
-                    {req.status === 'PENDING' ? (
-                      isAdmin ? (
+                    {(req.status === 'PENDING_MANAGER' && leaveTab === 'team') || (req.status === 'PENDING_HR' && leaveTab === 'admin') ? (
                         <View style={{ flex: 2, flexDirection: 'row', gap: 6, backgroundColor: 'transparent' }}>
                           <TouchableOpacity
                             style={{ flex: 1, backgroundColor: '#C6F6D5', borderRadius: 8, alignItems: 'center', paddingVertical: 6 }}
@@ -3317,11 +3322,10 @@ export default function ModuleDetailScreen() {
                             <Text style={{ color: '#E53E3E', fontSize: 11, fontWeight: '900' }}>✗ No</Text>
                           </TouchableOpacity>
                         </View>
-                      ) : (
-                        <Text style={[styles.tableCellSub, { flex: 2, fontSize: 11, fontStyle: 'italic', color: '#718096' }]}>Pending Approval</Text>
-                      )
                     ) : (
-                      <Text style={[styles.tableCellSub, { flex: 2, fontSize: 11 }]}>{req.reviewed_by?.first_name || 'Reviewed'}</Text>
+                      <Text style={[styles.tableCellSub, { flex: 2, fontSize: 11, fontStyle: String(req.status).includes('PENDING') ? 'italic' : 'normal', color: '#718096' }]}>
+                        {String(req.status).includes('PENDING') ? 'Pending Approval' : 'Reviewed'}
+                      </Text>
                     )}
                   </View>
                 );
