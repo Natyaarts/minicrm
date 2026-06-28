@@ -49,8 +49,8 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         except EmployeeProfile.DoesNotExist:
             # Auto-create profile for super admins if missing
             if user.role == 'SUPER_ADMIN' or user.is_superuser:
-                import pytz
-                kolkata = pytz.timezone('Asia/Kolkata')
+                from zoneinfo import ZoneInfo
+                kolkata = ZoneInfo('Asia/Kolkata')
                 profile = EmployeeProfile.objects.create(
                     user=user,
                     employee_id=f'EMP-{user.username.upper()[:5]}-001',
@@ -60,8 +60,8 @@ class AttendanceViewSet(viewsets.ModelViewSet):
             else:
                 return Response({"error": "Employee profile not found. Please contact HR to set up your profile."}, status=404)
 
-        import pytz
-        kolkata = pytz.timezone('Asia/Kolkata')
+        from zoneinfo import ZoneInfo
+        kolkata = ZoneInfo('Asia/Kolkata')
         now_local = timezone.now().astimezone(kolkata)
         today = now_local.date()
         
@@ -157,8 +157,8 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         except EmployeeProfile.DoesNotExist:
             return Response({"error": "Employee profile not found"}, status=404)
 
-        import pytz
-        kolkata = pytz.timezone('Asia/Kolkata')
+        from zoneinfo import ZoneInfo
+        kolkata = ZoneInfo('Asia/Kolkata')
         now_local = timezone.now().astimezone(kolkata)
         today = now_local.date()
         

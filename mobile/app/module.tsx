@@ -5,6 +5,8 @@ import { FontAwesome5 } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
+import { CameraView, useCameraPermissions, CameraType } from 'expo-camera';
+import * as ImageManipulator from 'expo-image-manipulator';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as WebBrowser from 'expo-web-browser';
@@ -26,6 +28,11 @@ export default function ModuleDetailScreen() {
   const { title = 'Module Details', category = 'ACADEMICS' } = useLocalSearchParams();
   const [loading, setLoading] = useState(true);
   
+  // Camera State for Clock In
+  const [showCamera, setShowCamera] = useState(false);
+  const [facing, setFacing] = useState<CameraType>('front');
+  const [permission, requestPermission] = useCameraPermissions();
+  const cameraRef = React.useRef<CameraView>(null);
   // Mentor Module Specific State
   const [mentorTab, setMentorTab] = useState<'dashboard' | 'batches' | 'students' | 'wise' | 'web'>('dashboard');
   const [mentorBatches, setMentorBatches] = useState<any[]>([]);
@@ -1295,6 +1302,50 @@ export default function ModuleDetailScreen() {
     ]);
   };
 
+  const processClockIn = async (base64RawData: string) => {
+    setShowCamera(false);
+    setLoading(true);
+    try {
+        const locationStatus = await Location.requestForegroundPermissionsAsync();
+        if (locationStatus.status !== 'granted') {
+          Alert.alert('Permission Denied', 'Location permission is required to clock in.');
+          setLoading(false);
+          return;
+        }
+
+        const photoBase64 = `data:image/jpeg;base64,${base64RawData}`;
+
+        let loc;
+        try {
+            const locServicesEnabled = await Location.hasServicesEnabledAsync();
+            if (!locServicesEnabled) throw new Error('Location services disabled.');
+            loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        } catch (locErr: any) {
+            loc = await Location.getLastKnownPositionAsync({});
+            if (!loc) throw new Error(locErr.message || 'Could not retrieve GPS coordinates.');
+        }
+
+        const lat = loc.coords.latitude;
+        const lon = loc.coords.longitude;
+
+        const res = await client.post('/hrms/attendance/clock_in/', { 
+          latitude: lat, 
+          longitude: lon,
+          photo: photoBase64
+        });
+        
+        setClockedIn(true);
+        setGeoStatus('Verified (Within Campus Geofence)');
+        if (res.data) setAttLogs(prev => [res.data, ...prev]);
+        Alert.alert('Clocked In ✅', 'Attendance recorded at ' + new Date().toLocaleTimeString());
+    } catch (e: any) {
+        const errMsg = e.response?.data?.detail || e.response?.data?.error || e.message || 'Clock-in failed. Try again.';
+        Alert.alert('Clock In Info', errMsg);
+    } finally {
+        setLoading(false);
+    }
+  };
+
   const handleClockIn = async () => {
     const getLocation = async () => {
       try {
@@ -1322,58 +1373,14 @@ export default function ModuleDetailScreen() {
 
     try {
       if (!clockedIn) {
-        // Request Camera permissions
-        const cameraStatus = await ImagePicker.requestCameraPermissionsAsync();
-        if (cameraStatus.status !== 'granted') {
-          Alert.alert('Permission Denied', 'Camera permission is required to clock in.');
-          return;
+        if (!permission?.granted) {
+            const perm = await requestPermission();
+            if (!perm.granted) {
+                Alert.alert('Permission Denied', 'Camera permission is required to clock in.');
+                return;
+            }
         }
-
-        // Request Location permissions
-        const locationStatus = await Location.requestForegroundPermissionsAsync();
-        if (locationStatus.status !== 'granted') {
-          Alert.alert('Permission Denied', 'Location permission is required to clock in.');
-          return;
-        }
-
-        setLoading(true);
-
-        // Mark that camera is about to open (handles Android reload edge case)
-        await AsyncStorage.setItem('clockInPending', 'true');
-
-        // Capture Photo
-        const photoResult = await ImagePicker.launchCameraAsync({
-          mediaTypes: ['images'],
-          allowsEditing: false,
-          quality: 0.5,
-          base64: true,
-        });
-
-        // Camera returned — clear the pending flag
-        await AsyncStorage.removeItem('clockInPending');
-        setLoading(false);
-
-        if (photoResult.canceled || !photoResult.assets || !photoResult.assets[0].base64) {
-          return; // User cancelled, no error shown
-        }
-
-        const photoBase64 = `data:image/jpeg;base64,${photoResult.assets[0].base64}`;
-
-        // Get Location using helper
-        const location = await getLocation();
-        const lat = location.coords.latitude;
-        const lon = location.coords.longitude;
-
-        const res = await client.post('/hrms/attendance/clock_in/', { 
-          latitude: lat, 
-          longitude: lon,
-          photo: photoBase64
-        });
-        
-        setClockedIn(true);
-        setGeoStatus('Verified (Within Campus Geofence)');
-        if (res.data) setAttLogs(prev => [res.data, ...prev]);
-        Alert.alert('Clocked In ✅', 'Attendance recorded at ' + new Date().toLocaleTimeString());
+        setShowCamera(true);
       } else {
         setLoading(true);
         // Request Location permissions
@@ -4150,6 +4157,52 @@ export default function ModuleDetailScreen() {
           </View>
         </View>
       </Modal>
+
+      <Modal visible={showCamera} animationType="slide" transparent={false}>
+        <View style={styles.cameraContainer}>
+            <CameraView 
+                style={styles.camera} 
+                facing={facing} 
+                ref={cameraRef}
+                mode="picture"
+            />
+            <View style={styles.cameraControls}>
+                    <TouchableOpacity style={styles.cameraButton} onPress={() => setFacing(current => (current === 'back' ? 'front' : 'back'))}>
+                        <FontAwesome5 name="sync" size={24} color="white" />
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.cameraCaptureButton} onPress={async () => {
+                        if (cameraRef.current) {
+                            try {
+                                const photo = await cameraRef.current.takePictureAsync({
+                                    quality: 0.1,
+                                    base64: false,
+                                });
+                                if (photo?.uri) {
+                                    const manipResult = await ImageManipulator.manipulateAsync(
+                                        photo.uri,
+                                        [{ resize: { width: 800 } }],
+                                        { compress: 0.5, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+                                    );
+                                    if (manipResult.base64) {
+                                        processClockIn(manipResult.base64);
+                                    }
+                                }
+                            } catch (e) {
+                                console.warn('Camera capture failed', e);
+                                Alert.alert('Error', 'Failed to capture photo.');
+                                setShowCamera(false);
+                            }
+                        }
+                    }}>
+                        <View style={styles.cameraCaptureInner} />
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.cameraButton} onPress={() => setShowCamera(false)}>
+                        <FontAwesome5 name="times" size={24} color="white" />
+                    </TouchableOpacity>
+                </View>
+        </View>
+      </Modal>
+
     </View>
   );
 }
@@ -4946,4 +4999,38 @@ const styles = StyleSheet.create({
   darkBackButton: { backgroundColor: '#111827', borderColor: '#374151' },
   darkCategoryText: { color: '#60A5FA' },
   darkTitleText: { color: '#FFFFFF' },
+  cameraContainer: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  camera: {
+    flex: 1,
+  },
+  cameraControls: {
+    position: 'absolute',
+    bottom: 0,
+    flexDirection: 'row',
+    width: '100%',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    padding: 30,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  cameraButton: {
+    padding: 15,
+  },
+  cameraCaptureButton: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cameraCaptureInner: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'white',
+  },
 });

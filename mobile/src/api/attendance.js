@@ -26,7 +26,21 @@ export const clockIn = async (latitude, longitude, photo) => {
     const response = await client.post('/hrms/attendance/clock_in/', payload);
     return { success: true, data: response.data };
   } catch (error) {
-    const errorMsg = error.response?.data?.error || 'Clock in failed';
+    console.warn('Clock in API error:', error.message, error.response?.status, error.response?.data);
+    let errorMsg = 'Clock in failed';
+    if (error.response?.data) {
+        if (typeof error.response.data === 'string') {
+            errorMsg = `Server Error (${error.response.status}): ` + error.response.data.substring(0, 100);
+        } else if (error.response.data.error) {
+            errorMsg = error.response.data.error;
+        } else if (error.response.data.detail) {
+            errorMsg = error.response.data.detail;
+        } else {
+            errorMsg = JSON.stringify(error.response.data);
+        }
+    } else {
+        errorMsg = error.message || 'Network Error or Timeout';
+    }
     return { success: false, error: errorMsg };
   }
 };

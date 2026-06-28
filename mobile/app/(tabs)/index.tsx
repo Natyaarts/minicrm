@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, TouchableOpacity, ScrollView, Alert, ActivityIndicator, Image } from 'react-native';
+import { StyleSheet, TouchableOpacity, ScrollView, Alert, ActivityIndicator, Image, Modal, Button } from 'react-native';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
+import { CameraView, useCameraPermissions, CameraType } from 'expo-camera';
+import * as ImageManipulator from 'expo-image-manipulator';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Text, View } from '@/components/Themed';
 import { FontAwesome5 } from '@expo/vector-icons';
@@ -26,6 +29,11 @@ export default function AttendanceScreen() {
   const [tasks, setTasks] = useState<any[]>([]);
   const [user, setUser] = useState<any>(null);
 
+  const [showCamera, setShowCamera] = useState(false);
+  const [facing, setFacing] = useState<CameraType>('front');
+  const [permission, requestPermission] = useCameraPermissions();
+  const cameraRef = React.useRef<CameraView>(null);
+
   // Update clock every second
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -37,7 +45,6 @@ export default function AttendanceScreen() {
     fetchStatus();
     fetchStats();
     requestLocationPermission();
-    checkIfClockInWasInterrupted();
   }, []);
 
   const loadUser = async () => {
@@ -67,22 +74,7 @@ export default function AttendanceScreen() {
   };
 
   // If the app reloaded in the middle of a clock-in (e.g. camera dismissed app on Android),
-  // inform the user they need to try again.
-  const checkIfClockInWasInterrupted = async () => {
-    try {
-      const pending = await AsyncStorage.getItem('clockInPending');
-      if (pending === 'true') {
-        await AsyncStorage.removeItem('clockInPending');
-        Alert.alert(
-          'Clock-In Interrupted',
-          'It looks like the app was reloaded during clock-in. Please press the Clock In button again.',
-          [{ text: 'OK' }]
-        );
-      }
-    } catch (e) {
-      console.warn('checkIfClockInWasInterrupted error:', e);
-    }
-  };
+
 
   const fetchStats = async () => {
     try {
@@ -171,31 +163,28 @@ export default function AttendanceScreen() {
           Alert.alert('Error', res.error);
         }
       } else {
-        const cameraPerm = await ImagePicker.requestCameraPermissionsAsync();
-        if (cameraPerm.status !== 'granted') {
-            Alert.alert('Permission Denied', 'We need camera access to verify your identity for clock-in.');
-            return;
+        if (!permission?.granted) {
+            const perm = await requestPermission();
+            if (!perm.granted) {
+                Alert.alert('Permission Denied', 'We need camera access to verify your identity for clock-in.');
+                return;
+            }
         }
+        setShowCamera(true);
+      }
+    } catch (error: any) {
+      console.error('Attendance execution error:', error);
+      Alert.alert('Error', error.message || 'An unexpected error occurred during attendance check.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-        // Mark that we are about to open the camera (in case app gets reloaded)
-        await AsyncStorage.setItem('clockInPending', 'true');
-
-        const photoResult = await ImagePicker.launchCameraAsync({
-            mediaTypes: ['images'],
-            allowsEditing: false,
-            quality: 0.5,
-            cameraType: 'front' as any,
-            base64: true,
-        });
-
-        // Camera returned — clear the pending flag
-        await AsyncStorage.removeItem('clockInPending');
-
-        if (photoResult.canceled || !photoResult.assets || !photoResult.assets[0].base64) {
-            return;
-        }
-
-        const base64Photo = `data:image/jpeg;base64,${photoResult.assets[0].base64}`;
+  const processClockIn = async (base64RawData: string) => {
+    setShowCamera(false);
+    setLoading(true);
+    try {
+        const base64Photo = `data:image/jpeg;base64,${base64RawData}`;
 
         let loc;
         try {
@@ -228,10 +217,9 @@ export default function AttendanceScreen() {
         } else {
           Alert.alert('Error', res.error);
         }
-      }
     } catch (error: any) {
-      console.error('Attendance execution error:', error);
-      Alert.alert('Error', error.message || 'An unexpected error occurred during attendance check.');
+      console.error('Clock in error:', error);
+      Alert.alert('Error', error.message || 'An unexpected error occurred during clock-in.');
     } finally {
       setLoading(false);
     }
@@ -251,11 +239,11 @@ export default function AttendanceScreen() {
       </View>
     );
   }
-
-  const welcomeName = user ? `${user.first_name || user.username}` : 'Member';
+const welcomeName = user ? `${user.first_name || user.username}` : 'Member';
   const roleName = user ? `${user.role || 'Staff'}`.replace('_', ' ') : 'MEMBER';
 
   return (
+    <>
     <ScrollView 
       style={[styles.container, { backgroundColor: isDark ? '#111827' : '#F9FAFB' }]} 
       contentContainerStyle={styles.content}
@@ -441,6 +429,52 @@ export default function AttendanceScreen() {
         </Text>
       </View>
     </ScrollView>
+
+    <Modal visible={showCamera} animationType="slide" transparent={false}>
+        <View style={styles.cameraContainer}>
+            <CameraView 
+                style={styles.camera} 
+                facing={facing} 
+                ref={cameraRef}
+                mode="picture"
+            />
+            <View style={styles.cameraControls}>
+                <TouchableOpacity style={styles.cameraButton} onPress={() => setFacing(current => (current === 'back' ? 'front' : 'back'))}>
+                    <FontAwesome5 name="sync" size={24} color="white" />
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.cameraCaptureButton} onPress={async () => {
+                    if (cameraRef.current) {
+                        try {
+                            const photo = await cameraRef.current.takePictureAsync({
+                                quality: 0.1,
+                                base64: false,
+                            });
+                            if (photo?.uri) {
+                                const manipResult = await ImageManipulator.manipulateAsync(
+                                    photo.uri,
+                                    [{ resize: { width: 800 } }],
+                                    { compress: 0.5, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+                                );
+                                if (manipResult.base64) {
+                                    processClockIn(manipResult.base64);
+                                }
+                            }
+                        } catch (e) {
+                            console.warn('Camera capture failed', e);
+                            Alert.alert('Error', 'Failed to capture photo.');
+                            setShowCamera(false);
+                        }
+                    }
+                }}>
+                    <View style={styles.cameraCaptureInner} />
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.cameraButton} onPress={() => setShowCamera(false)}>
+                    <FontAwesome5 name="times" size={24} color="white" />
+                </TouchableOpacity>
+            </View>
+        </View>
+    </Modal>
+    </>
   );
 }
 
@@ -672,5 +706,39 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
     fontWeight: '600',
+  },
+  cameraContainer: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  camera: {
+    flex: 1,
+  },
+  cameraControls: {
+    position: 'absolute',
+    bottom: 0,
+    flexDirection: 'row',
+    width: '100%',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    padding: 30,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  cameraButton: {
+    padding: 15,
+  },
+  cameraCaptureButton: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cameraCaptureInner: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'white',
   },
 });
