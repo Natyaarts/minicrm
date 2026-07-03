@@ -111,6 +111,12 @@ function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }) {
         const employeeModules = ['Workforce Hub', 'Attendance', 'Leave Management', 'Tasks', 'Performance Reviews', 'Payroll', 'Asset Management', 'Employee Lifecycle'];
         if (employeeModules.includes(item.label) && user.role === 'EMPLOYEE') return true;
 
+        // Restrict CRM modules for non-manager sales users
+        const managerOnlyCrmModules = ['Dashboard', 'Campaigns', 'Team Reports', 'Call Analytics'];
+        if (managerOnlyCrmModules.includes(item.label) && item.module === 'SALES') {
+            if (user.role !== 'ADMIN' && !user.is_manager) return false;
+        }
+
         if (item.module === 'COMMON') return true;
 
         const modulePerms = user.permissions?.[item.module];
