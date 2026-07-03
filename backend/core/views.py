@@ -357,8 +357,19 @@ class StudentViewSet(viewsets.ModelViewSet):
         except Exception:
             pass
 
-        if user.role in ['ADMIN', 'SUPER_ADMIN', 'SALES']:
+        if user.role in ['ADMIN', 'SUPER_ADMIN']:
             pass 
+        elif user.role == 'SALES':
+            is_sales_manager = False
+            if hasattr(user, 'hrms_profile'):
+                profile = user.hrms_profile
+                if profile.subordinates.exists():
+                    is_sales_manager = True
+                elif profile.designation and any(kw in profile.designation.name.lower() for kw in ['lead', 'manager', 'vp', 'head', 'director']):
+                    is_sales_manager = True
+            
+            if not is_sales_manager:
+                qs = qs.filter(assigned_to=user)
         elif user.role in ['ACADEMIC', 'ACADEMIC_COORDINATOR']:
             qs = qs.filter(lead_status=converted_stage_id)
         elif user.role in ['MENTOR', 'TEACHER']:
