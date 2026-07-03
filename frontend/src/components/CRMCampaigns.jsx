@@ -11,6 +11,15 @@ const CRMCampaigns = () => {
     // Tab State
     const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard', 'campaigns', 'leads'
 
+    useEffect(() => {
+        if (authUser) {
+            const isManager = authUser.role === 'SUPER_ADMIN' || authUser.role === 'ADMIN' || authUser.is_manager;
+            if (!isManager && (activeTab === 'dashboard' || activeTab === 'campaigns')) {
+                setActiveTab('leads');
+            }
+        }
+    }, [authUser]);
+
     // Data States
     const [campaigns, setCampaigns] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -713,18 +722,22 @@ const CRMCampaigns = () => {
                     <p className="text-slate-500 mt-1">Manage marketing sources, track budgets, and route leads.</p>
                 </div>
                 <div className="flex bg-slate-100 p-1 rounded-xl w-full md:w-auto">
-                    <button 
-                        onClick={() => setActiveTab('dashboard')}
-                        className={`flex-1 md:flex-none px-6 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === 'dashboard' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                    >
-                        Dashboard
-                    </button>
-                    <button 
-                        onClick={() => setActiveTab('campaigns')}
-                        className={`flex-1 md:flex-none px-6 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === 'campaigns' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                    >
-                        Campaigns
-                    </button>
+                    {(authUser?.role === 'SUPER_ADMIN' || authUser?.role === 'ADMIN' || authUser?.is_manager) && (
+                        <>
+                            <button 
+                                onClick={() => setActiveTab('dashboard')}
+                                className={`flex-1 md:flex-none px-6 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === 'dashboard' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                            >
+                                Dashboard
+                            </button>
+                            <button 
+                                onClick={() => setActiveTab('campaigns')}
+                                className={`flex-1 md:flex-none px-6 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === 'campaigns' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                            >
+                                Campaigns
+                            </button>
+                        </>
+                    )}
                     <button 
                         onClick={() => setActiveTab('leads')}
                         className={`flex-1 md:flex-none px-6 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === 'leads' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}

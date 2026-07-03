@@ -11,10 +11,22 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ('id', 'username', 'email', 'first_name', 'last_name', 'role', 'phone_number', 'password', 'permissions', 'teacher_batches_details', 'total_classes_conducted', 'lms_teacher_id')
+        fields = ('id', 'username', 'email', 'first_name', 'last_name', 'role', 'phone_number', 'password', 'permissions', 'teacher_batches_details', 'total_classes_conducted', 'lms_teacher_id', 'is_manager')
 
     teacher_batches_details = serializers.SerializerMethodField()
     total_classes_conducted = serializers.SerializerMethodField()
+    is_manager = serializers.SerializerMethodField()
+
+    def get_is_manager(self, obj):
+        if obj.role in ['ADMIN', 'SUPER_ADMIN']:
+            return True
+        if hasattr(obj, 'hrms_profile'):
+            profile = obj.hrms_profile
+            if profile.subordinates.exists():
+                return True
+            if profile.designation and any(kw in profile.designation.name.lower() for kw in ['lead', 'manager', 'vp', 'head', 'director']):
+                return True
+        return False
 
     def get_teacher_batches_details(self, obj):
         return [{"id": b.id, "name": b.name} for b in obj.teacher_batches.all()]
