@@ -224,10 +224,14 @@ class EmployeeProfileViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+        qs = EmployeeProfile.objects.select_related(
+            'user', 'department', 'designation', 'reporting_to', 'reporting_to__user'
+        ).prefetch_related('documents')
+        
         if user.role == 'SUPER_ADMIN' or user.is_superuser:
-            return EmployeeProfile.objects.all()
+            return qs.all()
         # Non-admins can only see their own profile
-        return EmployeeProfile.objects.filter(user=user)
+        return qs.filter(user=user)
 
     @action(detail=False, methods=['get'])
     def celebrations(self, request):
