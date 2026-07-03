@@ -123,6 +123,13 @@ const HRMSModule = () => {
         try {
             const payload = { ...newEmployee };
             if (!payload.reporting_to) payload.reporting_to = null;
+            if (!payload.department) payload.department = null;
+            if (!payload.designation) payload.designation = null;
+            
+            // Do not send empty password on edit
+            if (isEditMode && !payload.password) {
+                delete payload.password;
+            }
 
             if (isEditMode) {
                 await api.patch(`hrms/employees/${newEmployee.id}/`, payload);
@@ -143,7 +150,20 @@ const HRMSModule = () => {
             fetchData();
         } catch (err) {
             console.error(err);
-            alert("Failed to save employee. " + (err.response?.data?.error || "Check if username/email already exists."));
+            let errorMessage = "Check if username/email already exists.";
+            if (err.response?.data) {
+                if (err.response.data.error) {
+                    errorMessage = err.response.data.error;
+                } else if (typeof err.response.data === 'object') {
+                    const firstKey = Object.keys(err.response.data)[0];
+                    if (Array.isArray(err.response.data[firstKey])) {
+                        errorMessage = `${firstKey.toUpperCase()}: ${err.response.data[firstKey][0]}`;
+                    } else {
+                        errorMessage = JSON.stringify(err.response.data);
+                    }
+                }
+            }
+            alert("Failed to save employee. " + errorMessage);
         }
     };
 
