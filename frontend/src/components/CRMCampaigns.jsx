@@ -41,6 +41,13 @@ const CRMCampaigns = () => {
     const [uploadCampaignId, setUploadCampaignId] = useState('');
     const [isUploading, setIsUploading] = useState(false);
     
+    // Edit Lead state
+    const [editingLead, setEditingLead] = useState(null);
+    const [leadFormData, setLeadFormData] = useState({
+        first_name: '', last_name: '', email: '', mobile: '', lead_status: ''
+    });
+    const [isSavingLead, setIsSavingLead] = useState(false);
+    
     // Form state
     const [formData, setFormData] = useState({
         name: '', platform: 'OTHER', status: 'ACTIVE', 
@@ -265,6 +272,32 @@ const CRMCampaigns = () => {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+    };
+
+    const handleEditLeadClick = (lead) => {
+        setEditingLead(lead);
+        setLeadFormData({
+            first_name: lead.first_name || '',
+            last_name: lead.last_name || '',
+            email: lead.email || '',
+            mobile: lead.mobile || '',
+            lead_status: lead.lead_status || ''
+        });
+    };
+
+    const handleSaveLead = async (e) => {
+        e.preventDefault();
+        setIsSavingLead(true);
+        try {
+            await api.patch(`students/${editingLead.id}/`, leadFormData);
+            fetchLeads(); // Refresh leads
+            setEditingLead(null);
+        } catch (error) {
+            console.error('Error saving lead:', error);
+            alert('Failed to save lead details.');
+        } finally {
+            setIsSavingLead(false);
+        }
     };
 
     const renderDashboard = () => {
@@ -605,6 +638,7 @@ const CRMCampaigns = () => {
                                                 <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 transition-colors" />
                                             </div>
                                         </th>
+                                        <th className="px-6 py-4 font-semibold text-right">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
@@ -646,6 +680,15 @@ const CRMCampaigns = () => {
                                             </td>
                                             <td className="px-6 py-4 text-sm text-slate-500">
                                                 {lead.created_at ? new Date(lead.created_at).toLocaleDateString() : '—'}
+                                            </td>
+                                            <td className="px-6 py-4 text-right">
+                                                <button 
+                                                    onClick={() => handleEditLeadClick(lead)}
+                                                    className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors border border-transparent hover:border-indigo-100"
+                                                    title="Edit Lead"
+                                                >
+                                                    <Edit2 className="w-4 h-4" />
+                                                </button>
                                             </td>
                                         </tr>
                                     ))}
@@ -849,6 +892,91 @@ const CRMCampaigns = () => {
                                 </div>
                             </div>
                         </div>
+                    </motion.div>
+                </div>
+            )}
+
+            {/* Edit Lead Modal */}
+            {editingLead && (
+                <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                    <motion.div 
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden"
+                    >
+                        <div className="flex justify-between items-center p-5 border-b border-slate-100">
+                            <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
+                                <Users className="w-5 h-5 text-indigo-500" />
+                                Edit Lead Info
+                            </h3>
+                            <button onClick={() => setEditingLead(null)} className="text-slate-400 hover:text-red-500 transition-colors bg-slate-50 hover:bg-red-50 p-1.5 rounded-lg">
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <form onSubmit={handleSaveLead} className="p-5 space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">First Name</label>
+                                    <input 
+                                        type="text" 
+                                        required 
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+                                        value={leadFormData.first_name}
+                                        onChange={(e) => setLeadFormData({...leadFormData, first_name: e.target.value})}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Last Name</label>
+                                    <input 
+                                        type="text" 
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+                                        value={leadFormData.last_name}
+                                        onChange={(e) => setLeadFormData({...leadFormData, last_name: e.target.value})}
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Mobile Phone (e.g. 91944...)</label>
+                                <input 
+                                    type="text" 
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+                                    value={leadFormData.mobile}
+                                    onChange={(e) => setLeadFormData({...leadFormData, mobile: e.target.value})}
+                                    placeholder="Enter accurate phone number..."
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Email Address</label>
+                                <input 
+                                    type="email" 
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+                                    value={leadFormData.email}
+                                    onChange={(e) => setLeadFormData({...leadFormData, email: e.target.value})}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Pipeline Status</label>
+                                <select 
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+                                    value={leadFormData.lead_status}
+                                    onChange={(e) => setLeadFormData({...leadFormData, lead_status: e.target.value})}
+                                >
+                                    <option value="">-- Select Status --</option>
+                                    {Object.entries(pipelineStages).map(([id, name]) => (
+                                        <option key={id} value={id}>{name}</option>
+                                    ))}
+                                    <option value="NEW">New Lead</option>
+                                </select>
+                            </div>
+                            <div className="pt-4 border-t border-slate-100 flex justify-end gap-3">
+                                <button type="button" onClick={() => setEditingLead(null)} className="px-4 py-2 text-slate-600 bg-slate-100 hover:bg-slate-200 font-medium rounded-xl text-sm transition-colors">
+                                    Cancel
+                                </button>
+                                <button type="submit" disabled={isSavingLead} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl text-sm transition-colors shadow-sm disabled:opacity-50">
+                                    {isSavingLead ? 'Saving...' : 'Save Lead'}
+                                </button>
+                            </div>
+                        </form>
                     </motion.div>
                 </div>
             )}
