@@ -20,11 +20,14 @@ class Designation(models.Model):
         ('TEACHER', 'Teacher'),
         ('EMPLOYEE', 'General Employee'),
     )
-    name = models.CharField(max_length=100, unique=True)
+    name = models.CharField(max_length=100)
     department = models.ForeignKey(Department, on_delete=models.CASCADE, related_name='designations')
     permission_role = models.CharField(max_length=30, choices=ROLE_CHOICES, default='EMPLOYEE')
     description = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('name', 'department')
 
     def __str__(self):
         return f"{self.name} ({self.department.name})"

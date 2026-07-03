@@ -21,11 +21,8 @@ def get_dept(name):
 def get_desig(name, dept_name):
     if not name or not dept_name: return None
     d = get_dept(dept_name)
-    try:
-        desig, _ = Designation.objects.get_or_create(name=name, department=d)
-        return desig
-    except Exception:
-        return Designation.objects.filter(name=name).first()
+    desig, _ = Designation.objects.get_or_create(name=name, department=d)
+    return desig
 
 
 DATA = [
