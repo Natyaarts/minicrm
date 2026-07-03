@@ -285,9 +285,9 @@ User = get_user_model()
 
 @receiver(post_save, sender=User)
 def create_employee_profile(sender, instance, created, **kwargs):
-    if created:
+    if created and getattr(instance, 'role', 'STUDENT') != 'STUDENT':
         if not hasattr(instance, 'hrms_profile'):
-            emp_id = f'EMP-{instance.username[:4].upper()}-{random.randint(1000, 9999)}'
+            emp_id = f'EMP-{instance.id}-{random.randint(1000, 9999)}'
             EmployeeProfile.objects.create(
                 user=instance,
                 employee_id=emp_id,
