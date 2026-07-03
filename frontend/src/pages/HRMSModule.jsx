@@ -418,6 +418,7 @@ const HRMSModule = () => {
                                     </div>
                                     <h3 className="text-base font-bold text-slate-800">No employees found</h3>
                                     <p className="text-xs text-slate-500 mt-1">Start by adding your first workforce member.</p>
+                                </div>
                             )}
                         </div>
                         );
