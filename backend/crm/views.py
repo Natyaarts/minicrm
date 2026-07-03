@@ -182,9 +182,17 @@ class CampaignViewSet(viewsets.ModelViewSet):
         
         campaign = self.get_object()
         file = request.FILES.get('file')
+        program_id = request.data.get('program_id')
+        
         if not file:
             return Response({'error': 'No file provided'}, status=status.HTTP_400_BAD_REQUEST)
         
+        from core.models import Program
+        if program_id:
+            default_program = Program.objects.filter(id=program_id).first()
+        else:
+            default_program = Program.objects.first()
+            
         try:
             decoded_file = file.read().decode('utf-8-sig')
             io_string = io.StringIO(decoded_file)
@@ -208,8 +216,6 @@ class CampaignViewSet(viewsets.ModelViewSet):
                 
                 
                 if first_name or mobile or email:
-                    default_program = Program.objects.first()
-                    
                     import uuid
                     base_username = mobile if mobile else email if email else first_name
                     username = f"{base_username}_{str(uuid.uuid4())[:8]}" if base_username else f"lead_{str(uuid.uuid4())[:8]}"

@@ -48,7 +48,9 @@ const CRMCampaigns = () => {
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
     const [uploadFile, setUploadFile] = useState(null);
     const [uploadCampaignId, setUploadCampaignId] = useState('');
+    const [uploadProgramId, setUploadProgramId] = useState('');
     const [isUploading, setIsUploading] = useState(false);
+    const [programs, setPrograms] = useState([]);
     
     // Edit Lead state
     const [editingLead, setEditingLead] = useState(null);
@@ -73,10 +75,13 @@ const CRMCampaigns = () => {
             fetchDashboardData();
         } else if (activeTab === 'campaigns') {
             fetchCampaigns();
+            fetchWebhooks();
+            fetchPrograms();
         } else if (activeTab === 'leads') {
             fetchLeads();
             fetchSalesUsers();
             fetchPipelineStages();
+            fetchPrograms();
         }
     }, [activeTab]);
 
@@ -108,6 +113,15 @@ const CRMCampaigns = () => {
             setCampaigns([]);
         } finally {
             setLoading(false);
+        }
+    };
+    
+    const fetchPrograms = async () => {
+        try {
+            const res = await api.get('programs/');
+            setPrograms(res.data.results || res.data || []);
+        } catch (error) {
+            console.error('Error fetching programs:', error);
         }
     };
     
@@ -190,11 +204,14 @@ const CRMCampaigns = () => {
         }
 
         setIsUploading(true);
-        const submitData = new FormData();
-        submitData.append('file', uploadFile);
+        const formData = new FormData();
+        formData.append('file', uploadFile);
+        if (uploadProgramId) {
+            formData.append('program_id', uploadProgramId);
+        }
 
         try {
-            const res = await api.post(`crm/campaigns/${uploadCampaignId}/bulk_upload/`, submitData, {
+            const res = await api.post(`crm/campaigns/${uploadCampaignId}/bulk_upload/`, formData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
             alert(res.data.message || 'Upload successful!');
@@ -770,6 +787,13 @@ const CRMCampaigns = () => {
                                 <select required value={uploadCampaignId} onChange={(e) => setUploadCampaignId(e.target.value)} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all">
                                     <option value="">-- Choose a Campaign --</option>
                                     {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1.5">Select Program</label>
+                                <select value={uploadProgramId} onChange={(e) => setUploadProgramId(e.target.value)} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all">
+                                    <option value="">-- Default Program --</option>
+                                    {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                                 </select>
                             </div>
                             <div>
