@@ -39,6 +39,7 @@ const HRMSModule = () => {
     // Filter states
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedDept, setSelectedDept] = useState('');
+    const [statusFilter, setStatusFilter] = useState('ALL');
 
     // Modal states
     const [showAddDept, setShowAddDept] = useState(false);
@@ -335,6 +336,19 @@ const HRMSModule = () => {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                    {activeTab === 'employees' && (
+                        <select 
+                            value={statusFilter} 
+                            onChange={(e) => setStatusFilter(e.target.value)}
+                            className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 transition-all text-xs font-semibold text-slate-600 cursor-pointer shadow-sm"
+                        >
+                            <option value="ALL">All Employees</option>
+                            <option value="ACTIVE">Active Only</option>
+                            <option value="RESIGNED">Resigned</option>
+                            <option value="ON_LEAVE">On Leave</option>
+                            <option value="TERMINATED">Terminated</option>
+                        </select>
+                    )}
                     <button 
                         onClick={fetchData}
                         className="flex items-center justify-center p-1.5 bg-white border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 shadow-sm transition-colors"
@@ -381,12 +395,14 @@ const HRMSModule = () => {
                     {activeTab === 'employees' && (() => {
                         const filteredEmployees = employees.filter(emp => {
                             const term = searchTerm.toLowerCase();
-                            return (
+                            const matchesSearch = (
                                 (emp.full_name || '').toLowerCase().includes(term) ||
                                 (emp.display_username || '').toLowerCase().includes(term) ||
                                 (emp.employee_id || '').toLowerCase().includes(term) ||
                                 (emp.department_name || '').toLowerCase().includes(term)
                             );
+                            const matchesStatus = statusFilter === 'ALL' || emp.status === statusFilter;
+                            return matchesSearch && matchesStatus;
                         });
                         return (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
