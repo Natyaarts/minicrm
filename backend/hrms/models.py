@@ -274,3 +274,24 @@ class Offboarding(models.Model):
 
     def __str__(self):
         return f"Offboarding: {self.employee.user.username}"
+
+# --- SIGNALS ---
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+from django.contrib.auth import get_user_model
+import random
+
+User = get_user_model()
+
+@receiver(post_save, sender=User)
+def create_employee_profile(sender, instance, created, **kwargs):
+    if created:
+        if not hasattr(instance, 'hrms_profile'):
+            emp_id = f'EMP-{instance.username[:4].upper()}-{random.randint(1000, 9999)}'
+            EmployeeProfile.objects.create(
+                user=instance,
+                employee_id=emp_id,
+                date_of_joining=timezone.now().date(),
+                status='ACTIVE'
+            )
+
