@@ -73,6 +73,7 @@ export default function SalesScreen() {
   };
 
   const hasDialerAccess = user?.role === 'SALES' || user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';
+  const isManager = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || user?.is_manager;
 
   const [activeTab, setActiveTab] = useState<'single' | 'bulk' | 'view' | 'web'>('view');
   const [students, setStudents] = useState<any[]>([]);
@@ -511,18 +512,22 @@ export default function SalesScreen() {
               <Text style={[styles.segmentText, activeTab === 'single' && (isDark ? styles.darkSegmentTextActive : styles.segmentTextActive)]}>Single App</Text>
             </TouchableOpacity>
             
-            <TouchableOpacity style={[styles.segmentButton, activeTab === 'bulk' && (isDark ? styles.darkSegmentActive : styles.segmentActive)]} onPress={() => setActiveTab('bulk')}>
-              <Text style={[styles.segmentText, activeTab === 'bulk' && (isDark ? styles.darkSegmentTextActive : styles.segmentTextActive)]}>Bulk Upload</Text>
-            </TouchableOpacity>
+            {isManager && (
+              <TouchableOpacity style={[styles.segmentButton, activeTab === 'bulk' && (isDark ? styles.darkSegmentActive : styles.segmentActive)]} onPress={() => setActiveTab('bulk')}>
+                <Text style={[styles.segmentText, activeTab === 'bulk' && (isDark ? styles.darkSegmentTextActive : styles.segmentTextActive)]}>Bulk Upload</Text>
+              </TouchableOpacity>
+            )}
 
             <TouchableOpacity style={[styles.segmentButton, activeTab === 'view' && (isDark ? styles.darkSegmentActive : styles.segmentActive)]} onPress={() => setActiveTab('view')}>
               <Text style={[styles.segmentText, activeTab === 'view' && (isDark ? styles.darkSegmentTextActive : styles.segmentTextActive)]}>View Apps</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={[styles.segmentButton, activeTab === 'web' && (isDark ? styles.darkSegmentActive : styles.segmentActive)]} onPress={() => { setActiveTab('web'); handleOpenWebPortal(); }}>
-              <FontAwesome5 name="globe" size={12} color={activeTab === 'web' ? '#FBBF24' : '#718096'} style={{ marginRight: 4 }} />
-              <Text style={[styles.segmentText, activeTab === 'web' && (isDark ? styles.darkSegmentTextActive : styles.segmentTextActive)]}>Web Portal</Text>
-            </TouchableOpacity>
+            {isManager && (
+              <TouchableOpacity style={[styles.segmentButton, activeTab === 'web' && (isDark ? styles.darkSegmentActive : styles.segmentActive)]} onPress={() => { setActiveTab('web'); handleOpenWebPortal(); }}>
+                <FontAwesome5 name="globe" size={12} color={activeTab === 'web' ? '#FBBF24' : '#718096'} style={{ marginRight: 4 }} />
+                <Text style={[styles.segmentText, activeTab === 'web' && (isDark ? styles.darkSegmentTextActive : styles.segmentTextActive)]}>Web Portal</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </ScrollView>
 
@@ -569,7 +574,7 @@ export default function SalesScreen() {
             </View>
 
             {/* Sales Dashboard Stats Grid */}
-            {stats && (
+            {isManager && stats && (
               <View style={styles.statsRowGrid}>
                 <View style={[styles.miniStatCard, isDark && styles.darkStatCard]}>
                   <Text style={styles.miniStatLabel}>Total Leads</Text>
