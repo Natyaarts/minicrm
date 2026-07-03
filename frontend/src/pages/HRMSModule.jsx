@@ -358,9 +358,19 @@ const HRMSModule = () => {
                     exit={{ opacity: 0, x: -20 }}
                     transition={{ duration: 0.2 }}
                 >
-                    {activeTab === 'employees' && (
+                    {activeTab === 'employees' && (() => {
+                        const filteredEmployees = employees.filter(emp => {
+                            const term = searchTerm.toLowerCase();
+                            return (
+                                (emp.full_name || '').toLowerCase().includes(term) ||
+                                (emp.display_username || '').toLowerCase().includes(term) ||
+                                (emp.employee_id || '').toLowerCase().includes(term) ||
+                                (emp.department_name || '').toLowerCase().includes(term)
+                            );
+                        });
+                        return (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {employees.length > 0 ? employees.map((emp) => (
+                            {filteredEmployees.length > 0 ? filteredEmployees.map((emp) => (
                                 <div key={emp.id} className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all group">
                                     <div className="flex items-center gap-4 mb-5">
                                         <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-indigo-100 to-indigo-50 flex items-center justify-center text-indigo-600 font-bold text-lg border border-indigo-100 shadow-sm">
@@ -408,10 +418,10 @@ const HRMSModule = () => {
                                     </div>
                                     <h3 className="text-base font-bold text-slate-800">No employees found</h3>
                                     <p className="text-xs text-slate-500 mt-1">Start by adding your first workforce member.</p>
-                                </div>
                             )}
                         </div>
-                    )}
+                        );
+                    })()}
 
                     {activeTab === 'departments' && (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
