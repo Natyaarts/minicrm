@@ -25,6 +25,8 @@ def get_desig(name, dept_name):
     return desig
 
 
+DATA = [
+
     {'emp_id': 'EMP-NA-001', 'full_name': 'Anjana K S', 'email': '', 'phone': '8281106504', 'dept_name': 'Sales', 'desig_name': 'Head - Sales', 'doj_str': '2022-11-01', 'dob_str': '1997-03-17', 'salary': 24000, 'status': 'INACTIVE', 'username': 'gen_empna001', 'first_name': 'Anjana', 'last_name': 'K S'},
     {'emp_id': 'EMP-NA-002', 'full_name': 'Krishna Priya', 'email': '', 'phone': '', 'dept_name': 'Academics', 'desig_name': 'Academic Expert', 'doj_str': '2024-04-24', 'dob_str': '2000-07-04', 'salary': 22000, 'status': 'INACTIVE', 'username': 'gen_empna002', 'first_name': 'Krishna', 'last_name': 'Priya'},
     {'emp_id': 'EMP-NA-003', 'full_name': 'Midhula Krishna', 'email': 'meenumidhula2000@gmail.com', 'phone': '9446679960', 'dept_name': 'Academics', 'desig_name': 'Resource&Dvlpmt', 'doj_str': '2024-06-24', 'dob_str': '2000-10-21', 'salary': 27000, 'status': 'INACTIVE', 'username': 'gen_empna003', 'first_name': 'Midhula', 'last_name': 'Krishna'},
