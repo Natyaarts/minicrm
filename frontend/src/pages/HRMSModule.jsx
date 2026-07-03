@@ -68,10 +68,10 @@ const HRMSModule = () => {
         setLoading(true);
         try {
             const [empRes, deptRes, desigRes, fieldsRes] = await Promise.all([
-                api.get('hrms/employees/').catch(() => ({ data: [] })),
-                api.get('hrms/departments/').catch(() => ({ data: [] })),
-                api.get('hrms/designations/').catch(() => ({ data: [] })),
-                api.get('hrms/custom-fields/').catch(() => ({ data: [] }))
+                api.get('hrms/employees/?page_size=1000').catch(() => ({ data: [] })),
+                api.get('hrms/departments/?page_size=1000').catch(() => ({ data: [] })),
+                api.get('hrms/designations/?page_size=1000').catch(() => ({ data: [] })),
+                api.get('hrms/custom-fields/?page_size=1000').catch(() => ({ data: [] }))
             ]);
             
             setEmployees(empRes.data.results || empRes.data || []);
