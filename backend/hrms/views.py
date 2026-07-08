@@ -137,7 +137,7 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         # Auto-calculate status (LATE check)
         if shift:
             # Combine local date with shift start time and localize
-            shift_start = kolkata.localize(datetime.combine(today, shift.start_time))
+            shift_start = datetime.combine(today, shift.start_time, tzinfo=kolkata)
             # Add grace period
             allowed_time = shift_start + timezone.timedelta(minutes=shift.grace_period_minutes)
             
