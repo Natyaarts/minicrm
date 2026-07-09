@@ -38,19 +38,24 @@ const PayrollModule = () => {
         avgSalary: 0
     });
 
+    const [page, setPage] = useState(1);
+    const [pagination, setPagination] = useState({ count: 0, next: null, previous: null });
     const [genModal, setGenModal] = useState({ show: false, month: new Date().getMonth() + 1, year: new Date().getFullYear() });
     const [adjModal, setAdjModal] = useState({ show: false, employee: '', type: 'BONUS', amount: '', reason: '', month: new Date().getMonth() + 1, year: new Date().getFullYear() });
     const [loanModal, setLoanModal] = useState({ show: false, employee: '', amount: '', emi: '', reason: '', isOneTime: true });
     const [employees, setEmployees] = useState([]);
 
-    const fetchData = async () => {
+    useEffect(() => {
+        setPage(1);
+    }, [activeTab]);
+
+    const fetchData = async (pageNum = page) => {
         setLoading(true);
-        console.log("Fetching payroll data for tab:", activeTab);
         try {
+            let res;
             if (activeTab === 'payslips') {
-                const res = await api.get('payroll/payslips/');
+                res = await api.get(`payroll/payslips/?page=${pageNum}`);
                 const data = res.data.results || res.data || [];
-                console.log("Payslips received:", data);
                 setPayslips(data);
                 
                 const disbursed = data.filter(p => p.status === 'PAID').reduce((sum, p) => sum + Number(p.net_salary), 0);
@@ -61,23 +66,27 @@ const PayrollModule = () => {
                     avgSalary: data.length ? disbursed / data.length : 0
                 });
             } else if (activeTab === 'structures') {
-                const res = await api.get('payroll/salary-structures/');
+                res = await api.get(`payroll/salary-structures/?page=${pageNum}`);
                 const data = res.data.results || res.data || [];
-                console.log("Structures received:", data);
                 setSalaryStructures(data);
             } else if (activeTab === 'adjustments') {
-                const res = await api.get('payroll/adjustments/');
+                res = await api.get(`payroll/adjustments/?page=${pageNum}`);
                 const data = res.data.results || res.data || [];
-                console.log("Adjustments received:", data);
                 setAdjustments(data);
             } else if (activeTab === 'loans') {
-                const res = await api.get('payroll/loans/');
+                res = await api.get(`payroll/loans/?page=${pageNum}`);
                 const data = res.data.results || res.data || [];
                 setLoans(data);
             } else if (activeTab === 'declarations') {
-                const res = await api.get('payroll/tax-declarations/');
+                res = await api.get(`payroll/tax-declarations/?page=${pageNum}`);
                 const data = res.data.results || res.data || [];
                 setDeclarations(data);
+            }
+
+            if (res && res.data && res.data.count !== undefined) {
+                setPagination({ count: res.data.count, next: res.data.next, previous: res.data.previous });
+            } else {
+                setPagination({ count: 0, next: null, previous: null });
             }
         } catch (err) {
             console.error("Failed to fetch payroll data", err);
@@ -87,8 +96,8 @@ const PayrollModule = () => {
     };
 
     useEffect(() => {
-        fetchData();
-    }, [activeTab]);
+        fetchData(page);
+    }, [activeTab, page]);
 
     const handleGenerate = async () => {
         setLoading(true);
@@ -735,6 +744,31 @@ const PayrollModule = () => {
                         </tbody>
                     </table>
                 </div>
+                
+                {/* Pagination Controls */}
+                {!loading && pagination.count > 0 && (
+                    <div className="p-4 border-t border-slate-200 flex items-center justify-between bg-slate-50">
+                        <span className="text-xs text-slate-500 font-semibold">
+                            Showing <span className="font-bold text-slate-800">Page {page}</span> (Total: {pagination.count} records)
+                        </span>
+                        <div className="flex gap-2">
+                            <button 
+                                onClick={() => setPage(page - 1)}
+                                disabled={!pagination.previous}
+                                className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                            >
+                                Previous
+                            </button>
+                            <button 
+                                onClick={() => setPage(page + 1)}
+                                disabled={!pagination.next}
+                                className="px-3 py-1.5 bg-indigo-50 border border-indigo-100 rounded-lg text-xs font-bold text-indigo-600 hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                            >
+                                Next
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Adjustments Modal */}
