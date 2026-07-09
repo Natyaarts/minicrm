@@ -30,8 +30,9 @@ const AttendanceModule = () => {
     const [previewImage, setPreviewImage] = useState(null);
     const [page, setPage] = useState(1);
     const [pagination, setPagination] = useState({ count: 0, next: null, previous: null });
-    const [startDate, setStartDate] = useState('');
-    const [endDate, setEndDate] = useState('');
+    const todayStr = new Date().toISOString().split('T')[0];
+    const [startDate, setStartDate] = useState(todayStr);
+    const [endDate, setEndDate] = useState(todayStr);
     const [dashboardStats, setDashboardStats] = useState({ activeNow: 0, leaveCount: 0, halfDayCount: 0 });
     const [todayLogs, setTodayLogs] = useState([]);
     const [selectedDashboardStat, setSelectedDashboardStat] = useState(null);
