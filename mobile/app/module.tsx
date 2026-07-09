@@ -722,7 +722,7 @@ export default function ModuleDetailScreen() {
 
         setModuleData({
           subtitle: `📅 ${new Date().toLocaleDateString('en-IN', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}`,
-          stats: user?.role === 'SUPER_ADMIN' ? [
+          stats: isAdmin ? [
             { label: 'Active Now', value: `${activeNow}` },
             { label: 'On Leave', value: `${leaveCount}` },
             { label: 'Half Day', value: `${halfDayCount}` }
