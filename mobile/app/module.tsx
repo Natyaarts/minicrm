@@ -367,7 +367,9 @@ export default function ModuleDetailScreen() {
   const isAdminPanel = (title as string).toLowerCase().includes('admin panel');
 
   useEffect(() => {
-    fetchProductionData();
+    if (user) {
+      fetchProductionData();
+    }
   }, [title, user?.role]);
 
   useEffect(() => {
