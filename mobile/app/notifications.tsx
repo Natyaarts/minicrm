@@ -9,6 +9,7 @@ import {
   RefreshControl,
   SafeAreaView,
   StatusBar,
+  Platform,
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -220,6 +221,7 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#FFFFFF', // Clean white background
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
   },
   header: {
     flexDirection: 'row',
