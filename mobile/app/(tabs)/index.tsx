@@ -402,9 +402,12 @@ const welcomeName = user ? `${user.first_name || user.username}` : 'Member';
           
           <View style={[styles.tasksCard, { backgroundColor: '#FFFFFF', borderColor: '#E5E7EB' }]}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <Text style={[styles.tasksHeader, { color: '#374151', marginBottom: 0 }]}>
-                📅 My Upcoming Follow-ups
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <FontAwesome5 name="calendar-check" size={14} color="#FFB800" style={{ marginRight: 8 }} />
+                <Text style={[styles.tasksHeader, { color: '#374151', marginBottom: 0 }]}>
+                  My Upcoming Follow-ups
+                </Text>
+              </View>
               <TouchableOpacity onPress={() => router.push('/(tabs)/two' as any)}>
                 <Text style={{ color: '#F59E0B', fontSize: 11, fontWeight: '800' }}>ALL LEADS &gt;</Text>
               </TouchableOpacity>
@@ -420,7 +423,10 @@ const welcomeName = user ? `${user.first_name || user.username}` : 'Member';
                    <FontAwesome5 name="chevron-right" size={14} color="#9CA3AF" />
                 </TouchableOpacity>
              )) : (
-                <Text style={styles.emptyTaskText}>🎉 No upcoming follow-ups today!</Text>
+                <View style={{ alignItems: 'center', paddingVertical: 16 }}>
+                  <FontAwesome5 name="check-circle" size={24} color="#10B981" style={{ marginBottom: 8, opacity: 0.8 }} />
+                  <Text style={[styles.emptyTaskText, { color: '#6B7280' }]}>No upcoming follow-ups today</Text>
+                </View>
              )}
           </View>
         </View>
