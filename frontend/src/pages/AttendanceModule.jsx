@@ -528,10 +528,10 @@ const AttendanceModule = () => {
                                 </div>
                             </div>
 
-                            <div className="overflow-x-auto">
-                                <table className="w-full">
-                                    <thead>
-                                        <tr className="bg-slate-50">
+                            <div className="overflow-x-auto overflow-y-auto max-h-[500px]">
+                                <table className="w-full relative">
+                                    <thead className="sticky top-0 z-10 bg-slate-50 shadow-sm">
+                                        <tr>
                                             {activeTab === 'master' && (
                                                 <th className="px-5 py-3 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200">Employee</th>
                                             )}
