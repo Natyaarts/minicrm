@@ -3015,18 +3015,18 @@ export default function ModuleDetailScreen() {
                 </View>
               ) : (
                 <View style={styles.masterSheetCard}>
-                  <View style={styles.masterHeaderBar}>
-                    <Text style={styles.masterTitle}>{attTab === 'my' ? 'My Attendance Logs' : 'Master Attendance Sheet'}</Text>
-                    <View style={styles.masterActions}>
-                      <View style={[styles.searchBar, { marginBottom: 0, flex: 1, marginRight: 8 }]}>
-                        <FontAwesome5 name="search" size={14} color="#A0AEC0" />
-                        <TextInput style={styles.input} placeholder="Search by name or date..." placeholderTextColor="#A0AEC0" value={attSearch} onChangeText={setAttSearch} />
-                      </View>
+                  <View style={[styles.masterHeaderBar, { flexDirection: 'column', alignItems: 'stretch', gap: 12 }]}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={styles.masterTitle}>{attTab === 'my' ? 'My Attendance Logs' : 'Master Attendance Sheet'}</Text>
                       {isAdmin && (
                         <TouchableOpacity style={styles.iconBtn} onPress={() => Alert.alert('Download', 'Attendance master sheet downloaded.')}>
                           <FontAwesome5 name="download" size={14} color="#718096" />
                         </TouchableOpacity>
                       )}
+                    </View>
+                    <View style={[styles.searchBar, { marginBottom: 0 }]}>
+                      <FontAwesome5 name="search" size={14} color="#A0AEC0" />
+                      <TextInput style={styles.input} placeholder="Search by name or date..." placeholderTextColor="#A0AEC0" value={attSearch} onChangeText={setAttSearch} />
                     </View>
                   </View>
 
@@ -3087,43 +3087,47 @@ export default function ModuleDetailScreen() {
         {isPayroll && (
           <View style={styles.mentorContainer}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20, flexGrow: 0 }}>
-            <View style={[styles.segmentContainer, { marginBottom: 0, paddingHorizontal: 4 }]}>
-              <TouchableOpacity style={[styles.segmentButton, payTab === 'monthly' && styles.segmentActive, { paddingHorizontal: 20 }]} onPress={() => setPayTab('monthly')}>
-                <Text style={[styles.segmentText, payTab === 'monthly' && styles.segmentTextActive]}>Monthly Pay</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.segmentButton, payTab === 'structures' && styles.segmentActive, { paddingHorizontal: 20 }]} onPress={() => setPayTab('structures')}>
-                <Text style={[styles.segmentText, payTab === 'structures' && styles.segmentTextActive]}>Structures</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.segmentButton, payTab === 'adjustments' && styles.segmentActive, { paddingHorizontal: 20 }]} onPress={() => setPayTab('adjustments')}>
-                <Text style={[styles.segmentText, payTab === 'adjustments' && styles.segmentTextActive]}>Adjustments</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.segmentButton, payTab === 'loans' && styles.segmentActive, { paddingHorizontal: 20 }]} onPress={() => setPayTab('loans')}>
-                <Text style={[styles.segmentText, payTab === 'loans' && styles.segmentTextActive]}>Loans</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.segmentButton, payTab === 'web' && styles.segmentActive, { paddingHorizontal: 20 }]} 
-                onPress={async () => {
-                  setPayTab('web');
-                  await WebBrowser.openBrowserAsync('https://natyaarts.org/payroll');
-                  setPayTab('monthly');
-                }}
-              >
-                  <Text style={[styles.segmentText, payTab === 'web' && styles.segmentTextActive]}>🌐 Web</Text>
+              <View style={[styles.segmentContainer, { marginBottom: 0, paddingHorizontal: 4 }]}>
+                <TouchableOpacity style={[styles.segmentButton, payTab === 'monthly' && styles.segmentActive, { paddingHorizontal: 20 }]} onPress={() => setPayTab('monthly')}>
+                  <Text style={[styles.segmentText, payTab === 'monthly' && styles.segmentTextActive]}>Monthly Pay</Text>
                 </TouchableOpacity>
+                {isAdmin && (
+                  <>
+                    <TouchableOpacity style={[styles.segmentButton, payTab === 'structures' && styles.segmentActive, { paddingHorizontal: 20 }]} onPress={() => setPayTab('structures')}>
+                      <Text style={[styles.segmentText, payTab === 'structures' && styles.segmentTextActive]}>Structures</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.segmentButton, payTab === 'adjustments' && styles.segmentActive, { paddingHorizontal: 20 }]} onPress={() => setPayTab('adjustments')}>
+                      <Text style={[styles.segmentText, payTab === 'adjustments' && styles.segmentTextActive]}>Adjustments</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.segmentButton, payTab === 'loans' && styles.segmentActive, { paddingHorizontal: 20 }]} onPress={() => setPayTab('loans')}>
+                      <Text style={[styles.segmentText, payTab === 'loans' && styles.segmentTextActive]}>Loans</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                      style={[styles.segmentButton, payTab === 'web' && styles.segmentActive, { paddingHorizontal: 20 }]} 
+                      onPress={async () => {
+                        setPayTab('web');
+                        await WebBrowser.openBrowserAsync('https://natyaarts.org/payroll');
+                        setPayTab('monthly');
+                      }}
+                    >
+                      <Text style={[styles.segmentText, payTab === 'web' && styles.segmentTextActive]}>🌐 Web</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
               </View>
             </ScrollView>
 
             <View style={styles.masterSheetCard}>
-              <View style={styles.masterHeaderBar}>
-                <Text style={styles.masterTitle}>Historical Payslips</Text>
-                <View style={styles.masterActions}>
-                  <TouchableOpacity style={[styles.iconBtn, { marginRight: 8 }]} onPress={() => Alert.alert('Settings', 'Payroll engine configuration settings.')}>
+              <View style={[styles.masterHeaderBar, { flexDirection: 'column', alignItems: 'stretch', gap: 12 }]}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={styles.masterTitle}>Historical Payslips</Text>
+                  <TouchableOpacity style={styles.iconBtn} onPress={() => Alert.alert('Settings', 'Payroll engine configuration settings.')}>
                     <FontAwesome5 name="cog" size={14} color="#718096" />
                   </TouchableOpacity>
-                  <View style={[styles.searchBar, { marginBottom: 0, flex: 1 }]}>
-                    <FontAwesome5 name="search" size={14} color="#A0AEC0" />
-                    <TextInput style={styles.input} placeholder="Search..." placeholderTextColor="#A0AEC0" value={paySearch} onChangeText={setPaySearch} />
-                  </View>
+                </View>
+                <View style={[styles.searchBar, { marginBottom: 0 }]}>
+                  <FontAwesome5 name="search" size={14} color="#A0AEC0" />
+                  <TextInput style={styles.input} placeholder="Search..." placeholderTextColor="#A0AEC0" value={paySearch} onChangeText={setPaySearch} />
                 </View>
               </View>
 
