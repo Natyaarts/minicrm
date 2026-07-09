@@ -3038,16 +3038,16 @@ export default function ModuleDetailScreen() {
                     attLogs
                       .filter((log: any) => {
                         if (attTab === 'my') {
-                          return log.employee?.user?.username === user?.username || log.user_id === user?.id;
+                          return log.user_id === user?.id;
                         }
-                        const empName = `${log.employee?.user?.first_name || ''} ${log.employee?.user?.last_name || log.employee?.user?.username || ''}`;
+                        const empName = log.employee_name || 'Staff';
                         return `${empName} ${log.date || ''}`.toLowerCase().includes(attSearch.toLowerCase());
                       })
                       .slice(0, 25)
                       .map((log: any, idx: number) => (
                         <View key={log.id || idx} style={styles.tableRow}>
                           <Text style={[styles.tableCellBold, { flex: 2 }]} numberOfLines={1}>
-                            {log.employee?.user?.first_name || log.employee?.user?.username || 'Staff'}
+                            {log.employee_name || 'Staff'}
                           </Text>
                           <Text style={[styles.tableCellSub, { flex: 1.5 }]}>{log.date || '—'}</Text>
                           <Text style={[styles.tableCellSub, { flex: 1.5 }]}>
