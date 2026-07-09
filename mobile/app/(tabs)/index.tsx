@@ -245,7 +245,7 @@ const welcomeName = user ? `${user.first_name || user.username}` : 'Member';
   return (
     <>
     <ScrollView 
-      style={[styles.container, { backgroundColor: isDark ? '#111827' : '#F9FAFB' }]} 
+      style={[styles.container, { backgroundColor: isDark ? '#111827' : '#FFFFFF' }]} 
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
@@ -305,7 +305,7 @@ const welcomeName = user ? `${user.first_name || user.username}` : 'Member';
           
           {isClockedIn && (
             <View style={[styles.statusRow, { borderTopWidth: 1, borderTopColor: isDark ? '#374151' : '#F3F4F6', marginTop: 12, paddingTop: 12 }]}>
-              <FontAwesome5 name="clock" size={16} color="#3B82F6" />
+              <FontAwesome5 name="clock" size={16} color="#EAB308" />
               <Text style={[styles.statusLabel, { color: isDark ? '#D1D5DB' : '#374151' }]}>Shift Clock In</Text>
               <Text style={[styles.statusValue, { color: isDark ? '#FFFFFF' : '#111827' }]}>
                 {attendance?.clock_in && attendance?.date
@@ -334,8 +334,8 @@ const welcomeName = user ? `${user.first_name || user.username}` : 'Member';
             activeOpacity={0.8}
           >
             <View style={styles.statHeader}>
-              <FontAwesome5 name="graduation-cap" size={16} color="#3B82F6" />
-              <Text style={[styles.statBadge, { color: '#3B82F6', backgroundColor: 'rgba(59, 130, 246, 0.15)' }]}>Live</Text>
+              <FontAwesome5 name="graduation-cap" size={16} color="#EAB308" />
+              <Text style={[styles.statBadge, { color: '#EAB308', backgroundColor: 'rgba(234, 179, 8, 0.15)' }]}>Live</Text>
             </View>
             <Text style={[styles.statNumber, { color: isDark ? '#FFFFFF' : '#111827' }]}>{stats?.students ?? '0'}</Text>
             <Text style={[styles.statName, { color: isDark ? '#9CA3AF' : '#6B7280' }]}>Students</Text>
@@ -347,8 +347,8 @@ const welcomeName = user ? `${user.first_name || user.username}` : 'Member';
             activeOpacity={0.8}
           >
             <View style={styles.statHeader}>
-              <FontAwesome5 name="university" size={16} color="#8B5CF6" />
-              <Text style={[styles.statBadge, { color: '#8B5CF6', backgroundColor: 'rgba(139, 92, 246, 0.15)' }]}>Active</Text>
+              <FontAwesome5 name="university" size={16} color="#D97706" />
+              <Text style={[styles.statBadge, { color: '#D97706', backgroundColor: 'rgba(217, 119, 6, 0.15)' }]}>Active</Text>
             </View>
             <Text style={[styles.statNumber, { color: isDark ? '#FFFFFF' : '#111827' }]}>{stats?.batches ?? '0'}</Text>
             <Text style={[styles.statName, { color: isDark ? '#9CA3AF' : '#6B7280' }]}>Batches</Text>
@@ -390,7 +390,7 @@ const welcomeName = user ? `${user.first_name || user.username}` : 'Member';
           <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12}}>
             <Text style={[styles.sectionTitle, { color: isDark ? '#9CA3AF' : '#4B5563', marginBottom: 0 }]}>SALES CRM HUB</Text>
             <TouchableOpacity onPress={() => router.push(`/bde-report?bdeId=${user.id}` as any)}>
-               <Text style={{color: '#3B82F6', fontSize: 12, fontWeight: '700'}}>MY FULL REPORT &gt;</Text>
+               <Text style={{color: '#EAB308', fontSize: 12, fontWeight: '800'}}>MY FULL REPORT &gt;</Text>
             </TouchableOpacity>
           </View>
           
@@ -422,9 +422,9 @@ const welcomeName = user ? `${user.first_name || user.username}` : 'Member';
 
 
       {/* Geofence Alert Info */}
-      <View style={[styles.infoCard, { backgroundColor: isDark ? '#1E3A8A' : '#EFF6FF', borderColor: isDark ? '#3B82F6' : '#BFDBFE' }]}>
-        <FontAwesome5 name="info-circle" size={18} color="#3B82F6" />
-        <Text style={[styles.infoText, { color: isDark ? '#93C5FD' : '#1E40AF' }]}>
+      <View style={[styles.infoCard, { backgroundColor: isDark ? '#451A03' : '#FEF3C7', borderColor: isDark ? '#92400E' : '#FDE68A' }]}>
+        <FontAwesome5 name="info-circle" size={18} color="#EAB308" />
+        <Text style={[styles.infoText, { color: isDark ? '#FDE68A' : '#92400E' }]}>
           Secure Face Recognition & Geofenced boundary validation is enabled. Please log in when physically inside the facility premises.
         </Text>
       </View>
@@ -509,33 +509,33 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   roleBadge: {
-    backgroundColor: '#374151',
+    backgroundColor: '#EAB308',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 12,
     alignSelf: 'center',
   },
   roleBadgeText: {
-    color: '#FFD700',
+    color: '#FFFFFF',
     fontSize: 10,
     fontWeight: '900',
     letterSpacing: 1.5,
     textTransform: 'uppercase',
   },
   heroCard: {
-    backgroundColor: '#1E293B', // Beautiful deep steel dark gray
+    backgroundColor: '#EAB308', // Natya Yellow
     borderRadius: 24,
     padding: 24,
     alignItems: 'center',
-    shadowColor: '#000',
+    shadowColor: '#EAB308',
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.25,
+    shadowOpacity: 0.35,
     shadowRadius: 15,
     elevation: 8,
     marginBottom: 24,
   },
   heroTitle: {
-    color: '#94A3B8',
+    color: '#FFFFFF',
     fontSize: 10,
     fontWeight: '900',
     letterSpacing: 2.5,
@@ -549,7 +549,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   dateText: {
-    color: '#94A3B8',
+    color: '#FEF3C7',
     fontSize: 13,
     fontWeight: '700',
     marginBottom: 20,
