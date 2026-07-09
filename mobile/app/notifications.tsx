@@ -149,20 +149,18 @@ export default function NotificationsScreen() {
               <Text style={[styles.cardTitle, !item.is_read && styles.unreadText]}>
                 {item.title}
               </Text>
-              <Text style={styles.timeText}>{formatTime(item.created_at)}</Text>
+              <TouchableOpacity
+                onPress={() => handleDeleteNotification(item.id)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <FontAwesome5 name="trash-alt" size={14} color="#EF4444" style={{ opacity: 0.8 }} />
+              </TouchableOpacity>
             </View>
             <Text style={styles.cardMessage} numberOfLines={3}>
               {item.message}
             </Text>
+            <Text style={styles.timeText}>{formatTime(item.created_at)}</Text>
           </View>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          onPress={() => handleDeleteNotification(item.id)}
-          style={styles.deleteButton}
-          activeOpacity={0.6}
-        >
-          <FontAwesome5 name="trash-alt" size={14} color="#9CA3AF" />
         </TouchableOpacity>
       </View>
     );
@@ -173,7 +171,7 @@ export default function NotificationsScreen() {
       <StatusBar barStyle="light-content" />
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <FontAwesome5 name="arrow-left" size={18} color="#FFFFFF" />
+          <FontAwesome5 name="arrow-left" size={18} color="#111827" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>NOTIFICATIONS</Text>
         {notifications.some((n) => !n.is_read) ? (
@@ -187,7 +185,7 @@ export default function NotificationsScreen() {
 
       {loading ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#FFD700" />
+          <ActivityIndicator size="large" color="#FFB800" />
         </View>
       ) : (
         <FlatList
@@ -199,13 +197,13 @@ export default function NotificationsScreen() {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              tintColor="#FFD700"
-              colors={['#FFD700']}
+              tintColor="#FFB800"
+              colors={['#FFB800']}
             />
           }
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <FontAwesome5 name="bell-slash" size={50} color="#9CA3AF" style={styles.emptyIcon} />
+              <FontAwesome5 name="bell-slash" size={50} color="#D1D5DB" style={styles.emptyIcon} />
               <Text style={styles.emptyTitle}>All caught up!</Text>
               <Text style={styles.emptySubtitle}>
                 No new notifications. We'll alert you when something happens.
@@ -221,7 +219,7 @@ export default function NotificationsScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#111827', // Rich dark slate background
+    backgroundColor: '#FFFFFF', // Clean white background
   },
   header: {
     flexDirection: 'row',
@@ -229,9 +227,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 15,
-    backgroundColor: '#1F2937', // Slightly lighter dark gray
+    backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderColor: '#374151',
+    borderColor: '#E5E7EB',
   },
   backButton: {
     padding: 8,
@@ -240,25 +238,25 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 16,
     fontWeight: '900',
-    color: '#FFFFFF',
+    color: '#111827',
     letterSpacing: 2,
   },
   actionButton: {
     paddingVertical: 6,
     paddingHorizontal: 12,
-    backgroundColor: '#374151',
+    backgroundColor: 'rgba(255, 184, 0, 0.15)', // Light yellow bg
     borderRadius: 12,
   },
   actionText: {
     fontSize: 12,
-    color: '#FFD700',
+    color: '#FFB800',
     fontWeight: '700',
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#111827',
+    backgroundColor: '#FFFFFF',
   },
   listContent: {
     padding: 16,
@@ -266,17 +264,23 @@ const styles = StyleSheet.create({
   },
   card: {
     flexDirection: 'row',
-    backgroundColor: '#1F2937',
+    backgroundColor: '#FFFFFF',
     borderRadius: 20,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#374151',
+    borderColor: '#E5E7EB',
     overflow: 'hidden',
     alignItems: 'flex-start',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    elevation: 2,
   },
   unreadCard: {
-    borderColor: '#FBBF24', // Yellow highlight for unread
-    backgroundColor: '#1E2530',
+    borderColor: '#FFB800', // Natya yellow
+    borderWidth: 2,
+    backgroundColor: '#FFFBEE', // Very faint yellow tint
   },
   cardMain: {
     flex: 1,
@@ -305,33 +309,25 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#E5E7EB',
+    color: '#111827',
     flex: 1,
     marginRight: 8,
   },
   unreadText: {
-    color: '#FFFFFF',
+    color: '#000000',
     fontWeight: '900',
   },
   timeText: {
     fontSize: 11,
     color: '#9CA3AF',
     fontWeight: '600',
+    marginTop: 6,
   },
   cardMessage: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: '#4B5563',
     lineHeight: 18,
     fontWeight: '500',
-  },
-  deleteButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    alignSelf: 'stretch',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderLeftWidth: 1,
-    borderLeftColor: '#374151',
   },
   emptyContainer: {
     alignItems: 'center',
@@ -346,12 +342,12 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 18,
     fontWeight: '900',
-    color: '#FFFFFF',
+    color: '#111827',
     marginBottom: 8,
   },
   emptySubtitle: {
     fontSize: 13,
-    color: '#9CA3AF',
+    color: '#6B7280',
     textAlign: 'center',
     lineHeight: 20,
     fontWeight: '500',
