@@ -32,6 +32,9 @@ const AttendanceModule = () => {
     const [pagination, setPagination] = useState({ count: 0, next: null, previous: null });
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
+    const [dashboardStats, setDashboardStats] = useState({ activeNow: 0, leaveCount: 0, halfDayCount: 0 });
+    const [todayLogs, setTodayLogs] = useState([]);
+    const [selectedDashboardStat, setSelectedDashboardStat] = useState(null);
 
     useEffect(() => {
         if (authUser?.role === 'SUPER_ADMIN') {
@@ -86,6 +89,13 @@ const AttendanceModule = () => {
             const todayStr = new Date().toISOString().split('T')[0];
             const todayRes = await api.get(`hrms/attendance/?start_date=${todayStr}&end_date=${todayStr}`);
             const todayData = todayRes.data.results || todayRes.data || [];
+            
+            const activeNow = todayData.filter(l => l.clock_in && !l.clock_out).length;
+            const leaveCount = todayData.filter(l => l.status === 'ON_LEAVE').length;
+            const halfDayCount = todayData.filter(l => l.status === 'HALF_DAY').length;
+            setDashboardStats({ activeNow, leaveCount, halfDayCount });
+            setTodayLogs(todayData);
+
             const record = todayData.find(r => Number(r.user_id) === Number(authUser?.id));
             setTodayRecord(record || null);
         } catch (err) {
@@ -210,6 +220,59 @@ const AttendanceModule = () => {
                         </motion.div>
                     </motion.div>
                 )}
+                {selectedDashboardStat && (
+                    <motion.div 
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4"
+                        onClick={() => setSelectedDashboardStat(null)}
+                    >
+                        <motion.div 
+                            initial={{ scale: 0.95 }}
+                            animate={{ scale: 1 }}
+                            exit={{ scale: 0.95 }}
+                            className="bg-white p-6 rounded-2xl shadow-2xl max-w-lg w-full relative max-h-[80vh] overflow-y-auto"
+                            onClick={e => e.stopPropagation()}
+                        >
+                            <button 
+                                onClick={() => setSelectedDashboardStat(null)}
+                                className="absolute top-4 right-4 w-8 h-8 bg-slate-100 text-slate-800 rounded-full flex items-center justify-center hover:bg-slate-200"
+                            >
+                                <XCircle size={20} />
+                            </button>
+                            <h2 className="text-xl font-bold text-slate-800 mb-4 capitalize">
+                                {selectedDashboardStat === 'active' ? 'Active Now' : selectedDashboardStat === 'leave' ? 'On Leave' : 'Half Day'} Employees
+                            </h2>
+                            <div className="space-y-3">
+                                {todayLogs.filter(l => 
+                                    selectedDashboardStat === 'active' ? (l.clock_in && !l.clock_out) :
+                                    selectedDashboardStat === 'leave' ? l.status === 'ON_LEAVE' :
+                                    selectedDashboardStat === 'halfDay' ? l.status === 'HALF_DAY' : false
+                                ).map((log, idx) => (
+                                    <div key={idx} className="flex items-center justify-between bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                        <div>
+                                            <p className="font-semibold text-slate-800">{log.employee_name || 'Unknown'}</p>
+                                            <p className="text-xs text-slate-500">ID: {log.employee_id_display || 'N/A'}</p>
+                                        </div>
+                                        <div className="text-right">
+                                            {selectedDashboardStat === 'active' && <span className="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs font-bold rounded">Active</span>}
+                                            {selectedDashboardStat === 'leave' && <span className="px-2 py-1 bg-red-100 text-red-700 text-xs font-bold rounded">Leave</span>}
+                                            {selectedDashboardStat === 'halfDay' && <span className="px-2 py-1 bg-amber-100 text-amber-700 text-xs font-bold rounded">Half Day</span>}
+                                        </div>
+                                    </div>
+                                ))}
+                                {todayLogs.filter(l => 
+                                    selectedDashboardStat === 'active' ? (l.clock_in && !l.clock_out) :
+                                    selectedDashboardStat === 'leave' ? l.status === 'ON_LEAVE' :
+                                    selectedDashboardStat === 'halfDay' ? l.status === 'HALF_DAY' : false
+                                ).length === 0 && (
+                                    <p className="text-center text-slate-500 py-4">No employees found.</p>
+                                )}
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
             </AnimatePresence>
             {showSelfieCapture && (
                 <FaceSelfieCapture 
@@ -266,6 +329,47 @@ const AttendanceModule = () => {
                     )}
                 </div>
             </div>
+
+            {isAdmin && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div 
+                        onClick={() => setSelectedDashboardStat('active')}
+                        className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between cursor-pointer hover:border-emerald-300 hover:shadow-md transition-all"
+                    >
+                        <div>
+                            <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-1">Active Now</p>
+                            <h3 className="text-2xl font-bold text-slate-800">{dashboardStats.activeNow}</h3>
+                        </div>
+                        <div className="w-12 h-12 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600">
+                            <User size={24} />
+                        </div>
+                    </div>
+                    <div 
+                        onClick={() => setSelectedDashboardStat('leave')}
+                        className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between cursor-pointer hover:border-red-300 hover:shadow-md transition-all"
+                    >
+                        <div>
+                            <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-1">On Leave</p>
+                            <h3 className="text-2xl font-bold text-slate-800">{dashboardStats.leaveCount}</h3>
+                        </div>
+                        <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center text-red-600">
+                            <XCircle size={24} />
+                        </div>
+                    </div>
+                    <div 
+                        onClick={() => setSelectedDashboardStat('halfDay')}
+                        className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between cursor-pointer hover:border-amber-300 hover:shadow-md transition-all"
+                    >
+                        <div>
+                            <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-1">Half Day</p>
+                            <h3 className="text-2xl font-bold text-slate-800">{dashboardStats.halfDayCount}</h3>
+                        </div>
+                        <div className="w-12 h-12 rounded-full bg-amber-50 flex items-center justify-center text-amber-600">
+                            <Timer size={24} />
+                        </div>
+                    </div>
+                </div>
+            )}
 
                 {activeTab === 'settings' && isAdmin ? (
                     <SettingsView location={location} requestLocation={requestLocation} />
