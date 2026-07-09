@@ -234,7 +234,7 @@ export default function AttendanceScreen() {
 
   if (loading && !attendance && !user) {
     return (
-      <View style={[styles.loadingContainer, { backgroundColor: isDark ? '#111827' : '#F9FAFB' }]}>
+      <View style={[styles.loadingContainer, { backgroundColor: '#FFFFFF' }]}>
         <ActivityIndicator size="large" color="#FBBF24" />
       </View>
     );
@@ -245,17 +245,17 @@ const welcomeName = user ? `${user.first_name || user.username}` : 'Member';
   return (
     <>
     <ScrollView 
-      style={[styles.container, { backgroundColor: isDark ? '#111827' : '#FFFFFF' }]} 
+      style={[styles.container, { backgroundColor: '#FFFFFF' }]} 
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
       {/* Welcome Bar */}
       <View style={[styles.welcomeBar, { backgroundColor: 'transparent' }]}>
         <View style={{ backgroundColor: 'transparent' }}>
-          <Text style={[styles.greetingText, { color: isDark ? '#9CA3AF' : '#6B7280' }]}>
+          <Text style={[styles.greetingText, { color: '#6B7280' }]}>
             {getGreeting()},
           </Text>
-          <Text style={[styles.nameText, { color: isDark ? '#FFFFFF' : '#111827' }]}>
+          <Text style={[styles.nameText, { color: '#111827' }]}>
             {welcomeName}
           </Text>
         </View>
@@ -293,21 +293,21 @@ const welcomeName = user ? `${user.first_name || user.username}` : 'Member';
 
       {/* Status Section */}
       <View style={[styles.section, { backgroundColor: 'transparent' }]}>
-        <Text style={[styles.sectionTitle, { color: isDark ? '#9CA3AF' : '#4B5563' }]}>ATTENDANCE REGISTRY</Text>
-        <View style={[styles.statusCard, { backgroundColor: isDark ? '#1F2937' : '#FFFFFF', borderColor: isDark ? '#374151' : '#E5E7EB' }]}>
+        <Text style={[styles.sectionTitle, { color: '#4B5563' }]}>ATTENDANCE REGISTRY</Text>
+        <View style={[styles.statusCard, { backgroundColor: '#FFFFFF', borderColor: '#E5E7EB' }]}>
           <View style={styles.statusRow}>
             <FontAwesome5 name="map-marker-alt" size={16} color={location ? '#10B981' : '#EF4444'} />
-            <Text style={[styles.statusLabel, { color: isDark ? '#D1D5DB' : '#374151' }]}>Geofencing Lock</Text>
+            <Text style={[styles.statusLabel, { color: '#374151' }]}>Geofencing Lock</Text>
             <Text style={[styles.statusValue, { color: location ? '#10B981' : '#EF4444' }]}>
               {location ? 'Locked In' : 'Acquiring GPS...'}
             </Text>
           </View>
           
           {isClockedIn && (
-            <View style={[styles.statusRow, { borderTopWidth: 1, borderTopColor: isDark ? '#374151' : '#F3F4F6', marginTop: 12, paddingTop: 12 }]}>
+            <View style={[styles.statusRow, { borderTopWidth: 1, borderTopColor: '#F3F4F6', marginTop: 12, paddingTop: 12 }]}>
               <FontAwesome5 name="clock" size={16} color="#FFB800" />
-              <Text style={[styles.statusLabel, { color: isDark ? '#D1D5DB' : '#374151' }]}>Shift Clock In</Text>
-              <Text style={[styles.statusValue, { color: isDark ? '#FFFFFF' : '#111827' }]}>
+              <Text style={[styles.statusLabel, { color: '#374151' }]}>Shift Clock In</Text>
+              <Text style={[styles.statusValue, { color: '#111827' }]}>
                 {attendance?.clock_in && attendance?.date
                   ? (() => {
                       const timePart = (attendance.clock_in || '').split('.')[0];
@@ -326,10 +326,10 @@ const welcomeName = user ? `${user.first_name || user.username}` : 'Member';
 
       {/* Dashboard Stats Section */}
       <View style={[styles.section, { backgroundColor: 'transparent' }]}>
-        <Text style={[styles.sectionTitle, { color: isDark ? '#9CA3AF' : '#4B5563' }]}>ACADEMY QUICK LOOK</Text>
+        <Text style={[styles.sectionTitle, { color: '#4B5563' }]}>ACADEMY QUICK LOOK</Text>
         <View style={styles.statsGrid}>
           <TouchableOpacity 
-            style={[styles.statCard, { backgroundColor: isDark ? '#1F2937' : '#FFFFFF', borderColor: isDark ? '#374151' : '#E5E7EB' }]}
+            style={[styles.statCard, { backgroundColor: '#FFFFFF', borderColor: '#E5E7EB' }]}
             onPress={() => router.push('/module?title=Academic Hierarchy&category=Academics' as any)}
             activeOpacity={0.8}
           >
@@ -337,12 +337,12 @@ const welcomeName = user ? `${user.first_name || user.username}` : 'Member';
               <FontAwesome5 name="graduation-cap" size={16} color="#FFB800" />
               <Text style={[styles.statBadge, { color: '#FFB800', backgroundColor: 'rgba(234, 179, 8, 0.15)' }]}>Live</Text>
             </View>
-            <Text style={[styles.statNumber, { color: isDark ? '#FFFFFF' : '#111827' }]}>{stats?.students ?? '0'}</Text>
-            <Text style={[styles.statName, { color: isDark ? '#9CA3AF' : '#6B7280' }]}>Students</Text>
+            <Text style={[styles.statNumber, { color: '#111827' }]}>{stats?.students ?? '0'}</Text>
+            <Text style={[styles.statName, { color: '#6B7280' }]}>Students</Text>
           </TouchableOpacity>
 
           <TouchableOpacity 
-            style={[styles.statCard, { backgroundColor: isDark ? '#1F2937' : '#FFFFFF', borderColor: isDark ? '#374151' : '#E5E7EB' }]}
+            style={[styles.statCard, { backgroundColor: '#FFFFFF', borderColor: '#E5E7EB' }]}
             onPress={() => router.push('/module?title=Mentor Module&category=Academics' as any)}
             activeOpacity={0.8}
           >
@@ -350,12 +350,12 @@ const welcomeName = user ? `${user.first_name || user.username}` : 'Member';
               <FontAwesome5 name="university" size={16} color="#D97706" />
               <Text style={[styles.statBadge, { color: '#D97706', backgroundColor: 'rgba(217, 119, 6, 0.15)' }]}>Active</Text>
             </View>
-            <Text style={[styles.statNumber, { color: isDark ? '#FFFFFF' : '#111827' }]}>{stats?.batches ?? '0'}</Text>
-            <Text style={[styles.statName, { color: isDark ? '#9CA3AF' : '#6B7280' }]}>Batches</Text>
+            <Text style={[styles.statNumber, { color: '#111827' }]}>{stats?.batches ?? '0'}</Text>
+            <Text style={[styles.statName, { color: '#6B7280' }]}>Batches</Text>
           </TouchableOpacity>
 
           <TouchableOpacity 
-            style={[styles.statCard, { backgroundColor: isDark ? '#1F2937' : '#FFFFFF', borderColor: isDark ? '#374151' : '#E5E7EB' }]}
+            style={[styles.statCard, { backgroundColor: '#FFFFFF', borderColor: '#E5E7EB' }]}
             onPress={() => router.push('/(tabs)/two' as any)}
             activeOpacity={0.8}
           >
@@ -363,12 +363,12 @@ const welcomeName = user ? `${user.first_name || user.username}` : 'Member';
               <FontAwesome5 name="user-friends" size={16} color="#F59E0B" />
               <Text style={[styles.statBadge, { color: '#F59E0B', backgroundColor: 'rgba(245, 158, 11, 0.15)' }]}>Pipeline</Text>
             </View>
-            <Text style={[styles.statNumber, { color: isDark ? '#FFFFFF' : '#111827' }]}>{stats?.leads ?? '0'}</Text>
-            <Text style={[styles.statName, { color: isDark ? '#9CA3AF' : '#6B7280' }]}>Leads</Text>
+            <Text style={[styles.statNumber, { color: '#111827' }]}>{stats?.leads ?? '0'}</Text>
+            <Text style={[styles.statName, { color: '#6B7280' }]}>Leads</Text>
           </TouchableOpacity>
 
           <TouchableOpacity 
-            style={[styles.statCard, { backgroundColor: isDark ? '#1F2937' : '#FFFFFF', borderColor: isDark ? '#374151' : '#E5E7EB' }]}
+            style={[styles.statCard, { backgroundColor: '#FFFFFF', borderColor: '#E5E7EB' }]}
             onPress={() => router.push('/module?title=Finance Manager&category=Administrative' as any)}
             activeOpacity={0.8}
           >
@@ -376,10 +376,10 @@ const welcomeName = user ? `${user.first_name || user.username}` : 'Member';
               <FontAwesome5 name="wallet" size={16} color="#10B981" />
               <Text style={[styles.statBadge, { color: '#10B981', backgroundColor: 'rgba(16, 185, 129, 0.15)' }]}>INR</Text>
             </View>
-            <Text style={[styles.statNumber, { color: isDark ? '#FFFFFF' : '#111827' }]}>
+            <Text style={[styles.statNumber, { color: '#111827' }]}>
               ₹{stats?.expenses ? Math.round(stats.expenses).toLocaleString('en-IN') : '0'}
             </Text>
-            <Text style={[styles.statName, { color: isDark ? '#9CA3AF' : '#6B7280' }]}>Expenses</Text>
+            <Text style={[styles.statName, { color: '#6B7280' }]}>Expenses</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -388,15 +388,15 @@ const welcomeName = user ? `${user.first_name || user.username}` : 'Member';
       {(user?.role === 'SALES' || user?.role === 'SUPER_ADMIN') && (
         <View style={[styles.section, { backgroundColor: 'transparent' }]}>
           <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12}}>
-            <Text style={[styles.sectionTitle, { color: isDark ? '#9CA3AF' : '#4B5563', marginBottom: 0 }]}>SALES CRM HUB</Text>
+            <Text style={[styles.sectionTitle, { color: '#4B5563', marginBottom: 0 }]}>SALES CRM HUB</Text>
             <TouchableOpacity onPress={() => router.push(`/bde-report?bdeId=${user.id}` as any)}>
                <Text style={{color: '#FFB800', fontSize: 12, fontWeight: '800'}}>MY FULL REPORT &gt;</Text>
             </TouchableOpacity>
           </View>
           
-          <View style={[styles.tasksCard, { backgroundColor: isDark ? '#1F2937' : '#FFFFFF', borderColor: isDark ? '#374151' : '#E5E7EB' }]}>
+          <View style={[styles.tasksCard, { backgroundColor: '#FFFFFF', borderColor: '#E5E7EB' }]}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <Text style={[styles.tasksHeader, { color: isDark ? '#D1D5DB' : '#374151', marginBottom: 0 }]}>
+              <Text style={[styles.tasksHeader, { color: '#374151', marginBottom: 0 }]}>
                 📅 My Upcoming Follow-ups
               </Text>
               <TouchableOpacity onPress={() => router.push('/(tabs)/two' as any)}>
@@ -404,9 +404,9 @@ const welcomeName = user ? `${user.first_name || user.username}` : 'Member';
               </TouchableOpacity>
             </View>
              {tasks.length > 0 ? tasks.map(task => (
-                <TouchableOpacity key={task.id} style={[styles.taskItem, { borderTopColor: isDark ? '#374151' : '#F3F4F6' }]} onPress={() => router.push(`/lead-details?leadId=${task.student}` as any)}>
+                <TouchableOpacity key={task.id} style={[styles.taskItem, { borderTopColor: '#F3F4F6' }]} onPress={() => router.push(`/lead-details?leadId=${task.student}` as any)}>
                    <View style={{flex: 1}}>
-                      <Text style={[styles.taskTitle, { color: isDark ? '#F9FAFB' : '#111827' }]} numberOfLines={1}>{task.title}</Text>
+                      <Text style={[styles.taskTitle, { color: '#111827' }]} numberOfLines={1}>{task.title}</Text>
                       <Text style={styles.taskDate}>
                         <FontAwesome5 name="clock" size={10} color="#F59E0B" /> {task.due_date ? new Date(task.due_date).toLocaleString([], {month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit'}) : 'No due date'}
                       </Text>
@@ -422,9 +422,9 @@ const welcomeName = user ? `${user.first_name || user.username}` : 'Member';
 
 
       {/* Geofence Alert Info */}
-      <View style={[styles.infoCard, { backgroundColor: isDark ? '#451A03' : '#FEF3C7', borderColor: isDark ? '#92400E' : '#FDE68A' }]}>
+      <View style={[styles.infoCard, { backgroundColor: '#FEF3C7', borderColor: '#FDE68A' }]}>
         <FontAwesome5 name="info-circle" size={18} color="#FFB800" />
-        <Text style={[styles.infoText, { color: isDark ? '#FDE68A' : '#92400E' }]}>
+        <Text style={[styles.infoText, { color: '#92400E' }]}>
           Secure Face Recognition & Geofenced boundary validation is enabled. Please log in when physically inside the facility premises.
         </Text>
       </View>
