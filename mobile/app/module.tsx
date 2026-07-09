@@ -716,15 +716,16 @@ export default function ModuleDetailScreen() {
         }
 
         const todayLogs = logs.filter((l: any) => l.date === todayStr);
-        const presentCount = new Set(todayLogs.map((l: any) => l.user_id)).size;
         const activeNow = todayLogs.filter((l: any) => l.clock_in && !l.clock_out).length;
+        const leaveCount = todayLogs.filter((l: any) => l.status === 'ON_LEAVE').length;
+        const halfDayCount = todayLogs.filter((l: any) => l.status === 'HALF_DAY').length;
 
         setModuleData({
           subtitle: `📅 ${new Date().toLocaleDateString('en-IN', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}`,
           stats: user?.role === 'SUPER_ADMIN' ? [
-            { label: 'Present Today', value: `${presentCount}` },
             { label: 'Active Now', value: `${activeNow}` },
-            { label: 'Total Logs', value: `${logs.length}` }
+            { label: 'On Leave', value: `${leaveCount}` },
+            { label: 'Half Day', value: `${halfDayCount}` }
           ] : [
             { label: 'Total Logs', value: `${logs.length}` },
             { label: 'Master Sheet', value: 'Active' },
