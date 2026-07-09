@@ -715,14 +715,22 @@ export default function ModuleDetailScreen() {
           setGracePeriod(String(activeShift.grace_period_minutes || '15'));
         }
 
+        const todayLogs = logs.filter((l: any) => l.date === todayStr);
+        const presentCount = new Set(todayLogs.map((l: any) => l.user_id)).size;
+        const activeNow = todayLogs.filter((l: any) => l.clock_in && !l.clock_out).length;
+
         setModuleData({
           subtitle: `📅 ${new Date().toLocaleDateString('en-IN', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}`,
-          stats: [
+          stats: isAdmin ? [
+            { label: 'Present Today', value: `${presentCount}` },
+            { label: 'Active Now', value: `${activeNow}` },
+            { label: 'Total Logs', value: `${logs.length}` }
+          ] : [
             { label: 'Total Logs', value: `${logs.length}` },
             { label: 'Master Sheet', value: 'Active' },
             { label: 'Status', value: todayLog ? 'Clocked In' : 'Not Started' }
           ],
-          items: [], action: 'Clock In Now',
+          items: [], action: isAdmin ? 'View Master Sheet' : 'Clock In Now',
         });
         setLoading(false); return;
       }
