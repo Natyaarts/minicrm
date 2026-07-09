@@ -284,8 +284,14 @@ const welcomeName = user ? `${user.first_name || user.username}` : 'Member';
             <ActivityIndicator color="#FFF" />
           ) : (
             <>
-              <FontAwesome5 name={isClockedIn ? "sign-out-alt" : "fingerprint"} size={20} color="#FFF" />
-              <Text style={styles.buttonText}>{isClockedIn ? "Clock Out Now" : "Scan Fingerprint / Clock In"}</Text>
+              <FontAwesome5 
+                name={isClockedIn ? "sign-out-alt" : "fingerprint"} 
+                size={20} 
+                color={isClockedIn ? "#FFFFFF" : "#FFB800"} 
+              />
+              <Text style={[styles.buttonText, { color: isClockedIn ? "#FFFFFF" : "#FFB800" }]}>
+                {isClockedIn ? "Clock Out Now" : "Scan Fingerprint / Clock In"}
+              </Text>
             </>
           )}
         </TouchableOpacity>
@@ -569,7 +575,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   buttonIn: {
-    backgroundColor: '#10B981', // Emerald green
+    backgroundColor: '#FFFFFF', // White
   },
   buttonOut: {
     backgroundColor: '#EF4444', // Crimson red
