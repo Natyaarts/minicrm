@@ -33,7 +33,7 @@ export default function LeadDetailsScreen() {
   const { leadId } = useLocalSearchParams();
   const router = useRouter();
   const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+  const isDark = false;
 
   const [loading, setLoading] = useState(true);
   const [student, setStudent] = useState<any>(null);
@@ -617,16 +617,17 @@ export default function LeadDetailsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0F172A', // Slate 900
+    backgroundColor: '#F9FAFB',
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
   },
   darkBg: {
-    backgroundColor: '#0F172A',
+    backgroundColor: '#F9FAFB',
   },
   center: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#0F172A',
+    backgroundColor: '#F9FAFB',
   },
   header: {
     flexDirection: 'row',
@@ -634,13 +635,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 15,
-    backgroundColor: '#1E293B', // Slate 800
+    backgroundColor: '#FFFFFF', // Slate 800
     borderBottomWidth: 1,
-    borderBottomColor: '#334155',
+    borderBottomColor: '#E5E7EB',
   },
   darkHeader: {
-    backgroundColor: '#1E293B',
-    borderBottomColor: '#334155',
+    backgroundColor: '#FFFFFF',
+    borderBottomColor: '#E5E7EB',
   },
   backButton: {
     padding: 8,
@@ -649,13 +650,13 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 16,
     fontWeight: '900',
-    color: '#FFFFFF',
+    color: '#111827',
     letterSpacing: 2,
   },
   callButtonHeader: {
     padding: 10,
     borderRadius: 12,
-    backgroundColor: '#FBBF24',
+    backgroundColor: '#FFB800',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -664,16 +665,16 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   profileCard: {
-    backgroundColor: '#1E293B',
+    backgroundColor: '#FFFFFF',
     borderRadius: 24,
     padding: 20,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#E5E7EB',
     marginBottom: 20,
   },
   darkCard: {
-    backgroundColor: '#1E293B',
-    borderColor: '#334155',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E5E7EB',
   },
   profileHeader: {
     flexDirection: 'row',
@@ -691,7 +692,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(251, 191, 36, 0.3)',
   },
   avatarText: {
-    color: '#FBBF24',
+    color: '#FFB800',
     fontSize: 22,
     fontWeight: '900',
   },
@@ -703,7 +704,7 @@ const styles = StyleSheet.create({
   profileName: {
     fontSize: 18,
     fontWeight: '900',
-    color: '#FFFFFF',
+    color: '#111827',
   },
   profileCrmId: {
     fontSize: 12,
@@ -748,10 +749,10 @@ const styles = StyleSheet.create({
   infoValue: {
     fontSize: 14,
     fontWeight: '800',
-    color: '#FFFFFF',
+    color: '#111827',
   },
   darkText: {
-    color: '#FFFFFF',
+    color: '#111827',
   },
   contactBox: {
     marginTop: 16,
@@ -767,12 +768,12 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#0F172A',
+    backgroundColor: '#F9FAFB',
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#E5E7EB',
   },
   contactIcon: {
     marginRight: 8,
@@ -784,11 +785,11 @@ const styles = StyleSheet.create({
     color: '#E2E8F0',
   },
   sectionCard: {
-    backgroundColor: '#1E293B',
+    backgroundColor: '#FFFFFF',
     borderRadius: 24,
     padding: 20,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#E5E7EB',
     marginBottom: 20,
   },
   sectionTitle: {
@@ -819,7 +820,7 @@ const styles = StyleSheet.create({
   fieldValue: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: '#111827',
   },
   actionPanel: {
     flexDirection: 'row',
@@ -847,28 +848,28 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   noteFormCard: {
-    backgroundColor: '#1E293B',
+    backgroundColor: '#FFFFFF',
     borderRadius: 24,
     padding: 20,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#E5E7EB',
     marginBottom: 20,
   },
   formTitle: {
     fontSize: 10,
     fontWeight: '900',
-    color: '#FBBF24',
+    color: '#FFB800',
     letterSpacing: 1.5,
     marginBottom: 16,
   },
   typeSelector: {
     flexDirection: 'row',
-    backgroundColor: '#0F172A',
+    backgroundColor: '#F9FAFB',
     borderRadius: 12,
     padding: 4,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#E5E7EB',
   },
   typeBtn: {
     flex: 1,
@@ -878,7 +879,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   typeBtnActive: {
-    backgroundColor: '#FBBF24',
+    backgroundColor: '#FFB800',
   },
   typeBtnText: {
     fontSize: 11,
@@ -886,40 +887,40 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
   },
   typeBtnTextActive: {
-    color: '#0F172A',
+    color: '#111827',
     fontWeight: '900',
   },
   formInput: {
-    backgroundColor: '#0F172A',
+    backgroundColor: '#F9FAFB',
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#E5E7EB',
     padding: 14,
-    color: '#FFFFFF',
+    color: '#111827',
     fontSize: 14,
     height: 100,
     textAlignVertical: 'top',
     marginBottom: 16,
   },
   darkInput: {
-    backgroundColor: '#0F172A',
-    borderColor: '#334155',
+    backgroundColor: '#F9FAFB',
+    borderColor: '#E5E7EB',
   },
   submitBtn: {
     flexDirection: 'row',
-    backgroundColor: '#FBBF24',
+    backgroundColor: '#FFB800',
     borderRadius: 16,
     paddingVertical: 14,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#FBBF24',
+    shadowColor: '#FFB800',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 8,
     elevation: 4,
   },
   submitBtnText: {
-    color: '#0F172A',
+    color: '#111827',
     fontSize: 14,
     fontWeight: '900',
   },
@@ -956,11 +957,11 @@ const styles = StyleSheet.create({
   },
   timelineCard: {
     flex: 1,
-    backgroundColor: '#1E293B',
+    backgroundColor: '#FFFFFF',
     borderRadius: 20,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#E5E7EB',
   },
   timelineHeader: {
     flexDirection: 'row',
@@ -972,7 +973,7 @@ const styles = StyleSheet.create({
   timelineType: {
     fontSize: 12,
     fontWeight: '900',
-    color: '#0F172A',
+    color: '#111827',
   },
   followUpContainer: {
     marginTop: 16,
@@ -1003,7 +1004,7 @@ const styles = StyleSheet.create({
   datePickerText: {
     marginLeft: 8,
     fontSize: 14,
-    color: '#334155',
+    color: '#4B5563',
     fontWeight: '500',
   },
   timelineDate: {
@@ -1036,12 +1037,12 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
   emptyBox: {
-    backgroundColor: '#1E293B',
+    backgroundColor: '#FFFFFF',
     borderRadius: 24,
     padding: 30,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#E5E7EB',
   },
   emptyText: {
     color: '#94A3B8',
@@ -1069,7 +1070,7 @@ const styles = StyleSheet.create({
     elevation: 10,
   },
   darkModalContent: {
-    backgroundColor: '#1E293B',
+    backgroundColor: '#FFFFFF',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -1082,7 +1083,7 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 16,
     fontWeight: '900',
-    color: '#0F172A',
+    color: '#111827',
     letterSpacing: 0.5,
   },
   modalCloseBtn: {
@@ -1105,11 +1106,11 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
   },
   darkStageItem: {
-    backgroundColor: '#0F172A',
-    borderColor: '#334155',
+    backgroundColor: '#F9FAFB',
+    borderColor: '#E5E7EB',
   },
   stageItemActive: {
-    borderColor: '#FBBF24',
+    borderColor: '#FFB800',
     backgroundColor: 'rgba(251, 191, 36, 0.08)',
   },
   stageColorDot: {
@@ -1120,10 +1121,10 @@ const styles = StyleSheet.create({
   stageItemText: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#334155',
+    color: '#4B5563',
   },
   stageItemTextActive: {
-    color: '#FBBF24',
+    color: '#FFB800',
     fontWeight: '900',
   },
 });
