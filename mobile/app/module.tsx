@@ -368,7 +368,7 @@ export default function ModuleDetailScreen() {
 
   useEffect(() => {
     fetchProductionData();
-  }, [title]);
+  }, [title, user?.role]);
 
   useEffect(() => {
     if ((title as string).toLowerCase().includes('mentor') && !loading) {
