@@ -721,7 +721,7 @@ export default function ModuleDetailScreen() {
 
         setModuleData({
           subtitle: `📅 ${new Date().toLocaleDateString('en-IN', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}`,
-          stats: isAdmin ? [
+          stats: user?.role === 'SUPER_ADMIN' ? [
             { label: 'Present Today', value: `${presentCount}` },
             { label: 'Active Now', value: `${activeNow}` },
             { label: 'Total Logs', value: `${logs.length}` }
