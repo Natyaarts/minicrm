@@ -13,6 +13,7 @@ const MentorModule = () => {
     const [programs, setPrograms] = useState([]);
     const [subPrograms, setSubPrograms] = useState([]);
     const [courses, setCourses] = useState([]);
+    const [allCourses, setAllCourses] = useState([]);
     const [mentors, setMentors] = useState([]);
     const { user: authUser } = useAuth();
     
@@ -698,14 +699,16 @@ const MentorModule = () => {
 
     const fetchMeta = async () => {
         try {
-            const [progRes, mentorRes, teacherRes] = await Promise.all([
+            const [progRes, mentorRes, teacherRes, courseRes] = await Promise.all([
                 api.get('programs/'),
                 api.get('auth/mentors/'),
-                api.get('auth/teachers/')
+                api.get('auth/teachers/'),
+                api.get('courses/')
             ]);
             setPrograms(progRes.data);
             setMentors(mentorRes.data);
             setTeachers(teacherRes.data);
+            setAllCourses(courseRes.data);
         } catch (err) {
             console.error(err);
         }
@@ -1446,49 +1449,13 @@ const MentorModule = () => {
             {viewTab === 'all-students' && !selectedBatch ? (
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
                     <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-                        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-8">
-                            <div>
-                                <h2 className="text-xl font-bold text-slate-800">All Students</h2>
-                                <p className="text-sm text-slate-500">Showing {allStudents.length} students across all programs</p>
-                            </div>
-                            <div className="flex flex-col sm:flex-row flex-wrap gap-3 w-full lg:w-auto">
-                                <select
-                                    className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100"
-                                    value={studentFilterProgram}
-                                    onChange={(e) => setStudentFilterProgram(e.target.value)}
-                                >
-                                    <option value="">All Programs</option>
-                                    {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                                </select>
-                                <select
-                                    className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100"
-                                    value={studentFilterCourse}
-                                    onChange={(e) => setStudentFilterCourse(e.target.value)}
-                                >
-                                    <option value="">All Courses</option>
-                                    {courses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                                </select>
-                                <select
-                                    className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100"
-                                    value={studentFilterStatus}
-                                    onChange={(e) => setStudentFilterStatus(e.target.value)}
-                                >
-                                    <option value="">All Statuses</option>
-                                    <option value="ACTIVE">Active</option>
-                                    <option value="ON_BREAK">On Break</option>
-                                    <option value="DISCONTINUED">Discontinued</option>
-                                </select>
-                                <div className="flex flex-col sm:flex-row flex-wrap gap-3 w-full sm:w-auto">
-                                    <div className="relative w-full sm:w-64">
-                                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                                        <input
-                                            type="text"
-                                            placeholder="Search by name, ID..."
-                                            className="w-full pl-11 pr-4 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 transition-all text-sm"
-                                            value={studentSearchQuery}
-                                            onChange={(e) => setStudentSearchQuery(e.target.value)}
-                                        />
-                                    </div>
+                        <div className="flex flex-col gap-4 mb-8">
+                            <div className="flex justify-between items-start">
+                                <div>
+                                    <h2 className="text-xl font-bold text-slate-800">All Students</h2>
+                                    <p className="text-sm text-slate-500">Showing {allStudents.length} students across all programs</p>
+                                </div>
+                                <div className="flex gap-3">
                                     <button 
                                         onClick={async () => {
                                             try {
@@ -1498,27 +1465,67 @@ const MentorModule = () => {
                                                 } else {
                                                     alert(res.data.message || "Fee sync started in the background. Please wait a minute and refresh the page.");
                                                 }
-                                                fetchFeeDefaulters();
                                                 fetchStudentsWithPagination();
-                                            } catch(err) {
-                                                alert("Failed to sync fees");
+                                            } catch (err) {
+                                                console.error("Failed to sync Wise fees", err);
+                                                alert("Failed to sync Wise fees");
                                             }
                                         }}
-                                        className="flex items-center justify-center gap-2 px-4 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-xl hover:bg-indigo-100 hover:text-indigo-800 transition-colors text-sm font-semibold shadow-sm whitespace-nowrap shrink-0"
+                                        className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-xl transition-all font-semibold text-sm border border-indigo-200"
                                     >
-                                        <RefreshCw size={16} />
-                                        Sync Wise Fees
+                                        <RefreshCw size={16} /> <span className="hidden sm:inline">Sync Wise Fees</span>
                                     </button>
                                     <button 
                                         onClick={handleExportFilteredStudents}
-                                        className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 hover:text-indigo-600 transition-colors text-sm font-semibold shadow-sm whitespace-nowrap shrink-0"
+                                        className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-xl transition-all font-semibold text-sm shadow-sm"
                                     >
-                                        <Download size={16} />
-                                        Export CSV
+                                        <Download size={16} /> <span className="hidden sm:inline">Export CSV</span>
                                     </button>
                                 </div>
                             </div>
+                            
+                            <div className="flex flex-col sm:flex-row flex-wrap items-center gap-3 w-full p-4 bg-slate-50 rounded-xl border border-slate-100">
+                                <div className="flex gap-3 w-full sm:w-auto">
+                                    <select
+                                        className="flex-1 sm:flex-none px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100 font-medium text-slate-700"
+                                        value={studentFilterProgram}
+                                        onChange={(e) => setStudentFilterProgram(e.target.value)}
+                                    >
+                                        <option value="">All Programs</option>
+                                        {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                    </select>
+                                    <select
+                                        className="flex-1 sm:flex-none px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100 font-medium text-slate-700"
+                                        value={studentFilterCourse}
+                                        onChange={(e) => setStudentFilterCourse(e.target.value)}
+                                    >
+                                        <option value="">All Courses</option>
+                                        {allCourses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                    </select>
+                                    <select
+                                        className="flex-1 sm:flex-none px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100 font-medium text-slate-700"
+                                        value={studentFilterStatus}
+                                        onChange={(e) => setStudentFilterStatus(e.target.value)}
+                                    >
+                                        <option value="">All Statuses</option>
+                                        <option value="ACTIVE">Active</option>
+                                        <option value="ON_BREAK">On Break</option>
+                                        <option value="DISCONTINUED">Discontinued</option>
+                                    </select>
+                                </div>
+                                <div className="relative w-full sm:w-72 sm:ml-auto">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                    <input
+                                        type="text"
+                                        placeholder="Search students by name, email, or ID..."
+                                        className="w-full pl-9 pr-4 py-2 rounded-lg bg-white border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 transition-all text-sm font-medium"
+                                        value={studentSearchQuery}
+                                        onChange={(e) => setStudentSearchQuery(e.target.value)}
+                                    />
+                                </div>
+                            </div>
                         </div>
+
 
                         {/* Full Student List - Desktop Table View */}
                         <div className="hidden md:block overflow-x-auto custom-scrollbar">
