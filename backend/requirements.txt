@@ -10,6 +10,7 @@ requests
 pandas
 openpyxl
 watchdog
-fpdf2psycopg2-binary
+fpdf2
+psycopg2-binary
 boto3
 django-storages
