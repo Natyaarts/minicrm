@@ -635,6 +635,35 @@ const MentorModule = () => {
         }
     };
 
+    const syncAllWiseBatches = async () => {
+        if (!window.confirm(`This will sync all ${wiseCourses.length} batches from Wise LMS to the CRM. This might take a minute. Proceed?`)) return;
+        
+        try {
+            setLoading(true);
+            let successCount = 0;
+            let failCount = 0;
+            
+            for (const course of wiseCourses) {
+                try {
+                    await api.post('integrations/sync-batch/', { class_id: course._id });
+                    successCount++;
+                } catch (e) {
+                    console.error("Failed to sync course:", course._id, e);
+                    failCount++;
+                }
+            }
+            
+            alert(`Sync Complete! Successfully synced ${successCount} batches. ${failCount > 0 ? `Failed: ${failCount}` : ''}`);
+            setViewTab('batches');
+            fetchBatches();
+        } catch (err) {
+            console.error(err);
+            alert("An error occurred during bulk sync.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const fetchBatches = async () => {
         try {
             const res = await api.get(`batches/?page=${batchPage}&search=${batchSearchQuery}`);
@@ -1781,6 +1810,20 @@ const MentorModule = () => {
                                 <h2 className="text-xl font-bold text-slate-800">Wise LMS Classes</h2>
                                 <p className="text-sm text-slate-500">Live classes available in your Wise LMS account</p>
                             </div>
+                            <button
+                                onClick={syncAllWiseBatches}
+                                disabled={loading || wiseCourses.length === 0}
+                                className="px-5 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 shadow-md shadow-indigo-100 disabled:opacity-50 transition-all flex items-center gap-2"
+                            >
+                                {loading ? (
+                                    <>
+                                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                        Syncing...
+                                    </>
+                                ) : (
+                                    "Sync All to CRM"
+                                )}
+                            </button>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
