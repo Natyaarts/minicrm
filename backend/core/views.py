@@ -128,10 +128,13 @@ class BatchViewSet(viewsets.ModelViewSet):
             return Batch.objects.none()
             
         mentor_id = self.request.query_params.get('mentor_id')
-        if mentor_id and user.role in ['MENTOR', 'TEACHER'] and hasattr(user, 'get_all_subordinates'):
-            subordinates = user.get_all_subordinates()
-            if str(mentor_id) == str(user.id) or any(str(sub.id) == str(mentor_id) for sub in subordinates):
+        if mentor_id:
+            if user.role in ['SUPER_ADMIN', 'ADMIN', 'ACADEMIC', 'ACADEMIC_COORDINATOR']:
                 qs = qs.filter(primary_mentor_id=mentor_id)
+            elif user.role in ['MENTOR', 'TEACHER'] and hasattr(user, 'get_all_subordinates'):
+                subordinates = user.get_all_subordinates()
+                if str(mentor_id) == str(user.id) or any(str(sub.id) == str(mentor_id) for sub in subordinates):
+                    qs = qs.filter(primary_mentor_id=mentor_id)
             
         return qs.order_by('-id')
 
@@ -431,10 +434,13 @@ class StudentViewSet(viewsets.ModelViewSet):
             qs = qs.filter(program_type_id=program)
 
         mentor_id = self.request.query_params.get('mentor_id')
-        if mentor_id and user.role in ['MENTOR', 'TEACHER'] and hasattr(user, 'get_all_subordinates'):
-            subordinates = user.get_all_subordinates()
-            if str(mentor_id) == str(user.id) or any(str(sub.id) == str(mentor_id) for sub in subordinates):
+        if mentor_id:
+            if user.role in ['SUPER_ADMIN', 'ADMIN', 'ACADEMIC', 'ACADEMIC_COORDINATOR']:
                 qs = qs.filter(batch__primary_mentor_id=mentor_id)
+            elif user.role in ['MENTOR', 'TEACHER'] and hasattr(user, 'get_all_subordinates'):
+                subordinates = user.get_all_subordinates()
+                if str(mentor_id) == str(user.id) or any(str(sub.id) == str(mentor_id) for sub in subordinates):
+                    qs = qs.filter(batch__primary_mentor_id=mentor_id)
 
         lead_status = self.request.query_params.get('lead_status')
         if lead_status:
@@ -1319,14 +1325,19 @@ class DashboardStatsView(APIView):
             # Students are redirected, but for safety: 
             return Response({'error': 'Unauthorized'}, status=status.HTTP_403_FORBIDDEN)
             
-        # Optional filter by specific mentor if user has a team
+        # Optional filter by specific mentor
         mentor_id = request.query_params.get('mentor_id')
-        if mentor_id and user.role in ['MENTOR', 'TEACHER'] and hasattr(user, 'get_all_subordinates'):
-            subordinates = user.get_all_subordinates()
-            # Verify requested mentor is a subordinate or self
-            if str(mentor_id) == str(user.id) or any(str(sub.id) == str(mentor_id) for sub in subordinates):
+        if mentor_id:
+            if user.role in ['SUPER_ADMIN', 'ADMIN', 'ACADEMIC', 'ACADEMIC_COORDINATOR']:
+                # Admins can filter by any mentor
                 student_qs = Student.objects.filter(is_active=True, batch__primary_mentor_id=mentor_id).distinct()
                 batch_qs = Batch.objects.filter(primary_mentor_id=mentor_id).distinct()
+            elif user.role in ['MENTOR', 'TEACHER'] and hasattr(user, 'get_all_subordinates'):
+                subordinates = user.get_all_subordinates()
+                # Verify requested mentor is a subordinate or self
+                if str(mentor_id) == str(user.id) or any(str(sub.id) == str(mentor_id) for sub in subordinates):
+                    student_qs = Student.objects.filter(is_active=True, batch__primary_mentor_id=mentor_id).distinct()
+                    batch_qs = Batch.objects.filter(primary_mentor_id=mentor_id).distinct()
 
         # Finance Integration
         from finance.models import Expense
@@ -1404,6 +1415,29 @@ class DashboardStatsView(APIView):
             "this_month_due": float(due_monthly_revenue),
             "batch_fees": batch_fees
         }
+        
+        # Include team information
+        team_data = []
+        has_team = False
+        if user.role in ['SUPER_ADMIN', 'ADMIN', 'ACADEMIC', 'ACADEMIC_COORDINATOR']:
+            has_team = True
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
+            all_mentors = User.objects.filter(role='MENTOR', is_active=True)
+            team_data.append({'id': '', 'name': 'All Mentors'})
+            for m in all_mentors:
+                team_data.append({'id': m.id, 'name': f"{m.first_name} {m.last_name}"})
+        elif user.role in ['MENTOR', 'TEACHER'] and hasattr(user, 'get_all_subordinates'):
+            subordinates = user.get_all_subordinates()
+            if subordinates:
+                has_team = True
+                team_data.append({'id': user.id, 'name': 'My Work'})
+                for sub in subordinates:
+                    team_data.append({'id': sub.id, 'name': f"{sub.first_name} {sub.last_name}"})
+        
+        stats["has_team"] = has_team
+        stats["team_members"] = team_data
+        
         return Response(stats)
 
 class AnalyticsDetailView(APIView):
