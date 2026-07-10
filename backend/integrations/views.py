@@ -596,6 +596,8 @@ class SyncWiseBatchView(views.APIView):
                         student = Student.objects.create(
                             user=user,
                             crm_student_id=expected_crm_id,
+                            first_name=first_name,
+                            last_name=last_name,
                             program_type=wise_program,
                             mobile=clean_phone,
                             email=email,
