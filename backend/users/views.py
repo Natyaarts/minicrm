@@ -57,7 +57,7 @@ class MentorListView(generics.ListAPIView):
     pagination_class = None
 
     def get_queryset(self):
-        return User.objects.filter(role__in=['MENTOR', 'ACADEMIC', 'ACADEMIC_COORDINATOR', 'ADMIN', 'SUPER_ADMIN'])
+        return User.objects.filter(role='MENTOR')
 
 class TeacherListView(generics.ListAPIView):
     serializer_class = UserSerializer
