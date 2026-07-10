@@ -1033,16 +1033,16 @@ class SyncWiseFeesView(views.APIView):
             "message": "Fee sync started in the background. Please wait a minute and refresh the page."
         }, status=202)
 
-class AutoLinkWiseDataView(views.APIView):
-    """
-    Automatically links CRM batches to Wise classes by name and assigns teachers.
-    """
-    permission_classes = [permissions.IsAuthenticated]
+_is_auto_linking = False
+_auto_link_lock = threading.Lock()
 
-    def post(self, request):
-        if request.user.role not in ['ADMIN', 'SUPER_ADMIN']:
-            return response.Response({"error": "Permission denied"}, status=403)
-            
+def _run_auto_link_task():
+    global _is_auto_linking
+    if not _auto_link_lock.acquire(blocking=False):
+        return
+        
+    try:
+        _is_auto_linking = True
         from core.models import Batch
         from django.contrib.auth import get_user_model
         User = get_user_model()
@@ -1088,8 +1088,41 @@ class AutoLinkWiseDataView(views.APIView):
                 print(f"Auto-link error for {wc.get('title')}: {e}")
                 stats["errors"] += 1
                 
+        print(f"Auto-link complete: {stats}")
+    except Exception as e:
+        print(f"Global auto-link error: {e}")
+    finally:
+        _is_auto_linking = False
+        _auto_link_lock.release()
+        try:
+            from django import db
+            db.connections.close_all()
+        except Exception:
+            pass
+
+class AutoLinkWiseDataView(views.APIView):
+    """
+    Automatically links CRM batches to Wise classes by name and assigns teachers.
+    Runs in background to prevent timeouts.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if request.user.role not in ['ADMIN', 'SUPER_ADMIN']:
+            return response.Response({"error": "Permission denied"}, status=403)
+            
+        global _is_auto_linking
+        if _is_auto_linking:
+            return response.Response({
+                "success": True,
+                "message": "Auto-link is already running in the background. Please wait a minute and refresh."
+            }, status=200)
+            
+        thread = threading.Thread(target=_run_auto_link_task)
+        thread.daemon = True
+        thread.start()
+        
         return response.Response({
             "success": True,
-            "message": f"Successfully linked {stats['batches_linked']} batches and assigned {stats['teachers_assigned']} teachers.",
-            "stats": stats
-        })
+            "message": "Auto-linking started in the background. Batches will be linked shortly."
+        }, status=202)
