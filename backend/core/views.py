@@ -376,8 +376,7 @@ class StudentViewSet(viewsets.ModelViewSet):
             qs = qs.filter(
                 Q(batch__primary_mentor=user) | 
                 Q(batch__secondary_mentors=user) |
-                Q(batch__teacher=user) |
-                Q(batch__isnull=True)
+                Q(batch__teacher=user)
             ).filter(lead_status=converted_stage_id).distinct()
         elif user.role == 'STUDENT':
             qs = Student.objects.filter(user=user)
