@@ -7,7 +7,7 @@ class CustomUserAdmin(UserAdmin):
     list_display = ('username', 'email', 'role', 'is_staff', 'is_active')
     list_filter = ('role', 'is_staff', 'is_active')
     fieldsets = UserAdmin.fieldsets + (
-        ('Custom Role Info', {'fields': ('role', 'phone_number')}),
+        ('Custom Role Info', {'fields': ('role', 'phone_number', 'reports_to', 'lms_teacher_id')}),
     )
 
 @admin.register(RolePermission)

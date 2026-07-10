@@ -15,6 +15,9 @@ const MentorModule = () => {
     const [courses, setCourses] = useState([]);
     const [mentors, setMentors] = useState([]);
     const { user: authUser } = useAuth();
+    
+    // Team View State
+    const [selectedTeamMentor, setSelectedTeamMentor] = useState('');
 
     // UI State
     const [selectedBatch, setSelectedBatch] = useState(null);
@@ -283,7 +286,7 @@ const MentorModule = () => {
 
     const fetchDashboardStats = async () => {
         try {
-            const res = await api.get('dashboard-stats/');
+            const res = await api.get(`dashboard-stats/${selectedTeamMentor ? `?mentor_id=${selectedTeamMentor}` : ''}`);
             setDashboardStats(res.data);
         } catch (err) {
             console.error("Failed to fetch dashboard stats", err);
@@ -525,7 +528,14 @@ const MentorModule = () => {
         document.body.removeChild(link);
     };
 
-    // Handle search with debounce
+    // Re-fetch data when team mentor filter changes
+    useEffect(() => {
+        if (viewTab === 'dashboard') fetchDashboardStats();
+        if (viewTab === 'batches') fetchBatches();
+        if (viewTab === 'all-students') fetchStudentsWithPagination();
+    }, [selectedTeamMentor]);
+
+    // Handle viewTab changes with debounce
     useEffect(() => {
         if (viewTab === 'all-students') {
             const timer = setTimeout(() => {
@@ -534,7 +544,7 @@ const MentorModule = () => {
             }, 500);
             return () => clearTimeout(timer);
         }
-    }, [studentSearchQuery, studentFilterProgram, studentFilterCourse, studentFilterBatch, studentFilterStatus]);
+    }, [studentSearchQuery, studentFilterProgram, studentFilterCourse, studentFilterBatch, studentFilterStatus, selectedTeamMentor]);
 
     const handleExportFilteredStudents = async () => {
         try {
@@ -545,6 +555,7 @@ const MentorModule = () => {
             if (studentFilterCourse) url += `&course=${studentFilterCourse}`;
             if (studentFilterBatch) url += `&batch=${studentFilterBatch}`;
             if (studentFilterStatus) url += `&academic_status=${studentFilterStatus}`;
+            if (selectedTeamMentor) url += `&mentor_id=${selectedTeamMentor}`;
             
             const res = await api.get(url, { responseType: 'blob' });
             const urlBlob = window.URL.createObjectURL(new Blob([res.data]));
@@ -570,6 +581,7 @@ const MentorModule = () => {
             if (studentFilterCourse) url += `&course=${studentFilterCourse}`;
             if (studentFilterBatch) url += `&batch=${studentFilterBatch}`;
             if (studentFilterStatus) url += `&academic_status=${studentFilterStatus}`;
+            if (selectedTeamMentor) url += `&mentor_id=${selectedTeamMentor}`;
             
             const res = await api.get(url);
             const data = res.data;
@@ -666,7 +678,9 @@ const MentorModule = () => {
 
     const fetchBatches = async () => {
         try {
-            const res = await api.get(`batches/?page=${batchPage}&search=${batchSearchQuery}`);
+            let url = `batches/?page=${batchPage}&search=${batchSearchQuery}`;
+            if (selectedTeamMentor) url += `&mentor_id=${selectedTeamMentor}`;
+            const res = await api.get(url);
             if (res.data.results) {
                 setBatches(res.data.results);
                 setBatchPagination({
@@ -1121,6 +1135,23 @@ const MentorModule = () => {
                         </button>
                     ) : null}
                 </div>
+
+                {dashboardStats?.has_team && (
+                    <div className="w-full lg:w-48">
+                        <select
+                            value={selectedTeamMentor}
+                            onChange={(e) => setSelectedTeamMentor(e.target.value)}
+                            className="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm bg-white"
+                        >
+                            <option value="">All Team Data</option>
+                            {dashboardStats.team_members?.map(member => (
+                                <option key={member.id} value={member.id}>
+                                    {member.name}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                )}
 
                 {!selectedBatch && viewTab === 'batches' && (authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.MENTOR?.add) && (
                     <button

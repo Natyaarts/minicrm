@@ -17,12 +17,23 @@ class User(AbstractUser):
     phone_number = models.CharField(max_length=15, blank=True, null=True)
     lms_teacher_id = models.CharField(max_length=100, blank=True, null=True, help_text="Wise LMS Teacher ID")
     expo_push_token = models.CharField(max_length=255, blank=True, null=True)
+    
+    # Hierarchy for mentors (TL, Manager, etc.)
+    reports_to = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='subordinates', help_text="The person this user reports to (e.g. TL or Manager)")
 
     class Meta:
         ordering = ['-id']
 
     def __str__(self):
         return f"{self.username} ({self.role})"
+        
+    def get_all_subordinates(self):
+        """Recursively get all users who report to this user."""
+        subordinates = list(self.subordinates.all())
+        all_subs = list(subordinates)
+        for sub in subordinates:
+            all_subs.extend(sub.get_all_subordinates())
+        return all_subs
 
 class RolePermission(models.Model):
     MODULE_CHOICES = (

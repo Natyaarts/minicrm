@@ -114,11 +114,24 @@ class BatchViewSet(viewsets.ModelViewSet):
         if user.role in ['ADMIN', 'SUPER_ADMIN', 'ACADEMIC', 'ACADEMIC_COORDINATOR', 'SALES']:
             pass
         elif user.role in ['MENTOR', 'TEACHER']:
-            qs = qs.filter(Q(primary_mentor=user) | Q(secondary_mentors=user) | Q(teacher=user)).distinct()
+            # Include subordinates if any
+            subordinates = user.get_all_subordinates()
+            if subordinates:
+                # User can see their own batches AND their subordinates' batches
+                users_to_check = [user] + subordinates
+                qs = qs.filter(Q(primary_mentor__in=users_to_check) | Q(secondary_mentors__in=users_to_check) | Q(teacher__in=users_to_check)).distinct()
+            else:
+                qs = qs.filter(Q(primary_mentor=user) | Q(secondary_mentors=user) | Q(teacher=user)).distinct()
         elif user.role == 'STUDENT':
             qs = qs.filter(students__user=user).distinct()
         else:
             return Batch.objects.none()
+            
+        mentor_id = self.request.query_params.get('mentor_id')
+        if mentor_id and user.role in ['MENTOR', 'TEACHER'] and hasattr(user, 'get_all_subordinates'):
+            subordinates = user.get_all_subordinates()
+            if str(mentor_id) == str(user.id) or any(str(sub.id) == str(mentor_id) for sub in subordinates):
+                qs = qs.filter(primary_mentor_id=mentor_id)
             
         return qs.order_by('-id')
 
@@ -373,11 +386,20 @@ class StudentViewSet(viewsets.ModelViewSet):
         elif user.role in ['ACADEMIC', 'ACADEMIC_COORDINATOR']:
             qs = qs.filter(lead_status=converted_stage_id)
         elif user.role in ['MENTOR', 'TEACHER']:
-            qs = qs.filter(
-                Q(batch__primary_mentor=user) | 
-                Q(batch__secondary_mentors=user) |
-                Q(batch__teacher=user)
-            ).filter(lead_status=converted_stage_id).distinct()
+            subordinates = user.get_all_subordinates()
+            if subordinates:
+                users_to_check = [user] + subordinates
+                qs = qs.filter(
+                    Q(batch__primary_mentor__in=users_to_check) | 
+                    Q(batch__secondary_mentors__in=users_to_check) |
+                    Q(batch__teacher__in=users_to_check)
+                ).filter(lead_status=converted_stage_id).distinct()
+            else:
+                qs = qs.filter(
+                    Q(batch__primary_mentor=user) | 
+                    Q(batch__secondary_mentors=user) |
+                    Q(batch__teacher=user)
+                ).filter(lead_status=converted_stage_id).distinct()
         elif user.role == 'STUDENT':
             qs = Student.objects.filter(user=user)
         
@@ -407,6 +429,12 @@ class StudentViewSet(viewsets.ModelViewSet):
         program = self.request.query_params.get('program')
         if program:
             qs = qs.filter(program_type_id=program)
+
+        mentor_id = self.request.query_params.get('mentor_id')
+        if mentor_id and user.role in ['MENTOR', 'TEACHER'] and hasattr(user, 'get_all_subordinates'):
+            subordinates = user.get_all_subordinates()
+            if str(mentor_id) == str(user.id) or any(str(sub.id) == str(mentor_id) for sub in subordinates):
+                qs = qs.filter(batch__primary_mentor_id=mentor_id)
 
         lead_status = self.request.query_params.get('lead_status')
         if lead_status:
@@ -1269,9 +1297,15 @@ class DashboardStatsView(APIView):
                         RolePermission.objects.filter(role=user.role, module='ANALYTICS', can_view=True).exists()
         
         if user.role in ['MENTOR', 'TEACHER']:
-            # Mentors/Teachers only see stats for their own assigned batches/students
-            student_qs = student_qs.filter(Q(batch__primary_mentor=user) | Q(batch__secondary_mentors=user) | Q(batch__teacher=user)).distinct()
-            batch_qs = batch_qs.filter(Q(primary_mentor=user) | Q(secondary_mentors=user) | Q(teacher=user)).distinct()
+            # Include subordinates if any
+            subordinates = user.get_all_subordinates()
+            if subordinates:
+                users_to_check = [user] + subordinates
+                student_qs = student_qs.filter(Q(batch__primary_mentor__in=users_to_check) | Q(batch__secondary_mentors__in=users_to_check) | Q(batch__teacher__in=users_to_check)).distinct()
+                batch_qs = batch_qs.filter(Q(primary_mentor__in=users_to_check) | Q(secondary_mentors__in=users_to_check) | Q(teacher__in=users_to_check)).distinct()
+            else:
+                student_qs = student_qs.filter(Q(batch__primary_mentor=user) | Q(batch__secondary_mentors=user) | Q(batch__teacher=user)).distinct()
+                batch_qs = batch_qs.filter(Q(primary_mentor=user) | Q(secondary_mentors=user) | Q(teacher=user)).distinct()
             # Mentors generally don't see revenue unless they have explicit analytical perms
             if not has_analytics:
                 trans_qs = Transaction.objects.none()
@@ -1284,6 +1318,15 @@ class DashboardStatsView(APIView):
         elif user.role == 'STUDENT':
             # Students are redirected, but for safety: 
             return Response({'error': 'Unauthorized'}, status=status.HTTP_403_FORBIDDEN)
+            
+        # Optional filter by specific mentor if user has a team
+        mentor_id = request.query_params.get('mentor_id')
+        if mentor_id and user.role in ['MENTOR', 'TEACHER'] and hasattr(user, 'get_all_subordinates'):
+            subordinates = user.get_all_subordinates()
+            # Verify requested mentor is a subordinate or self
+            if str(mentor_id) == str(user.id) or any(str(sub.id) == str(mentor_id) for sub in subordinates):
+                student_qs = Student.objects.filter(is_active=True, batch__primary_mentor_id=mentor_id).distinct()
+                batch_qs = Batch.objects.filter(primary_mentor_id=mentor_id).distinct()
 
         # Finance Integration
         from finance.models import Expense
