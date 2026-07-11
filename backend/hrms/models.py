@@ -82,6 +82,12 @@ class EmployeeProfile(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='ACTIVE')
     base_salary = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     
+    WORK_LOCATION_CHOICES = (
+        ('OFFICE', 'Office'),
+        ('REMOTE', 'Remote / WFH'),
+    )
+    work_location = models.CharField(max_length=20, choices=WORK_LOCATION_CHOICES, default='OFFICE')
+    
     # Dynamic Custom Data
     additional_data = models.JSONField(default=dict, blank=True)
     

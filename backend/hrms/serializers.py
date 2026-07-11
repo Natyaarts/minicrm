@@ -68,8 +68,9 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
             'id', 'username', 'password', 'email', 'first_name', 'last_name',
             'display_username', 'full_name', 'employee_id', 'department', 
             'department_name', 'designation', 'designation_name', 
-            'reporting_to', 'reporting_to_name',
-            'date_of_joining', 'date_of_birth', 'gender', 'status', 'base_salary', 'additional_data', 'documents'
+            'reporting_to', 'reporting_to_name', 'date_of_birth', 'gender', 
+            'profile_photo', 'date_of_joining', 'employment_type', 'status', 'work_location',
+            'base_salary', 'documents', 'additional_data'
         ]
         read_only_fields = ['id', 'status']
 

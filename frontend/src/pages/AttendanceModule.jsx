@@ -124,11 +124,17 @@ const AttendanceModule = () => {
                 console.error("Failed to fetch employees count", e);
             }
             
-            // Absent is total employees minus everyone who has a record today (punched in, leave, etc)
-            const uniqueRecordsCount = new Set(todayData.map(l => l.employee)).size;
-            const absentCount = Math.max(0, totalEmployees - uniqueRecordsCount);
+            // Office employees only
+            const officeEmployees = allEmps.filter(e => e.work_location !== 'REMOTE');
+            const wfhCount = allEmps.filter(e => e.work_location === 'REMOTE').length;
             
-            setDashboardStats({ activeNow, leaveCount, halfDayCount, absentCount });
+            // Absent is total office employees minus office employees who have a record today
+            const uniqueOfficeRecordsCount = new Set(
+                todayData.filter(l => officeEmployees.some(e => e.id === l.employee)).map(l => l.employee)
+            ).size;
+            const absentCount = Math.max(0, officeEmployees.length - uniqueOfficeRecordsCount);
+            
+            setDashboardStats({ activeNow, leaveCount, halfDayCount, absentCount, wfhCount });
             setTodayLogs(todayData);
 
             const record = todayData.find(r => Number(r.user_id) === Number(authUser?.id));
@@ -277,11 +283,11 @@ const AttendanceModule = () => {
                                 <XCircle size={20} />
                             </button>
                             <h2 className="text-xl font-bold text-slate-800 mb-4 capitalize">
-                                {selectedDashboardStat === 'active' ? 'Active Now' : selectedDashboardStat === 'leave' ? 'On Leave' : selectedDashboardStat === 'absent' ? 'Absent' : 'Half Day'} Employees
+                                {selectedDashboardStat === 'active' ? 'Active Now' : selectedDashboardStat === 'leave' ? 'On Leave' : selectedDashboardStat === 'absent' ? 'Absent' : selectedDashboardStat === 'wfh' ? 'Work From Home' : 'Half Day'} Employees
                             </h2>
                             <div className="space-y-3">
                                 {selectedDashboardStat === 'absent' ? (
-                                    allEmployees.filter(emp => !todayLogs.some(l => l.employee === emp.id)).map((emp, idx) => (
+                                    allEmployees.filter(emp => emp.work_location !== 'REMOTE' && !todayLogs.some(l => l.employee === emp.id)).map((emp, idx) => (
                                         <div key={idx} className="flex items-center justify-between bg-slate-50 p-3 rounded-lg border border-slate-100">
                                             <div>
                                                 <p className="font-semibold text-slate-800">{emp.full_name || emp.display_username}</p>
@@ -289,6 +295,18 @@ const AttendanceModule = () => {
                                             </div>
                                             <div className="text-right">
                                                 <span className="px-2 py-1 bg-slate-200 text-slate-700 text-xs font-bold rounded">Absent</span>
+                                            </div>
+                                        </div>
+                                    ))
+                                ) : selectedDashboardStat === 'wfh' ? (
+                                    allEmployees.filter(emp => emp.work_location === 'REMOTE').map((emp, idx) => (
+                                        <div key={idx} className="flex items-center justify-between bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                            <div>
+                                                <p className="font-semibold text-slate-800">{emp.full_name || emp.display_username}</p>
+                                                <p className="text-xs text-slate-500">ID: {emp.employee_id}</p>
+                                            </div>
+                                            <div className="text-right">
+                                                <span className="px-2 py-1 bg-indigo-100 text-indigo-700 text-xs font-bold rounded">WFH</span>
                                             </div>
                                         </div>
                                     ))
@@ -382,7 +400,7 @@ const AttendanceModule = () => {
             </div>
 
             {isAdmin && (
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                     <div 
                         onClick={() => setSelectedDashboardStat('active')}
                         className={`bg-white p-5 rounded-xl border ${selectedDashboardStat === 'active' ? 'border-emerald-500 shadow-md ring-2 ring-emerald-200' : 'border-slate-200 shadow-sm hover:border-emerald-300 hover:shadow-md'} flex items-center justify-between cursor-pointer transition-all`}
@@ -429,6 +447,18 @@ const AttendanceModule = () => {
                         </div>
                         <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-600">
                             <UserX size={24} />
+                        </div>
+                    </div>
+                    <div 
+                        onClick={() => setSelectedDashboardStat('wfh')}
+                        className={`bg-white p-5 rounded-xl border ${selectedDashboardStat === 'wfh' ? 'border-indigo-500 shadow-md ring-2 ring-indigo-200' : 'border-slate-200 shadow-sm hover:border-indigo-400 hover:shadow-md'} flex items-center justify-between cursor-pointer transition-all`}
+                    >
+                        <div>
+                            <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-1">WFH</p>
+                            <h3 className="text-2xl font-bold text-slate-800">{dashboardStats.wfhCount || 0}</h3>
+                        </div>
+                        <div className="w-12 h-12 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600">
+                            <MapPin size={24} />
                         </div>
                     </div>
                 </div>

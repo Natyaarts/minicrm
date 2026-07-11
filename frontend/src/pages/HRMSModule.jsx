@@ -56,7 +56,8 @@ const HRMSModule = () => {
         employee_id: `EMP-${Math.floor(1000 + Math.random() * 9000)}`,
         department: '', designation: '', reporting_to: '', date_of_joining: new Date().toISOString().split('T')[0],
         base_salary: 0,
-        additional_data: {}
+        additional_data: {},
+        work_location: 'OFFICE'
     });
     
     const [newCustomField, setNewCustomField] = useState({ label: '', field_type: 'text', required: false });
@@ -925,6 +926,14 @@ const HRMSModule = () => {
                                             <label className="block text-xs font-semibold text-slate-600 mb-1.5">Date of Joining</label>
                                             <input required type="date" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 transition-all font-semibold text-slate-800 text-sm" 
                                                 value={newEmployee.date_of_joining || ''} onChange={(e) => setNewEmployee({...newEmployee, date_of_joining: e.target.value})} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Work Location</label>
+                                            <select required className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 transition-all font-semibold text-slate-800 text-sm appearance-none cursor-pointer" 
+                                                value={newEmployee.work_location || 'OFFICE'} onChange={(e) => setNewEmployee({...newEmployee, work_location: e.target.value})}>
+                                                <option value="OFFICE">Office</option>
+                                                <option value="REMOTE">Remote / WFH</option>
+                                            </select>
                                         </div>
                                     </div>
                                 </div>
