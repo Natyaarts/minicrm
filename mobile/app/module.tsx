@@ -2865,16 +2865,22 @@ export default function ModuleDetailScreen() {
                 </TouchableOpacity>
 
                 <View style={styles.geoFenceCard}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <FontAwesome5 name="map-marker-alt" size={16} color="#E53E3E" style={{ marginRight: 12 }} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.geoLabel}>GEO-FENCE STATUS</Text>
-                      <Text style={styles.geoVal}>{geoStatus}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(229, 62, 62, 0.15)', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                        <FontAwesome5 name="map-marker-alt" size={14} color="#FC8181" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.geoLabel}>GEO-FENCE STATUS</Text>
+                        <Text style={styles.geoVal}>{geoStatus}</Text>
+                      </View>
+                      <TouchableOpacity 
+                        style={{ backgroundColor: 'rgba(229, 62, 62, 0.15)', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, flexDirection: 'row', alignItems: 'center' }}
+                        onPress={() => Alert.alert('Retrying', 'Fetching high-accuracy GPS coordinates...')}
+                      >
+                        <FontAwesome5 name="sync-alt" size={10} color="#FC8181" style={{ marginRight: 6 }} />
+                        <Text style={{ color: '#FC8181', fontSize: 11, fontWeight: '800', letterSpacing: 0.5 }}>RETRY</Text>
+                      </TouchableOpacity>
                     </View>
-                    <TouchableOpacity onPress={() => Alert.alert('Retrying', 'Fetching high-accuracy GPS coordinates...')}>
-                      <Text style={styles.retryText}>RETRY</Text>
-                    </TouchableOpacity>
-                  </View>
                 </View>
               </View>
 
