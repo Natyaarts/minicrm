@@ -14,6 +14,7 @@ import {
     User,
     Download,
     UserX
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import FaceSelfieCapture from '../components/FaceSelfieCapture';
