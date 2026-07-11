@@ -2856,7 +2856,7 @@ export default function ModuleDetailScreen() {
             <View style={styles.attendanceGridStack}>
               {/* Left Panel: Clock-in Card */}
               <View style={styles.clockInCard}>
-                <View style={styles.clockIconHeader}><FontAwesome5 name="clock" size={24} color="#FFFFFF" /></View>
+                <View style={styles.clockIconHeader}><FontAwesome5 name="clock" size={24} color="#111827" /></View>
                 <Text style={styles.clockTitle}>{clockedIn ? 'Clocked In' : 'Ready to Start?'}</Text>
                 <Text style={styles.clockSub}>{clockedIn ? 'Your attendance is active.' : 'Mark your attendance for today.'}</Text>
                 
@@ -4489,16 +4489,16 @@ const styles = StyleSheet.create({
   emptyStateBox: { padding: 32, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F7FAFC', borderRadius: 16, borderWidth: 1, borderColor: '#E2E8F0', borderStyle: 'dashed' },
   emptyStateText: { fontSize: 13, fontWeight: '600', color: '#718096', textAlign: 'center' },
   attendanceGridStack: { backgroundColor: 'transparent', gap: 20 },
-  clockInCard: { backgroundColor: '#1A202C', borderRadius: 24, padding: 24, shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.25, shadowRadius: 16, elevation: 6 },
-  clockIconHeader: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#E53E3E', alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
-  clockTitle: { fontSize: 24, fontWeight: '900', color: '#FFFFFF', marginBottom: 8 },
-  clockSub: { fontSize: 14, color: '#A0AEC0', marginBottom: 24 },
-  clockBtn: { backgroundColor: '#48BB78', paddingVertical: 18, borderRadius: 16, alignItems: 'center', marginBottom: 24, shadowColor: '#48BB78', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
+  clockInCard: { backgroundColor: '#FFB800', borderRadius: 24, padding: 24, shadowColor: '#FFB800', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.25, shadowRadius: 16, elevation: 6 },
+  clockIconHeader: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
+  clockTitle: { fontSize: 24, fontWeight: '900', color: '#111827', marginBottom: 8 },
+  clockSub: { fontSize: 14, color: '#374151', marginBottom: 24, fontWeight: '600' },
+  clockBtn: { backgroundColor: '#111827', paddingVertical: 18, borderRadius: 16, alignItems: 'center', marginBottom: 24, shadowColor: '#111827', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
   clockBtnActive: { backgroundColor: '#E53E3E', shadowColor: '#E53E3E' },
   clockBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '900' },
-  geoFenceCard: { backgroundColor: '#2D3748', borderRadius: 16, padding: 16 },
-  geoLabel: { fontSize: 10, fontWeight: '900', color: '#A0AEC0', letterSpacing: 1, marginBottom: 2 },
-  geoVal: { fontSize: 13, fontWeight: '800', color: '#FFFFFF' },
+  geoFenceCard: { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 16 },
+  geoLabel: { fontSize: 10, fontWeight: '900', color: '#6B7280', letterSpacing: 1, marginBottom: 2 },
+  geoVal: { fontSize: 13, fontWeight: '800', color: '#111827' },
   retryText: { color: '#E53E3E', fontSize: 12, fontWeight: '900', letterSpacing: 0.5 },
   masterSheetCard: { backgroundColor: '#FFFFFF', borderRadius: 24, padding: 24, borderWidth: 1, borderColor: '#E2E8F0', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.03, shadowRadius: 8, elevation: 3 },
   masterHeaderBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, backgroundColor: 'transparent' },
