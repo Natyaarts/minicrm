@@ -36,6 +36,7 @@ const AttendanceModule = () => {
     const [endDate, setEndDate] = useState(todayStr);
     const [dashboardStats, setDashboardStats] = useState({ activeNow: 0, leaveCount: 0, halfDayCount: 0, absentCount: 0 });
     const [todayLogs, setTodayLogs] = useState([]);
+    const [allEmployees, setAllEmployees] = useState([]);
     const [selectedDashboardStat, setSelectedDashboardStat] = useState(null);
 
     useEffect(() => {
