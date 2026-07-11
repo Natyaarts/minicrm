@@ -331,6 +331,7 @@ const welcomeName = user ? `${user.first_name || user.username}` : 'Member';
       </View>
 
       {/* Dashboard Stats Section */}
+      {['SUPER_ADMIN', 'ACADEMIC_DIRECTOR', 'COORDINATOR'].includes(user?.role) && (
       <View style={[styles.section, { backgroundColor: 'transparent' }]}>
         <Text style={[styles.sectionTitle, { color: '#4B5563' }]}>ACADEMY QUICK LOOK</Text>
         <View style={styles.statsGrid}>
@@ -389,6 +390,7 @@ const welcomeName = user ? `${user.first_name || user.username}` : 'Member';
           </TouchableOpacity>
         </View>
       </View>
+      )}
 
       {/* Sales CRM Hub Section */}
       {(user?.role === 'SALES' || user?.role === 'SUPER_ADMIN') && (
