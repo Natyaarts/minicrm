@@ -3,7 +3,7 @@ import django
 import sys
 
 # Setup Django environment
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings')
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
 django.setup()
 
 from hrms.models import EmployeeProfile
