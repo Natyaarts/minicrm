@@ -12,8 +12,8 @@ import {
     Search,
     Filter,
     User,
-    Download
-} from 'lucide-react';
+    Download,
+    UserX
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import FaceSelfieCapture from '../components/FaceSelfieCapture';
@@ -33,7 +33,7 @@ const AttendanceModule = () => {
     const todayStr = new Date().toISOString().split('T')[0];
     const [startDate, setStartDate] = useState(todayStr);
     const [endDate, setEndDate] = useState(todayStr);
-    const [dashboardStats, setDashboardStats] = useState({ activeNow: 0, leaveCount: 0, halfDayCount: 0 });
+    const [dashboardStats, setDashboardStats] = useState({ activeNow: 0, leaveCount: 0, halfDayCount: 0, absentCount: 0 });
     const [todayLogs, setTodayLogs] = useState([]);
     const [selectedDashboardStat, setSelectedDashboardStat] = useState(null);
 
@@ -94,7 +94,21 @@ const AttendanceModule = () => {
             const activeNow = todayData.filter(l => l.clock_in && !l.clock_out).length;
             const leaveCount = todayData.filter(l => l.status === 'ON_LEAVE').length;
             const halfDayCount = todayData.filter(l => l.status === 'HALF_DAY').length;
-            setDashboardStats({ activeNow, leaveCount, halfDayCount });
+            
+            // Get total employees to calculate absent count
+            let totalEmployees = 0;
+            try {
+                const empRes = await api.get('hrms/employees/');
+                totalEmployees = empRes.data.count || (empRes.data.results || empRes.data).length;
+            } catch (e) {
+                console.error("Failed to fetch employees count", e);
+            }
+            
+            // Absent is total employees minus everyone who has a record today (punched in, leave, etc)
+            const uniqueRecordsCount = new Set(todayData.map(l => l.employee)).size;
+            const absentCount = Math.max(0, totalEmployees - uniqueRecordsCount);
+            
+            setDashboardStats({ activeNow, leaveCount, halfDayCount, absentCount });
             setTodayLogs(todayData);
 
             const record = todayData.find(r => Number(r.user_id) === Number(authUser?.id));
@@ -243,31 +257,47 @@ const AttendanceModule = () => {
                                 <XCircle size={20} />
                             </button>
                             <h2 className="text-xl font-bold text-slate-800 mb-4 capitalize">
-                                {selectedDashboardStat === 'active' ? 'Active Now' : selectedDashboardStat === 'leave' ? 'On Leave' : 'Half Day'} Employees
+                                {selectedDashboardStat === 'active' ? 'Active Now' : selectedDashboardStat === 'leave' ? 'On Leave' : selectedDashboardStat === 'absent' ? 'Absent' : 'Half Day'} Employees
                             </h2>
                             <div className="space-y-3">
-                                {todayLogs.filter(l => 
+                                {selectedDashboardStat === 'absent' ? (
+                                    allEmployees.filter(emp => !todayLogs.some(l => l.employee === emp.id)).map((emp, idx) => (
+                                        <div key={idx} className="flex items-center justify-between bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                            <div>
+                                                <p className="font-semibold text-slate-800">{emp.user?.first_name} {emp.user?.last_name}</p>
+                                                <p className="text-xs text-slate-500">ID: {emp.employee_id}</p>
+                                            </div>
+                                            <div className="text-right">
+                                                <span className="px-2 py-1 bg-slate-200 text-slate-700 text-xs font-bold rounded">Absent</span>
+                                            </div>
+                                        </div>
+                                    ))
+                                ) : (
+                                    todayLogs.filter(l => 
+                                        selectedDashboardStat === 'active' ? (l.clock_in && !l.clock_out) :
+                                        selectedDashboardStat === 'leave' ? l.status === 'ON_LEAVE' :
+                                        selectedDashboardStat === 'halfDay' ? l.status === 'HALF_DAY' : false
+                                    ).map((log, idx) => (
+                                        <div key={idx} className="flex items-center justify-between bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                            <div>
+                                                <p className="font-semibold text-slate-800">{log.employee_name || 'Unknown'}</p>
+                                                <p className="text-xs text-slate-500">ID: {log.employee_id_display || 'N/A'}</p>
+                                            </div>
+                                            <div className="text-right">
+                                                {selectedDashboardStat === 'active' && <span className="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs font-bold rounded">Active</span>}
+                                                {selectedDashboardStat === 'leave' && <span className="px-2 py-1 bg-red-100 text-red-700 text-xs font-bold rounded">Leave</span>}
+                                                {selectedDashboardStat === 'halfDay' && <span className="px-2 py-1 bg-amber-100 text-amber-700 text-xs font-bold rounded">Half Day</span>}
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+
+                                {((selectedDashboardStat === 'absent' && allEmployees.filter(emp => !todayLogs.some(l => l.employee === emp.id)).length === 0) || 
+                                 (selectedDashboardStat !== 'absent' && todayLogs.filter(l => 
                                     selectedDashboardStat === 'active' ? (l.clock_in && !l.clock_out) :
                                     selectedDashboardStat === 'leave' ? l.status === 'ON_LEAVE' :
                                     selectedDashboardStat === 'halfDay' ? l.status === 'HALF_DAY' : false
-                                ).map((log, idx) => (
-                                    <div key={idx} className="flex items-center justify-between bg-slate-50 p-3 rounded-lg border border-slate-100">
-                                        <div>
-                                            <p className="font-semibold text-slate-800">{log.employee_name || 'Unknown'}</p>
-                                            <p className="text-xs text-slate-500">ID: {log.employee_id_display || 'N/A'}</p>
-                                        </div>
-                                        <div className="text-right">
-                                            {selectedDashboardStat === 'active' && <span className="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs font-bold rounded">Active</span>}
-                                            {selectedDashboardStat === 'leave' && <span className="px-2 py-1 bg-red-100 text-red-700 text-xs font-bold rounded">Leave</span>}
-                                            {selectedDashboardStat === 'halfDay' && <span className="px-2 py-1 bg-amber-100 text-amber-700 text-xs font-bold rounded">Half Day</span>}
-                                        </div>
-                                    </div>
-                                ))}
-                                {todayLogs.filter(l => 
-                                    selectedDashboardStat === 'active' ? (l.clock_in && !l.clock_out) :
-                                    selectedDashboardStat === 'leave' ? l.status === 'ON_LEAVE' :
-                                    selectedDashboardStat === 'halfDay' ? l.status === 'HALF_DAY' : false
-                                ).length === 0 && (
+                                 ).length === 0)) && (
                                     <p className="text-center text-slate-500 py-4">No employees found.</p>
                                 )}
                             </div>
@@ -332,10 +362,10 @@ const AttendanceModule = () => {
             </div>
 
             {isAdmin && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div 
                         onClick={() => setSelectedDashboardStat('active')}
-                        className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between cursor-pointer hover:border-emerald-300 hover:shadow-md transition-all"
+                        className={`bg-white p-5 rounded-xl border ${selectedDashboardStat === 'active' ? 'border-emerald-500 shadow-md ring-2 ring-emerald-200' : 'border-slate-200 shadow-sm hover:border-emerald-300 hover:shadow-md'} flex items-center justify-between cursor-pointer transition-all`}
                     >
                         <div>
                             <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-1">Active Now</p>
@@ -347,7 +377,7 @@ const AttendanceModule = () => {
                     </div>
                     <div 
                         onClick={() => setSelectedDashboardStat('leave')}
-                        className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between cursor-pointer hover:border-red-300 hover:shadow-md transition-all"
+                        className={`bg-white p-5 rounded-xl border ${selectedDashboardStat === 'leave' ? 'border-red-500 shadow-md ring-2 ring-red-200' : 'border-slate-200 shadow-sm hover:border-red-300 hover:shadow-md'} flex items-center justify-between cursor-pointer transition-all`}
                     >
                         <div>
                             <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-1">On Leave</p>
@@ -359,7 +389,7 @@ const AttendanceModule = () => {
                     </div>
                     <div 
                         onClick={() => setSelectedDashboardStat('halfDay')}
-                        className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between cursor-pointer hover:border-amber-300 hover:shadow-md transition-all"
+                        className={`bg-white p-5 rounded-xl border ${selectedDashboardStat === 'halfDay' ? 'border-amber-500 shadow-md ring-2 ring-amber-200' : 'border-slate-200 shadow-sm hover:border-amber-300 hover:shadow-md'} flex items-center justify-between cursor-pointer transition-all`}
                     >
                         <div>
                             <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-1">Half Day</p>
@@ -367,6 +397,18 @@ const AttendanceModule = () => {
                         </div>
                         <div className="w-12 h-12 rounded-full bg-amber-50 flex items-center justify-center text-amber-600">
                             <Timer size={24} />
+                        </div>
+                    </div>
+                    <div 
+                        onClick={() => setSelectedDashboardStat('absent')}
+                        className={`bg-white p-5 rounded-xl border ${selectedDashboardStat === 'absent' ? 'border-slate-500 shadow-md ring-2 ring-slate-200' : 'border-slate-200 shadow-sm hover:border-slate-400 hover:shadow-md'} flex items-center justify-between cursor-pointer transition-all`}
+                    >
+                        <div>
+                            <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-1">Absent</p>
+                            <h3 className="text-2xl font-bold text-slate-800">{dashboardStats.absentCount}</h3>
+                        </div>
+                        <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-600">
+                            <UserX size={24} />
                         </div>
                     </div>
                 </div>
