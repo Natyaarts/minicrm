@@ -99,9 +99,27 @@ const AttendanceModule = () => {
             
             // Get total employees to calculate absent count
             let totalEmployees = 0;
+            let allEmps = [];
             try {
                 const empRes = await api.get('hrms/employees/');
                 totalEmployees = empRes.data.count || (empRes.data.results || empRes.data).length;
+                
+                allEmps = empRes.data.results || empRes.data || [];
+                
+                // If there are more pages, fetch them too
+                if (empRes.data.count > allEmps.length) {
+                    const totalPages = Math.ceil(empRes.data.count / allEmps.length);
+                    const promises = [];
+                    for (let i = 2; i <= totalPages; i++) {
+                        promises.push(api.get(`hrms/employees/?page=${i}`));
+                    }
+                    const responses = await Promise.all(promises);
+                    responses.forEach(r => {
+                        allEmps = [...allEmps, ...(r.data.results || [])];
+                    });
+                }
+                
+                setAllEmployees(allEmps);
             } catch (e) {
                 console.error("Failed to fetch employees count", e);
             }
