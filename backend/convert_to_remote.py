@@ -41,7 +41,7 @@ def main():
             employee = EmployeeProfile.objects.get(employee_id=emp_id)
             employee.work_location = 'REMOTE'
             employee.save()
-            print(f"✅ Updated: {employee.full_name or employee.display_username} ({emp_id})")
+            print(f"✅ Updated: {employee.employee_id}")
             updated_count += 1
         except EmployeeProfile.DoesNotExist:
             print(f"❌ Not Found: Employee with ID {emp_id}")
