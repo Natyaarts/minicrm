@@ -36,6 +36,8 @@ export default function MenuHubScreen() {
   };
 
   const hasDialerAccess = user?.role === 'SALES' || user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';
+  const isAcademicStaff = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || user?.role === 'ACADEMIC_COORDINATOR' || user?.role === 'TEACHER';
+  const isAdminStaff = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
 
   const menuGroups = [
     {
@@ -50,16 +52,20 @@ export default function MenuHubScreen() {
               { title: 'General Dialer', icon: 'phone-alt', route: '/dialpad?leadId=0' },
             ]
           : []),
-        { title: 'Mentor Module', icon: 'chalkboard-teacher', route: '/module?title=Mentor Module&category=Academics' },
-        { title: 'Student Portal', icon: 'user-graduate', route: '/module?title=Student Portal&category=Academics' },
+        ...(isAcademicStaff
+          ? [
+              { title: 'Mentor Module', icon: 'chalkboard-teacher', route: '/module?title=Mentor Module&category=Academics' },
+              { title: 'Student Portal', icon: 'user-graduate', route: '/module?title=Student Portal&category=Academics' },
+              { title: 'Teacher Module', icon: 'book-reader', route: '/module?title=Teacher Module&category=Academics' },
+            ]
+          : []),
         ...(user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || user?.role === 'ACADEMIC_COORDINATOR'
           ? [
               { title: 'Academic Hierarchy', icon: 'sitemap', route: '/module?title=Academic Hierarchy&category=Academics' },
               { title: 'Coordinator Module', icon: 'user-tie', route: '/module?title=Coordinator Module&category=Academics' },
             ]
           : []),
-        { title: 'Teacher Module', icon: 'book-reader', route: '/module?title=Teacher Module&category=Academics' },
-        ...(user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN'
+        ...(isAdminStaff
           ? [
               { title: 'Courses', icon: 'book', route: '/module?title=Courses&category=Academics' },
               { title: 'Analytics', icon: 'chart-line', route: '/module?title=Analytics&category=Academics' },
@@ -72,7 +78,7 @@ export default function MenuHubScreen() {
       color: isDark ? 'rgba(16, 185, 129, 0.15)' : '#E6FFFA',
       accent: '#319795',
       items: [
-        ...(user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN'
+        ...(isAdminStaff
           ? [{ title: 'Workforce Hub', icon: 'building', route: '/module?title=Workforce Hub&category=HRMS' }]
           : []),
         { title: 'Attendance', icon: 'clock', route: '/module?title=Attendance&category=HRMS' },
@@ -86,8 +92,12 @@ export default function MenuHubScreen() {
       color: isDark ? 'rgba(139, 92, 246, 0.15)' : '#FAF5FF',
       accent: '#805AD5',
       items: [
-        { title: 'Staff Directory', icon: 'address-book', route: '/module?title=Staff Directory&category=Administrative' },
-        ...(user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN'
+        ...(isAdminStaff || user?.role === 'HR'
+          ? [
+              { title: 'Staff Directory', icon: 'address-book', route: '/module?title=Staff Directory&category=Administrative' },
+            ]
+          : []),
+        ...(isAdminStaff
           ? [
               { title: 'Finance Manager', icon: 'wallet', route: '/module?title=Finance Manager&category=Administrative' },
               { title: 'Admin Panel', icon: 'cogs', route: '/module?title=Admin Panel&category=Administrative' },
