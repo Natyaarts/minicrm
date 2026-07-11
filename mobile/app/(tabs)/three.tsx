@@ -45,7 +45,6 @@ export default function MenuHubScreen() {
       color: isDark ? 'rgba(59, 130, 246, 0.15)' : '#EBF8FF',
       accent: '#3182CE',
       items: [
-        { title: 'Dashboard', icon: 'th-large', route: '/(tabs)' },
         ...(hasDialerAccess
           ? [
               { title: 'Sales/Leads', icon: 'user-friends', route: '/(tabs)/two' },
