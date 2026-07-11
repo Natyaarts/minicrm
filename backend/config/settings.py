@@ -219,7 +219,14 @@ if os.getenv('USE_AWS_S3') == 'True':
     AWS_QUERYSTRING_AUTH = True
     AWS_S3_FILE_OVERWRITE = False
     
-    DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
+    STORAGES = {
+        "default": {
+            "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+        },
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+        },
+    }
 else:
     MEDIA_URL = 'https://natyaarts.org/api/media/'
     MEDIA_ROOT = BASE_DIR / 'media'
