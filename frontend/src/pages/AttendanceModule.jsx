@@ -284,7 +284,7 @@ const AttendanceModule = () => {
                                     allEmployees.filter(emp => !todayLogs.some(l => l.employee === emp.id)).map((emp, idx) => (
                                         <div key={idx} className="flex items-center justify-between bg-slate-50 p-3 rounded-lg border border-slate-100">
                                             <div>
-                                                <p className="font-semibold text-slate-800">{emp.user?.first_name} {emp.user?.last_name}</p>
+                                                <p className="font-semibold text-slate-800">{emp.full_name || emp.display_username}</p>
                                                 <p className="text-xs text-slate-500">ID: {emp.employee_id}</p>
                                             </div>
                                             <div className="text-right">
