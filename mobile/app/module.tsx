@@ -3041,10 +3041,6 @@ export default function ModuleDetailScreen() {
                     </View>
                   </View>
 
-                  <View style={styles.tableHeader}>
-                    <Text style={[styles.tableCol, { flex: 2 }]}>EMPLOYEE</Text><Text style={[styles.tableCol, { flex: 1.5 }]}>DATE</Text><Text style={[styles.tableCol, { flex: 1.5 }]}>PUNCH IN</Text><Text style={[styles.tableCol, { flex: 1.5 }]}>PUNCH OUT</Text><Text style={[styles.tableCol, { flex: 1.5 }]}>DURATION</Text><Text style={[styles.tableCol, { flex: 1.5 }]}>COMPLIANCE</Text>
-                  </View>
-
                   {attLogs.length > 0 ? (
                     attLogs
                       .filter((log: any) => {
@@ -3055,34 +3051,36 @@ export default function ModuleDetailScreen() {
                         return `${empName} ${log.date || ''}`.toLowerCase().includes(attSearch.toLowerCase());
                       })
                       .slice(0, 25)
-                      .map((log: any, idx: number) => (
-                        <View key={log.id || idx} style={styles.tableRow}>
-                          <Text style={[styles.tableCellBold, { flex: 2 }]} numberOfLines={1}>
-                            {log.employee_name || 'Staff'}
-                          </Text>
-                          <Text style={[styles.tableCellSub, { flex: 1.5 }]}>{log.date || '—'}</Text>
-                          <Text style={[styles.tableCellSub, { flex: 1.5 }]}>
-                            {log.clock_in && log.date
-                              ? (() => {
-                                  const tPart = (log.clock_in || '').split('.')[0];
-                                  return new Date(`${log.date}T${tPart}`).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
-                                })()
-                              : '—'}
-                          </Text>
-                          <Text style={[styles.tableCellSub, { flex: 1.5 }]}>
-                            {log.clock_out && log.date
-                              ? (() => {
-                                  const tPart = (log.clock_out || '').split('.')[0];
-                                  return new Date(`${log.date}T${tPart}`).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
-                                })()
-                              : (log.clock_in ? 'Active' : '—')}
-                          </Text>
-                          <Text style={[styles.tableCellSub, { flex: 1.5 }]}>{log.clock_in && log.clock_out ? 'Done' : log.clock_in ? 'Live' : '—'}</Text>
-                          <Text style={[styles.tableCellBold, { flex: 1.5, color: log.clock_out ? '#38A169' : '#DD6B20' }]}>
-                            {log.clock_out ? '✓' : log.clock_in ? 'Active' : '—'}
-                          </Text>
-                        </View>
-                      ))
+                      .map((log: any, idx: number) => {
+                        const inTime = log.clock_in && log.date ? new Date(`${log.date}T${(log.clock_in || '').split('.')[0]}`).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }) : '—';
+                        const outTime = log.clock_out && log.date ? new Date(`${log.date}T${(log.clock_out || '').split('.')[0]}`).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }) : (log.clock_in ? 'Active' : '—');
+                        return (
+                          <View key={log.id || idx} style={{ backgroundColor: '#F7FAFC', borderRadius: 16, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                              <View>
+                                <Text style={{ fontSize: 16, fontWeight: '700', color: '#1A202C' }}>{log.employee_name || 'Staff'}</Text>
+                                <Text style={{ fontSize: 13, color: '#718096', marginTop: 2 }}>{log.date || '—'}</Text>
+                              </View>
+                              <View style={{ backgroundColor: log.clock_out ? '#C6F6D5' : '#FEEBC8', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 }}>
+                                <Text style={{ fontSize: 12, fontWeight: '800', color: log.clock_out ? '#22543D' : '#C05621' }}>
+                                  {log.clock_out ? 'COMPLETED' : 'ACTIVE'}
+                                </Text>
+                              </View>
+                            </View>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', backgroundColor: '#FFFFFF', borderRadius: 12, padding: 12 }}>
+                              <View style={{ flex: 1 }}>
+                                <Text style={{ fontSize: 11, color: '#A0AEC0', fontWeight: '700', marginBottom: 4 }}>PUNCH IN</Text>
+                                <Text style={{ fontSize: 14, fontWeight: '600', color: '#2D3748' }}>{inTime}</Text>
+                              </View>
+                              <View style={{ width: 1, backgroundColor: '#E2E8F0', marginHorizontal: 12 }} />
+                              <View style={{ flex: 1 }}>
+                                <Text style={{ fontSize: 11, color: '#A0AEC0', fontWeight: '700', marginBottom: 4 }}>PUNCH OUT</Text>
+                                <Text style={{ fontSize: 14, fontWeight: '600', color: '#2D3748' }}>{outTime}</Text>
+                              </View>
+                            </View>
+                          </View>
+                        );
+                      })
                   ) : (
                     <View style={styles.emptyStateBox}>
                       <Text style={styles.emptyStateText}>No attendance logs found for this period.</Text>
