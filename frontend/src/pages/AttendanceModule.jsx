@@ -231,6 +231,15 @@ const AttendanceModule = () => {
         }
     };
 
+    const handleMarkPresent = async (employeeId) => {
+        try {
+            await api.post('hrms/attendance/mark_present/', { employee_id: employeeId });
+            fetchAttendance();
+        } catch (err) {
+            alert(err.response?.data?.error || "Failed to mark present");
+        }
+    };
+
     const isAdmin = authUser?.role === 'SUPER_ADMIN';
 
     return (
@@ -293,7 +302,15 @@ const AttendanceModule = () => {
                                                 <p className="font-semibold text-slate-800">{emp.full_name || emp.display_username}</p>
                                                 <p className="text-xs text-slate-500">ID: {emp.employee_id}</p>
                                             </div>
-                                            <div className="text-right">
+                                            <div className="text-right flex items-center space-x-2">
+                                                {isAdmin && (
+                                                    <button 
+                                                        onClick={() => handleMarkPresent(emp.id)}
+                                                        className="px-2 py-1 bg-green-100 hover:bg-green-200 text-green-700 text-xs font-bold rounded transition-colors"
+                                                    >
+                                                        Mark Present
+                                                    </button>
+                                                )}
                                                 <span className="px-2 py-1 bg-slate-200 text-slate-700 text-xs font-bold rounded">Absent</span>
                                             </div>
                                         </div>

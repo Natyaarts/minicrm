@@ -150,6 +150,38 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         return Response(AttendanceSerializer(attendance).data)
 
     @action(detail=False, methods=['post'])
+    def mark_present(self, request):
+        if not (request.user.role == 'SUPER_ADMIN' or request.user.is_superuser):
+            return Response({"error": "Permission denied"}, status=403)
+            
+        employee_id = request.data.get('employee_id')
+        if not employee_id:
+            return Response({"error": "employee_id is required"}, status=400)
+            
+        try:
+            profile = EmployeeProfile.objects.get(id=employee_id)
+        except EmployeeProfile.DoesNotExist:
+            return Response({"error": "Employee not found"}, status=404)
+            
+        from zoneinfo import ZoneInfo
+        kolkata = ZoneInfo('Asia/Kolkata')
+        now_local = timezone.now().astimezone(kolkata)
+        today = now_local.date()
+        
+        attendance, created = Attendance.objects.get_or_create(employee=profile, date=today)
+        
+        if not attendance.clock_in:
+            # Set clock in to 09:30 or whatever the current time is
+            import datetime
+            attendance.clock_in = datetime.time(9, 30) # Default to 9:30 AM
+            attendance.status = 'PRESENT'
+            attendance.is_face_verified = True
+            attendance.verification_confidence = 100.0
+            attendance.save()
+            
+        return Response(AttendanceSerializer(attendance).data)
+
+    @action(detail=False, methods=['post'])
     def clock_out(self, request):
         user = request.user
         try:
