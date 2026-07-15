@@ -301,7 +301,6 @@ class StudentViewSet(viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['first_name', 'last_name', 'crm_student_id', 'mobile', 'email']
     ordering_fields = ['created_at', 'id']
-    ordering = ['-created_at']  # default: newest first
     permission_classes = [DynamicRolePermission]
     module_name = 'SALES'
     
@@ -471,7 +470,7 @@ class StudentViewSet(viewsets.ModelViewSet):
         if campaign_only == 'true':
             qs = qs.filter(campaign__isnull=False)
 
-        return qs.order_by('-id')
+        return qs
 
     def perform_destroy(self, instance):
         instance.is_active = False
