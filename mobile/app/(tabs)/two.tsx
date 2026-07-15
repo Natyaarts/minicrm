@@ -549,10 +549,7 @@ export default function SalesScreen() {
               />
               <TouchableOpacity
                 onPress={() => {
-                  const newOrder = sortOrder === '-id' ? 'id' : '-id';
-                  setSortOrder(newOrder);
-                  setStudents([]);
-                  setCurrentPage(1);
+                  setSortOrder(prev => prev === '-id' ? 'id' : '-id');
                 }}
                 style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#EBF8FF', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, marginLeft: 8, gap: 4 }}
               >

@@ -303,6 +303,18 @@ class StudentViewSet(viewsets.ModelViewSet):
     ordering_fields = ['created_at', 'id']
     permission_classes = [DynamicRolePermission]
     module_name = 'SALES'
+
+    def filter_queryset(self, queryset):
+        ordering = self.request.query_params.get('ordering')
+        if ordering == 'created_at':
+            self.request.query_params._mutable = True
+            self.request.query_params['ordering'] = 'id'
+            self.request.query_params._mutable = False
+        elif ordering == '-created_at':
+            self.request.query_params._mutable = True
+            self.request.query_params['ordering'] = '-id'
+            self.request.query_params._mutable = False
+        return super().filter_queryset(queryset)
     
     def get_permissions(self):
         if self.action in ['create', 'public_lookup', 'partial_update']:
