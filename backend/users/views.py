@@ -71,8 +71,13 @@ from core.permissions import DynamicRolePermission
 
 class TeacherViewSet(viewsets.ModelViewSet):
     serializer_class = UserSerializer
-    permission_classes = [DynamicRolePermission]
     module_name = 'ACADEMIC'
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [IsAuthenticated()]
+        return [DynamicRolePermission()]
+
     filter_backends = [filters.SearchFilter]
     search_fields = ['username', 'first_name', 'last_name', 'email']
 
