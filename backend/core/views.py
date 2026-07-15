@@ -432,7 +432,14 @@ class StudentViewSet(viewsets.ModelViewSet):
             
         upcoming_followups = self.request.query_params.get('upcoming_followups')
         if upcoming_followups == 'true':
-            qs = qs.filter(next_followup_date__isnull=False)
+            from django.utils import timezone
+            from crm.models import Task
+            # Students that have an open follow-up task with a due_date in the future
+            student_ids_with_followup = Task.objects.filter(
+                due_date__gte=timezone.now(),
+                status__in=['PENDING', 'IN_PROGRESS', 'TODO'],
+            ).values_list('student_id', flat=True).distinct()
+            qs = qs.filter(id__in=student_ids_with_followup)
             
         program = self.request.query_params.get('program')
         if program:
