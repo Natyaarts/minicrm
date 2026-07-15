@@ -429,6 +429,10 @@ class StudentViewSet(viewsets.ModelViewSet):
         if assigned_only == 'true':
             qs = qs.filter(assigned_to=user)
             
+        upcoming_followups = self.request.query_params.get('upcoming_followups')
+        if upcoming_followups == 'true':
+            qs = qs.filter(next_followup_date__isnull=False)
+            
         program = self.request.query_params.get('program')
         if program:
             qs = qs.filter(program_type_id=program)

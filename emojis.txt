@@ -1,0 +1,74 @@
+171: Alert.alert('Success ✅', 'Teacher assigned successfully!');
+726: subtitle: `📅 ${new Date().toLocaleDateString('en-IN', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}`,
+755: { label: 'TOTAL DISBURSED', value: `₹${Math.round(totalDisbursed).toLocaleString('en-IN')}` },
+959: { label: 'Net Invoices', value: `₹${totalRevenue}` },
+960: { label: 'Total Expenses', value: `₹${totalExpenses}` },
+961: { label: 'Cash Flow', value: `₹${totalRevenue - totalExpenses}` }
+1307: Alert.alert('Success ✅', `Employee ${name} added!\n\nEmp ID: ${generatedEmpId}\nTemp Password: ${generatedPassword}`);
+1351: Alert.alert('Clocked In ✅', 'Attendance recorded at ' + new Date().toLocaleTimeString());
+1413: Alert.alert('Clocked Out 🏁', 'Punch-out recorded successfully.');
+1437: Alert.alert('Success ✅', msg);
+1470: Alert.alert('Leave Applied ✅', 'Your leave request has been submitted for admin approval.');
+1485: Alert.alert('Success ✅', `Leave request ${action}d successfully.`);
+1503: Alert.alert('Task Created ✅', `"${taskTitle}" added to ${taskCol.toUpperCase()}.`);
+1542: <Text style={stat.value.includes('₹') || stat.value.includes('+') ? styles.statValueAccent : styles.statValue}>
+1576: <Text style={[styles.segmentText, mentorTab === 'web' && styles.segmentTextActive]}>🌐 Web</Text>
+1741: ₹{mentorFeeDefaulters.reduce((acc, curr) => acc + (parseFloat(curr.due_amount) || 0), 0).toLocaleString('en-IN')}
+1752: ₹{mentorCollectedFees.reduce((acc, curr) => acc + (parseFloat(curr.amount) || 0), 0).toLocaleString('en-IN')}
+1786: <Text style={styles.batchDetailText}>• Course: <Text style={styles.batchDetailBold}>{b.course?.name || b.course}</Text></Text>
+1787: <Text style={styles.batchDetailText}>• Students: <Text style={styles.batchDetailBold}>{b.student_count || b.students?.length || 0}</Text></Text>
+1788: <Text style={styles.batchDetailText}>• Primary: <Text style={styles.batchDetailBold}>{b.primary || 'None'}</Text></Text>
+1789: <Text style={styles.batchDetailText}>• Teacher: <Text style={styles.batchTeacherText}>
+1855: <Text style={{ fontSize: 13, fontWeight: 'bold', color: isDark ? '#E2E8F0' : '#2D3748' }}>₹{s.total_fee || '0'}</Text>
+1859: <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#38A169' }}>₹{s.paid_fee || '0'}</Text>
+1863: <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#E53E3E' }}>₹{s.due_amount || '0'}</Text>
+1958: <Text style={{ fontSize: 13, fontWeight: 'bold', color: isDark ? '#E2E8F0' : '#2D3748' }}>₹{s.total_fee || '0'}</Text>
+1962: <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#38A169' }}>₹{s.paid_fee || '0'}</Text>
+1966: <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#E53E3E' }}>₹{s.due_amount || '0'}</Text>
+2021: <Text style={styles.batchDetailText}>• Course: <Text style={styles.batchDetailBold}>{w.course?.name || w.course}</Text></Text>
+2022: <Text style={styles.batchDetailText}>• Students: <Text style={styles.batchDetailBold}>{w.student_count || w.students?.length || 0}</Text></Text>
+2023: <Text style={styles.batchDetailText}>• LMS ID: <Text style={styles.batchDetailBold}>{w.lms_id || 'WISE-GRP-2026'}</Text></Text>
+2024: <Text style={styles.batchDetailText}>• Teacher: <Text style={styles.batchTeacherText}>{w.teacher || 'Not Assigned'}</Text></Text>
+2076: <Text style={[styles.segmentText, academicTab === 'web' && styles.segmentTextActive]}>🌐 Web</Text>
+2133: <Text style={styles.batchDetailText}>• Course: <Text style={styles.batchDetailBold}>{b.course?.name || b.course}</Text></Text>
+2134: <Text style={styles.batchDetailText}>• Students: <Text style={styles.batchDetailBold}>{b.student_count || b.students?.length || 0}</Text></Text>
+2135: <Text style={styles.batchDetailText}>• Mentor: <Text style={styles.batchDetailBold}>{b.mentor || 'Assigned'}</Text></Text>
+2136: <Text style={styles.batchDetailText}>• Teacher: <Text style={styles.batchTeacherText}>
+2168: <Text style={styles.batchDetailText}>• Course: <Text style={styles.batchDetailBold}>{b.course?.name || b.course}</Text></Text>
+2169: <Text style={styles.batchDetailText}>• Students: <Text style={styles.batchDetailBold}>{b.student_count || b.students?.length || 0}</Text></Text>
+2170: <Text style={styles.batchDetailText}>• Teacher: <Text style={styles.batchTeacherText}>
+2201: <Text style={styles.itemDesc}>{t.role || t.designation || 'Faculty'} • {t.email || t.department || 'Academics'}</Text>
+2259: <Text style={styles.batchDetailText}>• LMS Course: <Text style={styles.batchDetailBold}>{w.course?.name || w.course || 'Auto-mapped'}</Text></Text>
+2260: <Text style={styles.batchDetailText}>• Members: <Text style={styles.batchDetailBold}>{w.student_count || w.students?.length || 0} Students, 1 Teacher</Text></Text>
+2293: <Text style={[styles.segmentText, coordTab === 'web' && styles.segmentTextActive]}>🌐 Web Portal</Text>
+2612: <Text style={styles.analyticsStatNum}>₹{analyticsData?.revenue_metrics?.collected ? Math.round(analyticsData.revenue_metrics.collected).toLocaleString('en-IN') : '0'}</Text>
+2635: <Text style={styles.revenueBarVal}>₹{analyticsData?.revenue_metrics?.collected ? Math.round(analyticsData.revenue_metrics.collected).toLocaleString('en-IN') : '0'}</Text>
+2644: <Text style={[styles.revenueBarVal, { color: '#FC8181' }]}>₹{analyticsData?.revenue_metrics?.due ? Math.round(Math.max(0, analyticsData.revenue_metrics.due)).toLocaleString('en-IN') : '0'}</Text>
+2651: <Text style={{ color: '#A0AEC0', fontSize: 11, fontWeight: '700' }}>POTENTIAL REVENUE: ₹{analyticsData?.revenue_metrics?.potential ? Math.round(analyticsData.revenue_metrics.potential).toLocaleString('en-IN') : '0'}</Text>
+2682: <Text style={{ fontSize: 12, color: '#718096', fontWeight: '600' }}>{t.sessions} sessions • {t.courses} batches</Text>
+2731: <Text style={[styles.segmentText, wfTab === 'web' && styles.segmentTextActive]}>🌐 Web</Text>
+2760: <Text style={styles.itemDesc}>{e.designation_name || e.designation?.name || e.designation || 'Faculty'} • {e.department_name || e.department?.name || e.department || 'Academics'}</Text>
+2783: <Text style={styles.teacherMetricVal}>{dept.designation_count ?? dept.employee_count ?? '—'} Staff</Text>
+2802: <Text style={styles.teacherMetricVal}>{desig.department?.name || desig.department || '—'}</Text>
+2852: <Text style={[styles.segmentText, attTab === 'web' && styles.segmentTextActive]}>🌐 Web</Text>
+2982: Alert.alert('Success ✅', 'Coordinates set to your current mobile position!');
+2990: <Text style={styles.clockBtnText}>📍 Use Current GPS Coordinates</Text>
+3019: Alert.alert('Configuration Saved ✅', 'Shift settings and geofence parameters updated successfully.');
+3061: const inTime = log.clock_in && log.date ? new Date(`${log.date}T${(log.clock_in || '').split('.')[0]}`).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }) : '—';
+3062: const outTime = log.clock_out && log.date ? new Date(`${log.date}T${(log.clock_out || '').split('.')[0]}`).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }) : (log.clock_in ? 'Active' : '—');
+3068: <Text style={{ fontSize: 13, color: '#718096', marginTop: 2 }}>{log.date || '—'}</Text>
+3128: <Text style={[styles.segmentText, payTab === 'web' && styles.segmentTextActive]}>🌐 Web</Text>
+3168: <Text style={[styles.tableCellSub, { flex: 1.5 }]}>{slip.period_month || '—'}/{slip.period_year || '—'}</Text>
+3169: <Text style={[styles.tableCellSub, { flex: 1.2 }]}>{slip.paid_days ?? '—'}</Text>
+3171: <Text style={[styles.tableCellBold, { flex: 1.5, color: '#38A169' }]}>₹{slip.net_salary ? Math.round(parseFloat(slip.net_salary)).toLocaleString('en-IN') : '0'}</Text>
+3179: onPress={() => Alert.alert('Payslip Details', `Employee: ${slip.employee?.user?.first_name || 'Staff'}\nPeriod: ${slip.period_month}/${slip.period_year}\nNet Salary: ₹${Math.round(parseFloat(slip.net_salary || 0)).toLocaleString('en-IN')}`)}
+3241: <Text style={[styles.segmentText, leaveTab === 'web' && styles.segmentTextActive]}>🌐 Web</Text>
+3326: <Text style={[styles.tableCellSub, { flex: 1.5, fontSize: 11 }]}>{req.start_date?.slice(5) || '—'} - {req.end_date?.slice(5) || '—'}</Text>
+3327: <Text style={[styles.tableCellSub, { flex: 1.5, fontSize: 11 }]}>{req.leave_type || '—'}</Text>
+3342: <Text style={{ color: '#22543D', fontSize: 11, fontWeight: '900' }}>✓ OK</Text>
+3348: <Text style={{ color: '#E53E3E', fontSize: 11, fontWeight: '900' }}>✗ No</Text>
+3397: <Text style={[styles.segmentText5, taskCol === 'web' && styles.segmentTextActive]}>🌐 Web</Text>
+3422: <Text style={{ color: '#3182CE', fontSize: 11, fontWeight: '800' }}>→ {status.toUpperCase()}</Text>
+3501: <Text style={styles.itemDesc}>{lead.program_interested || 'General Inquiry'} • {lead.phone}</Text>
+3842: -₹{item.amount}
+3881: +₹{item.amount}

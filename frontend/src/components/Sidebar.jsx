@@ -107,6 +107,8 @@ function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }) {
         if (item.label === 'Teacher Module' && user.role === 'TEACHER') return true;
         if (item.label === 'Teacher Module' && user.role !== 'SUPER_ADMIN') return false;
         
+        if (item.label === 'Mentor Module' && user.role === 'MENTOR') return true;
+        
         // Allow Employees to see relevant HRMS modules
         const employeeModules = ['Workforce Hub', 'Attendance', 'Leave Management', 'Tasks', 'Performance Reviews', 'Payroll', 'Asset Management', 'Employee Lifecycle'];
         if (employeeModules.includes(item.label) && user.role === 'EMPLOYEE') return true;

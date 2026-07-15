@@ -420,7 +420,19 @@ class WiseCourseListView(views.APIView):
             
         class_type = request.query_params.get('type', 'LIVE')
         wise = WiseService()
-        courses = wise.get_all_courses(class_type=class_type)
+        
+        if class_type == 'ALL':
+            courses_live = wise.get_all_courses(class_type='LIVE') or []
+            courses_1o1 = wise.get_all_courses(class_type='ONE_TO_ONE') or []
+            seen = set()
+            courses = []
+            for c in courses_live + courses_1o1:
+                cid = c.get('_id') or c.get('id')
+                if cid and cid not in seen:
+                    seen.add(cid)
+                    courses.append(c)
+        else:
+            courses = wise.get_all_courses(class_type=class_type) or []
         
         # Normalize for frontend expectations
         normalized = []

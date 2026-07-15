@@ -42,8 +42,8 @@ export default function MenuHubScreen() {
   const menuGroups = [
     {
       category: 'ACADEMICS',
-      color: isDark ? 'rgba(59, 130, 246, 0.15)' : '#EBF8FF',
-      accent: '#3182CE',
+      color: isDark ? 'rgba(59, 130, 246, 0.15)' : '#FEF3C7',
+      accent: '#FFB800',
       items: [
         ...(hasDialerAccess
           ? [
@@ -51,9 +51,13 @@ export default function MenuHubScreen() {
               { title: 'General Dialer', icon: 'phone-alt', route: '/dialpad?leadId=0' },
             ]
           : []),
-        ...(isAcademicStaff
+        ...(isAcademicStaff || user?.role === 'MENTOR'
           ? [
               { title: 'Mentor Module', icon: 'chalkboard-teacher', route: '/module?title=Mentor Module&category=Academics' },
+            ]
+          : []),
+        ...(isAcademicStaff
+          ? [
               { title: 'Student Portal', icon: 'user-graduate', route: '/module?title=Student Portal&category=Academics' },
               { title: 'Teacher Module', icon: 'book-reader', route: '/module?title=Teacher Module&category=Academics' },
             ]

@@ -122,6 +122,7 @@ export default function SalesScreen() {
   // Dynamic filter list — stages from web backend + program filters
   const filterOptions = [
     { label: 'All', type: 'all', value: 'All' },
+    { label: 'Scheduled Follow-ups', type: 'upcoming_followups', value: 'true' },
     ...pipelineStages.map(stage => ({
       label: stage.name,
       type: 'lead_status',
@@ -195,6 +196,8 @@ export default function SalesScreen() {
         params.lead_status = selectedFilter.value;
       } else if (selectedFilter.type === 'program') {
         params.program = selectedFilter.value;
+      } else if (selectedFilter.type === 'upcoming_followups') {
+        params.upcoming_followups = 'true';
       }
     }
     

@@ -1,4 +1,4 @@
-from django.db.models.signals import post_save
+from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 from django.contrib.auth import get_user_model
 from core.models import Student, Transaction, Document, Batch
@@ -80,3 +80,28 @@ def leave_notification(sender, instance, created, **kwargs):
                 notification_type='LEAVE',
                 target_url="/hrms/leaves"
             )
+
+@receiver(pre_save, sender=Student)
+def cache_previous_assignment(sender, instance, **kwargs):
+    if instance.pk:
+        try:
+            old_instance = Student.objects.get(pk=instance.pk)
+            instance._old_assigned_to = old_instance.assigned_to
+        except Student.DoesNotExist:
+            instance._old_assigned_to = None
+    else:
+        instance._old_assigned_to = None
+
+@receiver(post_save, sender=Student)
+def lead_assignment_notification(sender, instance, created, **kwargs):
+    old_assigned_to = getattr(instance, '_old_assigned_to', None)
+    
+    # If a new lead is created with an assignee, or an existing lead is reassigned
+    if (created and instance.assigned_to) or (not created and instance.assigned_to and old_assigned_to != instance.assigned_to):
+        Notification.objects.create(
+            user=instance.assigned_to,
+            title="New Lead Assigned",
+            message=f"You have been assigned a new lead: {instance.first_name} {instance.last_name}.",
+            notification_type='INFO',
+            target_url=f"/sales"
+        )

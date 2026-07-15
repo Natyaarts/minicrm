@@ -908,7 +908,7 @@ const AdminModule = () => {
                                 <button
                                     onClick={async () => {
                                         try {
-                                            const res = await api.get('integrations/courses/');
+                                            const res = await api.get('integrations/courses/?type=ALL');
                                             setWiseCourses(res.data);
                                         } catch (err) {
                                             alert("Failed to fetch Wise courses");

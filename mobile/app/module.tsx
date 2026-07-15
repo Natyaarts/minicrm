@@ -10,6 +10,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as WebBrowser from 'expo-web-browser';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import client from '../src/api/client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { requestDefaultDialerRole, checkIsDefaultDialer } from '../src/utils/CallManager';
@@ -277,8 +278,14 @@ export default function ModuleDetailScreen() {
   const [payStructures, setPayStructures] = useState<any[]>([]);
   const [leaveRequests, setLeaveRequests] = useState<any[]>([]);
   const [leaveBalances, setLeaveBalances] = useState<any[]>([]);
+  const [leaveTypes, setLeaveTypes] = useState<any[]>([]);
+  const [holidays, setHolidays] = useState<any[]>([]);
   const [leaveApplying, setLeaveApplying] = useState(false);
-  const [newLeave, setNewLeave] = useState({ leave_type: 'CASUAL', start_date: '', end_date: '', reason: '' });
+  const [newLeave, setNewLeave] = useState<any>({ leave_type: '', start_date: '', end_date: '', reason: '' });
+  const [showStartPicker, setShowStartPicker] = useState(false);
+  const [showEndPicker, setShowEndPicker] = useState(false);
+  const [calendarDate, setCalendarDate] = useState(new Date());
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [generatingPayslips, setGeneratingPayslips] = useState(false);
 
   const [moduleData, setModuleData] = useState({
@@ -497,11 +504,22 @@ export default function ModuleDetailScreen() {
           { first_name: 'Rohan', last_name: 'Kumar', crm_student_id: 'NAT-2026-003', course_name: 'CAMPUS DIP KUCH 01', phone: '+91 98765 43212', status: 'ON_BREAK', total_fee: '10000', paid_fee: '2000', due_amount: '8000', fee_due_date: '2026-06-15' }
         ];
 
-        const finalCourses = c.length > 0 ? c : [
+        const derivedCoursesMap = new Map();
+        finalBatches.forEach((batch: any) => {
+          if (batch.course) {
+            const courseId = typeof batch.course === 'object' ? batch.course.id : (batch.course_id || batch.course);
+            const courseName = typeof batch.course === 'object' ? batch.course.name : (batch.course_name || batch.course);
+            if (courseId && !derivedCoursesMap.has(courseId)) {
+              derivedCoursesMap.set(courseId, { id: courseId, name: courseName });
+            }
+          }
+        });
+        const derivedCourses = Array.from(derivedCoursesMap.values());
+        const finalCourses = derivedCourses.length > 0 ? derivedCourses : (c.length > 0 ? c : [
           { id: 1, name: 'Bharathanatyam Diploma' },
           { id: 2, name: 'Mohiniyattam Foundation' },
           { id: 3, name: 'Carnatic Vocal 101' }
-        ];
+        ]);
 
         const finalWise = finalBatches.map((item: any) => ({ ...item, is_wise: true, status: 'WISE SYNCED' }));
 
@@ -723,7 +741,7 @@ export default function ModuleDetailScreen() {
         const halfDayCount = todayLogs.filter((l: any) => l.status === 'HALF_DAY').length;
 
         setModuleData({
-          subtitle: `📅 ${new Date().toLocaleDateString('en-IN', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}`,
+          subtitle: `${new Date().toLocaleDateString('en-IN', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}`,
           stats: isAdmin ? [
             { label: 'Active Now', value: `${activeNow}` },
             { label: 'On Leave', value: `${leaveCount}` },
@@ -750,35 +768,98 @@ export default function ModuleDetailScreen() {
         setPayStructures(structs);
         const totalDisbursed = slips.reduce((sum: number, s: any) => sum + parseFloat(s.net_salary || 0), 0);
         setModuleData({
-          subtitle: 'Manage employee compensation and payslips.',
-          stats: [
+          subtitle: isAdmin ? 'Manage employee compensation and payslips.' : '',
+          stats: isAdmin ? [
             { label: 'TOTAL DISBURSED', value: `₹${Math.round(totalDisbursed).toLocaleString('en-IN')}` },
             { label: 'TOTAL SLIPS', value: `${slips.length}` },
             { label: 'STRUCTURES', value: `${structs.length}` }
-          ],
-          items: [], action: '+ Generate Slips',
+          ] : [],
+          items: [], 
+          action: isAdmin ? '+ Generate Slips' : undefined,
         });
         setLoading(false); return;
       }
 
       // 10. LEAVE CENTRAL (HRMS)
       if (isLeave) {
-        const [reqRes, balRes] = await Promise.all([
+        const [reqRes, balRes, typeRes, holidayRes] = await Promise.all([
           client.get('/leaves/requests/').catch(() => ({ data: [] })),
-          client.get('/leaves/balances/').catch(() => ({ data: [] }))
+          client.get('/leaves/balances/').catch(() => ({ data: [] })),
+          client.get('/leaves/types/').catch(() => ({ data: [] })),
+          client.get('/leaves/holidays/').catch(() => ({ data: [] }))
         ]);
         const reqs = reqRes.data?.results || reqRes.data || [];
         const bals = balRes.data?.results || balRes.data || [];
+        const types = typeRes.data?.results || typeRes.data || [];
+        const holis = holidayRes.data?.results || holidayRes.data || [];
+        
         setLeaveRequests(reqs);
         setLeaveBalances(bals);
-        const pending = reqs.filter((r: any) => r.status === 'PENDING').length;
+        setLeaveTypes(types);
+        setHolidays(holis);
+
+        if (types.length > 0 && !newLeave.leave_type) {
+          setNewLeave((prev: any) => ({ ...prev, leave_type: types[0].id }));
+        }
+
+        const isAdminUser = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
+        const isManagerUser = reqs.some((req: any) => req.status === 'PENDING_MANAGER' && req.employee?.user?.username !== user?.username);
+
+        let finalStats = [];
+        if (isAdminUser || isManagerUser) {
+          const pendingMgr = reqs.filter((r: any) => r.status === 'PENDING_MANAGER').length;
+          const pendingHR = reqs.filter((r: any) => r.status === 'PENDING_HR').length;
+          const todayStr = new Date().toISOString().split('T')[0];
+          const activeApproved = reqs.filter((r: any) => r.status === 'APPROVED' && r.start_date <= todayStr && r.end_date >= todayStr).length;
+          finalStats = [
+            { label: 'Pending Mgr', value: `${pendingMgr}` },
+            { label: 'Pending HR', value: `${pendingHR}` },
+            { label: 'Out Today', value: `${activeApproved}` }
+          ];
+        } else {
+          // Filter my requests and my balances
+          const myRequests = reqs.filter((r: any) => r.employee?.user?.id === user?.id || r.user_id === user?.id);
+          const myBals = bals.filter((b: any) => b.employee?.user?.id === user?.id || b.user_id === user?.id);
+
+          // Calculate balance dynamically for ALL leave types retrieved from database
+          finalStats = types.map((t: any) => {
+            const explicitBal = myBals.find((b: any) => b.leave_type === t.id);
+            if (explicitBal) {
+              return {
+                label: t.name,
+                value: `${Math.round(parseFloat(explicitBal.remaining_days))}d`
+              };
+            }
+            
+            // Calculate: max_days_per_year minus any approved leave requests of this type
+            const approvedReqs = myRequests.filter((r: any) => r.leave_type === t.id && r.status === 'APPROVED');
+            const usedDays = approvedReqs.reduce((sum: number, r: any) => {
+              const start = new Date(r.start_date);
+              const end = new Date(r.end_date);
+              const days = Math.max(1, Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+              return sum + days;
+            }, 0);
+            
+            const remaining = Math.max(0, t.max_days_per_year - usedDays);
+            return {
+              label: t.name,
+              value: `${Math.round(remaining)}d`
+            };
+          });
+
+          // Fallback if no types found
+          if (finalStats.length === 0) {
+            finalStats = [
+              { label: 'Casual', value: '12d' },
+              { label: 'Sick', value: '12d' },
+              { label: 'WFH', value: '12d' }
+            ];
+          }
+        }
+
         setModuleData({
           subtitle: 'Manage time-off, balances and approvals seamlessly.',
-          stats: [
-            { label: 'Total Requests', value: `${reqs.length}` },
-            { label: 'Pending Approval', value: `${pending}` },
-            { label: 'Leave Policies', value: 'Active' }
-          ],
+          stats: finalStats,
           items: [], action: '+ Apply for Leave',
         });
         setLoading(false); return;
@@ -1452,24 +1533,21 @@ export default function ModuleDetailScreen() {
   };
 
   const submitLeaveRequest = async () => {
-    if (!newLeave.start_date || !newLeave.end_date || !newLeave.reason) {
-      Alert.alert('Required Fields', 'Please fill in Start Date, End Date, and Reason.');
+    if (!newLeave.leave_type || !newLeave.start_date || !newLeave.end_date || !newLeave.reason) {
+      Alert.alert('Required Fields', 'Please fill in Leave Type, Start Date, End Date, and Reason.');
       return;
     }
     setLoading(true);
-    const leaveTypeMap: Record<string, number> = {
-      'CASUAL': 1, 'SICK': 2, 'EARNED': 3, 'MATERNITY': 4, 'PATERNITY': 5
-    };
     try {
       await client.post('/leaves/requests/', {
-        leave_type: leaveTypeMap[newLeave.leave_type || 'CASUAL'] || 1,
+        leave_type: newLeave.leave_type,
         start_date: newLeave.start_date,
         end_date: newLeave.end_date,
         reason: newLeave.reason,
       });
-      Alert.alert('Leave Applied ✅', 'Your leave request has been submitted for admin approval.');
+      Alert.alert('Leave Applied ✅', 'Your leave request has been submitted for approval.');
       setLeaveApplying(false);
-      setNewLeave({ leave_type: 'CASUAL', start_date: '', end_date: '', reason: '' });
+      setNewLeave({ leave_type: leaveTypes[0]?.id || '', start_date: '', end_date: '', reason: '' });
       fetchProductionData();
     } catch (e: any) {
       Alert.alert('Error', e.response?.data ? JSON.stringify(e.response.data) : 'Failed to submit leave request.');
@@ -1534,19 +1612,29 @@ export default function ModuleDetailScreen() {
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
         {/* Hero Card */}
-        <View style={styles.heroCard}>
-          <Text style={styles.heroSubtitle}>{moduleData.subtitle}</Text>
-          <View style={styles.statsGrid}>
-            {moduleData.stats.map((stat, idx) => (
-              <View key={idx} style={styles.statBox}>
-                <Text style={stat.value.includes('₹') || stat.value.includes('+') ? styles.statValueAccent : styles.statValue}>
-                  {stat.value}
-                </Text>
-                <Text style={styles.statLabel}>{stat.label}</Text>
-              </View>
-            ))}
+        {(moduleData.subtitle || (moduleData.stats && moduleData.stats.length > 0)) ? (
+          <View style={[styles.heroCard, (isLeave || isTasks || isMentor) && { backgroundColor: '#FFB800', shadowColor: '#FFB800', borderWidth: 0, borderRadius: 24, padding: 24 }]}>
+            {moduleData.subtitle ? <Text style={[styles.heroSubtitle, (isLeave || isTasks || isMentor) && { color: '#111827', fontWeight: '600' }]}>{moduleData.subtitle}</Text> : null}
+            {(moduleData.stats && moduleData.stats.length > 0) ? (
+                <View style={styles.statsGrid}>
+                  {moduleData.stats.map((stat, idx) => (
+                    <View key={idx} style={styles.statBox}>
+                      <Text style={[
+                        stat.value.includes('₹') || stat.value.includes('+') ? styles.statValueAccent : styles.statValue,
+                        (isLeave || isTasks || isMentor) && { color: '#111827', fontWeight: '900' }
+                      ]}>
+                        {stat.value}
+                      </Text>
+                      <Text style={[
+                        styles.statLabel,
+                        (isLeave || isTasks || isMentor) && { color: 'rgba(17, 24, 39, 0.7)', fontWeight: '700' }
+                      ]}>{stat.label}</Text>
+                    </View>
+                  ))}
+                </View>
+            ) : null}
           </View>
-        </View>
+        ) : null}
 
         {/* 1. MENTOR MODULE SPECIFIC VIEW */}
         {isMentor && (
@@ -1667,8 +1755,8 @@ export default function ModuleDetailScreen() {
                       onPress={() => setMentorDateFilter(filter.key as any)}
                       style={{
                         paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
-                        backgroundColor: mentorDateFilter === filter.key ? '#3182CE' : (isDark ? '#2D3748' : '#EDF2F7'),
-                        borderWidth: 1, borderColor: mentorDateFilter === filter.key ? '#3182CE' : (isDark ? '#4A5568' : '#E2E8F0')
+                        backgroundColor: mentorDateFilter === filter.key ? '#FFB800' : (isDark ? '#2D3748' : '#EDF2F7'),
+                        borderWidth: 1, borderColor: mentorDateFilter === filter.key ? '#FFB800' : (isDark ? '#4A5568' : '#E2E8F0')
                       }}
                     >
                       <Text style={{ fontSize: 13, fontWeight: 'bold', color: mentorDateFilter === filter.key ? '#FFF' : (isDark ? '#E2E8F0' : '#4A5568') }}>
@@ -1819,7 +1907,7 @@ export default function ModuleDetailScreen() {
                     </View>
                     <View style={{ width: '100%' }}>
                       <Text style={{ fontSize: 11, fontWeight: 'bold', color: isDark ? '#A0AEC0' : '#A0AEC0', textTransform: 'uppercase' }}>Assigned Teacher</Text>
-                      <Text style={{ fontSize: 16, fontWeight: '800', color: '#3182CE', marginTop: 4 }}>
+                      <Text style={{ fontSize: 16, fontWeight: '800', color: '#FFB800', marginTop: 4 }}>
                         {selectedBatch.teacher_details 
                           ? `${selectedBatch.teacher_details.first_name || ''} ${selectedBatch.teacher_details.last_name || ''}`.trim() || selectedBatch.teacher_details.username
                           : (typeof selectedBatch.teacher === 'string' ? selectedBatch.teacher : 'Not Assigned')}
@@ -1891,7 +1979,7 @@ export default function ModuleDetailScreen() {
                       onPress={() => setMentorFilterStatus(st)}
                       style={{
                         paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16,
-                        backgroundColor: mentorFilterStatus === st ? '#3182CE' : (isDark ? '#2D3748' : '#E2E8F0')
+                        backgroundColor: mentorFilterStatus === st ? '#FFB800' : (isDark ? '#2D3748' : '#E2E8F0')
                       }}
                     >
                       <Text style={{ fontSize: 12, fontWeight: 'bold', color: mentorFilterStatus === st ? '#FFF' : (isDark ? '#A0AEC0' : '#4A5568') }}>
@@ -1915,17 +2003,6 @@ export default function ModuleDetailScreen() {
                   </Text>
                   <FontAwesome5 name="chevron-down" size={12} color={isDark ? "#A0AEC0" : "#4A5568"} />
                 </TouchableOpacity>
-
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10, alignItems: 'center', backgroundColor: 'transparent' }}>
-                  <TouchableOpacity onPress={handleExportCSV} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? '#2D3748' : '#EDF2F7', borderWidth: 1, borderColor: isDark ? '#4A5568' : '#CBD5E0', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, gap: 8 }}>
-                     <FontAwesome5 name="file-csv" size={14} color={isDark ? "#CBD5E0" : "#4A5568"} />
-                     <Text style={{ color: isDark ? '#CBD5E0' : '#4A5568', fontWeight: 'bold', fontSize: 13 }}>Export CSV</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={handleAddStudent} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#48BB78', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, gap: 8 }}>
-                     <FontAwesome5 name="user-plus" size={14} color="#fff" />
-                     <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 13 }}>Add Student</Text>
-                  </TouchableOpacity>
-                </View>
 
                 {mentorStudents
                   .filter(s => {
@@ -2010,11 +2087,11 @@ export default function ModuleDetailScreen() {
                     return wName.toLowerCase().includes(mentorSearch.toLowerCase()) || cName.toLowerCase().includes(mentorSearch.toLowerCase());
                   })
                   .map((w, idx) => (
-                    <View key={idx} style={[styles.batchCard, { borderColor: '#BEE3F8', borderWidth: 2 }]}>
+                    <View key={idx} style={[styles.batchCard, { borderColor: '#FDE68A', borderWidth: 2 }]}>
                       <View style={styles.batchCardHeader}>
                         <Text style={styles.batchName} numberOfLines={1}>{w.name || w.batch_name}</Text>
-                        <View style={[styles.batchBadge, { backgroundColor: '#EBF8FF' }]}>
-                          <Text style={[styles.batchBadgeText, { color: '#3182CE' }]}>{w.status || 'WISE SYNCED'}</Text>
+                        <View style={[styles.batchBadge, { backgroundColor: '#FEF3C7' }]}>
+                          <Text style={[styles.batchBadgeText, { color: '#FFB800' }]}>{w.status || 'WISE SYNCED'}</Text>
                         </View>
                       </View>
                       <View style={styles.batchCardBody}>
@@ -2027,7 +2104,7 @@ export default function ModuleDetailScreen() {
                             flexDirection: 'row',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            backgroundColor: '#3182CE',
+                            backgroundColor: '#FFB800',
                             paddingVertical: 10,
                             borderRadius: 10,
                             marginTop: 12,
@@ -2103,7 +2180,7 @@ export default function ModuleDetailScreen() {
                 <View style={styles.overviewStatsGrid}>
                   <View style={styles.overviewStatCard}>
                     <Text style={styles.overviewStatTitle}>TOTAL STUDENTS</Text>
-                    <Text style={[styles.overviewStatNumber, { color: '#3182CE' }]}>{academicStats?.students ?? academicStudents.length}</Text>
+                    <Text style={[styles.overviewStatNumber, { color: '#FFB800' }]}>{academicStats?.students ?? academicStudents.length}</Text>
                   </View>
                   <View style={styles.overviewStatCard}>
                     <Text style={styles.overviewStatTitle}>ACTIVE BATCHES</Text>
@@ -2172,8 +2249,8 @@ export default function ModuleDetailScreen() {
                               ? `${b.teacher_details.first_name || ''} ${b.teacher_details.last_name || ''}`.trim() || b.teacher_details.username
                               : (typeof b.teacher === 'string' ? b.teacher : 'Not Assigned')}
                           </Text></Text>
-                          <TouchableOpacity onPress={() => handleAssignTeacher(b)} style={{ marginTop: 8, alignSelf: 'flex-start', paddingVertical: 4, paddingHorizontal: 8, backgroundColor: '#EBF8FF', borderRadius: 4 }}>
-                            <Text style={{ fontSize: 11, color: '#3182CE', fontWeight: 'bold' }}>+ Assign Teacher</Text>
+                          <TouchableOpacity onPress={() => handleAssignTeacher(b)} style={{ marginTop: 8, alignSelf: 'flex-start', paddingVertical: 4, paddingHorizontal: 8, backgroundColor: '#FEF3C7', borderRadius: 4 }}>
+                            <Text style={{ fontSize: 11, color: '#FFB800', fontWeight: 'bold' }}>+ Assign Teacher</Text>
                           </TouchableOpacity>
                         </View>
                       </View>
@@ -2200,8 +2277,8 @@ export default function ModuleDetailScreen() {
                             <Text style={styles.itemName}>{tName}</Text>
                             <Text style={styles.itemDesc}>{t.role || t.designation || 'Faculty'} • {t.email || t.department || 'Academics'}</Text>
                           </View>
-                          <View style={[styles.badge, { backgroundColor: '#EBF8FF' }]}>
-                            <Text style={[styles.badgeText, { color: '#3182CE' }]}>{t.status || (t.is_active ? 'ACTIVE' : 'INACTIVE')}</Text>
+                          <View style={[styles.badge, { backgroundColor: '#FEF3C7' }]}>
+                            <Text style={[styles.badgeText, { color: '#FFB800' }]}>{t.status || (t.is_active ? 'ACTIVE' : 'INACTIVE')}</Text>
                           </View>
                         </View>
                       );
@@ -2251,8 +2328,8 @@ export default function ModuleDetailScreen() {
                       <View key={idx} style={styles.batchCard}>
                         <View style={styles.batchCardHeader}>
                           <Text style={styles.batchName} numberOfLines={1}>{w.name || w.batch_name}</Text>
-                          <View style={[styles.batchBadge, { backgroundColor: '#EBF8FF' }]}>
-                            <Text style={[styles.batchBadgeText, { color: '#3182CE' }]}>{w.status || 'SYNCED'}</Text>
+                          <View style={[styles.batchBadge, { backgroundColor: '#FEF3C7' }]}>
+                            <Text style={[styles.batchBadgeText, { color: '#FFB800' }]}>{w.status || 'SYNCED'}</Text>
                           </View>
                         </View>
                         <View style={styles.batchCardBody}>
@@ -2386,7 +2463,7 @@ export default function ModuleDetailScreen() {
                       </View>
                       <View style={styles.coordActionsBar}>
                         <TouchableOpacity style={styles.coordActionButton} onPress={() => Alert.alert('Link Copied', `Admission link for ${s.first_name} copied to clipboard.`)}>
-                          <FontAwesome5 name="link" size={12} color="#3182CE" />
+                          <FontAwesome5 name="link" size={12} color="#FFB800" />
                           <Text style={styles.coordActionText}>COPY LINK</Text>
                         </TouchableOpacity>
                         <TouchableOpacity style={[styles.coordActionButton, { backgroundColor: '#C6F6D5', borderColor: '#9AE6B4' }]} onPress={() => handleCoordEnterData(s)}>
@@ -2417,7 +2494,7 @@ export default function ModuleDetailScreen() {
               </>
             ) : (
               <View style={{ padding: 40, alignItems: 'center', justifyContent: 'center' }}>
-                <ActivityIndicator size="large" color="#3182CE" />
+                <ActivityIndicator size="large" color="#FFB800" />
                 <Text style={{ marginTop: 12, color: '#718096', fontWeight: 'bold' }}>Opening Web Portal...</Text>
               </View>
             )}
@@ -2443,7 +2520,7 @@ export default function ModuleDetailScreen() {
                         <Text style={styles.teacherBatchSub}>{b.course || b.name}</Text>
                       </View>
                       <View style={styles.teacherBookIcon}>
-                        <FontAwesome5 name="book-open" size={16} color="#3182CE" />
+                        <FontAwesome5 name="book-open" size={16} color="#FFB800" />
                       </View>
                     </View>
 
@@ -2470,7 +2547,7 @@ export default function ModuleDetailScreen() {
 
                     <TouchableOpacity style={styles.manageBatchBtn} onPress={() => handleTeacherManageBatch(b.name || b.batch_name)}>
                       <Text style={styles.manageBatchText}>Manage Batch</Text>
-                      <FontAwesome5 name="chevron-right" size={12} color="#3182CE" />
+                      <FontAwesome5 name="chevron-right" size={12} color="#FFB800" />
                     </TouchableOpacity>
                   </View>
                 ))}
@@ -2526,7 +2603,7 @@ export default function ModuleDetailScreen() {
                   </TouchableOpacity>
                 </View>
                 <TouchableOpacity style={styles.addFieldBtn} onPress={() => Alert.prompt('Add Custom Field', 'Enter field title (e.g. Previous Dance Experience):')}>
-                  <FontAwesome5 name="plus" size={12} color="#3182CE" />
+                  <FontAwesome5 name="plus" size={12} color="#FFB800" />
                   <Text style={styles.addFieldText}>Add Field</Text>
                 </TouchableOpacity>
               </View>
@@ -2536,7 +2613,7 @@ export default function ModuleDetailScreen() {
                 <Text style={styles.emptyFieldsTitle}>No custom fields found</Text>
                 <Text style={styles.emptyFieldsSub}>DIRECTLY MANAGING FIELDS FOR PROGRAM</Text>
                 <TouchableOpacity style={styles.refreshFieldsBtn} onPress={() => Alert.alert('Refreshed', 'Form fields synced with production schema.')}>
-                  <FontAwesome5 name="sync" size={12} color="#3182CE" />
+                  <FontAwesome5 name="sync" size={12} color="#FFB800" />
                   <Text style={styles.refreshFieldsText}>Tap to Refresh</Text>
                 </TouchableOpacity>
               </View>
@@ -2582,7 +2659,7 @@ export default function ModuleDetailScreen() {
             <View style={styles.analyticsStatsGrid}>
               <View style={styles.analyticsStatCard}>
                 <View style={styles.analyticsStatHeader}>
-                  <View style={[styles.analyticsIconBg, { backgroundColor: '#EBF8FF' }]}><FontAwesome5 name="user-graduate" size={16} color="#3182CE" /></View>
+                  <View style={[styles.analyticsIconBg, { backgroundColor: '#FEF3C7' }]}><FontAwesome5 name="user-graduate" size={16} color="#FFB800" /></View>
                 </View>
                 <Text style={styles.analyticsStatLabel}>TOTAL STUDENTS</Text>
                 <Text style={styles.analyticsStatNum}>{analyticsData?.students_count ?? '...'}</Text>
@@ -2598,7 +2675,7 @@ export default function ModuleDetailScreen() {
 
               <View style={styles.analyticsStatCard}>
                 <View style={styles.analyticsStatHeader}>
-                  <View style={[styles.analyticsIconBg, { backgroundColor: '#EBF8FF' }]}><FontAwesome5 name="layer-group" size={16} color="#3182CE" /></View>
+                  <View style={[styles.analyticsIconBg, { backgroundColor: '#FEF3C7' }]}><FontAwesome5 name="layer-group" size={16} color="#FFB800" /></View>
                 </View>
                 <Text style={styles.analyticsStatLabel}>LIVE BATCHES</Text>
                 <Text style={styles.analyticsStatNum}>{analyticsData?.batches_count ?? '...'}</Text>
@@ -2655,7 +2732,7 @@ export default function ModuleDetailScreen() {
                 <View style={styles.utilizationCard}>
                   <View style={styles.utilHeader}>
                     <View style={{ flex: 1 }}><Text style={styles.utilTitle}>Batch Utilization</Text><Text style={styles.utilSub}>Student capacity and engagement by batch</Text></View>
-                    <FontAwesome5 name="chart-line" size={18} color="#3182CE" />
+                    <FontAwesome5 name="chart-line" size={18} color="#FFB800" />
                   </View>
                   <View style={styles.tableHeader}>
                     <Text style={[styles.tableCol, { flex: 1.5 }]}>BATCH NAME</Text><Text style={[styles.tableCol, { flex: 2 }]}>COURSE</Text><Text style={[styles.tableCol, { flex: 1 }]}>STUDENTS</Text><Text style={[styles.tableCol, { flex: 1.5 }]}>EFFICIENCY</Text>
@@ -2759,8 +2836,8 @@ export default function ModuleDetailScreen() {
                         <Text style={styles.itemName}>{eName}</Text>
                         <Text style={styles.itemDesc}>{e.designation_name || e.designation?.name || e.designation || 'Faculty'} • {e.department_name || e.department?.name || e.department || 'Academics'}</Text>
                       </View>
-                      <View style={[styles.badge, { backgroundColor: '#EBF8FF' }]}>
-                        <Text style={[styles.badgeText, { color: '#3182CE' }]}>{e.status || 'ACTIVE'}</Text>
+                      <View style={[styles.badge, { backgroundColor: '#FEF3C7' }]}>
+                        <Text style={[styles.badgeText, { color: '#FFB800' }]}>{e.status || 'ACTIVE'}</Text>
                       </View>
                     </View>
                   );
@@ -2842,14 +2919,15 @@ export default function ModuleDetailScreen() {
                 </TouchableOpacity>
               )}
               <TouchableOpacity 
-                style={[styles.segmentButton, attTab === 'web' && styles.segmentActive]} 
+                style={[styles.segmentButton, attTab === 'web' && styles.segmentActive, { flexDirection: 'row', alignItems: 'center' }]} 
                 onPress={async () => {
                   setAttTab('web');
                   await WebBrowser.openBrowserAsync('https://natyaarts.org/hrms');
                   setAttTab('my');
                 }}
               >
-                <Text style={[styles.segmentText, attTab === 'web' && styles.segmentTextActive]}>🌐 Web</Text>
+                <FontAwesome5 name="globe" size={12} color={attTab === 'web' ? '#FFFFFF' : '#718096'} style={{ marginRight: 6 }} />
+                <Text style={[styles.segmentText, attTab === 'web' && styles.segmentTextActive]}>Web</Text>
               </TouchableOpacity>
             </View>
 
@@ -2966,7 +3044,7 @@ export default function ModuleDetailScreen() {
                   </View>
 
                   <TouchableOpacity 
-                    style={[styles.clockBtn, { backgroundColor: '#3182CE', shadowColor: '#3182CE', marginBottom: 12 }]} 
+                    style={[styles.clockBtn, { backgroundColor: '#FFB800', shadowColor: '#FFB800', marginBottom: 12 }]} 
                     onPress={async () => {
                       setLoading(true);
                       try {
@@ -2979,7 +3057,7 @@ export default function ModuleDetailScreen() {
                         const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
                         setOfficeLat(String(loc.coords.latitude));
                         setOfficeLon(String(loc.coords.longitude));
-                        Alert.alert('Success ✅', 'Coordinates set to your current mobile position!');
+                        Alert.alert('Success', 'Coordinates set to your current mobile position!');
                       } catch (err: any) {
                         Alert.alert('Error', err.message || 'Could not fetch GPS location.');
                       } finally {
@@ -2987,7 +3065,10 @@ export default function ModuleDetailScreen() {
                       }
                     }}
                   >
-                    <Text style={styles.clockBtnText}>📍 Use Current GPS Coordinates</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+                      <FontAwesome5 name="map-marker-alt" size={16} color="#FFFFFF" style={{ marginRight: 10 }} />
+                      <Text style={styles.clockBtnText}>Use Current GPS Coordinates</Text>
+                    </View>
                   </TouchableOpacity>
 
                   <TouchableOpacity 
@@ -3016,7 +3097,7 @@ export default function ModuleDetailScreen() {
                           await client.post('/hrms/shifts/', payload);
                         }
 
-                        Alert.alert('Configuration Saved ✅', 'Shift settings and geofence parameters updated successfully.');
+                        Alert.alert('Configuration Saved', 'Shift settings and geofence parameters updated successfully.');
                         fetchProductionData();
                       } catch (err: any) {
                         Alert.alert('Save Failed', err.response?.data ? JSON.stringify(err.response.data) : 'Failed to update shift settings.');
@@ -3135,10 +3216,12 @@ export default function ModuleDetailScreen() {
             <View style={styles.masterSheetCard}>
               <View style={[styles.masterHeaderBar, { flexDirection: 'column', alignItems: 'stretch', gap: 12 }]}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Text style={styles.masterTitle}>Historical Payslips</Text>
-                  <TouchableOpacity style={styles.iconBtn} onPress={() => Alert.alert('Settings', 'Payroll engine configuration settings.')}>
-                    <FontAwesome5 name="cog" size={14} color="#718096" />
-                  </TouchableOpacity>
+                  <Text style={styles.masterTitle}>{isAdmin ? 'Historical Payslips' : 'My Payslips'}</Text>
+                  {isAdmin && (
+                    <TouchableOpacity style={styles.iconBtn} onPress={() => Alert.alert('Settings', 'Payroll engine configuration settings.')}>
+                      <FontAwesome5 name="cog" size={14} color="#718096" />
+                    </TouchableOpacity>
+                  )}
                 </View>
                 <View style={[styles.searchBar, { marginBottom: 0 }]}>
                   <FontAwesome5 name="search" size={14} color="#A0AEC0" />
@@ -3147,7 +3230,13 @@ export default function ModuleDetailScreen() {
               </View>
 
               <View style={styles.tableHeader}>
-                <Text style={[styles.tableCol, { flex: 2 }]}>EMPLOYEE</Text><Text style={[styles.tableCol, { flex: 1.5 }]}>PERIOD</Text><Text style={[styles.tableCol, { flex: 1.2 }]}>PAID DAYS</Text><Text style={[styles.tableCol, { flex: 1 }]}>LOP</Text><Text style={[styles.tableCol, { flex: 1.5 }]}>NET SALARY</Text><Text style={[styles.tableCol, { flex: 1.2 }]}>STATUS</Text><Text style={[styles.tableCol, { flex: 1.2 }]}>ACTIONS</Text>
+                {isAdmin && <Text style={[styles.tableCol, { flex: 2 }]}>EMPLOYEE</Text>}
+                <Text style={[styles.tableCol, { flex: 1.5 }]}>PERIOD</Text>
+                <Text style={[styles.tableCol, { flex: 1.2 }]}>PAID DAYS</Text>
+                <Text style={[styles.tableCol, { flex: 1 }]}>LOP</Text>
+                <Text style={[styles.tableCol, { flex: 1.5 }]}>NET SALARY</Text>
+                <Text style={[styles.tableCol, { flex: 1.2 }]}>STATUS</Text>
+                {isAdmin && <Text style={[styles.tableCol, { flex: 1.2 }]}>ACTIONS</Text>}
               </View>
 
               {payslips.length > 0 ? (
@@ -3162,29 +3251,33 @@ export default function ModuleDetailScreen() {
                   })
                   .map((slip: any, idx: number) => (
                     <View key={slip.id || idx} style={styles.tableRow}>
-                      <Text style={[styles.tableCellBold, { flex: 2 }]} numberOfLines={1}>
-                        {slip.employee?.user?.first_name || slip.employee?.user?.username || 'Employee'}
-                      </Text>
+                      {isAdmin && (
+                        <Text style={[styles.tableCellBold, { flex: 2 }]} numberOfLines={1}>
+                          {slip.employee?.user?.first_name || slip.employee?.user?.username || 'Employee'}
+                        </Text>
+                      )}
                       <Text style={[styles.tableCellSub, { flex: 1.5 }]}>{slip.period_month || '—'}/{slip.period_year || '—'}</Text>
                       <Text style={[styles.tableCellSub, { flex: 1.2 }]}>{slip.paid_days ?? '—'}</Text>
                       <Text style={[styles.tableCellSub, { flex: 1 }]}>{slip.lop_days ?? '0'}</Text>
                       <Text style={[styles.tableCellBold, { flex: 1.5, color: '#38A169' }]}>₹{slip.net_salary ? Math.round(parseFloat(slip.net_salary)).toLocaleString('en-IN') : '0'}</Text>
                       <View style={[styles.tableCellBadge, { flex: 1.2 }]}>
-                        <Text style={[styles.badgeValText, { backgroundColor: slip.status === 'PAID' ? '#C6F6D5' : '#EBF8FF', color: slip.status === 'PAID' ? '#22543D' : '#3182CE', fontSize: 10 }]}>
+                        <Text style={[styles.badgeValText, { backgroundColor: slip.status === 'PAID' ? '#C6F6D5' : '#FEF3C7', color: slip.status === 'PAID' ? '#22543D' : '#FFB800', fontSize: 10 }]}>
                           {slip.status || 'GENERATED'}
                         </Text>
                       </View>
-                      <TouchableOpacity
-                        style={{ flex: 1.2, alignItems: 'center' }}
-                        onPress={() => Alert.alert('Payslip Details', `Employee: ${slip.employee?.user?.first_name || 'Staff'}\nPeriod: ${slip.period_month}/${slip.period_year}\nNet Salary: ₹${Math.round(parseFloat(slip.net_salary || 0)).toLocaleString('en-IN')}`)}
-                      >
-                        <Text style={{ fontSize: 11, color: '#3182CE', fontWeight: '800' }}>View</Text>
-                      </TouchableOpacity>
+                      {isAdmin && (
+                        <TouchableOpacity
+                          style={{ flex: 1.2, alignItems: 'center' }}
+                          onPress={() => Alert.alert('Payslip Details', `Employee: ${slip.employee?.user?.first_name || 'Staff'}\nPeriod: ${slip.period_month}/${slip.period_year}\nNet Salary: ₹${Math.round(parseFloat(slip.net_salary || 0)).toLocaleString('en-IN')}`)}
+                        >
+                          <Text style={{ fontSize: 11, color: '#FFB800', fontWeight: '800' }}>View</Text>
+                        </TouchableOpacity>
+                      )}
                     </View>
                   ))
               ) : (
                 <View style={styles.emptyStateBox}>
-                  <Text style={styles.emptyStateText}>No payslips generated yet. Tap "Generate Slips" below to create payslips for all active employees.</Text>
+                  <Text style={styles.emptyStateText}>{isAdmin ? 'No payslips generated yet. Tap "Generate Slips" below to create payslips for all active employees.' : 'No payslips found for your account.'}</Text>
                 </View>
               )}
               {isAdmin && (
@@ -3238,129 +3331,653 @@ export default function ModuleDetailScreen() {
                     setLeaveTab('my');
                   }}
                 >
-                  <Text style={[styles.segmentText, leaveTab === 'web' && styles.segmentTextActive]}>🌐 Web</Text>
+                  <Text style={[styles.segmentText, leaveTab === 'web' && styles.segmentTextActive]}>Web</Text>
                 </TouchableOpacity>
               </View>
             </ScrollView>
 
             {/* Leave Apply Form */}
             {leaveApplying && (
-              <View style={styles.coordEditCard}>
+              <View style={[styles.coordEditCard, { borderColor: '#FFB800', shadowColor: '#FFB800', backgroundColor: '#FFFDF9', borderWidth: 1.5, borderRadius: 20 }]}>
                 <View style={styles.coordEditHeader}>
-                  <Text style={styles.coordEditTitle}>APPLY FOR LEAVE</Text>
-                  <TouchableOpacity onPress={() => setLeaveApplying(false)}>
-                    <FontAwesome5 name="times" size={16} color="#A0AEC0" />
+                  <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'transparent' }}>
+                    <FontAwesome5 name="paper-plane" size={16} color="#111827" style={{ marginRight: 8 }} />
+                    <Text style={[styles.coordEditTitle, { color: '#111827', fontSize: 18, fontWeight: '800' }]}>Apply for Leave</Text>
+                  </View>
+                  <TouchableOpacity onPress={() => setLeaveApplying(false)} style={{ padding: 4 }}>
+                    <FontAwesome5 name="times" size={18} color="#111827" />
                   </TouchableOpacity>
                 </View>
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Leave Type</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
-                    {['CASUAL', 'SICK', 'EARNED', 'MATERNITY', 'PATERNITY'].map((type) => {
-                      const isSelected = newLeave.leave_type === type;
-                      return (
-                        <TouchableOpacity key={type} style={[styles.brandPill, isSelected && styles.brandPillActive, { marginRight: 8, paddingVertical: 8, paddingHorizontal: 12 }]} onPress={() => setNewLeave({ ...newLeave, leave_type: type })}>
-                          <Text style={[styles.brandPillText, isSelected && styles.brandPillTextActive, { fontSize: 12 }]}>{type}</Text>
+                <View style={styles.coordEditForm}>
+                  <View style={styles.inputGroup}>
+                    <Text style={[styles.label, { color: '#111827', fontWeight: '700', marginBottom: 8 }]}>Leave Type *</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+                      {(leaveTypes.length > 0 ? leaveTypes : [
+                        { id: 1, name: 'Casual Leave' },
+                        { id: 2, name: 'Sick Leave' },
+                        { id: 3, name: 'Earned Leave' }
+                      ]).map((typeObj: any) => {
+                        const isSelected = newLeave.leave_type === typeObj.id;
+                        return (
+                          <TouchableOpacity 
+                            key={typeObj.id} 
+                            style={[
+                              styles.brandPill, 
+                              {
+                                backgroundColor: isSelected ? '#FFB800' : '#FFFFFF', 
+                                borderColor: isSelected ? '#FFB800' : '#E2E8F0',
+                                borderWidth: 1,
+                                paddingVertical: 8,
+                                paddingHorizontal: 14,
+                                borderRadius: 12,
+                                marginRight: 8,
+                                shadowColor: isSelected ? '#FFB800' : '#000',
+                                shadowOffset: { width: 0, height: 2 },
+                                shadowOpacity: isSelected ? 0.35 : 0.05,
+                                shadowRadius: 3,
+                                elevation: isSelected ? 3 : 1
+                              }
+                            ]} 
+                            onPress={() => setNewLeave({ ...newLeave, leave_type: typeObj.id })}
+                          >
+                            <Text style={{ color: isSelected ? '#111827' : '#4A5568', fontSize: 12, fontWeight: isSelected ? '800' : '600' }}>
+                              {typeObj.name}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={[styles.label, { color: '#111827', fontWeight: '700' }]}>Start Date *</Text>
+                    {Platform.OS === 'web' ? (
+                      <TextInput 
+                        style={[styles.formInput, { borderColor: '#FFB800', backgroundColor: '#FFFFFF', color: '#1A202C' }]} 
+                        placeholder="YYYY-MM-DD" 
+                        placeholderTextColor="#A0AEC0" 
+                        value={newLeave.start_date} 
+                        onChangeText={(t) => setNewLeave({ ...newLeave, start_date: t })} 
+                      />
+                    ) : (
+                      <>
+                        <TouchableOpacity 
+                          style={[styles.formInput, { borderColor: '#FFB800', backgroundColor: '#FFFFFF', justifyContent: 'center', height: 48 }]} 
+                          onPress={() => setShowStartPicker(true)}
+                        >
+                          <Text style={{ color: newLeave.start_date ? '#1A202C' : '#CBD5E0', fontSize: 14, fontWeight: '600' }}>
+                            {newLeave.start_date ? newLeave.start_date : 'Select Start Date'}
+                          </Text>
                         </TouchableOpacity>
-                      );
-                    })}
-                  </ScrollView>
+                        {showStartPicker && (
+                          <DateTimePicker
+                            value={newLeave.start_date ? new Date(newLeave.start_date) : new Date()}
+                            mode="date"
+                            display="default"
+                            onChange={(event, selectedDate) => {
+                              setShowStartPicker(false);
+                              if (selectedDate) {
+                                const yyyy = selectedDate.getFullYear();
+                                const mm = String(selectedDate.getMonth() + 1).padStart(2, '0');
+                                const dd = String(selectedDate.getDate()).padStart(2, '0');
+                                setNewLeave({ ...newLeave, start_date: `${yyyy}-${mm}-${dd}` });
+                              }
+                            }}
+                          />
+                        )}
+                      </>
+                    )}
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={[styles.label, { color: '#111827', fontWeight: '700' }]}>End Date *</Text>
+                    {Platform.OS === 'web' ? (
+                      <TextInput 
+                        style={[styles.formInput, { borderColor: '#FFB800', backgroundColor: '#FFFFFF', color: '#1A202C' }]} 
+                        placeholder="YYYY-MM-DD" 
+                        placeholderTextColor="#A0AEC0" 
+                        value={newLeave.end_date} 
+                        onChangeText={(t) => setNewLeave({ ...newLeave, end_date: t })} 
+                      />
+                    ) : (
+                      <>
+                        <TouchableOpacity 
+                          style={[styles.formInput, { borderColor: '#FFB800', backgroundColor: '#FFFFFF', justifyContent: 'center', height: 48 }]} 
+                          onPress={() => setShowEndPicker(true)}
+                        >
+                          <Text style={{ color: newLeave.end_date ? '#1A202C' : '#CBD5E0', fontSize: 14, fontWeight: '600' }}>
+                            {newLeave.end_date ? newLeave.end_date : 'Select End Date'}
+                          </Text>
+                        </TouchableOpacity>
+                        {showEndPicker && (
+                          <DateTimePicker
+                            value={newLeave.end_date ? new Date(newLeave.end_date) : new Date()}
+                            mode="date"
+                            display="default"
+                            onChange={(event, selectedDate) => {
+                              setShowEndPicker(false);
+                              if (selectedDate) {
+                                const yyyy = selectedDate.getFullYear();
+                                const mm = String(selectedDate.getMonth() + 1).padStart(2, '0');
+                                const dd = String(selectedDate.getDate()).padStart(2, '0');
+                                setNewLeave({ ...newLeave, end_date: `${yyyy}-${mm}-${dd}` });
+                              }
+                            }}
+                          />
+                        )}
+                      </>
+                    )}
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={[styles.label, { color: '#111827', fontWeight: '700' }]}>Reason *</Text>
+                    <TextInput 
+                      style={[styles.formInput, { borderColor: '#FFB800', backgroundColor: '#FFFFFF', color: '#1A202C' }]} 
+                      placeholder="Enter reason for leave..." 
+                      placeholderTextColor="#CBD5E0" 
+                      value={newLeave.reason} 
+                      onChangeText={(t) => setNewLeave({ ...newLeave, reason: t })} 
+                    />
+                  </View>
+
+                  <TouchableOpacity style={[styles.coordSaveButton, { backgroundColor: '#FFB800', shadowColor: '#FFB800', height: 50, borderRadius: 14 }]} onPress={submitLeaveRequest}>
+                    <Text style={[styles.coordSaveText, { color: '#111827', fontWeight: '800', fontSize: 15 }]}>Submit Leave Request</Text>
+                  </TouchableOpacity>
                 </View>
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Start Date * (YYYY-MM-DD)</Text>
-                  <TextInput style={styles.formInput} placeholder="YYYY-MM-DD" placeholderTextColor="#A0AEC0" value={newLeave.start_date} onChangeText={(t) => setNewLeave({ ...newLeave, start_date: t })} />
-                </View>
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>End Date * (YYYY-MM-DD)</Text>
-                  <TextInput style={styles.formInput} placeholder="YYYY-MM-DD" placeholderTextColor="#A0AEC0" value={newLeave.end_date} onChangeText={(t) => setNewLeave({ ...newLeave, end_date: t })} />
-                </View>
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Reason *</Text>
-                  <TextInput style={styles.formInput} placeholder="Enter reason for leave..." placeholderTextColor="#A0AEC0" value={newLeave.reason} onChangeText={(t) => setNewLeave({ ...newLeave, reason: t })} />
-                </View>
-                <TouchableOpacity style={styles.coordSaveButton} onPress={submitLeaveRequest}>
-                  <FontAwesome5 name="paper-plane" size={14} color="#FFFFFF" />
-                  <Text style={styles.coordSaveText}>Submit Leave Request</Text>
-                </TouchableOpacity>
               </View>
             )}
 
-            {/* Leave Requests Table */}
-            <View style={styles.masterSheetCard}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, backgroundColor: 'transparent' }}>
-                <Text style={styles.masterTitle}>Leave Requests</Text>
-                <TouchableOpacity style={styles.addCategoryBtn} onPress={handleApplyLeave}>
-                  <FontAwesome5 name="plus" size={12} color="#FFFFFF" />
-                  <Text style={styles.addCategoryText}>Apply Leave</Text>
-                </TouchableOpacity>
-              </View>
-              <View style={styles.tableHeader}>
-                <Text style={[styles.tableCol, { flex: 2 }]}>EMPLOYEE</Text>
-                <Text style={[styles.tableCol, { flex: 1.5 }]}>DATES</Text>
-                <Text style={[styles.tableCol, { flex: 1.5 }]}>TYPE</Text>
-                <Text style={[styles.tableCol, { flex: 1 }]}>DAYS</Text>
-                <Text style={[styles.tableCol, { flex: 1.5 }]}>STATUS</Text>
-                <Text style={[styles.tableCol, { flex: 2 }]}>ACTIONS</Text>
-              </View>
-              {leaveRequests.length > 0 ? leaveRequests
-                .filter((req: any) => {
-                  if (leaveTab === 'my') {
-                    return req.employee?.user?.username === user?.username || req.user_id === user?.id;
+            {/* Standard Leave Requests List (for My, Team, HR Approvals) */}
+            {(leaveTab === 'my' || leaveTab === 'team' || leaveTab === 'admin') && (
+              <View style={[styles.masterSheetCard, { borderWidth: 0, backgroundColor: 'transparent', paddingHorizontal: 0, shadowColor: 'transparent', elevation: 0, marginBottom: 10 }]}>
+                {/* Header title */}
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, backgroundColor: 'transparent', paddingHorizontal: 4 }}>
+                  <Text style={[styles.masterTitle, { color: '#111827' }]}>Leave Requests</Text>
+                  <TouchableOpacity style={[styles.addCategoryBtn, { backgroundColor: '#FFB800' }]} onPress={handleApplyLeave}>
+                    <FontAwesome5 name="plus" size={12} color="#111827" />
+                    <Text style={[styles.addCategoryText, { color: '#111827', fontWeight: '800' }]}>Apply Leave</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Filter and map requests */}
+                {(() => {
+                  const filteredReqs = leaveRequests.filter((req: any) => {
+                    if (leaveTab === 'my') {
+                      return req.employee?.user?.username === user?.username || req.user_id === user?.id;
+                    }
+                    if (leaveTab === 'team') {
+                      return req.status === 'PENDING_MANAGER' && req.employee?.user?.username !== user?.username;
+                    }
+                    if (leaveTab === 'admin') {
+                      return req.status === 'PENDING_HR';
+                    }
+                    return true;
+                  });
+
+                  if (filteredReqs.length === 0) {
+                    return (
+                      <View style={[styles.emptyStateBox, { backgroundColor: '#FFFFFF', borderRadius: 20, padding: 24, borderWidth: 1, borderColor: '#E2E8F0' }]}>
+                        <Text style={[styles.emptyStateText, { color: '#718096' }]}>No leave requests found. Tap "Apply Leave" to create one.</Text>
+                      </View>
+                    );
                   }
-                  if (leaveTab === 'team') {
-                    return req.status === 'PENDING_MANAGER' && req.employee?.user?.username !== user?.username;
-                  }
-                  if (leaveTab === 'admin') {
-                    return req.status === 'PENDING_HR';
-                  }
-                  return true;
-                })
-                .map((req: any, idx: number) => {
-                const start = new Date(req.start_date);
-                const end = new Date(req.end_date);
-                const days = Math.max(1, Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1);
-                return (
-                  <View key={req.id || idx} style={[styles.tableRow, { borderBottomWidth: 1, borderBottomColor: '#EDF2F7', paddingVertical: 12 }]}>
-                    <Text style={[styles.tableCellBold, { flex: 2 }]} numberOfLines={1}>
-                      {req.employee?.user?.first_name || req.employee?.user?.username || 'Employee'}
-                    </Text>
-                    <Text style={[styles.tableCellSub, { flex: 1.5, fontSize: 11 }]}>{req.start_date?.slice(5) || '—'} - {req.end_date?.slice(5) || '—'}</Text>
-                    <Text style={[styles.tableCellSub, { flex: 1.5, fontSize: 11 }]}>{req.leave_type || '—'}</Text>
-                    <Text style={[styles.tableCellBold, { flex: 1, textAlign: 'center' }]}>{days}</Text>
-                    <View style={[styles.tableCellBadge, { flex: 1.5 }]}>
-                      <Text style={[styles.badgeValText, {
-                        backgroundColor: req.status === 'APPROVED' ? '#C6F6D5' : req.status === 'REJECTED' ? '#FFF5F5' : req.status === 'PENDING_HR' ? '#BEE3F8' : '#FEEBC8',
-                        color: req.status === 'APPROVED' ? '#22543D' : req.status === 'REJECTED' ? '#E53E3E' : req.status === 'PENDING_HR' ? '#3182CE' : '#DD6B20',
-                        fontSize: 10
-                      }]}>{req.status}</Text>
-                    </View>
-                    {(req.status === 'PENDING_MANAGER' && leaveTab === 'team') || (req.status === 'PENDING_HR' && leaveTab === 'admin') ? (
-                        <View style={{ flex: 2, flexDirection: 'row', gap: 6, backgroundColor: 'transparent' }}>
-                          <TouchableOpacity
-                            style={{ flex: 1, backgroundColor: '#C6F6D5', borderRadius: 8, alignItems: 'center', paddingVertical: 6 }}
-                            onPress={() => handleLeaveAction(req.id, 'approve')}
-                          >
-                            <Text style={{ color: '#22543D', fontSize: 11, fontWeight: '900' }}>✓ OK</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={{ flex: 1, backgroundColor: '#FFF5F5', borderRadius: 8, alignItems: 'center', paddingVertical: 6 }}
-                            onPress={() => handleLeaveAction(req.id, 'reject')}
-                          >
-                            <Text style={{ color: '#E53E3E', fontSize: 11, fontWeight: '900' }}>✗ No</Text>
-                          </TouchableOpacity>
+
+                  return filteredReqs.map((req: any, idx: number) => {
+                    const start = new Date(req.start_date);
+                    const end = new Date(req.end_date);
+                    const days = Math.max(1, Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+                    
+                    // Format dates beautifully
+                    const formatDate = (dateStr: string) => {
+                      if (!dateStr) return '—';
+                      const d = new Date(dateStr);
+                      return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+                    };
+
+                    const statusLabels: Record<string, { bg: string, text: string, label: string }> = {
+                      'APPROVED': { bg: '#DEF7EC', text: '#03543F', label: 'Approved' },
+                      'REJECTED': { bg: '#FDE8E8', text: '#9B1C1C', label: 'Rejected' },
+                      'PENDING_HR': { bg: '#EBF5FF', text: '#1E429F', label: 'Pending HR' },
+                      'PENDING_MANAGER': { bg: '#FEF3C7', text: '#92400E', label: 'Pending Manager' },
+                      'CANCELLED': { bg: '#F3F4F6', text: '#374151', label: 'Cancelled' }
+                    };
+                    const statusInfo = statusLabels[req.status] || { bg: '#F3F4F6', text: '#374151', label: req.status };
+
+                    return (
+                      <View 
+                        key={req.id || idx} 
+                        style={{
+                          backgroundColor: '#FFFFFF',
+                          borderRadius: 20,
+                          padding: 16,
+                          marginBottom: 14,
+                          borderWidth: 1,
+                          borderColor: '#E2E8F0',
+                          shadowColor: '#000',
+                          shadowOffset: { width: 0, height: 2 },
+                          shadowOpacity: 0.03,
+                          shadowRadius: 6,
+                          elevation: 2
+                        }}
+                      >
+                        {/* Top Row: Type and Status Badge */}
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, backgroundColor: 'transparent' }}>
+                          <View style={{ backgroundColor: 'rgba(255, 184, 0, 0.15)', paddingVertical: 4, paddingHorizontal: 10, borderRadius: 12 }}>
+                            <Text style={{ fontSize: 11, color: '#92400E', fontWeight: '800' }}>
+                              {req.leave_type_name || req.leave_type || 'Leave'}
+                            </Text>
+                          </View>
+                          <View style={{ backgroundColor: statusInfo.bg, paddingVertical: 4, paddingHorizontal: 10, borderRadius: 12 }}>
+                            <Text style={{ fontSize: 10, color: statusInfo.text, fontWeight: '800', textTransform: 'uppercase' }}>
+                              {statusInfo.label}
+                            </Text>
+                          </View>
                         </View>
-                    ) : (
-                      <Text style={[styles.tableCellSub, { flex: 2, fontSize: 11, fontStyle: String(req.status).includes('PENDING') ? 'italic' : 'normal', color: '#718096' }]}>
-                        {String(req.status).includes('PENDING') ? 'Pending Approval' : 'Reviewed'}
+
+                        {/* Middle Info: Dates and Duration */}
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10, backgroundColor: 'transparent', gap: 6 }}>
+                          <FontAwesome5 name="calendar-alt" size={12} color="#718096" />
+                          <Text style={{ fontSize: 13, fontWeight: '700', color: '#2D3748' }}>
+                            {formatDate(req.start_date)} to {formatDate(req.end_date)}
+                          </Text>
+                          <Text style={{ fontSize: 12, fontWeight: '800', color: '#FFB800', marginLeft: 'auto' }}>
+                            {days} {days === 1 ? 'Day' : 'Days'}
+                          </Text>
+                        </View>
+
+                        {/* Employee Name (if not user's own request) */}
+                        {(leaveTab !== 'my' || req.employee_name) && (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, backgroundColor: 'transparent', gap: 6 }}>
+                            <FontAwesome5 name="user" size={11} color="#718096" />
+                            <Text style={{ fontSize: 12, fontWeight: '800', color: '#4A5568' }}>
+                              Employee: <Text style={{ fontWeight: '500', color: '#1A202C' }}>{req.employee_name || req.employee?.user?.first_name || req.employee?.user?.username || 'Employee'}</Text>
+                            </Text>
+                          </View>
+                        )}
+
+                        {/* Reason */}
+                        {req.reason ? (
+                          <View style={{ backgroundColor: '#F8FAFC', borderRadius: 10, padding: 10, marginTop: 4, borderLeftWidth: 3, borderLeftColor: '#FFB800' }}>
+                            <Text style={{ fontSize: 12, color: '#4A5568', fontStyle: 'italic', lineHeight: 16 }}>
+                              "{req.reason}"
+                            </Text>
+                          </View>
+                        ) : null}
+
+                        {/* Action buttons (Approve / Reject) */}
+                        {((req.status === 'PENDING_MANAGER' && leaveTab === 'team') || (req.status === 'PENDING_HR' && leaveTab === 'admin')) ? (
+                          <View style={{ flexDirection: 'row', gap: 12, marginTop: 14, backgroundColor: 'transparent' }}>
+                            <TouchableOpacity
+                              style={{
+                                flex: 1,
+                                height: 38,
+                                backgroundColor: '#DEF7EC',
+                                borderRadius: 10,
+                                justifyContent: 'center',
+                                alignItems: 'center',
+                                borderWidth: 1,
+                                borderColor: '#31C48D'
+                              }}
+                              onPress={() => handleLeaveAction(req.id, 'approve')}
+                            >
+                              <Text style={{ color: '#03543F', fontSize: 12, fontWeight: '900' }}>Approve</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={{
+                                flex: 1,
+                                height: 38,
+                                backgroundColor: '#FDE8E8',
+                                borderRadius: 10,
+                                justifyContent: 'center',
+                                alignItems: 'center',
+                                borderWidth: 1,
+                                borderColor: '#F8B4B4'
+                              }}
+                              onPress={() => handleLeaveAction(req.id, 'reject')}
+                            >
+                              <Text style={{ color: '#9B1C1C', fontSize: 12, fontWeight: '900' }}>Reject</Text>
+                            </TouchableOpacity>
+                          </View>
+                        ) : (
+                          // Read-only action status
+                          <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: '#F1F5F9', paddingTop: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'transparent' }}>
+                            <Text style={{ fontSize: 11, color: '#94A3B8' }}>
+                              Applied on {req.applied_at ? formatDate(req.applied_at.slice(0, 10)) : 'Today'}
+                            </Text>
+                            <Text style={{ fontSize: 11, fontWeight: '700', color: req.status === 'APPROVED' ? '#31C48D' : '#94A3B8' }}>
+                              {req.status === 'APPROVED' ? 'Reviewed & Active' : 'Status: ' + statusInfo.label}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    );
+                  });
+                })()}
+              </View>
+            )}
+
+            {/* Leave Calendar Timeline View */}
+            {leaveTab === 'calendar' && (() => {
+              const calendarYear = calendarDate.getFullYear();
+              const calendarMonth = calendarDate.getMonth();
+              const monthName = calendarDate.toLocaleString('default', { month: 'long' });
+              
+              const firstDayIndex = new Date(calendarYear, calendarMonth, 1).getDay();
+              const totalDays = new Date(calendarYear, calendarMonth + 1, 0).getDate();
+              
+              const calendarCells: any[] = [];
+              for (let i = 0; i < firstDayIndex; i++) {
+                calendarCells.push({ key: `empty-${i}`, day: null, dateStr: null });
+              }
+              for (let d = 1; d <= totalDays; d++) {
+                const mmStr = String(calendarMonth + 1).padStart(2, '0');
+                const ddStr = String(d).padStart(2, '0');
+                const dateStr = `${calendarYear}-${mmStr}-${ddStr}`;
+                calendarCells.push({ key: `day-${d}`, day: d, dateStr });
+              }
+
+              const isDateOnLeave = (dateStr: string | null) => {
+                if (!dateStr) return false;
+                return leaveRequests.some((r: any) => {
+                  if (r.status !== 'APPROVED') return false;
+                  return dateStr >= r.start_date && dateStr <= r.end_date;
+                });
+              };
+
+              const getHolidayOnDate = (dateStr: string | null) => {
+                if (!dateStr) return null;
+                return holidays.find((h: any) => h.date === dateStr);
+              };
+
+              const leavesForSelectedDate = leaveRequests.filter((r: any) => {
+                if (r.status !== 'APPROVED') return false;
+                return selectedCalendarDate >= r.start_date && selectedCalendarDate <= r.end_date;
+              });
+
+              const dayHoliday = getHolidayOnDate(selectedCalendarDate);
+
+              const handleMonthChange = (newDate: Date) => {
+                setCalendarDate(newDate);
+                const yyyy = newDate.getFullYear();
+                const mm = String(newDate.getMonth() + 1).padStart(2, '0');
+                setSelectedCalendarDate(`${yyyy}-${mm}-01`);
+              };
+
+              return (
+                <View style={styles.masterSheetCard}>
+                  {/* Title & Apply Button */}
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, backgroundColor: 'transparent' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'transparent' }}>
+                      <FontAwesome5 name="calendar-alt" size={16} color="#111827" />
+                      <Text style={[styles.masterTitle, { color: '#111827', marginBottom: 0 }]}>Leave Calendar</Text>
+                    </View>
+                    <TouchableOpacity style={[styles.addCategoryBtn, { backgroundColor: '#FFB800' }]} onPress={handleApplyLeave}>
+                      <FontAwesome5 name="plus" size={12} color="#111827" />
+                      <Text style={[styles.addCategoryText, { color: '#111827', fontWeight: '800' }]}>Apply Leave</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Month Navigation Controls */}
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#F7FAFC', borderRadius: 12, paddingVertical: 10, paddingHorizontal: 16, marginBottom: 16 }}>
+                    <TouchableOpacity style={{ padding: 6 }} onPress={() => handleMonthChange(new Date(calendarYear, calendarMonth - 1, 1))}>
+                      <FontAwesome5 name="chevron-left" size={14} color="#4A5568" />
+                    </TouchableOpacity>
+                    <Text style={{ fontSize: 15, fontWeight: '800', color: '#111827' }}>
+                      {monthName} {calendarYear}
+                    </Text>
+                    <TouchableOpacity style={{ padding: 6 }} onPress={() => handleMonthChange(new Date(calendarYear, calendarMonth + 1, 1))}>
+                      <FontAwesome5 name="chevron-right" size={14} color="#4A5568" />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Weekday Titles */}
+                  <View style={{ flexDirection: 'row', marginBottom: 8, backgroundColor: 'transparent' }}>
+                    {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((wd, i) => (
+                      <Text key={i} style={{ flex: 1, textAlign: 'center', fontSize: 12, fontWeight: '800', color: '#718096' }}>
+                        {wd}
                       </Text>
+                    ))}
+                  </View>
+
+                  {/* Days Grid */}
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', backgroundColor: 'transparent' }}>
+                    {calendarCells.map((cell) => {
+                      const isSelected = cell.dateStr === selectedCalendarDate;
+                      const hasLeave = isDateOnLeave(cell.dateStr);
+                      const hasHoliday = !!getHolidayOnDate(cell.dateStr);
+
+                      if (!cell.day) {
+                        return (
+                          <View key={cell.key} style={{ width: '14.28%', height: 42, justifyContent: 'center', alignItems: 'center' }} />
+                        );
+                      }
+
+                      return (
+                        <TouchableOpacity
+                          key={cell.key}
+                          style={{
+                            width: '14.28%',
+                            height: 42,
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            backgroundColor: 'transparent'
+                          }}
+                          onPress={() => setSelectedCalendarDate(cell.dateStr!)}
+                        >
+                          <View
+                            style={{
+                              width: 32,
+                              height: 32,
+                              borderRadius: 16,
+                              backgroundColor: isSelected ? '#FFB800' : 'transparent',
+                              justifyContent: 'center',
+                              alignItems: 'center',
+                            }}
+                          >
+                            <Text
+                              style={{
+                                fontSize: 13,
+                                fontWeight: isSelected ? '900' : '600',
+                                color: isSelected ? '#111827' : '#1A202C'
+                              }}
+                            >
+                              {cell.day}
+                            </Text>
+                            {/* Dot indicators for leaves and holidays */}
+                            <View style={{ flexDirection: 'row', gap: 3, position: 'absolute', bottom: 2, justifyContent: 'center', width: '100%', backgroundColor: 'transparent' }}>
+                              {hasLeave && (
+                                <View
+                                  style={{
+                                    width: 4,
+                                    height: 4,
+                                    borderRadius: 2,
+                                    backgroundColor: isSelected ? '#111827' : '#FFB800',
+                                  }}
+                                />
+                              )}
+                              {hasHoliday && (
+                                <View
+                                  style={{
+                                    width: 4,
+                                    height: 4,
+                                    borderRadius: 2,
+                                    backgroundColor: isSelected ? '#111827' : '#FFB800',
+                                  }}
+                                />
+                              )}
+                            </View>
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  {/* Selected Date Details Panel */}
+                  <View style={{ marginTop: 20, borderTopWidth: 1, borderTopColor: '#E2E8F0', paddingTop: 16, backgroundColor: 'transparent' }}>
+                    <Text style={{ fontSize: 13, fontWeight: '800', color: '#111827', marginBottom: 12 }}>
+                      <FontAwesome5 name="info-circle" size={13} color="#FFB800" style={{ marginRight: 6 }} /> Leaves on {selectedCalendarDate}
+                    </Text>
+
+                    {/* Holiday on selected day */}
+                    {dayHoliday && (
+                      <View style={{ flexDirection: 'row', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#EDF2F7', alignItems: 'center', backgroundColor: 'transparent', marginBottom: 8 }}>
+                        <View style={{ flex: 1, backgroundColor: 'transparent' }}>
+                          <Text style={{ fontSize: 13, fontWeight: '800', color: '#1A202C' }}>
+                            {dayHoliday.name}
+                          </Text>
+                          <Text style={{ fontSize: 11, color: '#FFB800', fontWeight: '700', marginTop: 2 }}>
+                            Official Public Holiday
+                          </Text>
+                          {dayHoliday.description ? (
+                            <Text style={{ fontSize: 11, color: '#718096', fontStyle: 'italic', marginTop: 2 }}>
+                              {dayHoliday.description}
+                            </Text>
+                          ) : null}
+                        </View>
+                        <View style={{ backgroundColor: '#FEF3C7', paddingVertical: 4, paddingHorizontal: 10, borderRadius: 12, borderWidth: 1, borderColor: '#FDE68A' }}>
+                          <Text style={{ fontSize: 10, color: '#B45309', fontWeight: '800' }}>
+                            HOLIDAY
+                          </Text>
+                        </View>
+                      </View>
+                    )}
+
+                    {/* Leaves on selected day */}
+                    {leavesForSelectedDate.length > 0 ? (
+                      leavesForSelectedDate.map((req: any, idx: number) => {
+                        const start = new Date(req.start_date);
+                        const end = new Date(req.end_date);
+                        const days = Math.max(1, Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+                        return (
+                          <View key={req.id || idx} style={{ flexDirection: 'row', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#EDF2F7', alignItems: 'center', backgroundColor: 'transparent' }}>
+                            <View style={{ flex: 1, backgroundColor: 'transparent' }}>
+                              <Text style={{ fontSize: 13, fontWeight: '800', color: '#1A202C' }}>
+                                {req.employee?.user?.first_name || req.employee?.user?.username || 'Employee'}
+                              </Text>
+                              <Text style={{ fontSize: 11, color: '#718096', marginTop: 2 }}>
+                                {req.start_date} to {req.end_date} ({days} {days === 1 ? 'day' : 'days'})
+                              </Text>
+                              {req.reason ? (
+                                <Text style={{ fontSize: 11, color: '#FFB800', fontStyle: 'italic', marginTop: 2 }}>
+                                  "{req.reason}"
+                                </Text>
+                              ) : null}
+                            </View>
+                            <View style={{ backgroundColor: 'rgba(255, 184, 0, 0.15)', paddingVertical: 4, paddingHorizontal: 10, borderRadius: 12 }}>
+                              <Text style={{ fontSize: 10, color: '#D97706', fontWeight: '800' }}>
+                                {req.leave_type_name || 'Leave'}
+                              </Text>
+                            </View>
+                          </View>
+                        );
+                      })
+                    ) : (
+                      !dayHoliday && (
+                        <View style={{ alignItems: 'center', paddingVertical: 16, backgroundColor: 'transparent' }}>
+                          <Text style={{ color: '#718096', fontSize: 12, fontWeight: '500' }}>No leaves scheduled on this day.</Text>
+                        </View>
+                      )
                     )}
                   </View>
-                );
-              }) : (
-                <View style={styles.emptyStateBox}>
-                  <Text style={styles.emptyStateText}>No leave requests found. Tap "Apply Leave" to create one.</Text>
                 </View>
-              )}
-            </View>
+              );
+            })()}
+
+            {/* Official Holidays List View */}
+            {leaveTab === 'types' && (
+              <View style={[styles.masterSheetCard, { borderColor: '#E2E8F0', borderWidth: 1, backgroundColor: '#FFFFFF' }]}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, backgroundColor: 'transparent' }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'transparent' }}>
+                    <FontAwesome5 name="flag" size={16} color="#111827" />
+                    <Text style={[styles.masterTitle, { color: '#111827', marginBottom: 0 }]}>Official Holidays</Text>
+                  </View>
+                  <TouchableOpacity style={[styles.addCategoryBtn, { backgroundColor: '#FFB800' }]} onPress={handleApplyLeave}>
+                    <FontAwesome5 name="plus" size={12} color="#111827" />
+                    <Text style={[styles.addCategoryText, { color: '#111827', fontWeight: '800' }]}>Apply Leave</Text>
+                  </TouchableOpacity>
+                </View>
+                {holidays.length > 0 ? (
+                  holidays
+                    .sort((a: any, b: any) => a.date.localeCompare(b.date))
+                    .map((h: any, idx: number) => {
+                      const hDate = new Date(h.date);
+                      return (
+                        <View key={h.id || idx} style={{ flexDirection: 'row', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#E2E8F0', alignItems: 'center', backgroundColor: 'transparent' }}>
+                          <View style={{ backgroundColor: '#F7FAFC', padding: 8, borderRadius: 12, alignItems: 'center', width: 60, marginRight: 12, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                            <Text style={{ fontSize: 10, color: '#4A5568', fontWeight: '800', textTransform: 'uppercase' }}>
+                              {hDate.toLocaleString('default', { month: 'short' })}
+                            </Text>
+                            <Text style={{ fontSize: 18, color: '#111827', fontWeight: '900' }}>
+                              {hDate.getDate()}
+                            </Text>
+                          </View>
+                          <View style={{ flex: 1, backgroundColor: 'transparent' }}>
+                            <Text style={{ fontSize: 14, fontWeight: '800', color: '#1A202C' }}>
+                              {h.name}
+                            </Text>
+                            <Text style={{ fontSize: 12, color: '#718096', marginTop: 2 }}>
+                              {h.date}
+                            </Text>
+                            {h.description ? (
+                              <Text style={{ fontSize: 12, color: '#718096', fontStyle: 'italic', marginTop: 2 }}>
+                                {h.description}
+                              </Text>
+                            ) : null}
+                          </View>
+                        </View>
+                      );
+                    })
+                ) : (
+                  <View style={{ alignItems: 'center', paddingVertical: 40, backgroundColor: 'transparent' }}>
+                    <FontAwesome5 name="gift" size={40} color="#718096" style={{ opacity: 0.5, marginBottom: 12 }} />
+                    <Text style={{ color: '#1A202C', fontSize: 14, fontWeight: '700' }}>No Holidays Configured</Text>
+                    <Text style={{ color: '#718096', fontSize: 12, marginTop: 4, textAlign: 'center' }}>No upcoming official public holidays found.</Text>
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* Leave Policies Guide View */}
+            {leaveTab === 'policies' && (
+              <View style={[styles.masterSheetCard, { borderColor: '#E2E8F0', borderWidth: 1, backgroundColor: '#FFFFFF' }]}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, backgroundColor: 'transparent' }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'transparent' }}>
+                    <FontAwesome5 name="file-contract" size={16} color="#111827" />
+                    <Text style={[styles.masterTitle, { color: '#111827', marginBottom: 0 }]}>Company Leave Policies</Text>
+                  </View>
+                  <TouchableOpacity style={[styles.addCategoryBtn, { backgroundColor: '#FFB800' }]} onPress={handleApplyLeave}>
+                    <FontAwesome5 name="plus" size={12} color="#111827" />
+                    <Text style={[styles.addCategoryText, { color: '#111827', fontWeight: '800' }]}>Apply Leave</Text>
+                  </TouchableOpacity>
+                </View>
+                
+                <View style={{ gap: 16, backgroundColor: 'transparent' }}>
+                  <View style={{ backgroundColor: '#F7FAFC', padding: 16, borderRadius: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                    <Text style={{ fontSize: 14, fontWeight: '800', color: '#111827' }}>1. Leave Application & Timelines</Text>
+                    <Text style={{ fontSize: 12, color: '#4A5568', marginTop: 6, lineHeight: 18 }}>
+                      • Normal leaves should be applied at least 3 days in advance.{"\n"}
+                      • Emergency/Sick leaves can be applied on the day of absence.
+                    </Text>
+                  </View>
+
+                  <View style={{ backgroundColor: '#F7FAFC', padding: 16, borderRadius: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                    <Text style={{ fontSize: 14, fontWeight: '800', color: '#111827' }}>2. Approval Workflows</Text>
+                    <Text style={{ fontSize: 12, color: '#4A5568', marginTop: 6, lineHeight: 18 }}>
+                      • Every leave application must first be reviewed and approved by the reporting manager.{"\n"}
+                      • Final approval and balance deduction is processed by the HR department.
+                    </Text>
+                  </View>
+
+                  <View style={{ backgroundColor: '#F7FAFC', padding: 16, borderRadius: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                    <Text style={{ fontSize: 14, fontWeight: '800', color: '#111827' }}>3. Saturdays & Sundays</Text>
+                    <Text style={{ fontSize: 12, color: '#4A5568', marginTop: 6, lineHeight: 18 }}>
+                      • Sundays and official public holidays falling within the leave range are automatically excluded from the calculated duration.{"\n"}
+                      • Saturdays are counted as working days by default.
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            )}
           </View>
         )}
 
@@ -3368,23 +3985,23 @@ export default function ModuleDetailScreen() {
         {isTasks && (
           <View style={styles.mentorContainer}>
             <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 15 }}>
-              <TouchableOpacity onPress={handleNewTask} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#3182CE', paddingHorizontal: 15, paddingVertical: 10, borderRadius: 8, gap: 8 }}>
-                 <FontAwesome5 name="plus" size={14} color="#fff" />
-                 <Text style={{ color: '#fff', fontWeight: 'bold' }}>Add Task</Text>
+              <TouchableOpacity onPress={handleNewTask} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFB800', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, gap: 8, shadowColor: '#FFB800', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 8, elevation: 4 }}>
+                 <FontAwesome5 name="plus" size={12} color="#111827" />
+                 <Text style={{ color: '#111827', fontWeight: '800', fontSize: 13 }}>Add Task</Text>
               </TouchableOpacity>
             </View>
             <View style={styles.segmentContainer}>
               <TouchableOpacity style={[styles.segmentButton5, taskCol === 'todo' && styles.segmentActive]} onPress={() => setTaskCol('todo')}>
-                <Text style={[styles.segmentText5, taskCol === 'todo' && styles.segmentTextActive]}>To Do ({tasksList.filter(t=>t.status==='todo').length})</Text>
+                <Text style={[styles.segmentText5, taskCol === 'todo' && styles.segmentTextActive, taskCol === 'todo' && { color: '#111827' }]}>To Do ({tasksList.filter(t=>t.status==='todo').length})</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.segmentButton5, taskCol === 'progress' && styles.segmentActive]} onPress={() => setTaskCol('progress')}>
-                <Text style={[styles.segmentText5, taskCol === 'progress' && styles.segmentTextActive]}>Progress ({tasksList.filter(t=>t.status==='progress').length})</Text>
+                <Text style={[styles.segmentText5, taskCol === 'progress' && styles.segmentTextActive, taskCol === 'progress' && { color: '#111827' }]}>Progress ({tasksList.filter(t=>t.status==='progress').length})</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.segmentButton5, taskCol === 'review' && styles.segmentActive]} onPress={() => setTaskCol('review')}>
-                <Text style={[styles.segmentText5, taskCol === 'review' && styles.segmentTextActive]}>Review ({tasksList.filter(t=>t.status==='review').length})</Text>
+                <Text style={[styles.segmentText5, taskCol === 'review' && styles.segmentTextActive, taskCol === 'review' && { color: '#111827' }]}>Review ({tasksList.filter(t=>t.status==='review').length})</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.segmentButton5, taskCol === 'done' && styles.segmentActive]} onPress={() => setTaskCol('done')}>
-                <Text style={[styles.segmentText5, taskCol === 'done' && styles.segmentTextActive]}>Done ({tasksList.filter(t=>t.status==='done').length})</Text>
+                <Text style={[styles.segmentText5, taskCol === 'done' && styles.segmentTextActive, taskCol === 'done' && { color: '#111827' }]}>Done ({tasksList.filter(t=>t.status==='done').length})</Text>
               </TouchableOpacity>
               <TouchableOpacity 
                 style={[styles.segmentButton5, taskCol === 'web' && styles.segmentActive]} 
@@ -3394,41 +4011,104 @@ export default function ModuleDetailScreen() {
                   setTaskCol('todo');
                 }}
               >
-                <Text style={[styles.segmentText5, taskCol === 'web' && styles.segmentTextActive]}>🌐 Web</Text>
+                <Text style={[styles.segmentText5, taskCol === 'web' && styles.segmentTextActive, taskCol === 'web' && { color: '#111827' }]}>🌐 Web</Text>
               </TouchableOpacity>
             </View>
 
-            <View style={styles.kanbanColCard}>
-              <View style={styles.kanbanHeader}>
-                <FontAwesome5 name="list-alt" size={16} color="#3182CE" />
-                <Text style={styles.kanbanTitle}>{taskCol.toUpperCase()} OBJECTIVES</Text>
+            <View style={[styles.kanbanColCard, { borderWidth: 0, backgroundColor: 'transparent', paddingHorizontal: 0, shadowColor: 'transparent', elevation: 0 }]}>
+              <View style={[styles.kanbanHeader, { paddingHorizontal: 4, marginBottom: 16 }]}>
+                <FontAwesome5 name="list-alt" size={16} color="#FFB800" />
+                <Text style={[styles.kanbanTitle, { color: '#111827', fontWeight: '900' }]}>{taskCol.toUpperCase()} OBJECTIVES</Text>
               </View>
 
-              {tasksList.filter((t: any) => t.status === taskCol).length > 0 ? tasksList.filter((t: any) => t.status === taskCol).map((task: any, idx: number) => (
-                <View key={task.id || idx} style={styles.taskCard}>
-                  <Text style={styles.taskTitle}>{task.title}</Text>
-                  {task.description ? <Text style={{ fontSize: 13, color: '#718096', fontWeight: '600', marginBottom: 12 }}>{task.description}</Text> : null}
-                  <View style={styles.taskFooter}>
-                    <Text style={styles.taskDate}>{task.assignee?.user?.first_name || task.assigned_by?.user?.first_name || 'Team'}</Text>
-                    <View style={[styles.badge, { backgroundColor: '#EBF8FF' }]}><Text style={[styles.badgeText, { color: '#3182CE' }]}>{taskCol.toUpperCase()}</Text></View>
+              {tasksList.filter((t: any) => t.status === taskCol).length > 0 ? tasksList.filter((t: any) => t.status === taskCol).map((task: any, idx: number) => {
+                const statusColors: Record<string, { bg: string, text: string, label: string, border: string }> = {
+                  'todo': { bg: '#F1F5F9', text: '#475569', label: 'To Do', border: '#CBD5E1' },
+                  'progress': { bg: '#FEF3C7', text: '#D97706', label: 'In Progress', border: '#FCD34D' },
+                  'review': { bg: '#EBF5FF', text: '#1E429F', label: 'In Review', border: '#93C5FD' },
+                  'done': { bg: '#DEF7EC', text: '#03543F', label: 'Completed', border: '#86EFAC' }
+                };
+                const colInfo = statusColors[taskCol] || { bg: '#F1F5F9', text: '#475569', label: taskCol, border: '#CBD5E1' };
+
+                return (
+                  <View 
+                    key={task.id || idx} 
+                    style={{
+                      backgroundColor: '#FFFFFF',
+                      borderRadius: 20,
+                      padding: 16,
+                      marginBottom: 14,
+                      borderWidth: 1,
+                      borderColor: '#E2E8F0',
+                      borderLeftWidth: 5,
+                      borderLeftColor: colInfo.text,
+                      shadowColor: '#000',
+                      shadowOffset: { width: 0, height: 2 },
+                      shadowOpacity: 0.03,
+                      shadowRadius: 6,
+                      elevation: 2
+                    }}
+                  >
+                    {/* Top title and status badge */}
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8, backgroundColor: 'transparent' }}>
+                      <Text style={{ fontSize: 15, fontWeight: '800', color: '#1A202C', flex: 1, marginRight: 12 }}>{task.title}</Text>
+                      <View style={{ backgroundColor: colInfo.bg, paddingVertical: 4, paddingHorizontal: 10, borderRadius: 12 }}>
+                        <Text style={{ fontSize: 10, color: colInfo.text, fontWeight: '800', textTransform: 'uppercase' }}>
+                          {colInfo.label}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* Description */}
+                    {task.description ? (
+                      <Text style={{ fontSize: 13, color: '#4A5568', lineHeight: 18, marginBottom: 12 }}>
+                        {task.description}
+                      </Text>
+                    ) : null}
+
+                    {/* Footer: Assignee & Date */}
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'transparent', marginTop: 4 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'transparent' }}>
+                        <FontAwesome5 name="user" size={10} color="#718096" />
+                        <Text style={{ fontSize: 12, color: '#4A5568', fontWeight: '700' }}>
+                          {task.assignee?.user?.first_name || task.assigned_by?.user?.first_name || 'Team'}
+                        </Text>
+                      </View>
+                      <Text style={{ fontSize: 11, color: '#94A3B8' }}>
+                        {task.due_date ? `Due: ${new Date(task.due_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}` : 'No Due Date'}
+                      </Text>
+                    </View>
+
+                    {/* Shift Status action list */}
+                    <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, borderTopWidth: 1, borderTopColor: '#F1F5F9', paddingTop: 10, backgroundColor: 'transparent', flexWrap: 'wrap', alignItems: 'center' }}>
+                      <Text style={{ fontSize: 10, color: '#94A3B8', fontWeight: '800', marginRight: 4 }}>MOVE TO:</Text>
+                      {(['todo', 'progress', 'review', 'done'] as const).filter(s => s !== taskCol).map((status) => {
+                        const targetInfo = statusColors[status];
+                        return (
+                          <TouchableOpacity
+                            key={status}
+                            style={{
+                              backgroundColor: targetInfo.bg,
+                              borderColor: targetInfo.border,
+                              borderWidth: 1,
+                              borderRadius: 8,
+                              paddingVertical: 4,
+                              paddingHorizontal: 8
+                            }}
+                            onPress={() => handleMoveTask(task, status)}
+                          >
+                            <Text style={{ color: targetInfo.text, fontSize: 10, fontWeight: '900' }}>{targetInfo.label}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
                   </View>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }}>
-                    {(['todo', 'progress', 'review', 'done'] as const).filter(s => s !== taskCol).map((status) => (
-                      <TouchableOpacity
-                        key={status}
-                        style={{ backgroundColor: '#EBF8FF', borderRadius: 10, paddingVertical: 6, paddingHorizontal: 12, marginRight: 8 }}
-                        onPress={() => handleMoveTask(task, status)}
-                      >
-                        <Text style={{ color: '#3182CE', fontSize: 11, fontWeight: '800' }}>→ {status.toUpperCase()}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                </View>
-              )) : (
-                <View style={styles.emptyFieldsCard}>
+                );
+              }) : (
+                <View style={[styles.emptyFieldsCard, { backgroundColor: '#FFFFFF', borderRadius: 20, padding: 24, borderWidth: 1, borderColor: '#E2E8F0' }]}>
                   <FontAwesome5 name="check-double" size={24} color="#A0AEC0" style={{ marginBottom: 12 }} />
-                  <Text style={styles.emptyFieldsTitle}>No tasks in this column</Text>
-                  <Text style={styles.emptyFieldsSub}>TAP "+ NEW TASK" TO ASSIGN OBJECTIVES</Text>
+                  <Text style={[styles.emptyFieldsTitle, { color: '#718096' }]}>No tasks in this column</Text>
+                  <Text style={[styles.emptyFieldsSub, { color: '#A0AEC0' }]}>TAP "+ ADD TASK" TO ASSIGN OBJECTIVES</Text>
                 </View>
               )}
             </View>
@@ -3455,14 +4135,14 @@ export default function ModuleDetailScreen() {
                       <Text style={styles.teacherBatchTitle} numberOfLines={1}>{asset.name}</Text>
                       <Text style={styles.teacherBatchSub}>ID: {asset.asset_id}</Text>
                     </View>
-                    <View style={[styles.teacherBookIcon, { backgroundColor: '#EBF8FF' }]}>
-                      <FontAwesome5 name={asset.category === 'LAPTOP' ? 'laptop' : asset.category === 'KEY' ? 'key' : 'box'} size={16} color="#3182CE" />
+                    <View style={[styles.teacherBookIcon, { backgroundColor: '#FEF3C7' }]}>
+                      <FontAwesome5 name={asset.category === 'LAPTOP' ? 'laptop' : asset.category === 'KEY' ? 'key' : 'box'} size={16} color="#FFB800" />
                     </View>
                   </View>
 
                   <View style={styles.teacherBatchBody}>
-                    <View style={[styles.badge, { backgroundColor: asset.status === 'ASSIGNED' ? '#EBF8FF' : '#C6F6D5', alignSelf: 'flex-start', marginBottom: 12 }]}>
-                      <Text style={[styles.badgeText, { color: asset.status === 'ASSIGNED' ? '#3182CE' : '#22543D' }]}>{asset.status}</Text>
+                    <View style={[styles.badge, { backgroundColor: asset.status === 'ASSIGNED' ? '#FEF3C7' : '#C6F6D5', alignSelf: 'flex-start', marginBottom: 12 }]}>
+                      <Text style={[styles.badgeText, { color: asset.status === 'ASSIGNED' ? '#FFB800' : '#22543D' }]}>{asset.status}</Text>
                     </View>
                     <View style={styles.teacherBatchRow}>
                       <Text style={styles.teacherLabel}>Assigned to</Text>
@@ -3501,8 +4181,8 @@ export default function ModuleDetailScreen() {
                     <Text style={styles.itemDesc}>{lead.program_interested || 'General Inquiry'} • {lead.phone}</Text>
                   </View>
                   <View style={{ alignItems: 'flex-end', gap: 6 }}>
-                    <View style={[styles.badge, { backgroundColor: lead.status === 'NEW' ? '#EBF8FF' : lead.status === 'CONVERTED' ? '#C6F6D5' : '#FEFCBF' }]}>
-                      <Text style={[styles.badgeText, { color: lead.status === 'NEW' ? '#3182CE' : lead.status === 'CONVERTED' ? '#22543D' : '#975A16' }]}>{lead.status}</Text>
+                    <View style={[styles.badge, { backgroundColor: lead.status === 'NEW' ? '#FEF3C7' : lead.status === 'CONVERTED' ? '#C6F6D5' : '#FEFCBF' }]}>
+                      <Text style={[styles.badgeText, { color: lead.status === 'NEW' ? '#FFB800' : lead.status === 'CONVERTED' ? '#22543D' : '#975A16' }]}>{lead.status}</Text>
                     </View>
                     <View style={{ flexDirection: 'row', gap: 12 }}>
                       <TouchableOpacity onPress={() => router.push(`/lead-details?leadId=${lead.id}`)}>
@@ -3597,7 +4277,7 @@ export default function ModuleDetailScreen() {
                 <View style={styles.profileCard}>
                   <View style={styles.profileHeader}>
                     <View style={styles.avatarContainer}>
-                      <FontAwesome5 name="user" size={24} color="#3182CE" />
+                      <FontAwesome5 name="user" size={24} color="#FFB800" />
                     </View>
                     <View style={styles.profileHeaderDetails}>
                       <Text style={styles.profileName}>{studentProfile?.first_name} {studentProfile?.last_name}</Text>
@@ -3746,8 +4426,8 @@ export default function ModuleDetailScreen() {
                         </Text>
                         <Text style={styles.staffProgramText}>{staff.program_name || staff.department || 'Curriculum Division'}</Text>
                       </View>
-                      <View style={[styles.badge, { backgroundColor: '#EBF8FF' }]}>
-                        <Text style={[styles.badgeText, { color: '#3182CE' }]}>
+                      <View style={[styles.badge, { backgroundColor: '#FEF3C7' }]}>
+                        <Text style={[styles.badgeText, { color: '#FFB800' }]}>
                           {staff.role?.replace('_', ' ')}
                         </Text>
                       </View>
@@ -3767,7 +4447,7 @@ export default function ModuleDetailScreen() {
                           else Alert.alert('Error', 'No phone number available for this member.');
                         }}
                       >
-                        <FontAwesome5 name="phone" size={12} color="#2B6CB0" />
+                        <FontAwesome5 name="phone" size={12} color="#B45309" />
                         <Text style={styles.callButtonText}>Call</Text>
                       </TouchableOpacity>
 
@@ -4040,14 +4720,14 @@ export default function ModuleDetailScreen() {
         {/* 12. STANDARD MODULE VIEW */}
         {!isMentor && !isAcademic && !isCoordinator && !isTeacher && !isCourses && !isAnalytics && !isWorkforce && !isAttendance && !isPayroll && !isLeave && !isTasks && !isStudent && !isStaffDirectory && !isFinance && !isAdminPanel && (
           <>
-            <TouchableOpacity style={styles.actionButton} onPress={handleAction}>
-              {loading ? <ActivityIndicator color="#FFFFFF" /> : <><Text style={styles.actionButtonText}>{moduleData.action}</Text><FontAwesome5 name="sync-alt" size={14} color="#FFFFFF" /></>}
+            <TouchableOpacity style={[styles.actionButton, isLeave && { backgroundColor: '#ECC94B', shadowColor: '#ECC94B' }]} onPress={handleAction}>
+              {loading ? <ActivityIndicator color="#FFFFFF" /> : <><Text style={[styles.actionButtonText, isLeave && { color: '#000' }]}>{moduleData.action}</Text><FontAwesome5 name="sync-alt" size={14} color={isLeave ? '#000' : '#FFFFFF'} /></>}
             </TouchableOpacity>
 
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
                 <Text style={styles.sectionTitle}>LIVE PRODUCTION RECORDS</Text>
-                {loading && <ActivityIndicator size="small" color="#3182CE" />}
+                {loading && <ActivityIndicator size="small" color="#FFB800" />}
               </View>
 
               {moduleData.items.map((item, idx) => (
@@ -4065,7 +4745,7 @@ export default function ModuleDetailScreen() {
 
         {/* Security / Info Footer */}
         <View style={styles.footerCard}>
-          <FontAwesome5 name="server" size={20} color="#3182CE" />
+          <FontAwesome5 name="server" size={20} color="#FFB800" />
           <Text style={styles.footerText}>
             Live connection to natyaarts.org API. All data modifications are instantly synced with your cloud database.
           </Text>
@@ -4157,7 +4837,7 @@ export default function ModuleDetailScreen() {
                       onPress={() => performTeacherAssignment(teacherId)}
                     >
                       <View style={styles.teacherItemIcon}>
-                        <FontAwesome5 name="user-tie" size={16} color="#3182CE" />
+                        <FontAwesome5 name="user-tie" size={16} color="#FFB800" />
                       </View>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.teacherItemName}>{teacherName}</Text>
@@ -4231,7 +4911,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#3182CE',
+    backgroundColor: '#FFB800',
     paddingVertical: 12,
     borderRadius: 10,
     marginTop: 16,
@@ -4299,7 +4979,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#EBF8FF',
+    backgroundColor: '#FEF3C7',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -4318,7 +4998,7 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', padding: 20, paddingTop: 60, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#E2E8F0' },
   backButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#F7FAFC', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E2E8F0', marginRight: 16 },
   headerTitleContainer: { flex: 1, backgroundColor: 'transparent' },
-  categoryText: { fontSize: 11, fontWeight: '900', color: '#3182CE', letterSpacing: 1.5, marginBottom: 4 },
+  categoryText: { fontSize: 11, fontWeight: '900', color: '#FFB800', letterSpacing: 1.5, marginBottom: 4 },
   titleText: { fontSize: 20, fontWeight: '900', color: '#1A202C' },
   scroll: { flex: 1 },
   scrollContent: { padding: 20, paddingBottom: 40 },
@@ -4336,9 +5016,9 @@ const styles = StyleSheet.create({
   segmentActive: { backgroundColor: '#FFFFFF', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
   segmentText: { fontSize: 12, fontWeight: '700', color: '#718096' },
   segmentText5: { fontSize: 11, fontWeight: '700', color: '#718096' },
-  segmentTextActive: { color: '#3182CE', fontWeight: '900' },
+  segmentTextActive: { color: '#FFB800', fontWeight: '900' },
   mentorActionBar: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 16, backgroundColor: 'transparent' },
-  createBatchButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#3182CE', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 14, shadowColor: '#3182CE', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8, elevation: 4 },
+  createBatchButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFB800', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 14, shadowColor: '#FFB800', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8, elevation: 4 },
   createBatchText: { color: '#FFFFFF', fontSize: 14, fontWeight: '900', marginLeft: 8 },
   searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F7FAFC', borderRadius: 16, paddingHorizontal: 16, paddingVertical: 12, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 20 },
   input: { flex: 1, marginLeft: 12, fontSize: 15, color: '#1A202C', fontWeight: '600' },
@@ -4354,12 +5034,12 @@ const styles = StyleSheet.create({
   batchCard: { width: '100%', backgroundColor: '#FFFFFF', borderRadius: 20, padding: 20, marginBottom: 16, borderWidth: 1, borderColor: '#E2E8F0', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 6, elevation: 2 },
   batchCardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, backgroundColor: 'transparent' },
   batchName: { flex: 1, fontSize: 16, fontWeight: '900', color: '#1A202C', marginRight: 10 },
-  batchBadge: { backgroundColor: '#EBF8FF', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
-  batchBadgeText: { fontSize: 10, fontWeight: '900', color: '#3182CE' },
+  batchBadge: { backgroundColor: '#FEF3C7', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  batchBadgeText: { fontSize: 10, fontWeight: '900', color: '#FFB800' },
   batchCardBody: { backgroundColor: 'transparent', gap: 6 },
   batchDetailText: { fontSize: 13, color: '#718096', fontWeight: '500' },
   batchDetailBold: { color: '#1A202C', fontWeight: '700' },
-  batchTeacherText: { color: '#3182CE', fontWeight: '700' },
+  batchTeacherText: { color: '#FFB800', fontWeight: '700' },
   studentListContainer: { backgroundColor: 'transparent' },
   coordHeaderBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, backgroundColor: 'transparent' },
   exportCoordButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1A202C', paddingVertical: 14, paddingHorizontal: 20, borderRadius: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 4 },
@@ -4367,8 +5047,8 @@ const styles = StyleSheet.create({
   coordList: { backgroundColor: 'transparent' },
   coordCard: { backgroundColor: '#FFFFFF', borderRadius: 20, padding: 20, marginBottom: 16, borderWidth: 1, borderColor: '#E2E8F0', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 6, elevation: 2 },
   coordCardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, backgroundColor: 'transparent' },
-  coordIdBadge: { backgroundColor: '#EBF8FF', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
-  coordIdText: { fontSize: 11, fontWeight: '900', color: '#3182CE', letterSpacing: 0.5 },
+  coordIdBadge: { backgroundColor: '#FEF3C7', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
+  coordIdText: { fontSize: 11, fontWeight: '900', color: '#FFB800', letterSpacing: 0.5 },
   coordPhoneText: { fontSize: 13, color: '#718096', fontWeight: '600' },
   coordNameText: { fontSize: 18, fontWeight: '900', color: '#1A202C', marginBottom: 16 },
   coordDetailsGrid: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: '#F7FAFC', borderRadius: 16, padding: 16, marginBottom: 16 },
@@ -4376,73 +5056,73 @@ const styles = StyleSheet.create({
   coordDetailLabel: { fontSize: 10, fontWeight: '900', color: '#718096', letterSpacing: 1, marginBottom: 4 },
   coordDetailValue: { fontSize: 13, fontWeight: '800', color: '#1A202C' },
   coordActionsBar: { flexDirection: 'row', gap: 12, backgroundColor: 'transparent' },
-  coordActionButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, borderRadius: 14, backgroundColor: '#EBF8FF', borderWidth: 1, borderColor: '#BEE3F8' },
-  coordActionText: { marginLeft: 6, fontSize: 12, fontWeight: '900', color: '#3182CE', letterSpacing: 0.5 },
-  coordEditCard: { backgroundColor: '#FFFFFF', borderRadius: 24, padding: 24, marginBottom: 20, borderWidth: 2, borderColor: '#3182CE', shadowColor: '#3182CE', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 6 },
+  coordActionButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, borderRadius: 14, backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#FDE68A' },
+  coordActionText: { marginLeft: 6, fontSize: 12, fontWeight: '900', color: '#FFB800', letterSpacing: 0.5 },
+  coordEditCard: { backgroundColor: '#FFFFFF', borderRadius: 24, padding: 24, marginBottom: 20, borderWidth: 2, borderColor: '#FFB800', shadowColor: '#FFB800', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 6 },
   coordEditHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, backgroundColor: 'transparent' },
-  coordEditTitle: { fontSize: 13, fontWeight: '900', color: '#3182CE', letterSpacing: 1.5 },
+  coordEditTitle: { fontSize: 13, fontWeight: '900', color: '#FFB800', letterSpacing: 1.5 },
   coordEditSubtitle: { fontSize: 14, color: '#4A5568', marginBottom: 20 },
   inputGroup: { marginBottom: 16, backgroundColor: 'transparent' },
   label: { fontSize: 12, fontWeight: '700', color: '#4A5568', marginBottom: 8 },
   formInput: { backgroundColor: '#F7FAFC', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12, fontSize: 14, color: '#1A202C', borderWidth: 1, borderColor: '#E2E8F0' },
-  coordSaveButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#3182CE', paddingVertical: 16, borderRadius: 16, marginTop: 8, shadowColor: '#3182CE', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8, elevation: 4 },
+  coordSaveButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFB800', paddingVertical: 16, borderRadius: 16, marginTop: 8, shadowColor: '#FFB800', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8, elevation: 4 },
   coordSaveText: { color: '#FFFFFF', fontSize: 14, fontWeight: '900', marginLeft: 8 },
   teacherBatchCard: { backgroundColor: '#FFFFFF', borderRadius: 20, padding: 20, marginBottom: 16, borderWidth: 1, borderColor: '#E2E8F0', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 6, elevation: 2, width: '100%' },
   teacherBatchHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, backgroundColor: 'transparent' },
   teacherBatchTitle: { fontSize: 18, fontWeight: '900', color: '#1A202C', marginBottom: 4 },
-  teacherBatchSub: { fontSize: 13, color: '#3182CE', fontWeight: '700' },
-  teacherBookIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#EBF8FF', alignItems: 'center', justifyContent: 'center' },
+  teacherBatchSub: { fontSize: 13, color: '#FFB800', fontWeight: '700' },
+  teacherBookIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#FEF3C7', alignItems: 'center', justifyContent: 'center' },
   teacherBatchBody: { backgroundColor: 'transparent', marginBottom: 16, gap: 12 },
   teacherBatchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'transparent' },
   teacherRowLeft: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'transparent' },
   teacherLabel: { fontSize: 13, color: '#718096', fontWeight: '600', marginLeft: 8 },
   teacherValue: { fontSize: 14, fontWeight: '800', color: '#1A202C' },
   progressBarBg: { height: 6, backgroundColor: '#EDF2F7', borderRadius: 3, overflow: 'hidden', marginTop: 4 },
-  progressBarFill: { height: 6, backgroundColor: '#3182CE', borderRadius: 3 },
+  progressBarFill: { height: 6, backgroundColor: '#FFB800', borderRadius: 3 },
   manageBatchBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14, paddingHorizontal: 16, backgroundColor: '#F7FAFC', borderRadius: 14, borderWidth: 1, borderColor: '#E2E8F0' },
-  manageBatchText: { fontSize: 13, fontWeight: '800', color: '#3182CE' },
+  manageBatchText: { fontSize: 13, fontWeight: '800', color: '#FFB800' },
   brandsHeaderBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, backgroundColor: 'transparent' },
-  addBrandBtnSmall: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#3182CE', alignItems: 'center', justifyContent: 'center' },
+  addBrandBtnSmall: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#FFB800', alignItems: 'center', justifyContent: 'center' },
   brandsScroll: { marginBottom: 20 },
   brandsScrollContent: { gap: 10, paddingRight: 20 },
   brandPill: { paddingHorizontal: 20, paddingVertical: 12, borderRadius: 16, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E2E8F0' },
-  brandPillActive: { backgroundColor: '#3182CE', borderColor: '#3182CE' },
+  brandPillActive: { backgroundColor: '#FFB800', borderColor: '#FFB800' },
   brandPillText: { fontSize: 13, fontWeight: '700', color: '#718096' },
   brandPillTextActive: { color: '#FFFFFF', fontWeight: '900' },
   brandMainPanel: { backgroundColor: '#FFFFFF', borderRadius: 24, padding: 24, marginBottom: 20, borderWidth: 1, borderColor: '#E2E8F0', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.03, shadowRadius: 8, elevation: 3 },
   brandPanelHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, backgroundColor: 'transparent' },
-  brandPanelLabel: { fontSize: 10, fontWeight: '900', color: '#3182CE', letterSpacing: 1.5, marginBottom: 4 },
+  brandPanelLabel: { fontSize: 10, fontWeight: '900', color: '#FFB800', letterSpacing: 1.5, marginBottom: 4 },
   brandPanelTitle: { fontSize: 24, fontWeight: '900', color: '#1A202C' },
   brandPanelActions: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'transparent' },
   iconBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#F7FAFC', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E2E8F0' },
   iconBtnTrash: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#FFF5F5', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#FEB2B2' },
-  addCategoryBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#3182CE', paddingVertical: 10, paddingHorizontal: 16, borderRadius: 14 },
+  addCategoryBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFB800', paddingVertical: 10, paddingHorizontal: 16, borderRadius: 14 },
   addCategoryText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800', marginLeft: 6 },
   courseSubTabsBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, backgroundColor: 'transparent' },
   courseSubTabs: { flexDirection: 'row', backgroundColor: '#F7FAFC', borderRadius: 14, padding: 4, borderWidth: 1, borderColor: '#E2E8F0' },
   courseTabBtn: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 10, backgroundColor: 'transparent' },
   courseTabBtnActive: { backgroundColor: '#FFFFFF', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 },
   courseTabText: { fontSize: 11, fontWeight: '700', color: '#718096' },
-  courseTabTextActive: { color: '#3182CE', fontWeight: '900' },
-  addFieldBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#EBF8FF', paddingVertical: 10, paddingHorizontal: 16, borderRadius: 12, borderWidth: 1, borderColor: '#BEE3F8' },
-  addFieldText: { color: '#3182CE', fontSize: 12, fontWeight: '800', marginLeft: 6 },
+  courseTabTextActive: { color: '#FFB800', fontWeight: '900' },
+  addFieldBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FEF3C7', paddingVertical: 10, paddingHorizontal: 16, borderRadius: 12, borderWidth: 1, borderColor: '#FDE68A' },
+  addFieldText: { color: '#FFB800', fontSize: 12, fontWeight: '800', marginLeft: 6 },
   emptyFieldsCard: { backgroundColor: '#F7FAFC', borderRadius: 20, padding: 32, alignItems: 'center', borderWidth: 1, borderColor: '#E2E8F0', borderStyle: 'dashed' },
   emptyFieldsTitle: { fontSize: 16, fontWeight: '800', color: '#1A202C', marginBottom: 4 },
   emptyFieldsSub: { fontSize: 11, fontWeight: '700', color: '#718096', letterSpacing: 1, marginBottom: 20 },
   refreshFieldsBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 14, borderWidth: 1, borderColor: '#E2E8F0', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 4, elevation: 1 },
-  refreshFieldsText: { color: '#3182CE', fontSize: 13, fontWeight: '800', marginLeft: 8 },
+  refreshFieldsText: { color: '#FFB800', fontSize: 13, fontWeight: '800', marginLeft: 8 },
   inheritanceCard: { backgroundColor: '#FFF5F5', borderRadius: 20, padding: 20, marginBottom: 20, borderWidth: 1, borderColor: '#FEB2B2' },
   inheritanceHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, backgroundColor: 'transparent' },
   inheritanceTitle: { fontSize: 14, fontWeight: '900', color: '#E53E3E', marginLeft: 8 },
   inheritanceBody: { fontSize: 13, color: '#C53030', fontWeight: '600', lineHeight: 20 },
-  previewCard: { backgroundColor: '#3182CE', borderRadius: 20, padding: 24, marginBottom: 20, shadowColor: '#3182CE', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 6 },
+  previewCard: { backgroundColor: '#FFB800', borderRadius: 20, padding: 24, marginBottom: 20, shadowColor: '#FFB800', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 6 },
   previewHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, backgroundColor: 'transparent' },
   previewTitle: { fontSize: 20, fontWeight: '900', color: '#FFFFFF', marginBottom: 4 },
-  previewSub: { fontSize: 11, fontWeight: '800', color: '#EBF8FF', letterSpacing: 1.5 },
+  previewSub: { fontSize: 11, fontWeight: '800', color: '#FEF3C7', letterSpacing: 1.5 },
   analyticsHeaderActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 12, marginBottom: 20, backgroundColor: 'transparent' },
   exportBtnAcc: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', paddingVertical: 12, paddingHorizontal: 16, borderRadius: 14, borderWidth: 1, borderColor: '#E2E8F0' },
   exportBtnTextAcc: { fontSize: 12, fontWeight: '800', color: '#1A202C', marginLeft: 8 },
-  scheduleBtnAcc: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#3182CE', paddingVertical: 12, paddingHorizontal: 16, borderRadius: 14 },
+  scheduleBtnAcc: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFB800', paddingVertical: 12, paddingHorizontal: 16, borderRadius: 14 },
   scheduleBtnTextAcc: { fontSize: 12, fontWeight: '800', color: '#FFFFFF', marginLeft: 8 },
   analyticsStatsGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 24, backgroundColor: 'transparent' },
   analyticsStatCard: { width: '48%', backgroundColor: '#FFFFFF', borderRadius: 20, padding: 20, marginBottom: 16, borderWidth: 1, borderColor: '#E2E8F0', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 6, elevation: 2 },
@@ -4455,7 +5135,7 @@ const styles = StyleSheet.create({
   analyticsTabBtn: { flex: 1, paddingVertical: 12, borderRadius: 14, alignItems: 'center', backgroundColor: 'transparent' },
   analyticsTabBtnActive: { backgroundColor: '#FFFFFF', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
   analyticsTabText: { fontSize: 12, fontWeight: '700', color: '#718096' },
-  analyticsTabTextActive: { color: '#3182CE', fontWeight: '900' },
+  analyticsTabTextActive: { color: '#FFB800', fontWeight: '900' },
   analyticsOverviewPanels: { backgroundColor: 'transparent', gap: 20 },
   revenueCard: { backgroundColor: '#1A202C', borderRadius: 24, padding: 24, shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.25, shadowRadius: 16, elevation: 6 },
   revenueHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 24, backgroundColor: 'transparent' },
@@ -4476,14 +5156,14 @@ const styles = StyleSheet.create({
   tableCellBold: { fontSize: 14, fontWeight: '800', color: '#1A202C' },
   tableCellSub: { fontSize: 13, color: '#4A5568', fontWeight: '600' },
   tableCellBadge: { alignItems: 'flex-start', backgroundColor: 'transparent' },
-  badgeValText: { backgroundColor: '#EBF8FF', color: '#3182CE', fontWeight: '900', fontSize: 12, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  badgeValText: { backgroundColor: '#FEF3C7', color: '#FFB800', fontWeight: '900', fontSize: 12, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
   tableCellProgressCol: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'transparent' },
   tableProgBg: { flex: 1, height: 6, backgroundColor: '#EDF2F7', borderRadius: 3, overflow: 'hidden', marginRight: 8 },
-  tableProgFill: { height: 6, backgroundColor: '#3182CE', borderRadius: 3 },
-  tableProgText: { fontSize: 12, fontWeight: '800', color: '#3182CE', width: 32 },
+  tableProgFill: { height: 6, backgroundColor: '#FFB800', borderRadius: 3 },
+  tableProgText: { fontSize: 12, fontWeight: '800', color: '#FFB800', width: 32 },
   teacherMetricRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, backgroundColor: '#F7FAFC', borderRadius: 16, borderWidth: 1, borderColor: '#E2E8F0' },
   teacherMetricName: { fontSize: 15, fontWeight: '800', color: '#1A202C' },
-  teacherMetricVal: { fontSize: 14, fontWeight: '900', color: '#3182CE' },
+  teacherMetricVal: { fontSize: 14, fontWeight: '900', color: '#FFB800' },
 
   /* HRMS Module Specific Styles */
   emptyStateBox: { padding: 32, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F7FAFC', borderRadius: 16, borderWidth: 1, borderColor: '#E2E8F0', borderStyle: 'dashed' },
@@ -4512,7 +5192,7 @@ const styles = StyleSheet.create({
   taskFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'transparent' },
   taskDate: { fontSize: 12, color: '#718096', fontWeight: '600' },
 
-  actionButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#3182CE', paddingVertical: 18, borderRadius: 20, marginBottom: 30, shadowColor: '#3182CE', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 6 },
+  actionButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFB800', paddingVertical: 18, borderRadius: 20, marginBottom: 30, shadowColor: '#FFB800', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 6 },
   actionButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '900', marginRight: 10 },
   section: { marginBottom: 30, backgroundColor: 'transparent' },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, backgroundColor: 'transparent' },
@@ -4523,14 +5203,14 @@ const styles = StyleSheet.create({
   itemDesc: { fontSize: 13, fontWeight: '600', color: '#718096' },
   badge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
   badgeText: { fontSize: 11, fontWeight: '900' },
-  footerCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#EBF8FF', padding: 20, borderRadius: 20, borderWidth: 1, borderColor: '#BEE3F8' },
-  footerText: { flex: 1, marginLeft: 16, fontSize: 12, fontWeight: '600', color: '#2B6CB0', lineHeight: 18 },
+  footerCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FEF3C7', padding: 20, borderRadius: 20, borderWidth: 1, borderColor: '#FDE68A' },
+  footerText: { flex: 1, marginLeft: 16, fontSize: 12, fontWeight: '600', color: '#B45309', lineHeight: 18 },
   paginationBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16, backgroundColor: '#FFFFFF', borderRadius: 20, borderWidth: 1, borderColor: '#E2E8F0', marginTop: 12 },
   pageBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 16, backgroundColor: '#F7FAFC', borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0' },
   pageBtnDisabled: { opacity: 0.5 },
   pageBtnText: { fontSize: 13, fontWeight: '800', color: '#1A202C' },
-  pageInfoBadge: { paddingVertical: 6, paddingHorizontal: 16, backgroundColor: '#EBF8FF', borderRadius: 12 },
-  pageInfoText: { fontSize: 12, fontWeight: '700', color: '#2B6CB0' },
+  pageInfoBadge: { paddingVertical: 6, paddingHorizontal: 16, backgroundColor: '#FEF3C7', borderRadius: 12 },
+  pageInfoText: { fontSize: 12, fontWeight: '700', color: '#B45309' },
 
   // Student Portal
   examTakingContainer: {
@@ -4578,7 +5258,7 @@ const styles = StyleSheet.create({
   questionMarks: {
     fontSize: 13,
     fontWeight: '800',
-    color: '#3182CE',
+    color: '#FFB800',
   },
   optionsContainer: {
     marginTop: 8,
@@ -4596,8 +5276,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   optionButtonActive: {
-    borderColor: '#3182CE',
-    backgroundColor: '#EBF8FF',
+    borderColor: '#FFB800',
+    backgroundColor: '#FEF3C7',
   },
   optionDot: {
     width: 16,
@@ -4608,8 +5288,8 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   optionDotActive: {
-    borderColor: '#3182CE',
-    backgroundColor: '#3182CE',
+    borderColor: '#FFB800',
+    backgroundColor: '#FFB800',
   },
   optionText: {
     fontSize: 14,
@@ -4617,7 +5297,7 @@ const styles = StyleSheet.create({
     color: '#4A5568',
   },
   optionTextActive: {
-    color: '#2B6CB0',
+    color: '#B45309',
     fontWeight: '900',
   },
   theoryInput: {
@@ -4698,7 +5378,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: '#EBF8FF',
+    backgroundColor: '#FEF3C7',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 16,
@@ -4716,7 +5396,7 @@ const styles = StyleSheet.create({
   profileId: {
     fontSize: 12,
     fontWeight: '800',
-    color: '#3182CE',
+    color: '#FFB800',
   },
   profileDetailsGrid: {
     backgroundColor: '#F7FAFC',
@@ -4777,7 +5457,7 @@ const styles = StyleSheet.create({
     color: '#718096',
   },
   takeExamBtn: {
-    backgroundColor: '#3182CE',
+    backgroundColor: '#FFB800',
     paddingVertical: 10,
     paddingHorizontal: 16,
     borderRadius: 12,
@@ -4861,7 +5541,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: '#EBF8FF',
+    backgroundColor: '#FEF3C7',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 14,
@@ -4869,7 +5549,7 @@ const styles = StyleSheet.create({
   staffInitialText: {
     fontSize: 18,
     fontWeight: '900',
-    color: '#2B6CB0',
+    color: '#B45309',
   },
   staffInfoContainer: {
     flex: 1,
@@ -4912,9 +5592,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#EBF8FF',
+    backgroundColor: '#FEF3C7',
     borderWidth: 1.5,
-    borderColor: '#BEE3F8',
+    borderColor: '#FDE68A',
     borderRadius: 14,
     paddingVertical: 12,
     gap: 6,
@@ -4922,7 +5602,7 @@ const styles = StyleSheet.create({
   callButtonText: {
     fontSize: 13,
     fontWeight: '800',
-    color: '#2B6CB0',
+    color: '#B45309',
   },
   emailButton: {
     flex: 1,
@@ -4975,18 +5655,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#3182CE',
+    backgroundColor: '#FFB800',
     paddingVertical: 16,
     borderRadius: 16,
     gap: 10,
-    shadowColor: '#3182CE',
+    shadowColor: '#FFB800',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,
     shadowRadius: 6,
     elevation: 3,
   },
   adminSyncBtnActive: {
-    backgroundColor: '#2B6CB0',
+    backgroundColor: '#B45309',
     opacity: 0.8,
   },
   adminSyncBtnText: {

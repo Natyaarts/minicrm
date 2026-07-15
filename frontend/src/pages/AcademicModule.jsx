@@ -75,7 +75,7 @@ const AcademicModule = () => {
     const fetchWiseCourses = async () => {
         try {
             setLoading(true);
-            const res = await api.get('integrations/courses/?type=LIVE');
+            const res = await api.get('integrations/courses/?type=ALL');
             setWiseCourses(res.data);
         } catch (err) {
             console.error(err);
