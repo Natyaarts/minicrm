@@ -82,6 +82,7 @@ export default function SalesScreen() {
   const [search, setSearch] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [totalStudents, setTotalStudents] = useState(0);
+  const [sortOrder, setSortOrder] = useState<'-created_at' | 'created_at'>('-created_at');
 
   // Pagination & Filtering State for View Applications
   const [selectedFilter, setSelectedFilter] = useState<any>({ label: 'All', type: 'all', value: 'All' });
@@ -141,7 +142,7 @@ export default function SalesScreen() {
       }, 300);
       return () => clearTimeout(delayDebounceFn);
     }
-  }, [activeTab, search, selectedFilter, authLoading, hasDialerAccess]);
+  }, [activeTab, search, selectedFilter, sortOrder, authLoading, hasDialerAccess]);
 
   useEffect(() => {
     if (authLoading || !hasDialerAccess) return;
@@ -187,7 +188,7 @@ export default function SalesScreen() {
     } else {
       setLoading(true);
     }
-    const params: any = { page, page_size: itemsPerPage };
+    const params: any = { page, page_size: itemsPerPage, ordering: sortOrder };
     if (search) params.search = search;
     
     // Apply filters matching backend params
@@ -546,6 +547,24 @@ export default function SalesScreen() {
                 value={search} 
                 onChangeText={(text) => { setSearch(text); setCurrentPage(1); }} 
               />
+              <TouchableOpacity
+                onPress={() => {
+                  const newOrder = sortOrder === '-created_at' ? 'created_at' : '-created_at';
+                  setSortOrder(newOrder);
+                  setStudents([]);
+                  setCurrentPage(1);
+                }}
+                style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#EBF8FF', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, marginLeft: 8, gap: 4 }}
+              >
+                <FontAwesome5
+                  name={sortOrder === '-created_at' ? 'sort-amount-down' : 'sort-amount-up'}
+                  size={12}
+                  color="#3182CE"
+                />
+                <Text style={{ color: '#3182CE', fontSize: 11, fontWeight: '800' }}>
+                  {sortOrder === '-created_at' ? 'Newest' : 'Oldest'}
+                </Text>
+              </TouchableOpacity>
             </View>
 
             {/* Filter Pills ScrollView */}

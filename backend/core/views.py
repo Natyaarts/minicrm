@@ -298,8 +298,10 @@ class BatchViewSet(viewsets.ModelViewSet):
 class StudentViewSet(viewsets.ModelViewSet):
     queryset = Student.objects.all()
     serializer_class = StudentSerializer
-    filter_backends = [filters.SearchFilter]
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['first_name', 'last_name', 'crm_student_id', 'mobile', 'email']
+    ordering_fields = ['created_at', 'id']
+    ordering = ['-created_at']  # default: newest first
     permission_classes = [DynamicRolePermission]
     module_name = 'SALES'
     

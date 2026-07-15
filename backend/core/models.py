@@ -112,6 +112,7 @@ class Student(models.Model):
     total_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0.0)
     paid_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0.0)
     fee_due_date = models.DateField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
 
     def __str__(self):
         return f"{self.first_name} {self.last_name}"
