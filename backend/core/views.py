@@ -1586,8 +1586,7 @@ class AnalyticsDetailView(APIView):
         })
 
 class CalendarEventsView(APIView):
-    permission_classes = [DynamicRolePermission]
-    module_name = 'CORE'
+    permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         from core.models import Exam, ClassSession
