@@ -82,7 +82,7 @@ export default function SalesScreen() {
   const [search, setSearch] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [totalStudents, setTotalStudents] = useState(0);
-  const [sortOrder, setSortOrder] = useState<'-created_at' | 'created_at'>('-created_at');
+  const [sortOrder, setSortOrder] = useState<'-id' | 'id'>('-id');
 
   // Pagination & Filtering State for View Applications
   const [selectedFilter, setSelectedFilter] = useState<any>({ label: 'All', type: 'all', value: 'All' });
@@ -549,7 +549,7 @@ export default function SalesScreen() {
               />
               <TouchableOpacity
                 onPress={() => {
-                  const newOrder = sortOrder === '-created_at' ? 'created_at' : '-created_at';
+                  const newOrder = sortOrder === '-id' ? 'id' : '-id';
                   setSortOrder(newOrder);
                   setStudents([]);
                   setCurrentPage(1);
@@ -557,12 +557,12 @@ export default function SalesScreen() {
                 style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#EBF8FF', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, marginLeft: 8, gap: 4 }}
               >
                 <FontAwesome5
-                  name={sortOrder === '-created_at' ? 'sort-amount-down' : 'sort-amount-up'}
+                  name={sortOrder === '-id' ? 'sort-amount-down' : 'sort-amount-up'}
                   size={12}
                   color="#3182CE"
                 />
                 <Text style={{ color: '#3182CE', fontSize: 11, fontWeight: '800' }}>
-                  {sortOrder === '-created_at' ? 'Newest' : 'Oldest'}
+                  {sortOrder === '-id' ? 'Newest' : 'Oldest'}
                 </Text>
               </TouchableOpacity>
             </View>
