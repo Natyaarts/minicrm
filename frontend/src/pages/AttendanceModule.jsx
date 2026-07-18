@@ -807,7 +807,10 @@ const SettingsView = ({ location, requestLocation }) => {
     const fetchShift = async () => {
         try {
             const res = await api.get('hrms/shifts/');
-            const raw = res.data[0] || {
+            // Handle DRF pagination response which returns { count, results: [] }
+            const shiftList = res.data.results ? res.data.results : res.data;
+            
+            const raw = shiftList[0] || {
                 name: 'General Shift',
                 start_time: '09:00',
                 end_time: '18:00',
