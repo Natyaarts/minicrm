@@ -21,6 +21,7 @@ export default function GlobalCallListener() {
   const [nextFollowupDate, setNextFollowupDate] = useState<Date | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [manualRecordingFile, setManualRecordingFile] = useState<any>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Refs for background state tracking
   const isIncomingRef = useRef(false);
@@ -59,8 +60,8 @@ export default function GlobalCallListener() {
         }
       } 
       else if (state === 'IDLE') {
-        // If an incoming call just ended
-        if (isIncomingRef.current && callStartTimeRef.current) {
+        // If an incoming call just ended (either answered or missed)
+        if (isIncomingRef.current) {
           stopTimer();
           
           if (Platform.OS === 'android') {
@@ -148,6 +149,9 @@ export default function GlobalCallListener() {
       return;
     }
 
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+
     try {
       const formData = new FormData();
       formData.append('student', leadInfo.id.toString());
@@ -166,10 +170,23 @@ export default function GlobalCallListener() {
       }
 
       if (recordedFilePath) {
+        let finalUri = recordedFilePath;
+        if (!finalUri.startsWith('file://') && !finalUri.startsWith('content://')) {
+          finalUri = `file://${finalUri}`;
+        }
+        
+        const extMatch = finalUri.match(/\.([a-zA-Z0-9]+)$/);
+        const ext = extMatch ? extMatch[1].toLowerCase() : 'm4a';
+        let mimeType = 'audio/m4a';
+        if (ext === 'mp3') mimeType = 'audio/mpeg';
+        else if (ext === 'wav') mimeType = 'audio/wav';
+        else if (ext === 'amr') mimeType = 'audio/amr';
+        else if (ext === 'aac') mimeType = 'audio/aac';
+        
         formData.append('audio_recording', {
-          uri: `file://${recordedFilePath}`,
-          type: 'audio/m4a',
-          name: `incoming_record_${Date.now()}.m4a`
+          uri: finalUri,
+          type: mimeType,
+          name: `incoming_record_${Date.now()}.${ext}`
         } as any);
       } else if (manualRecordingFile) {
         formData.append('audio_recording', {
@@ -185,9 +202,12 @@ export default function GlobalCallListener() {
       
       Alert.alert('✅ Saved', 'Incoming call logged successfully.');
       resetModal();
-    } catch (error) {
-      console.error('Failed to upload incoming call log:', error);
-      Alert.alert('Error', 'Failed to save call log.');
+    } catch (error: any) {
+      console.error('Failed to upload incoming call log:', error?.response?.data || error);
+      const errorMsg = error?.response?.data ? JSON.stringify(error.response.data) : error.message;
+      Alert.alert('Error', `Failed to save call log.\nDetails: ${errorMsg}`);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -236,7 +256,7 @@ export default function GlobalCallListener() {
         ) : leadInfo ? (
           <View style={styles.leadMatchBox}>
             <Ionicons name="person" size={16} color="#3182CE" />
-            <Text style={styles.leadMatchText}>Lead Match: <Text style={{fontWeight: 'bold'}}>{leadInfo.name}</Text></Text>
+            <Text style={styles.leadMatchText}>Lead Match: <Text style={{fontWeight: 'bold'}}>{leadInfo.first_name} {leadInfo.last_name}</Text></Text>
           </View>
         ) : (
           <View style={[styles.leadMatchBox, { backgroundColor: '#FEF2F2', borderColor: '#FCA5A5' }]}>
@@ -327,8 +347,19 @@ export default function GlobalCallListener() {
         )}
 
         {leadInfo ? (
-          <TouchableOpacity style={styles.saveBtn} onPress={handleSaveCall}>
-            <Text style={styles.saveBtnText}>Save Incoming Call</Text>
+          <TouchableOpacity 
+            style={[styles.saveBtn, isSubmitting && { backgroundColor: '#A0AEC0' }]} 
+            onPress={handleSaveCall}
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <ActivityIndicator color="#FFF" size="small" />
+                <Text style={styles.saveBtnText}>Saving & Uploading...</Text>
+              </View>
+            ) : (
+              <Text style={styles.saveBtnText}>Save & Upload Log</Text>
+            )}
           </TouchableOpacity>
         ) : null}
 

@@ -12,7 +12,8 @@ import { clockIn, clockOut, getAttendanceStatus } from '../../src/api/attendance
 import client from '../../src/api/client';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
+import { useCallback } from 'react';
 
 export default function AttendanceScreen() {
   const router = useRouter();
@@ -40,12 +41,14 @@ export default function AttendanceScreen() {
     return () => clearInterval(timer);
   }, []);
 
-  useEffect(() => {
-    loadUser();
-    fetchStatus();
-    fetchStats();
-    requestLocationPermission();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      loadUser();
+      fetchStatus();
+      fetchStats();
+      requestLocationPermission();
+    }, [])
+  );
 
   const loadUser = async () => {
     try {

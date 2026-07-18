@@ -199,7 +199,7 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
     private fun copySafFileToCache(uri: Uri, fileName: String): String? {
         try {
             val cacheDir = reactApplicationContext.cacheDir
-            val safeFileName = fileName.replace(Regex("[\\\\/:*?\"<>|]"), "_")
+            val safeFileName = fileName.replace(Regex("[^a-zA-Z0-9.-]"), "_")
             val destFile = File(cacheDir, "saf_recorded_$safeFileName")
             
             reactApplicationContext.contentResolver.openInputStream(uri)?.use { input ->
@@ -207,7 +207,12 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
                     input.copyTo(output)
                 }
             }
-            return destFile.absolutePath
+            if (destFile.exists() && destFile.length() > 0) {
+                return destFile.absolutePath
+            } else {
+                if (destFile.exists()) destFile.delete()
+                return null
+            }
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -313,7 +318,7 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
             val contentUri = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id)
             val cacheDir = reactApplicationContext.cacheDir
             
-            val safeFileName = fileName.replace(Regex("[\\\\/:*?\"<>|]"), "_")
+            val safeFileName = fileName.replace(Regex("[^a-zA-Z0-9.-]"), "_")
             val destFile = File(cacheDir, "recorded_call_$safeFileName")
             
             reactApplicationContext.contentResolver.openInputStream(contentUri)?.use { input ->
@@ -321,7 +326,12 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
                     input.copyTo(output)
                 }
             }
-            return destFile.absolutePath
+            if (destFile.exists() && destFile.length() > 0) {
+                return destFile.absolutePath
+            } else {
+                if (destFile.exists()) destFile.delete()
+                return null
+            }
         } catch (e: Exception) {
             e.printStackTrace()
         }

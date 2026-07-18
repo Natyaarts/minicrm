@@ -22,6 +22,7 @@ const Dialpad = () => {
   const [nextFollowupDate, setNextFollowupDate] = useState<Date | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [isProcessingRecording, setIsProcessingRecording] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Dynamic pipeline stages from web backend
   const [pipelineStages, setPipelineStages] = useState<any[]>([
@@ -315,6 +316,9 @@ const Dialpad = () => {
       return;
     }
 
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+
     try {
       const formData = new FormData();
       formData.append('student', leadId as string);
@@ -333,10 +337,23 @@ const Dialpad = () => {
 
       // Prefer native auto-recording, fall back to manually picked file
       if (recordedFilePath) {
+        let finalUri = recordedFilePath;
+        if (!finalUri.startsWith('file://') && !finalUri.startsWith('content://')) {
+          finalUri = `file://${finalUri}`;
+        }
+        
+        const extMatch = finalUri.match(/\.([a-zA-Z0-9]+)$/);
+        const ext = extMatch ? extMatch[1].toLowerCase() : 'm4a';
+        let mimeType = 'audio/m4a';
+        if (ext === 'mp3') mimeType = 'audio/mpeg';
+        else if (ext === 'wav') mimeType = 'audio/wav';
+        else if (ext === 'amr') mimeType = 'audio/amr';
+        else if (ext === 'aac') mimeType = 'audio/aac';
+        
         formData.append('audio_recording', {
-          uri: `file://${recordedFilePath}`,
-          type: 'audio/m4a',
-          name: `recording_${Date.now()}.m4a`
+          uri: finalUri,
+          type: mimeType,
+          name: `recording_${Date.now()}.${ext}`
         } as any);
       } else if (manualRecordingFile) {
         formData.append('audio_recording', {
@@ -356,9 +373,12 @@ const Dialpad = () => {
       setManualRecordingFile(null);
       setNextFollowupDate(null);
       if (activeTab === 'history') fetchRecentCalls();
-    } catch (error) {
-      console.error('Failed to upload post-call log:', error);
-      Alert.alert('Error', 'Failed to save call log.');
+    } catch (error: any) {
+      console.error('Failed to upload post-call log:', error?.response?.data || error);
+      const errorMsg = error?.response?.data ? JSON.stringify(error.response.data) : error.message;
+      Alert.alert('Error', `Failed to save call log.\nDetails: ${errorMsg}`);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -495,14 +515,16 @@ const Dialpad = () => {
           )}
 
           <TouchableOpacity 
-            style={{ backgroundColor: isProcessingRecording ? '#A0AEC0' : '#10B981', padding: 16, borderRadius: 8, alignItems: 'center', marginTop: 30 }}
+            style={{ backgroundColor: (isProcessingRecording || isSubmitting) ? '#A0AEC0' : '#10B981', padding: 16, borderRadius: 8, alignItems: 'center', marginTop: 30 }}
             onPress={handlePostCallSubmit}
-            disabled={isProcessingRecording}
+            disabled={isProcessingRecording || isSubmitting}
           >
-            {isProcessingRecording ? (
+            {(isProcessingRecording || isSubmitting) ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <ActivityIndicator color="#FFF" size="small" />
-                <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 16 }}>Scanning for Recording...</Text>
+                <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 16 }}>
+                  {isSubmitting ? 'Saving & Uploading...' : 'Scanning for Recording...'}
+                </Text>
               </View>
             ) : (
               <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 16 }}>Save & Upload Log</Text>

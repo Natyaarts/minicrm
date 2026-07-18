@@ -8,6 +8,7 @@ export const requestCallPermissions = async () => {
     try {
         const permissionsToRequest = [
             PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE,
+            PermissionsAndroid.PERMISSIONS.READ_CALL_LOG,
             PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
         ];
         

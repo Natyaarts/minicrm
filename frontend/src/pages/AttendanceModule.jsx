@@ -836,6 +836,8 @@ const SettingsView = ({ location, requestLocation }) => {
                 ...shift,
                 start_time: shift.start_time.length === 5 ? shift.start_time + ':00' : shift.start_time,
                 end_time: shift.end_time.length === 5 ? shift.end_time + ':00' : shift.end_time,
+                office_latitude: parseFloat(shift.office_latitude).toFixed(6),
+                office_longitude: parseFloat(shift.office_longitude).toFixed(6),
             };
             if (shift.id) {
                 await api.patch(`hrms/shifts/${shift.id}/`, payload);
