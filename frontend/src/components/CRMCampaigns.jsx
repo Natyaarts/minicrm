@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api/axios';
 import { motion } from 'framer-motion';
-import { Plus, X, Search, BarChart, Calendar, DollarSign, Users, ExternalLink, Edit2, Link, Upload, TrendingUp, CheckCircle, Clock, Download, ArrowUpDown } from 'lucide-react';
+import { Plus, X, Search, BarChart, Calendar, DollarSign, Users, ExternalLink, Edit2, Link, Upload, TrendingUp, CheckCircle, Clock, Download, ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 
@@ -33,6 +33,8 @@ const CRMCampaigns = () => {
     // Leads Data
     const [leads, setLeads] = useState([]);
     const [leadsLoading, setLeadsLoading] = useState(true);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
     const [sortOrder, setSortOrder] = useState('desc');
     const [salesUsers, setSalesUsers] = useState([]);
     const [pipelineStages, setPipelineStages] = useState({});
@@ -78,12 +80,17 @@ const CRMCampaigns = () => {
             fetchWebhooks();
             fetchPrograms();
         } else if (activeTab === 'leads') {
-            fetchLeads();
             fetchSalesUsers();
             fetchPipelineStages();
             fetchPrograms();
         }
     }, [activeTab]);
+
+    useEffect(() => {
+        if (activeTab === 'leads') {
+            fetchLeads();
+        }
+    }, [activeTab, currentPage]);
 
     const fetchDashboardData = async () => {
         setDashboardLoading(true);
@@ -128,8 +135,11 @@ const CRMCampaigns = () => {
     const fetchLeads = async () => {
         setLeadsLoading(true);
         try {
-            const res = await api.get('students/?campaign_only=true'); 
+            const res = await api.get(`students/?campaign_only=true&page=${currentPage}`); 
             setLeads(res.data.results || res.data || []);
+            if (res.data.count !== undefined) {
+                setTotalPages(Math.ceil(res.data.count / 20));
+            }
         } catch (error) {
             console.error('Error fetching leads:', error);
         } finally {
@@ -723,6 +733,31 @@ const CRMCampaigns = () => {
                                     )}
                                 </tbody>
                             </table>
+                        </div>
+                    )}
+                    
+                    {/* Pagination Controls */}
+                    {totalPages > 1 && (
+                        <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 bg-slate-50/50">
+                            <span className="text-sm text-slate-500">
+                                Page <span className="font-medium text-slate-700">{currentPage}</span> of <span className="font-medium text-slate-700">{totalPages}</span>
+                            </span>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                    disabled={currentPage === 1}
+                                    className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-white hover:text-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                >
+                                    <ChevronLeft className="w-4 h-4" />
+                                </button>
+                                <button
+                                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                    disabled={currentPage === totalPages}
+                                    className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-white hover:text-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                >
+                                    <ChevronRight className="w-4 h-4" />
+                                </button>
+                            </div>
                         </div>
                     )}
                 </div>
