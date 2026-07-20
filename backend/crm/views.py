@@ -612,8 +612,16 @@ class CallAnalyticsView(APIView):
 
 
 
+        page = int(request.query_params.get('page', 1))
+        page_size = 20
+        start = (page - 1) * page_size
+        end = start + page_size
+        
+        history_qs = interactions.select_related('author', 'student').order_by('-date')
+        total_history = history_qs.count()
+
         history = []
-        for inter in interactions.select_related('author', 'student').order_by('-date')[:50]:
+        for inter in history_qs[start:end]:
             history.append({
                 'id': inter.id,
                 'date': inter.date,
@@ -627,6 +635,7 @@ class CallAnalyticsView(APIView):
 
         return Response({
             'history': history,
+            'total_history': total_history,
             'summary': {
 
                 'incoming_calls': total_incoming,

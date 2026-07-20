@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { PhoneIncoming, PhoneOutgoing, PhoneMissed, PhoneOff, Clock, Users, PhoneCall, Calendar, BarChart2 } from 'lucide-react';
+import { PhoneIncoming, PhoneOutgoing, PhoneMissed, PhoneOff, Clock, Users, PhoneCall, Calendar, BarChart2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from 'recharts';
 import api from '../api/axios';
 
@@ -12,6 +12,7 @@ const CallAnalyticsDashboard = () => {
     const [employeeId, setEmployeeId] = useState('');
     const [direction, setDirection] = useState('');
     const [status, setStatus] = useState('');
+    const [currentPage, setCurrentPage] = useState(1);
     const [salesUsers, setSalesUsers] = useState([]);
 
     useEffect(() => {
@@ -36,6 +37,7 @@ const CallAnalyticsDashboard = () => {
                 if (employeeId) url += `employee_id=${employeeId}&`;
                 if (direction) url += `direction=${direction}&`;
                 if (status) url += `status=${status}&`;
+                url += `page=${currentPage}&`;
                 const res = await api.get(url);
                 setData(res.data);
             } catch (err) {
@@ -45,7 +47,7 @@ const CallAnalyticsDashboard = () => {
             }
         };
         fetchData();
-    }, [startDate, endDate, employeeId, direction, status]);
+    }, [startDate, endDate, employeeId, direction, status, currentPage]);
 
     const exportToCSV = () => {
         if (!data) return;
@@ -459,6 +461,30 @@ const CallAnalyticsDashboard = () => {
                             </tbody>
                         </table>
                     </div>
+                    {/* Pagination Controls */}
+                    {data?.total_history > 20 && (
+                        <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 bg-slate-50/50">
+                            <span className="text-sm text-slate-500">
+                                Page <span className="font-medium text-slate-700">{currentPage}</span> of <span className="font-medium text-slate-700">{Math.ceil(data.total_history / 20)}</span>
+                            </span>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                    disabled={currentPage === 1}
+                                    className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-white hover:text-orange-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                >
+                                    <ChevronLeft className="w-4 h-4" />
+                                </button>
+                                <button
+                                    onClick={() => setCurrentPage(p => Math.min(Math.ceil(data.total_history / 20), p + 1))}
+                                    disabled={currentPage === Math.ceil(data.total_history / 20)}
+                                    className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-white hover:text-orange-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                >
+                                    <ChevronRight className="w-4 h-4" />
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
         </div>
