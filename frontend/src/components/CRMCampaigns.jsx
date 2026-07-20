@@ -799,9 +799,19 @@ const CRMCampaigns = () => {
                             <div>
                                 <label className="block text-sm font-medium text-slate-700 mb-1.5">Upload CSV File *</label>
                                 <input required type="file" accept=".csv" onChange={(e) => setUploadFile(e.target.files[0])} className="w-full text-sm text-slate-500 file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
-                                <p className="text-[10px] text-slate-500 mt-2 leading-relaxed">
-                                    CSV must include columns: <b>Name</b>, <b>date</b>, <b>place</b>, <b>contact</b>, <b>email</b>, <b>tag</b>.
-                                </p>
+                                <div className="flex items-center justify-between mt-2">
+                                    <p className="text-[10px] text-slate-500 leading-relaxed">
+                                        CSV must include columns: <b>Name</b>, <b>date</b>, <b>place</b>, <b>contact</b>, <b>email</b>, <b>tag</b>.
+                                    </p>
+                                    <a 
+                                        href="data:text/csv;charset=utf-8,Name,date,place,contact,email,tag%0A" 
+                                        download="leads_template.csv"
+                                        className="text-[11px] text-indigo-600 hover:text-indigo-800 font-semibold whitespace-nowrap flex items-center gap-1 bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded transition-colors"
+                                    >
+                                        <Download size={12} />
+                                        Template
+                                    </a>
+                                </div>
                             </div>
                             <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
                                 <button type="button" onClick={() => setIsUploadModalOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 rounded-xl">Cancel</button>
