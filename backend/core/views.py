@@ -129,21 +129,11 @@ class BatchViewSet(viewsets.ModelViewSet):
             
         mentor_id = self.request.query_params.get('mentor_id')
         if mentor_id:
-            if user.role in ['SUPER_ADMIN', 'ADMIN', 'ACADEMIC', 'ACADEMIC_COORDINATOR']:
-                qs = qs.filter(primary_mentor_id=mentor_id)
-            elif user.role in ['MENTOR', 'TEACHER'] and hasattr(user, 'get_all_subordinates'):
-                subordinates = user.get_all_subordinates()
-                if str(mentor_id) == str(user.id) or any(str(sub.id) == str(mentor_id) for sub in subordinates):
-                    qs = qs.filter(primary_mentor_id=mentor_id)
+            qs = qs.filter(primary_mentor_id=mentor_id)
                     
         teacher_id = self.request.query_params.get('teacher_id')
         if teacher_id:
-            if user.role in ['SUPER_ADMIN', 'ADMIN', 'ACADEMIC', 'ACADEMIC_COORDINATOR']:
-                qs = qs.filter(teacher_id=teacher_id)
-            elif user.role in ['MENTOR', 'TEACHER'] and hasattr(user, 'get_all_subordinates'):
-                subordinates = user.get_all_subordinates()
-                if str(teacher_id) == str(user.id) or any(str(sub.id) == str(teacher_id) for sub in subordinates):
-                    qs = qs.filter(teacher_id=teacher_id)
+            qs = qs.filter(teacher_id=teacher_id)
             
         return qs.order_by('-id')
 
