@@ -125,13 +125,7 @@ const MentorModule = () => {
     const [isBatchHistoryModalOpen, setIsBatchHistoryModalOpen] = useState(false);
     const [batchHistoryData, setBatchHistoryData] = useState([]);
 
-    // Teacher View State
-    const [teacherBatches, setTeacherBatches] = useState([]);
-    const [selectedTeacherId, setSelectedTeacherId] = useState('');
-    const [teacherBatchStudents, setTeacherBatchStudents] = useState([]);
-    const [selectedTeacherBatchId, setSelectedTeacherBatchId] = useState('');
-    const [teacherViewLoading, setTeacherViewLoading] = useState(false);
-    const [teacherStudentsLoading, setTeacherStudentsLoading] = useState(false);
+    // Teacher View State already defined above
 
     // Monthly payment states
     const [isMarkPaidModalOpen, setIsMarkPaidModalOpen] = useState(false);
