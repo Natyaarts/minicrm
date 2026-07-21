@@ -489,6 +489,20 @@ class StudentViewSet(viewsets.ModelViewSet):
         if campaign_only == 'true':
             qs = qs.filter(campaign__isnull=False)
 
+        start_date_str = self.request.query_params.get('start_date')
+        if start_date_str:
+            from django.utils.dateparse import parse_date
+            start_date = parse_date(start_date_str)
+            if start_date:
+                qs = qs.filter(created_at__date__gte=start_date)
+
+        end_date_str = self.request.query_params.get('end_date')
+        if end_date_str:
+            from django.utils.dateparse import parse_date
+            end_date = parse_date(end_date_str)
+            if end_date:
+                qs = qs.filter(created_at__date__lte=end_date)
+
         return qs
 
     def perform_destroy(self, instance):

@@ -38,6 +38,8 @@ const CRMCampaigns = () => {
     const [sortOrder, setSortOrder] = useState('desc');
     const [salesUsers, setSalesUsers] = useState([]);
     const [pipelineStages, setPipelineStages] = useState({});
+    const [leadsStartDate, setLeadsStartDate] = useState('');
+    const [leadsEndDate, setLeadsEndDate] = useState('');
     
     // UI States for Campaigns
     const [searchTerm, setSearchTerm] = useState('');
@@ -90,7 +92,7 @@ const CRMCampaigns = () => {
         if (activeTab === 'leads') {
             fetchLeads();
         }
-    }, [activeTab, currentPage]);
+    }, [activeTab, currentPage, leadsStartDate, leadsEndDate]);
 
     const fetchDashboardData = async () => {
         setDashboardLoading(true);
@@ -135,7 +137,10 @@ const CRMCampaigns = () => {
     const fetchLeads = async () => {
         setLeadsLoading(true);
         try {
-            const res = await api.get(`students/?campaign_only=true&page=${currentPage}`); 
+            let url = `students/?campaign_only=true&page=${currentPage}`;
+            if (leadsStartDate) url += `&start_date=${leadsStartDate}`;
+            if (leadsEndDate) url += `&end_date=${leadsEndDate}`;
+            const res = await api.get(url); 
             setLeads(res.data.results || res.data || []);
             if (res.data.count !== undefined) {
                 setTotalPages(Math.ceil(res.data.count / 20));
@@ -609,14 +614,30 @@ const CRMCampaigns = () => {
             <div className="space-y-6">
                  {/* Bulk Action Bar */}
                  <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div className="relative max-w-md w-full">
+                    <div className="relative max-w-xs w-full">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
                         <input
                             type="text"
                             placeholder="Search leads..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-sm"
+                            className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 text-sm"
+                        />
+                    </div>
+                    
+                    <div className="flex items-center bg-slate-50 border border-slate-200 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500/20">
+                        <input 
+                            type="date" 
+                            value={leadsStartDate} 
+                            onChange={(e) => setLeadsStartDate(e.target.value)} 
+                            className="px-3 py-2 text-sm outline-none bg-transparent border-r border-slate-200 text-slate-700" 
+                        />
+                        <span className="px-2 text-slate-400 text-sm">to</span>
+                        <input 
+                            type="date" 
+                            value={leadsEndDate} 
+                            onChange={(e) => setLeadsEndDate(e.target.value)} 
+                            className="px-3 py-2 text-sm outline-none bg-transparent text-slate-700" 
                         />
                     </div>
                     
