@@ -12,6 +12,7 @@ class PayslipSerializer(serializers.ModelSerializer):
     employee_name = serializers.ReadOnlyField(source='employee.user.get_full_name')
     employee_id = serializers.ReadOnlyField(source='employee.employee_id')
     user_id = serializers.ReadOnlyField(source='employee.user.id')
+    work_location = serializers.ReadOnlyField(source='employee.work_location')
     
     class Meta:
         model = Payslip

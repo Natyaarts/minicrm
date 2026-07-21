@@ -249,14 +249,22 @@ const PayrollModule = () => {
         }
     };
 
-    const handleExportPayslipsCSV = () => {
-        if (!payslips || payslips.length === 0) return alert("No payslips to export");
+    const handleExportPayslipsCSV = (type) => {
+        let filteredPayslips = payslips;
+        if (type === 'WFO') {
+            filteredPayslips = payslips.filter(p => p.work_location !== 'REMOTE');
+        } else if (type === 'WFH') {
+            filteredPayslips = payslips.filter(p => p.work_location === 'REMOTE');
+        }
+
+        if (!filteredPayslips || filteredPayslips.length === 0) return alert(`No ${type} payslips to export`);
         
-        const headers = ["Employee", "Employee ID", "Period", "Paid Days", "LOP", "Basic", "HRA", "LTA", "Bonus", "Gross Salary", "PF", "ESI", "PT", "TDS", "Total Deductions", "Net Salary", "Status"];
+        const headers = ["Employee", "Employee ID", "Location", "Period", "Paid Days", "LOP", "Basic", "HRA", "LTA", "Bonus", "Gross Salary", "PF", "ESI", "PT", "TDS", "Total Deductions", "Net Salary", "Status"];
         
-        const rows = payslips.map(p => [
+        const rows = filteredPayslips.map(p => [
             p.employee_name,
             p.employee_id_display,
+            p.work_location === 'REMOTE' ? 'WFH' : 'WFO',
             `${p.month}/${p.year}`,
             `${p.paid_days} / ${p.total_days}`,
             p.lop_amount,
@@ -280,7 +288,7 @@ const PayrollModule = () => {
         const encodedUri = encodeURI(csvContent);
         const link = document.createElement("a");
         link.setAttribute("href", encodedUri);
-        link.setAttribute("download", `historical_payslips_${new Date().toISOString().slice(0,10)}.csv`);
+        link.setAttribute("download", `historical_payslips_${type}_${new Date().toISOString().slice(0,10)}.csv`);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -483,14 +491,24 @@ const PayrollModule = () => {
                             </motion.div>
                         </button>
                         {activeTab === 'payslips' && (
-                            <button 
-                                onClick={handleExportPayslipsCSV}
-                                className="flex items-center gap-2 px-3 py-2 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-lg transition-all border border-emerald-200 text-xs font-semibold"
-                                title="Download CSV"
-                            >
-                                <Download size={14} />
-                                Download CSV
-                            </button>
+                            <div className="flex items-center gap-2">
+                                <button 
+                                    onClick={() => handleExportPayslipsCSV('WFO')}
+                                    className="flex items-center gap-2 px-3 py-2 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-lg transition-all border border-emerald-200 text-xs font-semibold"
+                                    title="Download WFO CSV"
+                                >
+                                    <Download size={14} />
+                                    WFO CSV
+                                </button>
+                                <button 
+                                    onClick={() => handleExportPayslipsCSV('WFH')}
+                                    className="flex items-center gap-2 px-3 py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-lg transition-all border border-indigo-200 text-xs font-semibold"
+                                    title="Download WFH CSV"
+                                >
+                                    <Download size={14} />
+                                    WFH CSV
+                                </button>
+                            </div>
                         )}
                         <div className="relative">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
