@@ -249,15 +249,36 @@ const PayrollModule = () => {
         }
     };
 
-    const handleExportPayslipsCSV = (type) => {
-        let filteredPayslips = payslips;
-        if (type === 'WFO') {
-            filteredPayslips = payslips.filter(p => p.work_location !== 'REMOTE');
-        } else if (type === 'WFH') {
-            filteredPayslips = payslips.filter(p => p.work_location === 'REMOTE');
-        }
+    const handleExportPayslipsCSV = async (type) => {
+        setLoading(true);
+        try {
+            let allPayslips = [];
+            const res = await api.get('payroll/payslips/');
+            allPayslips = res.data.results || res.data || [];
+            
+            if (res.data.count > allPayslips.length) {
+                const totalPages = Math.ceil(res.data.count / allPayslips.length);
+                const promises = [];
+                for (let i = 2; i <= totalPages; i++) {
+                    promises.push(api.get(`payroll/payslips/?page=${i}`));
+                }
+                const responses = await Promise.all(promises);
+                responses.forEach(r => {
+                    allPayslips = [...allPayslips, ...(r.data.results || [])];
+                });
+            }
 
-        if (!filteredPayslips || filteredPayslips.length === 0) return alert(`No ${type} payslips to export`);
+            let filteredPayslips = allPayslips;
+            if (type === 'WFO') {
+                filteredPayslips = allPayslips.filter(p => p.work_location !== 'REMOTE');
+            } else if (type === 'WFH') {
+                filteredPayslips = allPayslips.filter(p => p.work_location === 'REMOTE');
+            }
+
+            if (!filteredPayslips || filteredPayslips.length === 0) {
+                alert(`No ${type} payslips to export`);
+                return;
+            }
         
         const headers = ["Employee", "Employee ID", "Location", "Period", "Paid Days", "LOP", "Basic", "HRA", "LTA", "Bonus", "Gross Salary", "PF", "ESI", "PT", "TDS", "Total Deductions", "Net Salary", "Status"];
         
@@ -292,6 +313,13 @@ const PayrollModule = () => {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+
+        } catch (err) {
+            console.error("Failed to export payslips", err);
+            alert("Failed to export payslips");
+        } finally {
+            setLoading(false);
+        }
     };
 
     const verifyDeclaration = async (id, status, notes) => {
