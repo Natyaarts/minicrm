@@ -261,9 +261,9 @@ class EmployeeProfileViewSet(viewsets.ModelViewSet):
         ).prefetch_related('documents')
         
         if user.role == 'SUPER_ADMIN' or user.is_superuser:
-            return qs.all()
+            return qs.all().order_by('-id')
         # Non-admins can only see their own profile
-        return qs.filter(user=user)
+        return qs.filter(user=user).order_by('-id')
 
     @action(detail=False, methods=['get'])
     def celebrations(self, request):
