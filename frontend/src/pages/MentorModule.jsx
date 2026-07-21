@@ -33,7 +33,7 @@ const MentorModule = () => {
     const [credentialStudent, setCredentialStudent] = useState(null);
     const [credentialForm, setCredentialForm] = useState({ username: '', password: '' });
     const [allStudents, setAllStudents] = useState([]);
-    const [viewTab, setViewTab] = useState('dashboard'); // 'dashboard', 'batches', 'all-students', 'wise-courses'
+    const [viewTab, setViewTab] = useState('dashboard'); // 'dashboard', 'batches', 'all-students', 'wise-courses', 'teacher-view'
     const [wiseCourses, setWiseCourses] = useState([]);
     const [selectedWiseCourse, setSelectedWiseCourse] = useState(null);
     const [wiseParticipants, setWiseParticipants] = useState([]);
@@ -55,6 +55,12 @@ const MentorModule = () => {
     const [unassignedPage, setUnassignedPage] = useState(1);
     const [unassignedPagination, setUnassignedPagination] = useState({ count: 0, next: null, previous: null });
     const [teachers, setTeachers] = useState([]);
+    const [selectedTeacherId, setSelectedTeacherId] = useState('');
+    const [teacherBatches, setTeacherBatches] = useState([]);
+    const [selectedTeacherBatchId, setSelectedTeacherBatchId] = useState('');
+    const [teacherBatchStudents, setTeacherBatchStudents] = useState([]);
+    const [teacherViewLoading, setTeacherViewLoading] = useState(false);
+    const [teacherStudentsLoading, setTeacherStudentsLoading] = useState(false);
     const [isAssignTeacherModalOpen, setIsAssignTeacherModalOpen] = useState(false);
 
     // Selection state for Create Modal
@@ -119,6 +125,14 @@ const MentorModule = () => {
     const [isBatchHistoryModalOpen, setIsBatchHistoryModalOpen] = useState(false);
     const [batchHistoryData, setBatchHistoryData] = useState([]);
 
+    // Teacher View State
+    const [teacherBatches, setTeacherBatches] = useState([]);
+    const [selectedTeacherId, setSelectedTeacherId] = useState('');
+    const [teacherBatchStudents, setTeacherBatchStudents] = useState([]);
+    const [selectedTeacherBatchId, setSelectedTeacherBatchId] = useState('');
+    const [teacherViewLoading, setTeacherViewLoading] = useState(false);
+    const [teacherStudentsLoading, setTeacherStudentsLoading] = useState(false);
+
     // Monthly payment states
     const [isMarkPaidModalOpen, setIsMarkPaidModalOpen] = useState(false);
     const [markPaidStudent, setMarkPaidStudent] = useState(null);
@@ -171,6 +185,50 @@ const MentorModule = () => {
             return () => clearTimeout(timer);
         }
     }, [batchSearchQuery]);
+
+    useEffect(() => {
+        if (selectedTeacherId) {
+            fetchTeacherBatches(selectedTeacherId);
+            setSelectedTeacherBatchId('');
+            setTeacherBatchStudents([]);
+        } else {
+            setTeacherBatches([]);
+            setSelectedTeacherBatchId('');
+            setTeacherBatchStudents([]);
+        }
+    }, [selectedTeacherId]);
+
+    useEffect(() => {
+        if (selectedTeacherBatchId) {
+            fetchTeacherBatchStudents(selectedTeacherBatchId);
+        } else {
+            setTeacherBatchStudents([]);
+        }
+    }, [selectedTeacherBatchId]);
+
+    const fetchTeacherBatches = async (teacherId) => {
+        setTeacherViewLoading(true);
+        try {
+            const res = await api.get(`batches/?teacher_id=${teacherId}&page_size=1000`);
+            setTeacherBatches(res.data.results || res.data || []);
+        } catch (err) {
+            console.error("Failed to fetch teacher batches", err);
+        } finally {
+            setTeacherViewLoading(false);
+        }
+    };
+
+    const fetchTeacherBatchStudents = async (batchId) => {
+        setTeacherStudentsLoading(true);
+        try {
+            const res = await api.get(`students/?batch_id=${batchId}&page_size=1000`);
+            setTeacherBatchStudents(res.data.results || res.data || []);
+        } catch (err) {
+            console.error("Failed to fetch teacher batch students", err);
+        } finally {
+            setTeacherStudentsLoading(false);
+        }
+    };
 
     useEffect(() => {
         if (viewTab === 'all-students') {
@@ -697,6 +755,56 @@ const MentorModule = () => {
         }
     };
 
+    useEffect(() => {
+        if (selectedTeacherId) {
+            fetchTeacherBatches();
+        } else {
+            setTeacherBatches([]);
+            setSelectedTeacherBatchId('');
+        }
+    }, [selectedTeacherId]);
+
+    const fetchTeacherBatches = async () => {
+        setTeacherViewLoading(true);
+        try {
+            const res = await api.get(`batches/?teacher_id=${selectedTeacherId}`);
+            if (res.data.results) {
+                setTeacherBatches(res.data.results);
+            } else {
+                setTeacherBatches(Array.isArray(res.data) ? res.data : []);
+            }
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setTeacherViewLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (selectedTeacherBatchId) {
+            fetchTeacherStudents();
+        } else {
+            setTeacherBatchStudents([]);
+        }
+    }, [selectedTeacherBatchId]);
+
+    const fetchTeacherStudents = async () => {
+        setTeacherStudentsLoading(true);
+        try {
+            // Using students api with batch_id
+            const res = await api.get(`students/?batch_id=${selectedTeacherBatchId}&limit=1000`);
+            if (res.data.results) {
+                setTeacherBatchStudents(res.data.results);
+            } else {
+                setTeacherBatchStudents(Array.isArray(res.data) ? res.data : []);
+            }
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setTeacherStudentsLoading(false);
+        }
+    };
+
     const fetchMeta = async () => {
         try {
             const [progRes, mentorRes, teacherRes, courseRes] = await Promise.all([
@@ -1137,6 +1245,12 @@ const MentorModule = () => {
                             Wise LMS Batches
                         </button>
                     ) : null}
+                    <button
+                        onClick={() => { setViewTab('teacher-view'); setSelectedBatch(null); }}
+                        className={`flex-1 lg:flex-none whitespace-nowrap px-4 sm:px-5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all ${viewTab === 'teacher-view' ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                        Teacher View
+                    </button>
                 </div>
 
                 {dashboardStats?.has_team && (
@@ -1958,6 +2072,126 @@ const MentorModule = () => {
                             )}
                         </div>
                     </div>
+                </motion.div>
+            )}
+
+            {viewTab === 'teacher-view' && (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+                    {!selectedTeacherBatchId ? (
+                        <>
+                            <div className="w-full md:w-80">
+                                <select
+                                    value={selectedTeacherId}
+                                    onChange={(e) => setSelectedTeacherId(e.target.value)}
+                                    className="w-full px-4 py-2 border border-slate-300 rounded-xl text-sm bg-white focus:ring-2 focus:ring-indigo-100"
+                                >
+                                    <option value="">Select a Teacher</option>
+                                    {teachers.map(t => (
+                                        <option key={t.id} value={t.id}>{t.first_name} {t.last_name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            
+                            {teacherViewLoading ? (
+                                <div className="text-center py-10 text-slate-500 font-semibold">Loading batches...</div>
+                            ) : selectedTeacherId && (
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                    {teacherBatches.map(batch => (
+                                        <motion.div
+                                            whileHover={{ y: -4 }}
+                                            key={batch.id}
+                                            onClick={() => setSelectedTeacherBatchId(batch.id)}
+                                            className="p-6 bg-white rounded-2xl border border-slate-200 cursor-pointer shadow-sm hover:shadow-md transition-all group"
+                                        >
+                                            <div className="flex justify-between items-start mb-4">
+                                                <h3 className="text-lg font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">{batch.name}</h3>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-4 text-xs pt-4 border-t border-slate-100">
+                                                <div>
+                                                    <span className="block text-slate-400 font-semibold mb-1 uppercase tracking-wider">Course</span>
+                                                    <span className="font-bold text-slate-700">{batch.course_name || 'N/A'}</span>
+                                                </div>
+                                            </div>
+                                        </motion.div>
+                                    ))}
+                                    {teacherBatches.length === 0 && (
+                                        <div className="col-span-full text-center py-10 text-slate-500 font-semibold">No batches found for this teacher.</div>
+                                    )}
+                                </div>
+                            )}
+                        </>
+                    ) : (
+                        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                            <div className="flex justify-between items-center mb-6">
+                                <button onClick={() => setSelectedTeacherBatchId('')} className="text-indigo-600 text-sm font-bold flex items-center gap-1">
+                                    ← Back to Batches
+                                </button>
+                            </div>
+                            
+                            <h2 className="text-2xl font-bold text-slate-900 mb-6">Students</h2>
+
+                            {teacherStudentsLoading ? (
+                                <div className="text-center py-10 text-slate-500 font-semibold">Loading students...</div>
+                            ) : (
+                                <div className="overflow-x-auto">
+                                    <table className="w-full">
+                                        <thead className="text-left border-b border-slate-100">
+                                            <tr>
+                                                <th className="pb-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Student Name</th>
+                                                <th className="pb-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Status</th>
+                                                <th className="pb-4 text-xs font-bold text-slate-400 uppercase tracking-wider text-right">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {teacherBatchStudents.map(student => (
+                                                <tr key={student.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors">
+                                                    <td className="py-4 font-bold text-slate-800">{student.user_name || student.name}</td>
+                                                    <td className="py-4">
+                                                        <span className={`px-2.5 py-1 rounded-md text-xs font-semibold ${student.academic_status === 'ON_BREAK' ? 'bg-orange-100 text-orange-700' : student.academic_status === 'DISCONTINUED' ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                                                            {student.academic_status || 'ACTIVE'}
+                                                        </span>
+                                                    </td>
+                                                    <td className="py-4 space-x-2 text-right whitespace-nowrap">
+                                                        {student.academic_status !== 'ON_BREAK' && student.academic_status !== 'DISCONTINUED' && (
+                                                            <button 
+                                                                onClick={(e) => { e.stopPropagation(); setBreakStudentId(student.id); setIsBreakModalOpen(true); }} 
+                                                                className="text-xs font-semibold px-3 py-1.5 bg-orange-50 text-orange-700 rounded-lg hover:bg-orange-100 transition-colors"
+                                                            >
+                                                                Take Break
+                                                            </button>
+                                                        )}
+                                                        {student.academic_status !== 'DISCONTINUED' && (
+                                                            <button 
+                                                                onClick={(e) => { e.stopPropagation(); setDiscontinueStudentId(student.id); setIsDiscontinueModalOpen(true); }} 
+                                                                className="text-xs font-semibold px-3 py-1.5 bg-red-50 text-red-700 rounded-lg hover:bg-red-100 transition-colors"
+                                                            >
+                                                                Discontinue
+                                                            </button>
+                                                        )}
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); setDueFilterBatch(selectedTeacherBatchId); setDueSearch(student.user_name || student.name); setIsFeeModalOpen(true); }} 
+                                                            className="text-xs font-semibold px-3 py-1.5 bg-yellow-50 text-yellow-700 rounded-lg hover:bg-yellow-100 transition-colors"
+                                                        >
+                                                            Unpaid
+                                                        </button>
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); setCollectedFilterBatch(selectedTeacherBatchId); setCollectedSearch(student.user_name || student.name); setIsCollectedModalOpen(true); }} 
+                                                            className="text-xs font-semibold px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-lg hover:bg-emerald-100 transition-colors"
+                                                        >
+                                                            Mark Paid
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                            {teacherBatchStudents.length === 0 && (
+                                                <tr><td colSpan="3" className="py-10 text-center text-slate-400 font-semibold">No students found in this batch.</td></tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </motion.div>
             )}
 
