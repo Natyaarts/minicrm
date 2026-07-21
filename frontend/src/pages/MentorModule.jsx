@@ -2084,6 +2084,8 @@ const MentorModule = () => {
                                         <thead className="text-left border-b border-slate-100">
                                             <tr>
                                                 <th className="pb-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Student Name</th>
+                                                <th className="pb-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Fees Info</th>
+                                                <th className="pb-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Due Date</th>
                                                 <th className="pb-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Status</th>
                                                 <th className="pb-4 text-xs font-bold text-slate-400 uppercase tracking-wider text-right">Actions</th>
                                             </tr>
@@ -2091,7 +2093,18 @@ const MentorModule = () => {
                                         <tbody>
                                             {teacherBatchStudents.map(student => (
                                                 <tr key={student.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors">
-                                                    <td className="py-4 font-bold text-slate-800">{student.user_name || student.name}</td>
+                                                    <td className="py-4 font-bold text-slate-800">
+                                                        {student.first_name ? `${student.first_name} ${student.last_name || ''}`.trim() : student.username}
+                                                    </td>
+                                                    <td className="py-4 text-sm text-slate-600">
+                                                        <div className="flex flex-col gap-1">
+                                                            <span>Paid: <span className="font-semibold text-emerald-600">₹{student.total_paid || 0}</span></span>
+                                                            <span>Pending: <span className="font-semibold text-red-500">₹{student.total_due || 0}</span></span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="py-4 text-sm font-semibold text-slate-700">
+                                                        {student.fee_due_date ? new Date(student.fee_due_date).toLocaleDateString() : 'N/A'}
+                                                    </td>
                                                     <td className="py-4">
                                                         <span className={`px-2.5 py-1 rounded-md text-xs font-semibold ${student.academic_status === 'ON_BREAK' ? 'bg-orange-100 text-orange-700' : student.academic_status === 'DISCONTINUED' ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
                                                             {student.academic_status || 'ACTIVE'}
