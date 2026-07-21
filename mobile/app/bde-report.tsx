@@ -3,6 +3,7 @@ import { StyleSheet, View, Text, ScrollView, TouchableOpacity, ActivityIndicator
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import client from '../src/api/client';
 
 export default function BDEReportScreen() {
@@ -15,12 +16,20 @@ export default function BDEReportScreen() {
   const [report, setReport] = useState<any>(null);
   const [playingAudio, setPlayingAudio] = useState<string | null>(null);
   const [sound, setSound] = useState<Audio.Sound | null>(null);
+  const [startDate, setStartDate] = useState<Date | null>(null);
+  const [endDate, setEndDate] = useState<Date | null>(null);
+  const [showStartPicker, setShowStartPicker] = useState(false);
+  const [showEndPicker, setShowEndPicker] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   useEffect(() => {
     if (bdeId) {
-      fetchReport();
+      setPage(1); // Reset page on filter change
+      fetchReport(1);
     }
-  }, [bdeId]);
+  }, [bdeId, startDate, endDate]);
 
   useEffect(() => {
     return sound
@@ -30,15 +39,48 @@ export default function BDEReportScreen() {
       : undefined;
   }, [sound]);
 
-  const fetchReport = async () => {
+  const formatDateLocal = (d: Date) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const fetchReport = async (pageNumber = 1) => {
     try {
-      setLoading(true);
-      const res = await client.get(`/crm/bde-report/${bdeId}/`);
-      setReport(res.data);
+      if (pageNumber === 1) setLoading(true);
+      else setLoadingMore(true);
+
+      let url = `/crm/bde-report/${bdeId}/`;
+      
+      const queryParams = [];
+      if (startDate) queryParams.push(`start_date=${formatDateLocal(startDate)}`);
+      if (endDate) queryParams.push(`end_date=${formatDateLocal(endDate)}`);
+      queryParams.push(`page=${pageNumber}`);
+      
+      if (queryParams.length > 0) {
+          url += `?${queryParams.join('&')}`;
+      }
+      
+      const res = await client.get(url);
+      
+      if (pageNumber === 1) {
+        setReport(res.data);
+      } else {
+        setReport(prev => ({
+          ...prev,
+          timeline: [...prev.timeline, ...res.data.timeline]
+        }));
+      }
+      
+      setHasMore(res.data.has_more);
+      setPage(pageNumber);
+
     } catch (err) {
       console.log('Failed to fetch BDE report:', err);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   };
 
@@ -99,6 +141,58 @@ export default function BDEReportScreen() {
         <View style={{width: 32}} />
       </View>
 
+      <View style={styles.dateFilterContainer}>
+        <TouchableOpacity 
+          style={[styles.dateButton, isDark && styles.darkCard]} 
+          onPress={() => setShowStartPicker(true)}
+        >
+          <FontAwesome5 name="calendar-alt" size={14} color="#6B7280" />
+          <Text style={[styles.dateButtonText, isDark && styles.darkText]}>
+            {startDate ? startDate.toLocaleDateString() : 'Start Date'}
+          </Text>
+        </TouchableOpacity>
+        <Text style={{color: '#9CA3AF'}}>-</Text>
+        <TouchableOpacity 
+          style={[styles.dateButton, isDark && styles.darkCard]} 
+          onPress={() => setShowEndPicker(true)}
+        >
+          <FontAwesome5 name="calendar-alt" size={14} color="#6B7280" />
+          <Text style={[styles.dateButtonText, isDark && styles.darkText]}>
+            {endDate ? endDate.toLocaleDateString() : 'End Date'}
+          </Text>
+        </TouchableOpacity>
+        
+        {(startDate || endDate) && (
+          <TouchableOpacity onPress={() => { setStartDate(null); setEndDate(null); }}>
+             <Text style={{color: '#EF4444', fontSize: 12, fontWeight: 'bold'}}>CLEAR</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {showStartPicker && (
+        <DateTimePicker
+          value={startDate || new Date()}
+          mode="date"
+          display="default"
+          onChange={(event, date) => {
+            setShowStartPicker(false);
+            if (date) setStartDate(date);
+          }}
+        />
+      )}
+
+      {showEndPicker && (
+        <DateTimePicker
+          value={endDate || new Date()}
+          mode="date"
+          display="default"
+          onChange={(event, date) => {
+            setShowEndPicker(false);
+            if (date) setEndDate(date);
+          }}
+        />
+      )}
+
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
          <View style={styles.metricsGrid}>
             <View style={[styles.metricCard, isDark && styles.darkCard]}>
@@ -147,6 +241,18 @@ export default function BDEReportScreen() {
             {report.timeline.length === 0 && (
                <Text style={styles.emptyText}>No activity logged yet.</Text>
             )}
+            
+            {hasMore && (
+               <TouchableOpacity 
+                 style={{ padding: 12, alignItems: 'center', backgroundColor: '#EFF6FF', borderRadius: 8, marginTop: 16 }}
+                 onPress={() => fetchReport(page + 1)}
+                 disabled={loadingMore}
+               >
+                 <Text style={{ color: '#3B82F6', fontWeight: 'bold' }}>
+                   {loadingMore ? 'Loading...' : 'Load More'}
+                 </Text>
+               </TouchableOpacity>
+            )}
          </View>
       </ScrollView>
     </SafeAreaView>
@@ -193,6 +299,30 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 16,
+  },
+  dateFilterContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+    gap: 8,
+  },
+  dateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    gap: 6,
+  },
+  dateButtonText: {
+    fontSize: 13,
+    color: '#374151',
+    fontWeight: '500',
   },
   metricsGrid: {
     flexDirection: 'row',

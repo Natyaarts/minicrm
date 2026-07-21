@@ -17,8 +17,25 @@ class DashboardStatsView(APIView):
 
     def get(self, request):
         from django.db.models import Count
+        from django.utils.dateparse import parse_date
+        import datetime
+        from django.utils import timezone
         
         students = Student.objects.filter(is_active=True)
+        
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        
+        if start_date:
+            parsed_start = parse_date(start_date)
+            if parsed_start:
+                students = students.filter(user__date_joined__date__gte=parsed_start)
+        
+        if end_date:
+            parsed_end = parse_date(end_date)
+            if parsed_end:
+                students = students.filter(user__date_joined__date__lte=parsed_end)
+        
         total_leads = students.count()
         
         # Assignment metrics
@@ -62,17 +79,39 @@ class DashboardStatsView(APIView):
         leaderboard = []
         for rep in sales_reps:
             rep_leads = students.filter(assigned_to=rep).count()
-            rep_contacted = students.filter(assigned_to=rep, crm_interactions__isnull=False).distinct().count()
-            if rep_leads > 0:
-                leaderboard.append({
-                    "id": rep.id,
-                    "name": rep.get_full_name() or rep.username,
-                    "assigned": rep_leads,
-                    "contacted": rep_contacted
-                })
+            
+            # Filter interactions by date as well
+            rep_interactions = LeadInteraction.objects.filter(author=rep, student__in=students)
+            if start_date:
+                parsed_start = parse_date(start_date)
+                if parsed_start:
+                    rep_interactions = rep_interactions.filter(date__date__gte=parsed_start)
+            if end_date:
+                parsed_end = parse_date(end_date)
+                if parsed_end:
+                    rep_interactions = rep_interactions.filter(date__date__lte=parsed_end)
+            
+            rep_contacted = rep_interactions.values('student').distinct().count()
+            
+            leaderboard.append({
+                "id": rep.id,
+                "name": rep.get_full_name() or rep.username,
+                "assigned": rep_leads,
+                "contacted": rep_contacted
+            })
         leaderboard.sort(key=lambda x: x['assigned'], reverse=True)
         
-        revenue_agg = Transaction.objects.aggregate(total_revenue=Sum('amount'))
+        revenue_qs = Transaction.objects.all()
+        if start_date:
+            parsed_start = parse_date(start_date)
+            if parsed_start:
+                revenue_qs = revenue_qs.filter(date__date__gte=parsed_start) # assuming Transaction has date
+        if end_date:
+            parsed_end = parse_date(end_date)
+            if parsed_end:
+                revenue_qs = revenue_qs.filter(date__date__lte=parsed_end)
+                
+        revenue_agg = revenue_qs.aggregate(total_revenue=Sum('amount'))
         revenue = revenue_agg.get('total_revenue') or 0
         
         return Response({
@@ -264,9 +303,25 @@ class BDEReportView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, user_id):
-        bde = get_object_or_404(User, id=user_id, role='SALES')
+        from django.utils.dateparse import parse_date
         
-        leads = Student.objects.filter(assigned_to=bde).order_by('-id')
+        bde = get_object_or_404(User, id=user_id, role='SALES')
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        
+        leads = Student.objects.filter(assigned_to=bde)
+        
+        if start_date:
+            parsed_start = parse_date(start_date)
+            if parsed_start:
+                leads = leads.filter(user__date_joined__date__gte=parsed_start)
+        if end_date:
+            parsed_end = parse_date(end_date)
+            if parsed_end:
+                leads = leads.filter(user__date_joined__date__lte=parsed_end)
+                
+        leads = leads.order_by('-id')
+        
         leads_data = []
         for lead in leads:
             leads_data.append({
@@ -277,7 +332,34 @@ class BDEReportView(APIView):
                 'mobile': lead.mobile
             })
 
-        interactions = LeadInteraction.objects.filter(author=bde).select_related('student').order_by('-date')
+        interactions = LeadInteraction.objects.filter(author=bde).select_related('student')
+        if start_date:
+            parsed_start = parse_date(start_date)
+            if parsed_start:
+                interactions = interactions.filter(date__date__gte=parsed_start)
+        if end_date:
+            parsed_end = parse_date(end_date)
+            if parsed_end:
+                interactions = interactions.filter(date__date__lte=parsed_end)
+                
+        interactions = interactions.order_by('-date')
+        
+        page = request.query_params.get('page')
+        has_more = False
+        if page:
+            try:
+                page_num = int(page)
+            except ValueError:
+                page_num = 1
+            limit = 20
+            offset = (page_num - 1) * limit
+            interactions_slice = interactions[offset:offset + limit + 1]
+            if len(interactions_slice) > limit:
+                has_more = True
+                interactions = interactions_slice[:limit]
+            else:
+                interactions = interactions_slice
+        
         timeline = []
         for inter in interactions:
             timeline.append({
@@ -294,17 +376,28 @@ class BDEReportView(APIView):
                 'audio_url': request.build_absolute_uri(inter.audio_recording.url) if inter.audio_recording else None
             })
 
+        pending_tasks = Task.objects.filter(assigned_to=bde, status='PENDING')
+        if start_date:
+            parsed_start = parse_date(start_date)
+            if parsed_start:
+                pending_tasks = pending_tasks.filter(created_at__date__gte=parsed_start)
+        if end_date:
+            parsed_end = parse_date(end_date)
+            if parsed_end:
+                pending_tasks = pending_tasks.filter(created_at__date__lte=parsed_end)
+
         metrics = {
             'total_assigned': leads.count(),
-            'total_interactions': interactions.count(),
-            'pending_tasks': Task.objects.filter(assigned_to=bde, status='PENDING').count()
+            'total_interactions': LeadInteraction.objects.filter(author=bde).count(),
+            'pending_tasks': pending_tasks.count()
         }
 
         return Response({
             'bde': {'id': bde.id, 'name': bde.get_full_name() or bde.username, 'email': bde.email},
             'metrics': metrics,
             'leads': leads_data,
-            'timeline': timeline
+            'timeline': timeline,
+            'has_more': has_more
         })
 
 class TaskViewSet(viewsets.ModelViewSet):

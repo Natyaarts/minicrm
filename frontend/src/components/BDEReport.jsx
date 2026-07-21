@@ -5,12 +5,24 @@ import api from '../api/axios';
 const BDEReport = ({ bdeId, onClose }) => {
     const [report, setReport] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
 
     useEffect(() => {
         if (!bdeId) return;
         const fetchReport = async () => {
             try {
-                const res = await api.get(`/crm/bde-report/${bdeId}/`);
+                setLoading(true);
+                let url = `/crm/bde-report/${bdeId}/`;
+                const params = new URLSearchParams();
+                if (startDate) params.append('start_date', startDate);
+                if (endDate) params.append('end_date', endDate);
+                
+                if (params.toString()) {
+                    url += `?${params.toString()}`;
+                }
+                
+                const res = await api.get(url);
                 setReport(res.data);
             } catch (err) {
                 console.error("Failed to fetch BDE report:", err);
@@ -19,7 +31,12 @@ const BDEReport = ({ bdeId, onClose }) => {
             }
         };
         fetchReport();
-    }, [bdeId]);
+    }, [bdeId, startDate, endDate]);
+
+    const clearFilters = () => {
+        setStartDate('');
+        setEndDate('');
+    };
 
     if (!bdeId) return null;
 
@@ -38,12 +55,45 @@ const BDEReport = ({ bdeId, onClose }) => {
                             <p className="text-xs text-slate-500 font-medium tracking-wide uppercase">Sales Representative Report</p>
                         </div>
                     </div>
-                    <button 
-                        onClick={onClose}
-                        className="p-2 hover:bg-slate-100 rounded-lg transition-colors text-slate-500"
-                    >
-                        <X size={20} />
-                    </button>
+                    
+                    <div className="flex items-center gap-4">
+                        <div className="hidden sm:flex items-center gap-2 bg-slate-50 p-1.5 rounded-lg border border-slate-200 shadow-sm">
+                            <div className="flex flex-col">
+                                <label className="text-[10px] uppercase font-bold text-slate-500 mb-0.5 px-1">Start Date</label>
+                                <input 
+                                    type="date" 
+                                    value={startDate}
+                                    onChange={(e) => setStartDate(e.target.value)}
+                                    className="text-xs border-none outline-none bg-white rounded px-2 py-1"
+                                />
+                            </div>
+                            <span className="text-slate-300">-</span>
+                            <div className="flex flex-col">
+                                <label className="text-[10px] uppercase font-bold text-slate-500 mb-0.5 px-1">End Date</label>
+                                <input 
+                                    type="date" 
+                                    value={endDate}
+                                    onChange={(e) => setEndDate(e.target.value)}
+                                    className="text-xs border-none outline-none bg-white rounded px-2 py-1"
+                                />
+                            </div>
+                            {(startDate || endDate) && (
+                                <button 
+                                    onClick={clearFilters}
+                                    className="ml-1 text-[10px] text-rose-500 hover:bg-rose-50 px-2 py-1.5 rounded transition-colors font-bold uppercase"
+                                >
+                                    Clear
+                                </button>
+                            )}
+                        </div>
+
+                        <button 
+                            onClick={onClose}
+                            className="p-2 hover:bg-slate-100 rounded-lg transition-colors text-slate-500"
+                        >
+                            <X size={20} />
+                        </button>
+                    </div>
                 </div>
 
                 {loading ? (

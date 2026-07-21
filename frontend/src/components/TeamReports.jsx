@@ -4,26 +4,43 @@ import api from '../api/axios';
 
 const TeamReports = ({ onBdeClick }) => {
     const [teamData, setTeamData] = useState([]);
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        const fetchTeamData = async () => {
-            try {
-                // Fetch high-level leaderboard stats for the grid
-                const res = await api.get('/crm/dashboard-stats/');
-                if (res.data && res.data.leaderboard) {
-                    setTeamData(res.data.leaderboard);
-                }
-            } catch (error) {
-                console.error("Failed to fetch team data", error);
-            } finally {
-                setLoading(false);
+    const fetchTeamData = async () => {
+        try {
+            setLoading(true);
+            let url = '/crm/dashboard-stats/';
+            const params = new URLSearchParams();
+            if (startDate) params.append('start_date', startDate);
+            if (endDate) params.append('end_date', endDate);
+            
+            if (params.toString()) {
+                url += `?${params.toString()}`;
             }
-        };
-        fetchTeamData();
-    }, []);
+            
+            const res = await api.get(url);
+            if (res.data && res.data.leaderboard) {
+                setTeamData(res.data.leaderboard);
+            }
+        } catch (error) {
+            console.error("Failed to fetch team data", error);
+        } finally {
+            setLoading(false);
+        }
+    };
 
-    if (loading) {
+    useEffect(() => {
+        fetchTeamData();
+    }, [startDate, endDate]);
+
+    const clearFilters = () => {
+        setStartDate('');
+        setEndDate('');
+    };
+
+    if (loading && teamData.length === 0) {
         return (
             <div className="p-8 flex justify-center items-center h-[500px]">
                 <div className="flex flex-col items-center">
@@ -36,14 +53,46 @@ const TeamReports = ({ onBdeClick }) => {
 
     return (
         <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
-            <div className="mb-8">
-                <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-                    <Users className="text-indigo-600" />
-                    Sales Team Reports
-                </h2>
-                <p className="text-sm text-slate-500 mt-1">
-                    Select a team member to view their detailed performance report, call recordings, and pending tasks.
-                </p>
+            <div className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                    <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+                        <Users className="text-indigo-600" />
+                        Sales Team Reports
+                    </h2>
+                    <p className="text-sm text-slate-500 mt-1">
+                        Select a team member to view their detailed performance report, call recordings, and pending tasks.
+                    </p>
+                </div>
+                
+                <div className="flex items-center gap-2 bg-white p-2 rounded-lg border border-slate-200 shadow-sm">
+                    <div className="flex flex-col">
+                        <label className="text-[10px] uppercase font-bold text-slate-500 mb-1 px-1">Start Date</label>
+                        <input 
+                            type="date" 
+                            value={startDate}
+                            onChange={(e) => setStartDate(e.target.value)}
+                            className="text-sm border-none outline-none bg-slate-50 rounded px-2 py-1"
+                        />
+                    </div>
+                    <span className="text-slate-300">-</span>
+                    <div className="flex flex-col">
+                        <label className="text-[10px] uppercase font-bold text-slate-500 mb-1 px-1">End Date</label>
+                        <input 
+                            type="date" 
+                            value={endDate}
+                            onChange={(e) => setEndDate(e.target.value)}
+                            className="text-sm border-none outline-none bg-slate-50 rounded px-2 py-1"
+                        />
+                    </div>
+                    {(startDate || endDate) && (
+                        <button 
+                            onClick={clearFilters}
+                            className="ml-2 text-xs text-rose-500 hover:bg-rose-50 px-2 py-1.5 rounded transition-colors font-medium"
+                        >
+                            Clear
+                        </button>
+                    )}
+                </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

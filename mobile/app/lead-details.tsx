@@ -150,6 +150,22 @@ export default function LeadDetailsScreen() {
     }
   }, [leadId]);
 
+  const [justCalled, setJustCalled] = useState(false);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', nextAppState => {
+      if (nextAppState === 'active' && justCalled) {
+        setJustCalled(false);
+        setNoteType('CALL');
+        setShowAddForm(true);
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [justCalled]);
+
   const fetchLeadDetails = async () => {
     try {
       const res = await client.get(`/students/${leadId}/`);
@@ -372,7 +388,12 @@ export default function LeadDetailsScreen() {
           <View style={[styles.contactBox, isDark && styles.darkContactBox]}>
             <TouchableOpacity 
               style={styles.contactItem}
-              onPress={() => phoneNum && Linking.openURL(`tel:${phoneNum}`)}
+              onPress={() => {
+                 if (phoneNum) {
+                    setJustCalled(true);
+                    Linking.openURL(`tel:${phoneNum}`);
+                 }
+              }}
             >
               <FontAwesome5 name="phone" size={12} color="#FBBF24" style={styles.contactIcon} />
               <Text style={[styles.contactText, isDark && styles.darkText]} numberOfLines={1}>{phoneNum || 'No Phone'}</Text>

@@ -133,11 +133,27 @@ const Dialpad = () => {
   }, [callStatus]);
 
   useEffect(() => {
-    // AppState listener removed because it was causing premature call terminations
-    // when the system dialer was a floating window or when the app briefly regained focus.
-    // The call state should rely on the native BroadcastReceiver or manual user action.
-  }, []);
+    const subscription = AppState.addEventListener('change', nextAppState => {
+      // If the app comes back to the foreground and we were in CALLING/ACTIVE state,
+      // assume the user is done with the system phone app.
+      if (nextAppState === 'active') {
+        const currentStatus = callStatusRef.current;
+        if (currentStatus === 'CALLING' || currentStatus === 'ACTIVE') {
+          // Trigger POST_CALL flow to log the call
+          setCallStatus('POST_CALL');
+          setIsProcessingRecording(true);
+          stopNativeRecording().then(filePath => {
+             if (filePath) setRecordedFilePath(filePath);
+             setIsProcessingRecording(false);
+          });
+        }
+      }
+    });
 
+    return () => {
+      subscription.remove();
+    };
+  }, []);
   useEffect(() => {
     if (authLoading || !hasDialerAccess) return;
     const requestPermissions = async () => {

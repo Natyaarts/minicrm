@@ -625,20 +625,28 @@ const CRMCampaigns = () => {
                         />
                     </div>
                     
-                    <div className="flex items-center bg-slate-50 border border-slate-200 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500/20">
+                    <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500/20">
                         <input 
                             type="date" 
                             value={leadsStartDate} 
-                            onChange={(e) => setLeadsStartDate(e.target.value)} 
+                            onChange={(e) => { setLeadsStartDate(e.target.value); setCurrentPage(1); }} 
                             className="px-3 py-2 text-sm outline-none bg-transparent border-r border-slate-200 text-slate-700" 
                         />
                         <span className="px-2 text-slate-400 text-sm">to</span>
                         <input 
                             type="date" 
                             value={leadsEndDate} 
-                            onChange={(e) => setLeadsEndDate(e.target.value)} 
+                            onChange={(e) => { setLeadsEndDate(e.target.value); setCurrentPage(1); }} 
                             className="px-3 py-2 text-sm outline-none bg-transparent text-slate-700" 
                         />
+                        {(leadsStartDate || leadsEndDate) && (
+                            <button 
+                                onClick={() => { setLeadsStartDate(''); setLeadsEndDate(''); setCurrentPage(1); }}
+                                className="px-2 py-1 mr-1 text-xs font-semibold text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition-colors"
+                            >
+                                ✕
+                            </button>
+                        )}
                     </div>
                     
                     <div className="flex items-center gap-3 p-2 bg-indigo-50 rounded-xl border border-indigo-100">
