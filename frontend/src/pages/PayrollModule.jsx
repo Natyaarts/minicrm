@@ -249,6 +249,43 @@ const PayrollModule = () => {
         }
     };
 
+    const handleExportPayslipsCSV = () => {
+        if (!payslips || payslips.length === 0) return alert("No payslips to export");
+        
+        const headers = ["Employee", "Employee ID", "Period", "Paid Days", "LOP", "Basic", "HRA", "LTA", "Bonus", "Gross Salary", "PF", "ESI", "PT", "TDS", "Total Deductions", "Net Salary", "Status"];
+        
+        const rows = payslips.map(p => [
+            p.employee_name,
+            p.employee_id_display,
+            `${p.month}/${p.year}`,
+            `${p.paid_days} / ${p.total_days}`,
+            p.lop_amount,
+            p.basic_salary,
+            p.hra,
+            p.lta,
+            p.bonus,
+            p.gross_salary,
+            p.pf_deduction,
+            p.esi_deduction,
+            p.pt_deduction,
+            p.tds_deduction,
+            p.total_deductions,
+            p.net_salary,
+            p.status
+        ]);
+
+        let csvContent = "data:text/csv;charset=utf-8," 
+            + [headers.join(','), ...rows.map(e => e.map(val => `"${String(val || '').replace(/"/g, '""')}"`).join(','))].join('\n');
+        
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `historical_payslips_${new Date().toISOString().slice(0,10)}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
     const verifyDeclaration = async (id, status, notes) => {
         setLoading(true);
         try {
@@ -445,6 +482,16 @@ const PayrollModule = () => {
                                 <Settings size={16} />
                             </motion.div>
                         </button>
+                        {activeTab === 'payslips' && (
+                            <button 
+                                onClick={handleExportPayslipsCSV}
+                                className="flex items-center gap-2 px-3 py-2 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-lg transition-all border border-emerald-200 text-xs font-semibold"
+                                title="Download CSV"
+                            >
+                                <Download size={14} />
+                                Download CSV
+                            </button>
+                        )}
                         <div className="relative">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
                             <input 
