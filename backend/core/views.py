@@ -493,14 +493,14 @@ class StudentViewSet(viewsets.ModelViewSet):
             from django.utils.dateparse import parse_date
             start_date = parse_date(start_date_str)
             if start_date:
-                qs = qs.filter(created_at__date__gte=start_date)
+                qs = qs.filter(user__date_joined__date__gte=start_date)
 
         end_date_str = self.request.query_params.get('end_date')
         if end_date_str:
             from django.utils.dateparse import parse_date
             end_date = parse_date(end_date_str)
             if end_date:
-                qs = qs.filter(created_at__date__lte=end_date)
+                qs = qs.filter(user__date_joined__date__lte=end_date)
 
         return qs
 
