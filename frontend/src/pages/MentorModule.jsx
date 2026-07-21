@@ -2098,8 +2098,8 @@ const MentorModule = () => {
                                                     </td>
                                                     <td className="py-4 text-sm text-slate-600">
                                                         <div className="flex flex-col gap-1">
-                                                            <span>Paid: <span className="font-semibold text-emerald-600">₹{student.total_paid || 0}</span></span>
-                                                            <span>Pending: <span className="font-semibold text-red-500">₹{student.total_due || 0}</span></span>
+                                                            <span>Paid: <span className="font-semibold text-emerald-600">₹{student.paid_fee || student.total_paid || 0}</span></span>
+                                                            <span>Pending: <span className="font-semibold text-red-500">₹{(student.total_fee ? (student.total_fee - (student.paid_fee || 0)) : student.total_due) || 0}</span></span>
                                                         </div>
                                                     </td>
                                                     <td className="py-4 text-sm font-semibold text-slate-700">
