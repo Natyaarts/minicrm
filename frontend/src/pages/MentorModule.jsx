@@ -215,7 +215,7 @@ const MentorModule = () => {
     const fetchTeacherBatchStudents = async (batchId) => {
         setTeacherStudentsLoading(true);
         try {
-            const res = await api.get(`students/?batch_id=${batchId}&page_size=1000`);
+            const res = await api.get(`students/?batch=${batchId}&page_size=1000`);
             setTeacherBatchStudents(res.data.results || res.data || []);
         } catch (err) {
             console.error("Failed to fetch teacher batch students", err);
