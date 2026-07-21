@@ -398,7 +398,7 @@ const welcomeName = user ? `${user.first_name || user.username}` : 'Member';
       {/* Sales CRM Hub Section */}
       {(user?.role === 'SALES' || user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN') && (
         <View style={[styles.section, { backgroundColor: 'transparent' }]}>
-          <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12}}>
+          <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, backgroundColor: 'transparent'}}>
             <Text style={[styles.sectionTitle, { color: '#4B5563', marginBottom: 0 }]}>SALES CRM HUB</Text>
             
             {(user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || user?.is_manager) ? (
@@ -414,8 +414,8 @@ const welcomeName = user ? `${user.first_name || user.username}` : 'Member';
           </View>
           
           <View style={[styles.tasksCard, { backgroundColor: '#FFFFFF', borderColor: '#E5E7EB' }]}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, backgroundColor: 'transparent' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'transparent' }}>
                 <FontAwesome5 name="calendar-check" size={14} color="#FFB800" style={{ marginRight: 8 }} />
                 <Text style={[styles.tasksHeader, { color: '#374151', marginBottom: 0 }]}>
                   My Upcoming Follow-ups
@@ -427,7 +427,7 @@ const welcomeName = user ? `${user.first_name || user.username}` : 'Member';
             </View>
              {tasks.length > 0 ? tasks.map(task => (
                 <TouchableOpacity key={task.id} style={[styles.taskItem, { borderTopColor: '#F3F4F6' }]} onPress={() => router.push(`/lead-details?leadId=${task.student}` as any)}>
-                   <View style={{flex: 1}}>
+                   <View style={{flex: 1, backgroundColor: 'transparent'}}>
                       <Text style={[styles.taskTitle, { color: '#111827' }]} numberOfLines={1}>{task.title}</Text>
                       <Text style={styles.taskDate}>
                         <FontAwesome5 name="clock" size={10} color="#F59E0B" /> {task.due_date ? new Date(task.due_date).toLocaleString([], {month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit'}) : 'No due date'}
@@ -436,7 +436,7 @@ const welcomeName = user ? `${user.first_name || user.username}` : 'Member';
                    <FontAwesome5 name="chevron-right" size={14} color="#9CA3AF" />
                 </TouchableOpacity>
              )) : (
-                <View style={{ alignItems: 'center', paddingVertical: 16 }}>
+                <View style={{ alignItems: 'center', paddingVertical: 16, backgroundColor: 'transparent' }}>
                   <FontAwesome5 name="check-circle" size={24} color="#10B981" style={{ marginBottom: 8, opacity: 0.8 }} />
                   <Text style={[styles.emptyTaskText, { color: '#6B7280' }]}>No upcoming follow-ups today</Text>
                 </View>
