@@ -749,55 +749,7 @@ const MentorModule = () => {
         }
     };
 
-    useEffect(() => {
-        if (selectedTeacherId) {
-            fetchTeacherBatches();
-        } else {
-            setTeacherBatches([]);
-            setSelectedTeacherBatchId('');
-        }
-    }, [selectedTeacherId]);
 
-    const fetchTeacherBatches = async () => {
-        setTeacherViewLoading(true);
-        try {
-            const res = await api.get(`batches/?teacher_id=${selectedTeacherId}`);
-            if (res.data.results) {
-                setTeacherBatches(res.data.results);
-            } else {
-                setTeacherBatches(Array.isArray(res.data) ? res.data : []);
-            }
-        } catch (err) {
-            console.error(err);
-        } finally {
-            setTeacherViewLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        if (selectedTeacherBatchId) {
-            fetchTeacherStudents();
-        } else {
-            setTeacherBatchStudents([]);
-        }
-    }, [selectedTeacherBatchId]);
-
-    const fetchTeacherStudents = async () => {
-        setTeacherStudentsLoading(true);
-        try {
-            // Using students api with batch_id
-            const res = await api.get(`students/?batch_id=${selectedTeacherBatchId}&limit=1000`);
-            if (res.data.results) {
-                setTeacherBatchStudents(res.data.results);
-            } else {
-                setTeacherBatchStudents(Array.isArray(res.data) ? res.data : []);
-            }
-        } catch (err) {
-            console.error(err);
-        } finally {
-            setTeacherStudentsLoading(false);
-        }
-    };
 
     const fetchMeta = async () => {
         try {
