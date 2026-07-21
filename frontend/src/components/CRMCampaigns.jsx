@@ -90,7 +90,7 @@ const CRMCampaigns = () => {
 
     useEffect(() => {
         if (activeTab === 'leads') {
-            fetchLeads();
+            fetchLeads(leadsStartDate, leadsEndDate);
         }
     }, [activeTab, currentPage, leadsStartDate, leadsEndDate]);
 
@@ -134,12 +134,13 @@ const CRMCampaigns = () => {
         }
     };
     
-    const fetchLeads = async () => {
+    const fetchLeads = async (startDate, endDate) => {
         setLeadsLoading(true);
         try {
             let url = `students/?campaign_only=true&page=${currentPage}`;
-            if (leadsStartDate) url += `&start_date=${leadsStartDate}`;
-            if (leadsEndDate) url += `&end_date=${leadsEndDate}`;
+            if (startDate) url += `&start_date=${startDate}`;
+            if (endDate) url += `&end_date=${endDate}`;
+            console.log('[fetchLeads] URL:', url);
             const res = await api.get(url); 
             setLeads(res.data.results || res.data || []);
             if (res.data.count !== undefined) {
