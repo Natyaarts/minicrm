@@ -19,7 +19,7 @@
     },
     "android": {
       "package": "com.natyaarts.mobile",
-      "versionCode": 14,
+      "versionCode": 15,
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.CAMERA",
@@ -45,7 +45,11 @@
       "typedRoutes": true
     },
     "extra": {
-      "router": {}
-    }
+      "router": {},
+      "eas": {
+        "projectId": "89ec994c-ae6c-413e-859b-6463292664e2"
+      }
+    },
+    "owner": "natyaarts"
   }
 }
