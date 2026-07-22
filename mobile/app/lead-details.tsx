@@ -14,6 +14,7 @@ import {
   SafeAreaView,
   StatusBar,
   Modal,
+  AppState,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { FontAwesome5 } from '@expo/vector-icons';

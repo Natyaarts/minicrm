@@ -10,6 +10,7 @@ import {
   SafeAreaView,
   StatusBar,
   Platform,
+  Alert,
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -90,7 +91,29 @@ export default function NotificationsScreen() {
       await handleMarkAsRead(item.id);
     }
     if (item.target_url) {
-      router.push(item.target_url as any);
+      const url = item.target_url;
+      if (url.startsWith('/sales?student=')) {
+        const id = url.split('=')[1];
+        router.push({ pathname: '/lead-details', params: { leadId: id } } as any);
+      } else if (url.startsWith('/students/')) {
+        const id = url.split('/')[2];
+        router.push({ pathname: '/lead-details', params: { leadId: id } } as any);
+      } else if (url === '/sales') {
+        router.push('/(tabs)/two' as any);
+      } else if (url === '/mentor') {
+        router.push('/module?title=Mentor Module&category=Academics' as any);
+      } else if (url === '/academic') {
+        router.push('/module?title=Academic Hierarchy&category=Academics' as any);
+      } else if (url.startsWith('/hrms/')) {
+        Alert.alert('Information', 'This page is best viewed on the web portal.');
+      } else {
+        // Fallback for potentially matched routes like /bde-report?bdeId=...
+        try {
+          router.push(url as any);
+        } catch (e) {
+          Alert.alert('Information', 'This feature is currently available on the web portal.');
+        }
+      }
     }
   };
 
