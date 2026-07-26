@@ -11,7 +11,7 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ('id', 'username', 'email', 'first_name', 'last_name', 'role', 'phone_number', 'password', 'permissions', 'teacher_batches_details', 'total_classes_conducted', 'lms_teacher_id', 'is_manager')
+        fields = ('id', 'username', 'email', 'first_name', 'last_name', 'role', 'sales_section', 'phone_number', 'password', 'permissions', 'teacher_batches_details', 'total_classes_conducted', 'lms_teacher_id', 'is_manager')
 
     teacher_batches_details = serializers.SerializerMethodField()
     total_classes_conducted = serializers.SerializerMethodField()
