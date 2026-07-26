@@ -59,6 +59,14 @@ class Campaign(models.Model):
     start_date = models.DateField(null=True, blank=True)
     end_date = models.DateField(null=True, blank=True)
     budget = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    
+    SECTION_CHOICES = (
+        ('CAREER_ACADEMY', 'Career Academy'),
+        ('REGULAR', 'Regular'),
+        ('BOTH', 'Both'),
+    )
+    section = models.CharField(max_length=20, choices=SECTION_CHOICES, default='BOTH')
+    
     created_at = models.DateTimeField(auto_now_add=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
 

@@ -22,6 +22,9 @@ class DashboardStatsView(APIView):
         from django.utils import timezone
         
         students = Student.objects.filter(is_active=True)
+        if request.user.role == 'SALES' and getattr(request.user, 'sales_section', 'BOTH') != 'BOTH':
+            from django.db.models import Q
+            students = students.filter(Q(sales_section=request.user.sales_section) | Q(sales_section='BOTH'))
         
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
@@ -76,6 +79,9 @@ class DashboardStatsView(APIView):
             
         # Leaderboard
         sales_reps = User.objects.filter(role='SALES')
+        if request.user.role == 'SALES' and getattr(request.user, 'sales_section', 'BOTH') != 'BOTH':
+            from django.db.models import Q
+            sales_reps = sales_reps.filter(Q(sales_section=request.user.sales_section) | Q(sales_section='BOTH'))
         leaderboard = []
         for rep in sales_reps:
             rep_leads = students.filter(assigned_to=rep).count()
@@ -149,6 +155,9 @@ class SalesUserListView(APIView):
     
     def get(self, request):
         users = User.objects.filter(role='SALES')
+        if request.user.role == 'SALES' and getattr(request.user, 'sales_section', 'BOTH') != 'BOTH':
+            from django.db.models import Q
+            users = users.filter(Q(sales_section=request.user.sales_section) | Q(sales_section='BOTH'))
         data = [{'id': u.id, 'name': u.get_full_name() or u.username} for u in users]
         return Response(data)
 
@@ -210,6 +219,13 @@ class CampaignViewSet(viewsets.ModelViewSet):
     queryset = Campaign.objects.all()
     serializer_class = CampaignSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        if self.request.user.role == 'SALES' and getattr(self.request.user, 'sales_section', 'BOTH') != 'BOTH':
+            from django.db.models import Q
+            queryset = queryset.filter(Q(section=self.request.user.sales_section) | Q(section='BOTH'))
+        return queryset
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
@@ -283,6 +299,7 @@ class CampaignViewSet(viewsets.ModelViewSet):
                         perm_city=place,
                         lms_course_names=tag,
                         campaign=campaign,
+                        sales_section=campaign.section,
                         program_type=default_program,
                         lead_status='2' # Assuming '2' is NEW status, or we can look it up. Let's look it up.
                     )
@@ -495,6 +512,7 @@ class WebhookReceiveView(APIView):
                         student.program_type = program
                     if campaign:
                         student.campaign = campaign
+                        student.sales_section = campaign.section
                     student.save()
                     
                     # Log system interaction
@@ -515,6 +533,7 @@ class WebhookReceiveView(APIView):
                         mobile=mobile,
                         program_type=program,
                         campaign=campaign,
+                        sales_section=campaign.section if campaign else 'BOTH',
                         is_active=True
                     )
 

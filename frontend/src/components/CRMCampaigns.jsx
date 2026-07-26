@@ -66,7 +66,7 @@ const CRMCampaigns = () => {
     // Form state
     const [formData, setFormData] = useState({
         name: '', platform: 'OTHER', status: 'ACTIVE', 
-        budget: '', start_date: '', end_date: '', description: ''
+        budget: '', start_date: '', end_date: '', description: '', section: 'BOTH'
     });
 
     // Bulk Assignment state
@@ -203,7 +203,7 @@ const CRMCampaigns = () => {
             setEditingCampaign(null);
             setFormData({
                 name: '', platform: 'OTHER', status: 'ACTIVE', 
-                budget: '', start_date: '', end_date: '', description: ''
+                budget: '', start_date: '', end_date: '', description: '', section: 'BOTH'
             });
             fetchCampaigns();
         } catch (error) {
@@ -567,7 +567,7 @@ const CRMCampaigns = () => {
                                                 setEditingCampaign(campaign);
                                                 setFormData({
                                                     name: campaign.name, platform: campaign.platform, status: campaign.status,
-                                                    budget: campaign.budget, start_date: campaign.start_date || '', end_date: campaign.end_date || '', description: campaign.description || ''
+                                                    budget: campaign.budget, start_date: campaign.start_date || '', end_date: campaign.end_date || '', description: campaign.description || '', section: campaign.section || 'BOTH'
                                                 });
                                                 setIsCreateModalOpen(true);
                                             }}
@@ -922,6 +922,16 @@ const CRMCampaigns = () => {
                                         <option value="ACTIVE">Active</option>
                                         <option value="PAUSED">Paused</option>
                                         <option value="COMPLETED">Completed</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Section</label>
+                                    <select value={formData.section} onChange={(e) => setFormData({...formData, section: e.target.value})} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none">
+                                        <option value="BOTH">Both</option>
+                                        <option value="CAREER_ACADEMY">Career Academy</option>
+                                        <option value="REGULAR">Regular</option>
                                     </select>
                                 </div>
                             </div>

@@ -18,6 +18,13 @@ class User(AbstractUser):
     lms_teacher_id = models.CharField(max_length=100, blank=True, null=True, help_text="Wise LMS Teacher ID")
     expo_push_token = models.CharField(max_length=255, blank=True, null=True)
     
+    SALES_SECTION_CHOICES = (
+        ('CAREER_ACADEMY', 'Career Academy'),
+        ('REGULAR', 'Regular'),
+        ('BOTH', 'Both'),
+    )
+    sales_section = models.CharField(max_length=20, choices=SALES_SECTION_CHOICES, default='BOTH')
+    
     # Hierarchy for mentors (TL, Manager, etc.)
     reports_to = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='subordinates', help_text="The person this user reports to (e.g. TL or Manager)")
 

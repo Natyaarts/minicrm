@@ -388,6 +388,10 @@ class StudentViewSet(viewsets.ModelViewSet):
         if user.role in ['ADMIN', 'SUPER_ADMIN']:
             pass 
         elif user.role == 'SALES':
+            if getattr(user, 'sales_section', 'BOTH') != 'BOTH':
+                from django.db.models import Q
+                qs = qs.filter(Q(sales_section=user.sales_section) | Q(sales_section='BOTH'))
+                
             is_sales_manager = False
             if hasattr(user, 'hrms_profile'):
                 profile = user.hrms_profile

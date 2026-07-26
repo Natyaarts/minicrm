@@ -78,6 +78,13 @@ class Student(models.Model):
     assigned_to = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_leads')
     campaign = models.ForeignKey('crm.Campaign', on_delete=models.SET_NULL, null=True, blank=True, related_name='leads')
     
+    SALES_SECTION_CHOICES = (
+        ('CAREER_ACADEMY', 'Career Academy'),
+        ('REGULAR', 'Regular'),
+        ('BOTH', 'Both'),
+    )
+    sales_section = models.CharField(max_length=20, choices=SALES_SECTION_CHOICES, default='BOTH')
+
     # Personal Info - Minimal required for system, others optional
     first_name = models.CharField(max_length=50, blank=True, null=True)
     last_name = models.CharField(max_length=50, blank=True, null=True)
