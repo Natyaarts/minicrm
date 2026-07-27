@@ -47,15 +47,18 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         try:
             profile = user.hrms_profile
         except EmployeeProfile.DoesNotExist:
-            # Auto-create profile for super admins if missing
-            if user.role == 'SUPER_ADMIN' or user.is_superuser:
-                from zoneinfo import ZoneInfo
-                kolkata = ZoneInfo('Asia/Kolkata')
-                profile = EmployeeProfile.objects.create(
+            profile = getattr(user, 'hrms_profile', None)
+        
+        if not profile:
+            if user.is_superuser or user.role == 'SUPER_ADMIN':
+                from django.utils import timezone
+                # Create a dummy profile for admin if needed, or handle gracefully
+                profile, _ = EmployeeProfile.objects.get_or_create(
                     user=user,
-                    employee_id=f'EMP-{user.username.upper()[:5]}-001',
-                    date_of_joining=timezone.now().astimezone(kolkata).date(),
-                    status='ACTIVE',
+                    defaults={
+                        'employee_id': f'ADM-{user.id}',
+                        'date_of_joining': timezone.now().date()
+                    }
                 )
             else:
                 return Response({"error": "Employee profile not found. Please contact HR to set up your profile."}, status=404)
