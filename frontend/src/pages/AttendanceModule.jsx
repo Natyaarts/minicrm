@@ -810,7 +810,7 @@ const AttendanceModule = () => {
                                     </button>
                                     {isAdmin && activeTab === 'master' && (
                                         <button
-                                            onClick={() => { setManualForm({ employee_id: '', date: todayStr, clock_in: '09:30', clock_out: '', status: 'PRESENT' }); setManualMsg(null); setShowManualEntry(true); }}
+                                            onClick={() => { setManualForm({ employee_id: '', date: startDate || todayStr, clock_in: '09:30', clock_out: '', status: 'PRESENT' }); setManualMsg(null); setShowManualEntry(true); }}
                                             title="Manual Entry"
                                             className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors"
                                         >
