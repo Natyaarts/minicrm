@@ -1110,9 +1110,9 @@ const SalesModule = () => {
                                 <div className="flex items-center gap-3 w-full sm:w-auto">
                                     <button
                                         onClick={() => setHideConverted(!hideConverted)}
-                                        className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex-1 sm:flex-initial ${!hideConverted ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-50 border border-slate-200 text-slate-600 hover:bg-slate-100'}`}
+                                        className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex-1 sm:flex-initial ${hideConverted ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-50 border border-slate-200 text-slate-600 hover:bg-slate-100'}`}
                                     >
-                                        {!hideConverted ? 'Showing All' : 'Hide Enrolled'}
+                                        {hideConverted ? 'Enrolled Hidden' : 'Hide Enrolled'}
                                     </button>
                                     <select 
                                         value={salesSectionFilter}
