@@ -184,6 +184,12 @@ const AttendanceModule = () => {
 
     const handleClockIn = async (photoData = null) => {
         if (!photoData) {
+            if (!location.latitude || location.status === 'denied') {
+                alert("Location access is REQUIRED to clock in.\n\nPlease go to your iPhone Settings -> Privacy -> Location Services, and make sure it is turned ON for your browser (Safari/Chrome).\n\nThen refresh this page.");
+                // Try requesting location again
+                requestLocation();
+                return;
+            }
             setShowSelfieCapture(true);
             return;
         }
