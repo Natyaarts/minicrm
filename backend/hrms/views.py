@@ -51,7 +51,6 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         
         if not profile:
             if user.is_superuser or user.role == 'SUPER_ADMIN':
-                from django.utils import timezone
                 # Create a dummy profile for admin if needed, or handle gracefully
                 profile, _ = EmployeeProfile.objects.get_or_create(
                     user=user,
