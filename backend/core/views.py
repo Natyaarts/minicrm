@@ -375,13 +375,14 @@ class StudentViewSet(viewsets.ModelViewSet):
             'user', 'program_type', 'sub_program', 'course', 'batch'
         ).prefetch_related('dynamic_values__field', 'documents', 'transactions', 'monthly_payments').all()
             
-        # Resolve 'CONVERTED' to its ID
-        converted_stage_id = 'CONVERTED'
+        # Resolve 'CONVERTED' to its IDs (handle 'converted', 'enrolled', etc.)
+        converted_stage_ids = ['CONVERTED', 'ENROLLED']
         try:
             from crm.models import PipelineStage
-            stage = PipelineStage.objects.filter(name__iexact='CONVERTED').first()
-            if stage:
-                converted_stage_id = str(stage.id)
+            from django.db.models import Q
+            stages = PipelineStage.objects.filter(Q(name__icontains='convert') | Q(name__icontains='enroll'))
+            for stage in stages:
+                converted_stage_ids.append(str(stage.id))
         except Exception:
             pass
 
@@ -403,7 +404,7 @@ class StudentViewSet(viewsets.ModelViewSet):
             if not is_sales_manager:
                 qs = qs.filter(assigned_to=user)
         elif user.role in ['ACADEMIC', 'ACADEMIC_COORDINATOR']:
-            qs = qs.filter(lead_status=converted_stage_id)
+            qs = qs.filter(lead_status__in=converted_stage_ids)
         elif user.role in ['MENTOR', 'TEACHER']:
             subordinates = user.get_all_subordinates()
             if subordinates:
@@ -412,19 +413,27 @@ class StudentViewSet(viewsets.ModelViewSet):
                     Q(batch__primary_mentor__in=users_to_check) | 
                     Q(batch__secondary_mentors__in=users_to_check) |
                     Q(batch__teacher__in=users_to_check)
-                ).filter(lead_status=converted_stage_id).distinct()
+                ).filter(lead_status__in=converted_stage_ids).distinct()
             else:
                 qs = qs.filter(
                     Q(batch__primary_mentor=user) | 
                     Q(batch__secondary_mentors=user) |
                     Q(batch__teacher=user)
-                ).filter(lead_status=converted_stage_id).distinct()
+                ).filter(lead_status__in=converted_stage_ids).distinct()
         elif user.role == 'STUDENT':
             qs = Student.objects.filter(user=user)
         
         # Apply Filters
         is_active = self.request.query_params.get('is_active', 'true').lower() == 'true'
         qs = qs.filter(is_active=is_active)
+        
+        hide_converted = self.request.query_params.get('hide_converted')
+        if hide_converted == 'true' and converted_stage_ids:
+            qs = qs.exclude(lead_status__in=converted_stage_ids)
+
+        sales_section_filter = self.request.query_params.get('sales_section')
+        if sales_section_filter and sales_section_filter.upper() != 'ALL':
+            qs = qs.filter(sales_section=sales_section_filter.upper())
 
         batch_id = self.request.query_params.get('batch')
         if batch_id:
