@@ -182,11 +182,29 @@ const AttendanceModule = () => {
         link.click();
     };
 
+    const getCurrentLocationFresh = () => new Promise((resolve) => {
+        if (!("geolocation" in navigator)) {
+            resolve({ latitude: null, longitude: null });
+            return;
+        }
+        const timeout = setTimeout(() => resolve({ latitude: null, longitude: null }), 10000);
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                clearTimeout(timeout);
+                resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude });
+            },
+            () => {
+                clearTimeout(timeout);
+                resolve({ latitude: null, longitude: null });
+            },
+            { enableHighAccuracy: true, timeout: 9000, maximumAge: 0 }
+        );
+    });
+
     const handleClockIn = async (photoData = null) => {
         if (!photoData) {
-            if (!location.latitude || location.status === 'denied') {
-                alert("Location access is REQUIRED to clock in.\n\nPlease go to your iPhone Settings -> Privacy -> Location Services, and make sure it is turned ON for your browser (Safari/Chrome).\n\nThen refresh this page.");
-                // Try requesting location again
+            if (location.status === 'denied') {
+                alert("Location access is REQUIRED to clock in.\n\nPlease enable Location for your browser in your phone Settings, then refresh this page.");
                 requestLocation();
                 return;
             }
@@ -196,9 +214,14 @@ const AttendanceModule = () => {
         setShowSelfieCapture(false);
         setLoading(true);
         try {
+            // Get a fresh GPS fix at the moment of submission
+            const freshLoc = await getCurrentLocationFresh();
+            const lat = freshLoc.latitude ?? location.latitude;
+            const lon = freshLoc.longitude ?? location.longitude;
+
             const res = await api.post('hrms/attendance/clock_in/', {
-                latitude: location.latitude,
-                longitude: location.longitude,
+                latitude: lat,
+                longitude: lon,
                 photo: photoData
             });
             if (res.data && res.data.is_face_verified === false) {
@@ -212,6 +235,7 @@ const AttendanceModule = () => {
             setLoading(false);
         }
     };
+
 
     const handleClockOut = async () => {
         setLoading(true);

@@ -72,10 +72,7 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         lon1 = request.data.get('longitude')
         
         shift = ShiftSetting.objects.filter(is_active=True).first()
-        if shift and shift.office_latitude != 0:
-            if lat1 is None or lon1 is None:
-                return Response({"error": "Location coordinates are required for geofencing validation."}, status=400)
-            
+        if shift and shift.office_latitude != 0 and lat1 is not None and lon1 is not None:
             from math import radians, cos, sin, asin, sqrt
             def haversine(lat1, lon1, lat2, lon2):
                 lon1, lat1, lon2, lat2 = map(radians, [float(lon1), float(lat1), float(lon2), float(lat2)])
@@ -89,12 +86,13 @@ class AttendanceViewSet(viewsets.ModelViewSet):
             try:
                 distance = haversine(lat1, lon1, shift.office_latitude, shift.office_longitude)
             except (ValueError, TypeError) as e:
-                return Response({"error": "Invalid location coordinates provided."}, status=400)
+                distance = None
 
-            if distance > shift.allowed_radius_meters:
+            if distance is not None and distance > shift.allowed_radius_meters:
                 return Response({
                     "error": f"Out of bounds. You are {int(distance)}m away from the office. Allowed radius: {shift.allowed_radius_meters}m"
                 }, status=400)
+
 
         # Now get or create attendance
         attendance, created = Attendance.objects.get_or_create(employee=profile, date=today)
