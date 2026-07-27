@@ -23,6 +23,7 @@ const FaceSelfieCapture = ({ onCapture, onCancel }) => {
             setStream(mediaStream);
             if (videoRef.current) {
                 videoRef.current.srcObject = mediaStream;
+                videoRef.current.play().catch(err => console.error("Video play error:", err));
             }
         } catch (err) {
             setError("Could not access camera. Please allow camera permissions.");
@@ -44,6 +45,11 @@ const FaceSelfieCapture = ({ onCapture, onCancel }) => {
             const MAX_WIDTH = 640;
             let width = video.videoWidth;
             let height = video.videoHeight;
+            
+            if (width === 0 || height === 0) {
+                alert("Camera is still initializing. Please wait a second and try again.");
+                return;
+            }
             
             if (width > MAX_WIDTH) {
                 height = Math.round((height * MAX_WIDTH) / width);
