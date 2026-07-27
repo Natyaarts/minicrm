@@ -226,6 +226,8 @@ const SalesModule = () => {
             if (selectedCourse) params.append('course', selectedCourse);
             if (selectedStageFilter) params.append('lead_status', selectedStageFilter);
             if (selectedAssigneeFilter) params.append('assigned_to', selectedAssigneeFilter);
+            if (hideConverted) params.append('hide_converted', 'true');
+            if (salesSectionFilter && salesSectionFilter !== 'ALL') params.append('sales_section', salesSectionFilter);
 
             const res = await api.get(`students/export_csv/?${params.toString()}`, { responseType: 'blob' });
             const urlBlob = window.URL.createObjectURL(new Blob([res.data]));
@@ -244,6 +246,8 @@ const SalesModule = () => {
     };
 
     const [isTrashView, setIsTrashView] = useState(false);
+    const [hideConverted, setHideConverted] = useState(true);
+    const [salesSectionFilter, setSalesSectionFilter] = useState('ALL');
     const [editingStudent, setEditingStudent] = useState(null);
     const [editFormData, setEditFormData] = useState({});
     const [editSubPrograms, setEditSubPrograms] = useState([]);
@@ -366,6 +370,8 @@ const SalesModule = () => {
             if (selectedCourse) params.append('course', selectedCourse);
             if (selectedStageFilter) params.append('lead_status', selectedStageFilter);
             if (selectedAssigneeFilter) params.append('assigned_to', selectedAssigneeFilter);
+            if (hideConverted) params.append('hide_converted', 'true');
+            if (salesSectionFilter && salesSectionFilter !== 'ALL') params.append('sales_section', salesSectionFilter);
 
             const res = await api.get(`students/?${params.toString()}`);
             const data = res.data;
@@ -399,13 +405,13 @@ const SalesModule = () => {
             }, 500);
             return () => clearTimeout(timer);
         }
-    }, [activeTab, isAuthenticated, isTrashView, studentPage, searchTerm, selectedProgram, selectedSubProgram, selectedCourse, selectedStageFilter, selectedAssigneeFilter]);
+    }, [activeTab, isAuthenticated, isTrashView, studentPage, searchTerm, selectedProgram, selectedSubProgram, selectedCourse, selectedStageFilter, selectedAssigneeFilter, hideConverted, salesSectionFilter]);
 
     // Reset pagination on mode change
     useEffect(() => {
         setStudentPage(1);
         setSelectedLeadIds([]);
-    }, [isTrashView, searchTerm, selectedProgram, selectedSubProgram, selectedCourse, selectedStageFilter, selectedAssigneeFilter]);
+    }, [isTrashView, searchTerm, selectedProgram, selectedSubProgram, selectedCourse, selectedStageFilter, selectedAssigneeFilter, hideConverted, salesSectionFilter]);
 
 
     // Handle Program Change UI
@@ -1103,6 +1109,21 @@ const SalesModule = () => {
 
                                 <div className="flex items-center gap-3 w-full sm:w-auto">
                                     <button
+                                        onClick={() => setHideConverted(!hideConverted)}
+                                        className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex-1 sm:flex-initial ${!hideConverted ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-50 border border-slate-200 text-slate-600 hover:bg-slate-100'}`}
+                                    >
+                                        {!hideConverted ? 'Showing All' : 'Hide Enrolled'}
+                                    </button>
+                                    <select 
+                                        value={salesSectionFilter}
+                                        onChange={(e) => setSalesSectionFilter(e.target.value)}
+                                        className="bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 px-3 py-1.5 outline-none flex-1 sm:flex-initial shadow-sm"
+                                    >
+                                        <option value="ALL">All Sections</option>
+                                        <option value="CAREER_ACADEMY">Career Academy</option>
+                                        <option value="REGULAR">Regular</option>
+                                    </select>
+                                    <button
                                         onClick={() => setIsTrashView(!isTrashView)}
                                         className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex-1 sm:flex-initial ${isTrashView ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-50 border border-slate-200 text-slate-600 hover:bg-slate-100'}`}
                                     >
@@ -1517,6 +1538,8 @@ const SalesModule = () => {
                                 subProgram={selectedSubProgram}
                                 course={selectedCourse}
                                 searchTerm={searchTerm}
+                                hideConverted={hideConverted}
+                                salesSection={salesSectionFilter}
                             />
                         </div>
                     ) : activeTab === 'bulk' && isAuthenticated ? (

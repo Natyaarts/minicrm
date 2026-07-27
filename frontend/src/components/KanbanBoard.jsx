@@ -4,7 +4,7 @@ import api from '../api/axios';
 import { Phone, Mail, FileText, Calendar, Settings, Plus, X, Trash2, UserCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
-const KanbanBoard = ({ program, subProgram, course, searchTerm }) => {
+const KanbanBoard = ({ program, subProgram, course, searchTerm, hideConverted, salesSection }) => {
     const { user: authUser } = useAuth();
     const [stages, setStages] = useState([]);
     const [leads, setLeads] = useState([]);
@@ -18,7 +18,7 @@ const KanbanBoard = ({ program, subProgram, course, searchTerm }) => {
 
     useEffect(() => {
         fetchStagesAndLeads();
-    }, [program, subProgram, course, searchTerm]);
+    }, [program, subProgram, course, searchTerm, hideConverted, salesSection]);
 
     const fetchStagesAndLeads = async () => {
         setLoading(true);
@@ -44,6 +44,8 @@ const KanbanBoard = ({ program, subProgram, course, searchTerm }) => {
             if (subProgram) params.append('sub_program', subProgram);
             if (course) params.append('course', course);
             if (searchTerm) params.append('search', searchTerm);
+            if (hideConverted) params.append('hide_converted', 'true');
+            if (salesSection && salesSection !== 'ALL') params.append('sales_section', salesSection);
 
             const res = await api.get(`students/?${params.toString()}`);
             const data = res.data.results || res.data || [];
