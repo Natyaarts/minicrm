@@ -675,16 +675,24 @@ const AttendanceModule = () => {
                                                 )}
                                                 <td className="px-5 py-3">
                                                     <span className="text-xs font-semibold text-slate-600">{log.date}</span>
-                                                </td>
                                                 <td className="px-5 py-3">
                                                     <div className="flex items-center gap-3">
                                                         <div className="flex flex-col">
                                                             <span className="text-xs font-bold text-slate-800">
-                                                                {log.clock_in ? new Date(`2000-01-01T${log.clock_in}`).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'}
+                                                                {log.clock_in ? 
+                                                                    (() => {
+                                                                        const [h, m] = log.clock_in.split(':');
+                                                                        const hour = parseInt(h, 10);
+                                                                        const ampm = hour >= 12 ? 'PM' : 'AM';
+                                                                        return `${hour % 12 || 12}:${m} ${ampm}`;
+                                                                    })()
+                                                                : '--:--'}
                                                             </span>
-                                                            <span className="text-[10px] font-semibold text-emerald-600 flex items-center gap-1 mt-0.5">
-                                                                <MapPin size={10} /> Loc Verified
-                                                            </span>
+                                                            {log.clock_in_latitude && (
+                                                                <span className="text-[10px] font-semibold text-emerald-600 flex items-center gap-1 mt-0.5">
+                                                                    <MapPin size={10} /> Loc Verified
+                                                                </span>
+                                                            )}
                                                             {log.is_face_verified && (
                                                                 <span className="text-[10px] font-semibold text-indigo-600 flex items-center gap-1 mt-0.5">
                                                                     <CheckCircle2 size={10} /> Face Verified ({log.verification_confidence}%)
@@ -707,7 +715,14 @@ const AttendanceModule = () => {
                                                 </td>
                                                 <td className="px-5 py-3">
                                                     <span className="text-xs font-bold text-slate-800">
-                                                        {log.clock_out ? new Date(`2000-01-01T${log.clock_out}`).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'}
+                                                        {log.clock_out ? 
+                                                            (() => {
+                                                                const [h, m] = log.clock_out.split(':');
+                                                                const hour = parseInt(h, 10);
+                                                                const ampm = hour >= 12 ? 'PM' : 'AM';
+                                                                return `${hour % 12 || 12}:${m} ${ampm}`;
+                                                            })()
+                                                        : '--:--'}
                                                     </span>
                                                 </td>
                                                 <td className="px-5 py-3">

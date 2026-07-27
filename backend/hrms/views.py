@@ -65,6 +65,36 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         now_local = timezone.now().astimezone(kolkata)
         today = now_local.date()
         
+        # Geofencing Validation First
+        lat1 = request.data.get('latitude')
+        lon1 = request.data.get('longitude')
+        
+        shift = ShiftSetting.objects.filter(is_active=True).first()
+        if shift and shift.office_latitude != 0:
+            if lat1 is None or lon1 is None:
+                return Response({"error": "Location coordinates are required for geofencing validation."}, status=400)
+            
+            from math import radians, cos, sin, asin, sqrt
+            def haversine(lat1, lon1, lat2, lon2):
+                lon1, lat1, lon2, lat2 = map(radians, [float(lon1), float(lat1), float(lon2), float(lat2)])
+                dlon = lon2 - lon1 
+                dlat = lat2 - lat1 
+                a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
+                c = 2 * asin(sqrt(a)) 
+                r = 6371 
+                return c * r * 1000
+
+            try:
+                distance = haversine(lat1, lon1, shift.office_latitude, shift.office_longitude)
+            except (ValueError, TypeError) as e:
+                return Response({"error": "Invalid location coordinates provided."}, status=400)
+
+            if distance > shift.allowed_radius_meters:
+                return Response({
+                    "error": f"Out of bounds. You are {int(distance)}m away from the office. Allowed radius: {shift.allowed_radius_meters}m"
+                }, status=400)
+
+        # Now get or create attendance
         attendance, created = Attendance.objects.get_or_create(employee=profile, date=today)
         
         if not created and attendance.clock_in:
@@ -107,33 +137,6 @@ class AttendanceViewSet(viewsets.ModelViewSet):
             except Exception as e:
                 print("Failed to decode photo:", e)
         
-        shift = ShiftSetting.objects.filter(is_active=True).first()
-        if shift and shift.office_latitude != 0:
-            if lat1 is None or lon1 is None:
-                return Response({"error": "Location coordinates are required for geofencing validation."}, status=400)
-            
-            from math import radians, cos, sin, asin, sqrt
-            def haversine(lat1, lon1, lat2, lon2):
-                # convert decimal degrees to radians 
-                lon1, lat1, lon2, lat2 = map(radians, [float(lon1), float(lat1), float(lon2), float(lat2)])
-                # haversine formula 
-                dlon = lon2 - lon1 
-                dlat = lat2 - lat1 
-                a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
-                c = 2 * asin(sqrt(a)) 
-                r = 6371 # Radius of earth in kilometers. Use 3956 for miles
-                return c * r * 1000 # returns meters
-
-            try:
-                distance = haversine(lat1, lon1, shift.office_latitude, shift.office_longitude)
-            except (ValueError, TypeError) as e:
-                return Response({"error": "Invalid location coordinates provided."}, status=400)
-
-            if distance > shift.allowed_radius_meters:
-                return Response({
-                    "error": f"Out of bounds. You are {int(distance)}m away from the office. Allowed radius: {shift.allowed_radius_meters}m"
-                }, status=400)
-
         # Auto-calculate status (LATE check)
         if shift:
             # Combine local date with shift start time and localize
