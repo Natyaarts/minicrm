@@ -13,7 +13,8 @@ import {
     Filter,
     User,
     Download,
-    UserX
+    UserX,
+    PlusCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
@@ -38,6 +39,11 @@ const AttendanceModule = () => {
     const [todayLogs, setTodayLogs] = useState([]);
     const [allEmployees, setAllEmployees] = useState([]);
     const [selectedDashboardStat, setSelectedDashboardStat] = useState(null);
+    // Manual Entry modal state
+    const [showManualEntry, setShowManualEntry] = useState(false);
+    const [manualForm, setManualForm] = useState({ employee_id: '', date: todayStr, clock_in: '09:30', clock_out: '', status: 'PRESENT' });
+    const [manualLoading, setManualLoading] = useState(false);
+    const [manualMsg, setManualMsg] = useState(null);
 
     useEffect(() => {
         if (authUser?.role === 'SUPER_ADMIN') {
@@ -270,10 +276,147 @@ const AttendanceModule = () => {
         }
     };
 
+    const handleManualEntry = async (e) => {
+        e.preventDefault();
+        setManualLoading(true);
+        setManualMsg(null);
+        try {
+            const payload = {
+                employee_id: manualForm.employee_id,
+                date: manualForm.date,
+                clock_in: manualForm.clock_in || null,
+                clock_out: manualForm.clock_out || null,
+                status: manualForm.status,
+            };
+            const res = await api.post('hrms/attendance/manual_entry/', payload);
+            setManualMsg({ type: 'success', text: res.data.message || 'Attendance saved successfully!' });
+            fetchAttendance();
+            setTimeout(() => { setShowManualEntry(false); setManualMsg(null); }, 1800);
+        } catch (err) {
+            setManualMsg({ type: 'error', text: err.response?.data?.error || 'Failed to save attendance.' });
+        } finally {
+            setManualLoading(false);
+        }
+    };
+
     const isAdmin = authUser?.role === 'SUPER_ADMIN';
 
     return (
         <div className="space-y-6 animate-fadeIn px-2 md:px-0 pb-20 relative">
+            {/* Manual Entry Modal */}
+            <AnimatePresence>
+                {showManualEntry && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+                        onClick={(e) => { if (e.target === e.currentTarget) setShowManualEntry(false); }}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
+                        >
+                            <div className="bg-indigo-600 px-6 py-4 flex items-center justify-between">
+                                <div>
+                                    <h2 className="text-white font-bold text-base">Manual Attendance Entry</h2>
+                                    <p className="text-indigo-200 text-xs mt-0.5">HR correction for missed punch-in</p>
+                                </div>
+                                <button onClick={() => setShowManualEntry(false)} className="text-indigo-200 hover:text-white transition-colors text-lg font-bold">✕</button>
+                            </div>
+                            <form onSubmit={handleManualEntry} className="p-6 space-y-4">
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">Employee *</label>
+                                    <select
+                                        required
+                                        value={manualForm.employee_id}
+                                        onChange={e => setManualForm(f => ({ ...f, employee_id: e.target.value }))}
+                                        className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm text-slate-700 bg-slate-50 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                                    >
+                                        <option value="">-- Select Employee --</option>
+                                        {allEmployees.map(emp => (
+                                            <option key={emp.id} value={emp.id}>
+                                                {emp.full_name || emp.display_username || `Employee #${emp.id}`} ({emp.employee_id})
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">Date *</label>
+                                    <input
+                                        type="date"
+                                        required
+                                        max={todayStr}
+                                        value={manualForm.date}
+                                        onChange={e => setManualForm(f => ({ ...f, date: e.target.value }))}
+                                        className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm text-slate-700 bg-slate-50 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                                    />
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">Clock In</label>
+                                        <input
+                                            type="time"
+                                            value={manualForm.clock_in}
+                                            onChange={e => setManualForm(f => ({ ...f, clock_in: e.target.value }))}
+                                            className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm text-slate-700 bg-slate-50 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">Clock Out</label>
+                                        <input
+                                            type="time"
+                                            value={manualForm.clock_out}
+                                            onChange={e => setManualForm(f => ({ ...f, clock_out: e.target.value }))}
+                                            className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm text-slate-700 bg-slate-50 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                                        />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">Status *</label>
+                                    <select
+                                        required
+                                        value={manualForm.status}
+                                        onChange={e => setManualForm(f => ({ ...f, status: e.target.value }))}
+                                        className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm text-slate-700 bg-slate-50 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                                    >
+                                        <option value="PRESENT">Present</option>
+                                        <option value="LATE">Late</option>
+                                        <option value="HALF_DAY">Half Day</option>
+                                        <option value="ABSENT">Absent</option>
+                                        <option value="ON_LEAVE">On Leave</option>
+                                    </select>
+                                </div>
+                                {manualMsg && (
+                                    <div className={`p-3 rounded-lg text-xs font-semibold ${
+                                        manualMsg.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'
+                                    }`}>
+                                        {manualMsg.type === 'success' ? '✓ ' : '✗ '}{manualMsg.text}
+                                    </div>
+                                )}
+                                <div className="flex gap-3 pt-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowManualEntry(false)}
+                                        className="flex-1 py-2.5 border border-slate-200 text-slate-600 rounded-lg text-sm font-semibold hover:bg-slate-50 transition-colors"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={manualLoading}
+                                        className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-semibold shadow-sm transition-colors disabled:opacity-60"
+                                    >
+                                        {manualLoading ? 'Saving...' : 'Save Entry'}
+                                    </button>
+                                </div>
+                            </form>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
             <AnimatePresence>
                 {previewImage && (
                     <motion.div 
@@ -665,6 +808,15 @@ const AttendanceModule = () => {
                                     >
                                         <Download size={14} />
                                     </button>
+                                    {isAdmin && activeTab === 'master' && (
+                                        <button
+                                            onClick={() => { setManualForm({ employee_id: '', date: todayStr, clock_in: '09:30', clock_out: '', status: 'PRESENT' }); setManualMsg(null); setShowManualEntry(true); }}
+                                            title="Manual Entry"
+                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors"
+                                        >
+                                            <PlusCircle size={14} /> Manual Entry
+                                        </button>
+                                    )}
                                 </div>
                             </div>
 

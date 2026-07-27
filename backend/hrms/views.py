@@ -238,6 +238,67 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         attendance.save()
         return Response(AttendanceSerializer(attendance).data)
 
+    @action(detail=False, methods=['post'])
+    def manual_entry(self, request):
+        """HR/Admin can create or update attendance for any employee on any date."""
+        user = request.user
+        if user.role != 'SUPER_ADMIN' and not user.is_superuser:
+            return Response({"error": "Permission denied"}, status=403)
+
+        employee_id = request.data.get('employee_id')
+        date_str = request.data.get('date')
+        clock_in_str = request.data.get('clock_in')
+        clock_out_str = request.data.get('clock_out')
+        status = request.data.get('status', 'PRESENT')
+        notes = request.data.get('notes', '')
+
+        if not employee_id or not date_str:
+            return Response({"error": "employee_id and date are required"}, status=400)
+
+        try:
+            profile = EmployeeProfile.objects.get(id=employee_id)
+        except EmployeeProfile.DoesNotExist:
+            return Response({"error": "Employee not found"}, status=404)
+
+        from datetime import date as date_type, time as time_type
+        try:
+            entry_date = date_type.fromisoformat(date_str)
+        except ValueError:
+            return Response({"error": "Invalid date format. Use YYYY-MM-DD"}, status=400)
+
+        attendance, created = Attendance.objects.get_or_create(
+            employee=profile,
+            date=entry_date
+        )
+
+        if clock_in_str:
+            try:
+                parts = clock_in_str.split(':')
+                attendance.clock_in = time_type(int(parts[0]), int(parts[1]))
+            except Exception:
+                return Response({"error": "Invalid clock_in format. Use HH:MM"}, status=400)
+
+        if clock_out_str:
+            try:
+                parts = clock_out_str.split(':')
+                attendance.clock_out = time_type(int(parts[0]), int(parts[1]))
+            except Exception:
+                return Response({"error": "Invalid clock_out format. Use HH:MM"}, status=400)
+
+        if status in dict(Attendance.STATUS_CHOICES).keys():
+            attendance.status = status
+
+        if notes:
+            attendance.notes = notes if hasattr(attendance, 'notes') else None
+
+        attendance.is_face_verified = False
+        attendance.save()
+        action_word = "Created" if created else "Updated"
+        return Response({
+            "message": f"{action_word} attendance for {profile.user.get_full_name() or profile.user.username} on {entry_date}",
+            "attendance": AttendanceSerializer(attendance).data
+        })
+
 class DepartmentViewSet(viewsets.ModelViewSet):
     queryset = Department.objects.all()
     serializer_class = DepartmentSerializer
