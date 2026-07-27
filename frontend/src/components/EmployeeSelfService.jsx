@@ -19,25 +19,23 @@ const EmployeeSelfService = () => {
 
     const fetchData = async () => {
         try {
-            // Fetch today's attendance
-            const attRes = await api.get('hrms/attendance/');
+            // Fetch today's attendance using my_only=true to get only current user's records
             const todayStr = new Date().toISOString().split('T')[0];
+            const attRes = await api.get(`hrms/attendance/?my_only=true&start_date=${todayStr}&end_date=${todayStr}`);
             const attData = attRes.data.results || attRes.data || [];
-            // Filter to only show the current user's attendance for today
-            const todayAtt = attData.find(a => a.date === todayStr && a.user_id === user?.id);
+            // Find today's record (no user_id filter needed since my_only=true returns only mine)
+            const todayAtt = attData.find(a => a.date === todayStr) || attData[0] || null;
             setAttendance(todayAtt || null);
 
             // Fetch balances
             const balRes = await api.get('leaves/balances/');
             const balData = balRes.data.results || balRes.data || [];
-            // Filter to only show the current user's balances
-            setBalances(balData.filter(b => b.user_id === user?.id));
+            setBalances(balData.slice(0, 5));
 
             // Fetch payslips
             const payRes = await api.get('payroll/payslips/');
             const payData = payRes.data.results || payRes.data || [];
-            // Filter to only show the current user's payslips
-            setPayslips(payData.filter(p => p.user_id === user?.id).slice(0, 3));
+            setPayslips(payData.slice(0, 3));
         } catch (err) {
             console.error("Failed to fetch employee data", err);
         } finally {
@@ -51,6 +49,16 @@ const EmployeeSelfService = () => {
         fetchData();
     }, []);
 
+    const getLocation = () => new Promise((resolve) => {
+        if (!("geolocation" in navigator)) { resolve({ latitude: null, longitude: null }); return; }
+        const t = setTimeout(() => resolve({ latitude: null, longitude: null }), 8000);
+        navigator.geolocation.getCurrentPosition(
+            pos => { clearTimeout(t); resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }); },
+            () => { clearTimeout(t); resolve({ latitude: null, longitude: null }); },
+            { enableHighAccuracy: true, timeout: 7000, maximumAge: 0 }
+        );
+    });
+
     const handleClock = async (action, photoData = null) => {
         try {
             if (action === 'in') {
@@ -59,33 +67,26 @@ const EmployeeSelfService = () => {
                     return;
                 }
                 setShowSelfieCapture(false);
-                
-                navigator.geolocation.getCurrentPosition(async (pos) => {
-                    const payload = { 
-                        latitude: pos.coords.latitude, 
-                        longitude: pos.coords.longitude,
-                        photo: photoData 
-                    };
-                    await api.post('hrms/attendance/clock_in/', payload);
-                    fetchData();
-                    alert("Clocked in successfully!");
-                }, async (err) => {
-                    await api.post('hrms/attendance/clock_in/', { 
-                        latitude: 0, 
-                        longitude: 0,
-                        photo: photoData
-                    });
-                    fetchData();
-                    alert("Clocked in (Geolocation disabled)");
+                const loc = await getLocation();
+                await api.post('hrms/attendance/clock_in/', {
+                    latitude: loc.latitude,
+                    longitude: loc.longitude,
+                    photo: photoData
                 });
-            } else {
-                await api.post('hrms/attendance/clock_out/');
                 fetchData();
-                alert("Clocked out successfully!");
+            } else {
+                const loc = await getLocation();
+                await api.post('hrms/attendance/clock_out/', {
+                    latitude: loc.latitude,
+                    longitude: loc.longitude
+                });
+                fetchData();
             }
         } catch (err) {
-            console.error("Clock In Error:", err);
-            alert(err.response?.data?.error || `Clock-in failed: ${err.message || 'Unknown error'}`);
+            console.error("Clock action error:", err);
+            const msg = err.response?.data?.error || `Failed: ${err.message || 'Unknown error'}`;
+            // Show error in a visible way (not just alert which can be blocked on iOS)
+            alert(msg);
         }
     };
 
