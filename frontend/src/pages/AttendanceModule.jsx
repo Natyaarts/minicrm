@@ -675,6 +675,7 @@ const AttendanceModule = () => {
                                                 )}
                                                 <td className="px-5 py-3">
                                                     <span className="text-xs font-semibold text-slate-600">{log.date}</span>
+                                                </td>
                                                 <td className="px-5 py-3">
                                                     <div className="flex items-center gap-3">
                                                         <div className="flex flex-col">
