@@ -10,6 +10,7 @@ export const requestCallPermissions = async () => {
             PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE,
             PermissionsAndroid.PERMISSIONS.READ_CALL_LOG,
             PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+            PermissionsAndroid.PERMISSIONS.CALL_PHONE,
         ];
         
         if (Platform.Version >= 33) {
@@ -101,6 +102,17 @@ export const stopNativeRecording = async () => {
     } catch (e) {
         console.error(e);
         return null;
+    }
+};
+
+export const makeDirectCall = async (phoneNumber: string): Promise<boolean> => {
+    if (!CallRecordingModule) return false;
+    try {
+        await CallRecordingModule.makeDirectCall(phoneNumber);
+        return true;
+    } catch (e) {
+        console.error("Direct call failed:", e);
+        return false;
     }
 };
 

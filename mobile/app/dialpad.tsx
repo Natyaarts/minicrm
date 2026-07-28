@@ -266,11 +266,11 @@ const Dialpad = () => {
 
     // Launch native system dialer
     try {
-      await Linking.openURL(`tel:${cleanNumber}`);
-      // Only start timer immediately if we don't have the native receiver (e.g. in Expo Go)
-      if (NativeModules.CallRecordingModule) {
+      if (Platform.OS === 'android' && NativeModules.CallRecordingModule) {
+        await makeDirectCall(cleanNumber);
         setCallStatus('CALLING');
       } else {
+        await Linking.openURL(`tel:${cleanNumber}`);
         setCallStatus('ACTIVE');
       }
     } catch (err: any) {
@@ -595,12 +595,13 @@ const Dialpad = () => {
           <TouchableOpacity
             style={[styles.actionButton, { paddingHorizontal: 20, width: 'auto', flexDirection: 'row', gap: 8 }]}
             onPress={() => {
-              if (NativeModules.CallRecordingModule) {
+              if (Platform.OS === 'android' && NativeModules.CallRecordingModule) {
                 setCallStatus('CALLING');
+                makeDirectCall(phoneNumber.replace(/[\s\-().]/g, ''));
               } else {
                 setCallStatus('ACTIVE');
+                Linking.openURL(`tel:${phoneNumber.replace(/[\s\-().]/g, '')}`);
               }
-              Linking.openURL(`tel:${phoneNumber.replace(/[\s\-().]/g, '')}`);
             }}
           >
             <Ionicons name="call" size={20} color="#fff" />

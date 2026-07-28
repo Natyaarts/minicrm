@@ -97,6 +97,25 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
     }
 
     @ReactMethod
+    fun makeDirectCall(phoneNumber: String, promise: Promise) {
+        val activity = reactApplicationContext.currentActivity
+        if (activity == null) {
+            promise.reject("E_ACTIVITY_DOES_NOT_EXIST", "Activity doesn't exist")
+            return
+        }
+        try {
+            val intent = Intent(Intent.ACTION_CALL, Uri.parse("tel:" + phoneNumber))
+            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            reactApplicationContext.startActivity(intent)
+            promise.resolve(true)
+        } catch (e: SecurityException) {
+            promise.reject("PERMISSION_DENIED", "CALL_PHONE permission is missing", e)
+        } catch (e: Exception) {
+            promise.reject("CALL_FAILED", e.message, e)
+        }
+    }
+
+    @ReactMethod
     fun startRecording(phoneNumber: String?, promise: Promise) {
         try {
             targetPhoneNumber = phoneNumber ?: ""
