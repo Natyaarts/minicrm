@@ -481,7 +481,7 @@ class StudentViewSet(viewsets.ModelViewSet):
         lead_status = self.request.query_params.get('lead_status')
         if lead_status:
             if lead_status.upper() == 'CONVERTED':
-                qs = qs.filter(lead_status=converted_stage_id)
+                qs = qs.filter(lead_status__in=converted_stage_ids)
             else:
                 qs = qs.filter(lead_status__iexact=lead_status)
 
