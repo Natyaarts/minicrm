@@ -491,11 +491,26 @@ class StudentViewSet(viewsets.ModelViewSet):
 
         course = self.request.query_params.get('course')
         if course:
-            qs = qs.filter(course_id=course)
+            from django.db.models import Q
+            qs = qs.filter(Q(course_id=course) | Q(lms_course_id=course) | Q(lms_course_names__icontains=str(course)))
 
         academic_status = self.request.query_params.get('academic_status')
         if academic_status:
             qs = qs.filter(academic_status=academic_status)
+
+        status_category = self.request.query_params.get('status_category')
+        if status_category:
+            from django.db.models import Q
+            from django.utils import timezone
+            from datetime import timedelta
+            sc = status_category.upper()
+            if sc == 'ACTIVE':
+                qs = qs.filter(academic_status='ACTIVE', is_active=True)
+            elif sc == 'INACTIVE':
+                qs = qs.filter(Q(academic_status__in=['ON_BREAK', 'DISCONTINUED']) | Q(is_active=False))
+            elif sc == 'NEW_ADMISSION':
+                thirty_days_ago = timezone.now() - timedelta(days=30)
+                qs = qs.filter(user__date_joined__gte=thirty_days_ago)
 
         campaign_only = self.request.query_params.get('campaign_only')
         if campaign_only == 'true':
@@ -1389,14 +1404,14 @@ class DashboardStatsView(APIView):
         if mentor_id:
             if user.role in ['SUPER_ADMIN', 'ADMIN', 'ACADEMIC', 'ACADEMIC_COORDINATOR']:
                 # Admins can filter by any mentor
-                student_qs = Student.objects.filter(is_active=True, batch__primary_mentor_id=mentor_id).distinct()
-                batch_qs = Batch.objects.filter(primary_mentor_id=mentor_id).distinct()
+                student_qs = student_qs.filter(batch__primary_mentor_id=mentor_id).distinct()
+                batch_qs = batch_qs.filter(primary_mentor_id=mentor_id).distinct()
             elif user.role in ['MENTOR', 'TEACHER'] and hasattr(user, 'get_all_subordinates'):
                 subordinates = user.get_all_subordinates()
                 # Verify requested mentor is a subordinate or self
                 if str(mentor_id) == str(user.id) or any(str(sub.id) == str(mentor_id) for sub in subordinates):
-                    student_qs = Student.objects.filter(is_active=True, batch__primary_mentor_id=mentor_id).distinct()
-                    batch_qs = Batch.objects.filter(primary_mentor_id=mentor_id).distinct()
+                    student_qs = student_qs.filter(batch__primary_mentor_id=mentor_id).distinct()
+                    batch_qs = batch_qs.filter(primary_mentor_id=mentor_id).distinct()
 
         # Finance Integration
         from finance.models import Expense

@@ -42,6 +42,7 @@ const MentorModule = () => {
     const [studentFilterCourse, setStudentFilterCourse] = useState('');
     const [studentFilterBatch, setStudentFilterBatch] = useState('');
     const [studentFilterStatus, setStudentFilterStatus] = useState('');
+    const [studentViewMode, setStudentViewMode] = useState('table'); // 'table' | 'course-wise'
     const [unassignedSearchQuery, setUnassignedSearchQuery] = useState('');
     const [selectedUnassignedStudents, setSelectedUnassignedStudents] = useState([]);
     const [studentPage, setStudentPage] = useState(1);
@@ -607,7 +608,13 @@ const MentorModule = () => {
             if (studentFilterProgram) url += `&program=${studentFilterProgram}`;
             if (studentFilterCourse) url += `&course=${studentFilterCourse}`;
             if (studentFilterBatch) url += `&batch=${studentFilterBatch}`;
-            if (studentFilterStatus) url += `&academic_status=${studentFilterStatus}`;
+            if (studentFilterStatus) {
+                if (['ACTIVE', 'INACTIVE', 'NEW_ADMISSION'].includes(studentFilterStatus)) {
+                    url += `&status_category=${studentFilterStatus}`;
+                } else {
+                    url += `&academic_status=${studentFilterStatus}`;
+                }
+            }
             if (selectedTeamMentor) url += `&mentor_id=${selectedTeamMentor}`;
             
             const res = await api.get(url, { responseType: 'blob' });
@@ -633,7 +640,13 @@ const MentorModule = () => {
             if (studentFilterProgram) url += `&program=${studentFilterProgram}`;
             if (studentFilterCourse) url += `&course=${studentFilterCourse}`;
             if (studentFilterBatch) url += `&batch=${studentFilterBatch}`;
-            if (studentFilterStatus) url += `&academic_status=${studentFilterStatus}`;
+            if (studentFilterStatus) {
+                if (['ACTIVE', 'INACTIVE', 'NEW_ADMISSION'].includes(studentFilterStatus)) {
+                    url += `&status_category=${studentFilterStatus}`;
+                } else {
+                    url += `&academic_status=${studentFilterStatus}`;
+                }
+            }
             if (selectedTeamMentor) url += `&mentor_id=${selectedTeamMentor}`;
             
             const res = await api.get(url);
@@ -1569,6 +1582,8 @@ const MentorModule = () => {
                                     >
                                         <option value="">All Statuses</option>
                                         <option value="ACTIVE">Active</option>
+                                        <option value="INACTIVE">Inactive / Break</option>
+                                        <option value="NEW_ADMISSION">New Admission (30 Days)</option>
                                         <option value="ON_BREAK">On Break</option>
                                         <option value="DISCONTINUED">Discontinued</option>
                                     </select>
@@ -1582,6 +1597,51 @@ const MentorModule = () => {
                                         value={studentSearchQuery}
                                         onChange={(e) => setStudentSearchQuery(e.target.value)}
                                     />
+                                </div>
+                            </div>
+
+                            {/* Status Filter Pill Tabs & Layout Toggle */}
+                            <div className="flex flex-col sm:flex-row justify-between items-center gap-3 p-3 bg-white border border-slate-200 rounded-xl shadow-sm">
+                                <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto">
+                                    <button
+                                        onClick={() => setStudentFilterStatus('')}
+                                        className={`px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${!studentFilterStatus ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                    >
+                                        All Students
+                                    </button>
+                                    <button
+                                        onClick={() => setStudentFilterStatus('ACTIVE')}
+                                        className={`px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${studentFilterStatus === 'ACTIVE' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}
+                                    >
+                                        <span className="w-2 h-2 rounded-full bg-emerald-400"></span> Active
+                                    </button>
+                                    <button
+                                        onClick={() => setStudentFilterStatus('INACTIVE')}
+                                        className={`px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${studentFilterStatus === 'INACTIVE' ? 'bg-amber-600 text-white shadow-sm' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'}`}
+                                    >
+                                        <span className="w-2 h-2 rounded-full bg-amber-400"></span> Inactive / Break
+                                    </button>
+                                    <button
+                                        onClick={() => setStudentFilterStatus('NEW_ADMISSION')}
+                                        className={`px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${studentFilterStatus === 'NEW_ADMISSION' ? 'bg-blue-600 text-white shadow-sm' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
+                                    >
+                                        <span className="w-2 h-2 rounded-full bg-blue-400"></span> New Admission
+                                    </button>
+                                </div>
+
+                                <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg self-end sm:self-auto">
+                                    <button
+                                        onClick={() => setStudentViewMode('table')}
+                                        className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${studentViewMode === 'table' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                                    >
+                                        Table View
+                                    </button>
+                                    <button
+                                        onClick={() => setStudentViewMode('course-wise')}
+                                        className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${studentViewMode === 'course-wise' ? 'bg-white text-indigo-600 shadow-sm font-bold' : 'text-slate-500 hover:text-slate-800'}`}
+                                    >
+                                        Course Categorized View
+                                    </button>
                                 </div>
                             </div>
                         </div>
