@@ -471,7 +471,19 @@ class StudentViewSet(viewsets.ModelViewSet):
         if program:
             qs = qs.filter(program_type_id=program)
 
+        teacher_id = self.request.query_params.get('teacher_id')
+        if teacher_id:
+            qs = qs.filter(batch__teacher_id=teacher_id)
+
+        fee_status = self.request.query_params.get('fee_status')
+        if fee_status:
+            if fee_status.upper() == 'PAID':
+                qs = qs.filter(paid_fee__gte=F('total_fee'))
+            elif fee_status.upper() == 'DEFAULTER':
+                qs = qs.filter(paid_fee__lt=F('total_fee'))
+
         mentor_id = self.request.query_params.get('mentor_id')
+
         if mentor_id:
             if user.role in ['SUPER_ADMIN', 'ADMIN', 'ACADEMIC', 'ACADEMIC_COORDINATOR']:
                 qs = qs.filter(batch__primary_mentor_id=mentor_id)

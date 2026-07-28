@@ -39,10 +39,14 @@ const MentorModule = () => {
     const [wiseParticipants, setWiseParticipants] = useState([]);
     const [studentSearchQuery, setStudentSearchQuery] = useState('');
     const [studentFilterProgram, setStudentFilterProgram] = useState('');
+    const [studentFilterSubProgram, setStudentFilterSubProgram] = useState('');
     const [studentFilterCourse, setStudentFilterCourse] = useState('');
     const [studentFilterBatch, setStudentFilterBatch] = useState('');
+    const [studentFilterTeacher, setStudentFilterTeacher] = useState('');
+    const [studentFilterFeeStatus, setStudentFilterFeeStatus] = useState('');
     const [studentFilterStatus, setStudentFilterStatus] = useState('');
     const [studentViewMode, setStudentViewMode] = useState('table'); // 'table' | 'course-wise'
+
     const [unassignedSearchQuery, setUnassignedSearchQuery] = useState('');
     const [selectedUnassignedStudents, setSelectedUnassignedStudents] = useState([]);
     const [studentPage, setStudentPage] = useState(1);
@@ -707,7 +711,7 @@ const MentorModule = () => {
             }, 500);
             return () => clearTimeout(timer);
         }
-    }, [studentSearchQuery, studentFilterProgram, studentFilterCourse, studentFilterBatch, studentFilterStatus, selectedTeamMentor]);
+    }, [studentSearchQuery, studentFilterProgram, studentFilterSubProgram, studentFilterCourse, studentFilterBatch, studentFilterTeacher, studentFilterFeeStatus, studentFilterStatus, selectedTeamMentor]);
 
     const handleExportFilteredStudents = async () => {
         try {
@@ -715,8 +719,11 @@ const MentorModule = () => {
             let url = `students/export_csv/?lead_status=CONVERTED`;
             if (studentSearchQuery) url += `&search=${studentSearchQuery}`;
             if (studentFilterProgram) url += `&program=${studentFilterProgram}`;
+            if (studentFilterSubProgram) url += `&sub_program=${studentFilterSubProgram}`;
             if (studentFilterCourse) url += `&course=${studentFilterCourse}`;
             if (studentFilterBatch) url += `&batch=${studentFilterBatch}`;
+            if (studentFilterTeacher) url += `&teacher_id=${studentFilterTeacher}`;
+            if (studentFilterFeeStatus) url += `&fee_status=${studentFilterFeeStatus}`;
             if (studentFilterStatus) {
                 if (['ACTIVE', 'INACTIVE', 'NEW_ADMISSION'].includes(studentFilterStatus)) {
                     url += `&status_category=${studentFilterStatus}`;
@@ -747,8 +754,11 @@ const MentorModule = () => {
             setLoading(true);
             let url = `students/?page=${studentPage}&search=${studentSearchQuery}&lead_status=CONVERTED`;
             if (studentFilterProgram) url += `&program=${studentFilterProgram}`;
+            if (studentFilterSubProgram) url += `&sub_program=${studentFilterSubProgram}`;
             if (studentFilterCourse) url += `&course=${studentFilterCourse}`;
             if (studentFilterBatch) url += `&batch=${studentFilterBatch}`;
+            if (studentFilterTeacher) url += `&teacher_id=${studentFilterTeacher}`;
+            if (studentFilterFeeStatus) url += `&fee_status=${studentFilterFeeStatus}`;
             if (studentFilterStatus) {
                 if (['ACTIVE', 'INACTIVE', 'NEW_ADMISSION'].includes(studentFilterStatus)) {
                     url += `&status_category=${studentFilterStatus}`;
@@ -757,6 +767,7 @@ const MentorModule = () => {
                 }
             }
             if (selectedTeamMentor) url += `&mentor_id=${selectedTeamMentor}`;
+
             
             const res = await api.get(url);
             const data = res.data;
@@ -1666,48 +1677,126 @@ const MentorModule = () => {
                                 </div>
                             </div>
                             
-                            <div className="flex flex-col sm:flex-row flex-wrap items-center gap-3 w-full p-4 bg-slate-50 rounded-xl border border-slate-100">
-                                <div className="flex gap-3 w-full sm:w-auto">
+                            {/* Comprehensive Filter Control Panel */}
+                            <div className="p-5 bg-gradient-to-r from-slate-50 to-indigo-50/20 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                                <div className="flex justify-between items-center">
+                                    <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                                        <Search size={14} className="text-indigo-600" /> Filter & Search Students
+                                    </h4>
+                                    {(studentSearchQuery || studentFilterProgram || studentFilterSubProgram || studentFilterCourse || studentFilterBatch || studentFilterTeacher || studentFilterFeeStatus || studentFilterStatus || selectedTeamMentor) && (
+                                        <button
+                                            onClick={() => {
+                                                setStudentSearchQuery('');
+                                                setStudentFilterProgram('');
+                                                setStudentFilterSubProgram('');
+                                                setStudentFilterCourse('');
+                                                setStudentFilterBatch('');
+                                                setStudentFilterTeacher('');
+                                                setStudentFilterFeeStatus('');
+                                                setStudentFilterStatus('');
+                                                setSelectedTeamMentor('');
+                                            }}
+                                            className="text-xs font-bold text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 px-3 py-1 rounded-lg border border-red-100 transition-all flex items-center gap-1"
+                                        >
+                                            <X size={12} /> Clear All Filters
+                                        </button>
+                                    )}
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                                    {/* Search */}
+                                    <div className="relative">
+                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
+                                        <input
+                                            type="text"
+                                            placeholder="Search name, ID, mobile..."
+                                            className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 outline-none"
+                                            value={studentSearchQuery}
+                                            onChange={(e) => setStudentSearchQuery(e.target.value)}
+                                        />
+                                    </div>
+
+                                    {/* Program */}
                                     <select
-                                        className="flex-1 sm:flex-none px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100 font-medium text-slate-700"
+                                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-100 outline-none"
                                         value={studentFilterProgram}
                                         onChange={(e) => setStudentFilterProgram(e.target.value)}
                                     >
                                         <option value="">All Programs</option>
                                         {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                                     </select>
+
+                                    {/* SubProgram / Category */}
                                     <select
-                                        className="flex-1 sm:flex-none px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100 font-medium text-slate-700"
+                                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-100 outline-none"
+                                        value={studentFilterSubProgram}
+                                        onChange={(e) => setStudentFilterSubProgram(e.target.value)}
+                                    >
+                                        <option value="">All Categories (Sub-Programs)</option>
+                                        {subPrograms.map(sp => <option key={sp.id} value={sp.id}>{sp.name}</option>)}
+                                    </select>
+
+                                    {/* Course */}
+                                    <select
+                                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-100 outline-none"
                                         value={studentFilterCourse}
                                         onChange={(e) => setStudentFilterCourse(e.target.value)}
                                     >
                                         <option value="">All Courses</option>
                                         {allCourses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                                     </select>
+
+                                    {/* Batch */}
                                     <select
-                                        className="flex-1 sm:flex-none px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100 font-medium text-slate-700"
-                                        value={studentFilterStatus}
-                                        onChange={(e) => setStudentFilterStatus(e.target.value)}
+                                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-100 outline-none"
+                                        value={studentFilterBatch}
+                                        onChange={(e) => setStudentFilterBatch(e.target.value)}
                                     >
-                                        <option value="">All Statuses</option>
-                                        <option value="ACTIVE">Active</option>
-                                        <option value="INACTIVE">Inactive / Break</option>
-                                        <option value="NEW_ADMISSION">New Admission (30 Days)</option>
-                                        <option value="ON_BREAK">On Break</option>
-                                        <option value="DISCONTINUED">Discontinued</option>
+                                        <option value="">All Batches</option>
+                                        {batches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                                    </select>
+
+                                    {/* Teacher */}
+                                    <select
+                                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-100 outline-none"
+                                        value={studentFilterTeacher}
+                                        onChange={(e) => setStudentFilterTeacher(e.target.value)}
+                                    >
+                                        <option value="">All Teachers</option>
+                                        {teachers.map(t => (
+                                            <option key={t.id} value={t.id}>
+                                                {t.first_name ? `${t.first_name} ${t.last_name || ''}`.trim() : t.username}
+                                            </option>
+                                        ))}
+                                    </select>
+
+                                    {/* Primary Mentor */}
+                                    <select
+                                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-100 outline-none"
+                                        value={selectedTeamMentor}
+                                        onChange={(e) => setSelectedTeamMentor(e.target.value)}
+                                    >
+                                        <option value="">All Mentors</option>
+                                        {mentors.map(m => (
+                                            <option key={m.id} value={m.id}>
+                                                {m.first_name ? `${m.first_name} ${m.last_name || ''}`.trim() : m.username}
+                                            </option>
+                                        ))}
+                                    </select>
+
+                                    {/* Fee Status */}
+                                    <select
+                                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-100 outline-none"
+                                        value={studentFilterFeeStatus}
+                                        onChange={(e) => setStudentFilterFeeStatus(e.target.value)}
+                                    >
+                                        <option value="">All Fee Statuses</option>
+                                        <option value="PAID">Fully Paid</option>
+                                        <option value="DEFAULTER">Fee Due / Defaulters</option>
                                     </select>
                                 </div>
-                                <div className="relative w-full sm:w-72 sm:ml-auto">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                                    <input
-                                        type="text"
-                                        placeholder="Search students by name, email, or ID..."
-                                        className="w-full pl-9 pr-4 py-2 rounded-lg bg-white border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 transition-all text-sm font-medium"
-                                        value={studentSearchQuery}
-                                        onChange={(e) => setStudentSearchQuery(e.target.value)}
-                                    />
-                                </div>
                             </div>
+
 
                             {/* Status Filter Pill Tabs & Layout Toggle */}
                             <div className="flex flex-col sm:flex-row justify-between items-center gap-3 p-3 bg-white border border-slate-200 rounded-xl shadow-sm">
