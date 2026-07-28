@@ -98,7 +98,7 @@ const CRMDashboard = ({ onStatClick, onBdeClick }) => {
             </div>
             
             {/* Top Stat Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
                 <StatCard 
                     title="Total Leads" 
                     value={stats.total_leads} 
@@ -124,7 +124,15 @@ const CRMDashboard = ({ onStatClick, onBdeClick }) => {
                     onClick={() => onStatClick('contacted', 'true')}
                 />
                 <StatCard 
-                    title="Revenue Generated" 
+                    title="Pending Leads" 
+                    value={stats.pending_leads} 
+                    icon={<Clock size={24} />} 
+                    bg="bg-orange-50" 
+                    text="text-orange-600"
+                    onClick={() => onStatClick('contacted', 'false')}
+                />
+                <StatCard 
+                    title="Revenue" 
                     value={`₹${stats.revenue.toLocaleString()}`} 
                     icon={<DollarSign size={24} />} 
                     bg="bg-amber-50" 
