@@ -17,6 +17,7 @@ const CRMDashboard = ({ onStatClick, onBdeClick }) => {
         assigned_leads: 0,
         contacted_leads: 0,
         pending_leads: 0,
+        converted_leads: 0,
         pipeline_stages: [],
         leaderboard: [],
         revenue: 0
@@ -98,7 +99,7 @@ const CRMDashboard = ({ onStatClick, onBdeClick }) => {
             </div>
             
             {/* Top Stat Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
                 <StatCard 
                     title="Total Leads" 
                     value={stats.total_leads} 
@@ -130,6 +131,14 @@ const CRMDashboard = ({ onStatClick, onBdeClick }) => {
                     bg="bg-orange-50" 
                     text="text-orange-600"
                     onClick={() => onStatClick('contacted', 'false')}
+                />
+                <StatCard 
+                    title="Converted Leads" 
+                    value={stats.converted_leads} 
+                    icon={<UserCheck size={24} />} 
+                    bg="bg-blue-50" 
+                    text="text-blue-600"
+                    onClick={() => onStatClick('status', 'converted')}
                 />
                 <StatCard 
                     title="Revenue" 
