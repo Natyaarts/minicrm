@@ -22,9 +22,28 @@ class DashboardStatsView(APIView):
         from django.utils import timezone
         
         students = Student.objects.filter(is_active=True)
-        if request.user.role == 'SALES' and getattr(request.user, 'sales_section', 'BOTH') != 'BOTH':
+        
+        # Super Admin / Admin section filter (optional, if they want to drill down)
+        section_filter = request.query_params.get('sales_section')
+        if section_filter and request.user.role in ['SUPER_ADMIN', 'ADMIN']:
             from django.db.models import Q
-            students = students.filter(Q(sales_section=request.user.sales_section) | Q(sales_section='BOTH'))
+            students = students.filter(Q(sales_section=section_filter) | Q(sales_section='BOTH'))
+
+        if request.user.role == 'SALES':
+            from django.db.models import Q
+            if getattr(request.user, 'sales_section', 'BOTH') != 'BOTH':
+                students = students.filter(Q(sales_section=request.user.sales_section) | Q(sales_section='BOTH'))
+                
+            is_sales_manager = False
+            if hasattr(request.user, 'hrms_profile'):
+                profile = request.user.hrms_profile
+                if profile.subordinates.exists():
+                    is_sales_manager = True
+                elif profile.designation and any(kw in profile.designation.name.lower() for kw in ['lead', 'manager', 'vp', 'head', 'director']):
+                    is_sales_manager = True
+            
+            if not is_sales_manager:
+                students = students.filter(assigned_to=request.user)
         
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
