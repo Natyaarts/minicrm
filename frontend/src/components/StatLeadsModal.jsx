@@ -34,7 +34,7 @@ const StatLeadsModal = ({ config, onClose, onViewLead, salesSectionFilter }) => 
                 params.append('hide_converted', 'true');
             }
 
-            const res = await api.get(`/crm/students/?${params.toString()}`);
+            const res = await api.get(`students/?${params.toString()}`);
             setLeads(res.data.results || []);
             setPagination({
                 count: res.data.count,
