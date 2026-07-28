@@ -175,7 +175,7 @@ const MentorModule = () => {
         if (!selectedFeeStudent) return;
         setFeeActionLoading(true);
         try {
-            const res = await api.post(`/api/students/${selectedFeeStudent.id}/update_fee/`, feeUpdateData);
+            const res = await api.post(`students/${selectedFeeStudent.id}/update_fee/`, feeUpdateData);
             alert('Fee details updated successfully');
             if (res.data && res.data.student) {
                 setSelectedFeeStudent(res.data.student);
@@ -193,7 +193,7 @@ const MentorModule = () => {
         if (!selectedFeeStudent || !paymentRecordData.amount) return;
         setFeeActionLoading(true);
         try {
-            const res = await api.post(`/api/students/${selectedFeeStudent.id}/record_payment/`, paymentRecordData);
+            const res = await api.post(`students/${selectedFeeStudent.id}/record_payment/`, paymentRecordData);
             alert('Payment recorded successfully!');
             if (res.data && res.data.student) {
                 setSelectedFeeStudent(res.data.student);
@@ -220,7 +220,7 @@ const MentorModule = () => {
         });
         setIsHandoverModalOpen(true);
         try {
-            const res = await api.get(`/api/teacher-handovers/?student_id=${student.id}`);
+            const res = await api.get(`teacher-handovers/?student_id=${student.id}`);
             setHandoverHistoryList(res.data.results || res.data || []);
         } catch (err) {
             setHandoverHistoryList(student.teacher_handovers_list || []);
@@ -235,12 +235,12 @@ const MentorModule = () => {
         }
         setHandoverLoading(true);
         try {
-            const res = await api.post(`/api/students/${selectedHandoverStudent.id}/handover_teacher/`, handoverData);
+            const res = await api.post(`students/${selectedHandoverStudent.id}/handover_teacher/`, handoverData);
             alert('Teacher handover recorded successfully!');
             if (res.data && res.data.student) {
                 setSelectedHandoverStudent(res.data.student);
                 if (typeof fetchStudents === 'function') fetchStudents();
-                const hRes = await api.get(`/api/teacher-handovers/?student_id=${selectedHandoverStudent.id}`);
+                const hRes = await api.get(`teacher-handovers/?student_id=${selectedHandoverStudent.id}`);
                 setHandoverHistoryList(hRes.data.results || hRes.data || []);
             }
         } catch (err) {
@@ -1950,7 +1950,23 @@ const MentorModule = () => {
                                                 </div>
                                             </td>
                                             <td className="px-6 py-5 bg-white border-y border-r border-slate-100 rounded-r-2xl text-right">
-                                                <div className="flex justify-end gap-2">
+                                                <div className="flex justify-end gap-2 flex-wrap">
+                                                    {/* Manage Fee Button */}
+                                                    <button
+                                                        onClick={() => handleOpenFeeModal(student)}
+                                                        className="px-3 py-2 rounded-xl text-xs font-bold transition-all bg-emerald-50 text-emerald-700 border border-emerald-100 hover:bg-emerald-100 flex items-center gap-1"
+                                                        title="Manage Fee"
+                                                    >
+                                                        <IndianRupee size={12} /> Fee
+                                                    </button>
+                                                    {/* Handover Button */}
+                                                    <button
+                                                        onClick={() => handleOpenHandoverModal(student)}
+                                                        className="px-3 py-2 rounded-xl text-xs font-bold transition-all bg-purple-50 text-purple-700 border border-purple-100 hover:bg-purple-100 flex items-center gap-1"
+                                                        title="Teacher Handover"
+                                                    >
+                                                        <UserMinus size={12} /> Handover
+                                                    </button>
                                                     {student.academic_status === 'ON_BREAK' ? (
                                                         <button
                                                             onClick={() => {
