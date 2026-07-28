@@ -86,20 +86,28 @@ export default function AttendanceScreen() {
         setStats(res.data);
       }
       
-      // Fetch only MY upcoming pending tasks (assigned to me, due from today onwards)
-      const today = getLocalDateString();
+      // Fetch only MY pending tasks (assigned to me, regardless of due date so overdue tasks aren't hidden)
       const tasksRes = await client.get('/crm/tasks/', {
         params: {
           status: 'PENDING',
           assigned_to_me: 'true',
-          due_date_after: today,
           ordering: 'due_date',      // soonest first
         }
       });
       const tasksData = tasksRes.data?.results || tasksRes.data || [];
-      setTasks(tasksData.slice(0, 5)); // show up to 5
+      setTasks(tasksData.slice(0, 10)); // show up to 10
     } catch (e) {
       console.log('Failed to fetch dashboard stats', e);
+    }
+  };
+
+  const completeTask = async (taskId: string) => {
+    try {
+      await client.patch(`/crm/tasks/${taskId}/`, { status: 'COMPLETED' });
+      fetchStats(); // refresh tasks list
+    } catch (e) {
+      console.log('Failed to complete task', e);
+      Alert.alert('Error', 'Failed to mark task as complete.');
     }
   };
 
@@ -430,7 +438,9 @@ const welcomeName = user ? `${user.first_name || user.username}` : 'Member';
                         <FontAwesome5 name="clock" size={10} color="#F59E0B" /> {task.due_date ? new Date(task.due_date).toLocaleString([], {month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit'}) : 'No due date'}
                       </Text>
                    </View>
-                   <FontAwesome5 name="chevron-right" size={14} color="#9CA3AF" />
+                   <TouchableOpacity style={{ padding: 10, marginRight: -5, marginLeft: 10 }} onPress={() => completeTask(task.id)}>
+                      <FontAwesome5 name="check-circle" size={22} color="#10B981" />
+                   </TouchableOpacity>
                 </TouchableOpacity>
              )) : (
                 <View style={{ alignItems: 'center', paddingVertical: 16 }}>

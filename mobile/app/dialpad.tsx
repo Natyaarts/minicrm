@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Dimensions, Platform, Linking, Alert, NativeModules, TextInput, ScrollView, ActivityIndicator, AppState } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Notifications from 'expo-notifications';
 import { useLocalSearchParams, router } from 'expo-router';
-import { startNativeRecording, stopNativeRecording, listenToCallEvents, requestCallPermissions, listenToCallState } from '../src/utils/CallManager';
+import { startNativeRecording, stopNativeRecording, listenToCallEvents, requestCallPermissions, listenToCallState, makeDirectCall } from '../src/utils/CallManager';
 import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import client from '../src/api/client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -132,20 +134,41 @@ const Dialpad = () => {
     return () => clearInterval(interval);
   }, [callStatus]);
 
+  const lastBackgroundTimeRef = useRef(0);
+
   useEffect(() => {
+    (async () => {
+      await Notifications.requestPermissionsAsync();
+    })();
     const subscription = AppState.addEventListener('change', nextAppState => {
+      if (nextAppState === 'background') {
+        lastBackgroundTimeRef.current = Date.now();
+      }
+      
       // If the app comes back to the foreground and we were in CALLING/ACTIVE state,
       // assume the user is done with the system phone app.
       if (nextAppState === 'active') {
         const currentStatus = callStatusRef.current;
-        if (currentStatus === 'CALLING' || currentStatus === 'ACTIVE') {
-          // Trigger POST_CALL flow to log the call
-          setCallStatus('POST_CALL');
-          setIsProcessingRecording(true);
-          stopNativeRecording().then(filePath => {
-             if (filePath) setRecordedFilePath(filePath);
-             setIsProcessingRecording(false);
-          });
+        if ((currentStatus === 'CALLING' || currentStatus === 'ACTIVE') && lastBackgroundTimeRef.current > 0) {
+          const timeInBackground = Date.now() - lastBackgroundTimeRef.current;
+          
+          // Only trigger log screen if the app was in the background for at least 3 seconds
+          if (timeInBackground > 3000) {
+            lastBackgroundTimeRef.current = 0;
+            if (callStartTimeRef.current > 0) {
+              const elapsed = Math.max(1, Math.floor((Date.now() - callStartTimeRef.current) / 1000));
+              setCallDuration(elapsed);
+            } else {
+              setCallDuration(1);
+            }
+            // Trigger POST_CALL flow to log the call
+            setCallStatus('POST_CALL');
+            setIsProcessingRecording(true);
+            stopNativeRecording().then(filePath => {
+               if (filePath) setRecordedFilePath(filePath);
+               setIsProcessingRecording(false);
+            });
+          }
         }
       }
     });
@@ -200,7 +223,7 @@ const Dialpad = () => {
       } else if (state === 'IDLE') {
         if (callStarted) {
           callStarted = false;
-          const elapsed = Math.max(0, Math.floor((Date.now() - callStartTimeRef.current) / 1000));
+          const elapsed = Math.max(1, Math.floor((Date.now() - callStartTimeRef.current) / 1000));
           setCallDuration(elapsed);
           setCallStatus('POST_CALL');
           setIsProcessingRecording(true);
@@ -280,6 +303,10 @@ const Dialpad = () => {
   };
 
   const handleEndCall = async () => {
+    if (callStartTimeRef.current > 0) {
+      const elapsed = Math.max(0, Math.floor((Date.now() - callStartTimeRef.current) / 1000));
+      setCallDuration(elapsed);
+    }
     setCallStatus('POST_CALL');
     
     if (Platform.OS === 'android') {
@@ -336,52 +363,75 @@ const Dialpad = () => {
     setIsSubmitting(true);
 
     try {
-      const formData = new FormData();
-      formData.append('student', leadId as string);
-      formData.append('interaction_type', 'CALL');
-      formData.append('call_duration', callDuration.toString());
-      formData.append('call_direction', 'OUTGOING');
-      
       const status = callDuration > 0 ? 'CONNECTED' : 'MISSED';
-      formData.append('call_status', status);
+      
+      const parameters: Record<string, string> = {
+        student: String(leadId),
+        interaction_type: 'CALL',
+        call_duration: String(callDuration),
+        call_direction: 'OUTGOING',
+        call_status: status,
+        notes: `Duration: ${formatDuration(callDuration)}\nNotes: ${postCallNotes}`
+      };
+      
+      if (pipelineStatus) parameters.pipeline_status = String(pipelineStatus);
+      if (nextFollowupDate) parameters.next_followup_date = nextFollowupDate.toISOString();
 
-      formData.append('notes', `Duration: ${formatDuration(callDuration)}\nNotes: ${postCallNotes}`);
-      if (pipelineStatus) formData.append('pipeline_status', pipelineStatus);
-      if (nextFollowupDate) {
-        formData.append('next_followup_date', nextFollowupDate.toISOString());
-      }
+      let fileUriToUpload = null;
+      let mimeType = 'audio/m4a';
+      let fileName = `recording_${Date.now()}.m4a`;
 
-      // Prefer native auto-recording, fall back to manually picked file
       if (recordedFilePath) {
-        let finalUri = recordedFilePath;
-        if (!finalUri.startsWith('file://') && !finalUri.startsWith('content://')) {
-          finalUri = `file://${finalUri}`;
+        fileUriToUpload = recordedFilePath;
+        if (!fileUriToUpload.startsWith('file://') && !fileUriToUpload.startsWith('content://')) {
+          fileUriToUpload = `file://${fileUriToUpload}`;
         }
-        
-        const extMatch = finalUri.match(/\.([a-zA-Z0-9]+)$/);
+        const extMatch = fileUriToUpload.match(/\.([a-zA-Z0-9]+)$/);
         const ext = extMatch ? extMatch[1].toLowerCase() : 'm4a';
-        let mimeType = 'audio/m4a';
+        fileName = `recording_${Date.now()}.${ext}`;
+        
         if (ext === 'mp3') mimeType = 'audio/mpeg';
         else if (ext === 'wav') mimeType = 'audio/wav';
         else if (ext === 'amr') mimeType = 'audio/amr';
         else if (ext === 'aac') mimeType = 'audio/aac';
-        
-        formData.append('audio_recording', {
-          uri: finalUri,
-          type: mimeType,
-          name: `recording_${Date.now()}.${ext}`
-        } as any);
       } else if (manualRecordingFile) {
-        formData.append('audio_recording', {
-          uri: manualRecordingFile.uri,
-          type: manualRecordingFile.mimeType || 'audio/mpeg',
-          name: manualRecordingFile.name || `recording_${Date.now()}.mp3`
-        } as any);
+        fileUriToUpload = manualRecordingFile.uri;
+        mimeType = manualRecordingFile.mimeType || 'audio/mpeg';
+        fileName = manualRecordingFile.name || `recording_${Date.now()}.mp3`;
       }
 
-      await client.post('/crm/interactions/', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+      if (fileUriToUpload) {
+        const token = await AsyncStorage.getItem('userToken');
+        const response = await FileSystem.uploadAsync('https://natyaarts.org/api/crm/interactions/', fileUriToUpload, {
+          fieldName: 'audio_recording',
+          httpMethod: 'POST',
+          uploadType: 1, // 1 = FileSystemUploadType.MULTIPART
+          parameters: parameters,
+          headers: {
+            'Authorization': `Token ${token}`
+          }
+        });
+
+        if (response.status !== 200 && response.status !== 201) {
+          throw new Error(response.body);
+        }
+      } else {
+        await client.post('/crm/interactions/', parameters);
+      }
+      if (nextFollowupDate) {
+        const trigger = nextFollowupDate.getTime() - Date.now();
+        if (trigger > 0) {
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: 'Follow-up Reminder',
+              body: `It's time to follow up with ${phoneNumber}!`,
+              sound: true,
+            },
+            trigger: { type: 'date', date: nextFollowupDate.getTime(), channelId: 'default' },
+          });
+        }
+      }
+
       Alert.alert('✅ Saved', 'Call log saved to CRM successfully.');
       setCallStatus('IDLE');
       setPostCallNotes('');
@@ -457,7 +507,32 @@ const Dialpad = () => {
           {/* ── Next Follow-up Date ── */}
           <Text style={{ fontSize: 14, fontWeight: '600', color: '#4A5568', marginTop: 20, marginBottom: 10 }}>Next Follow-up Date</Text>
           <TouchableOpacity
-            onPress={() => setShowDatePicker(true)}
+            onPress={() => {
+              if (Platform.OS === 'android') {
+                DateTimePickerAndroid.open({
+                  value: nextFollowupDate || new Date(),
+                  mode: 'date',
+                  onChange: (event, selectedDate) => {
+                    if (event.type === 'set' && selectedDate) {
+                      // Small delay to prevent dialog swallow on Android
+                      setTimeout(() => {
+                        DateTimePickerAndroid.open({
+                          value: selectedDate,
+                          mode: 'time',
+                          onChange: (timeEvent, selectedTime) => {
+                            if (timeEvent.type === 'set' && selectedTime) {
+                              setNextFollowupDate(selectedTime);
+                            }
+                          }
+                        });
+                      }, 100);
+                    }
+                  }
+                });
+              } else {
+                setShowDatePicker(true);
+              }
+            }}
             style={{
               backgroundColor: '#F7FAFC', borderWidth: 1, borderColor: '#E2E8F0',
               borderRadius: 8, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10
@@ -476,20 +551,17 @@ const Dialpad = () => {
             )}
           </TouchableOpacity>
 
-          {showDatePicker && (
+          {showDatePicker && Platform.OS === 'ios' && (
             <DateTimePicker
               value={nextFollowupDate || new Date()}
               mode="datetime"
               display="default"
               minimumDate={new Date()}
               onChange={(event, selectedDate) => {
-                // On Android, the picker closes automatically, so we must set show to false
-                setShowDatePicker(Platform.OS === 'ios');
                 if (event.type === 'set' && selectedDate) {
                   setNextFollowupDate(selectedDate);
-                } else if (event.type === 'dismissed') {
-                  setShowDatePicker(false);
                 }
+                setShowDatePicker(false);
               }}
             />
           )}
@@ -573,7 +645,20 @@ const Dialpad = () => {
         </ScrollView>
       </SafeAreaView>
     );
-  }  if (callStatus === 'CALLING' || callStatus === 'ACTIVE') {
+  }  if (callStatus === 'CALLING') {
+    return (
+      <SafeAreaView style={styles.activeCallContainer}>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color="#ffffff" />
+          <Text style={{ marginTop: 20, fontSize: 18, color: '#ffffff', fontWeight: '600' }}>
+            Opening Phone App...
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (callStatus === 'ACTIVE') {
     return (
       <SafeAreaView style={styles.activeCallContainer}>
         <View style={styles.callHeader}>

@@ -19,19 +19,17 @@ export const requestCallPermissions = async () => {
             permissionsToRequest.push(PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE);
         }
 
-        const grants = await PermissionsAndroid.requestMultiple(permissionsToRequest);
-        
-        const audioGranted = grants[PermissionsAndroid.PERMISSIONS.RECORD_AUDIO] === PermissionsAndroid.RESULTS.GRANTED;
-        const phoneStateGranted = grants[PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE] === PermissionsAndroid.RESULTS.GRANTED;
-        
-        let storageGranted = false;
-        if (Platform.Version >= 33) {
-            storageGranted = grants[PermissionsAndroid.PERMISSIONS.READ_MEDIA_AUDIO] === PermissionsAndroid.RESULTS.GRANTED;
-        } else {
-            storageGranted = grants[PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE] === PermissionsAndroid.RESULTS.GRANTED;
+        const ungranted = [];
+        for (const p of permissionsToRequest) {
+            const granted = await PermissionsAndroid.check(p);
+            if (!granted) ungranted.push(p);
         }
 
-        console.log('Permissions — RECORD_AUDIO:', audioGranted, 'READ_PHONE_STATE:', phoneStateGranted, 'STORAGE:', storageGranted);
+        let grants: Record<string, string> = {};
+        if (ungranted.length > 0) {
+            grants = await PermissionsAndroid.requestMultiple(ungranted);
+        }
+        
         return true; 
     } catch (err) {
         console.warn('Permission request error:', err);
