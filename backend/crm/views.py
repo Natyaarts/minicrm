@@ -27,7 +27,8 @@ class DashboardStatsView(APIView):
         section_filter = request.query_params.get('sales_section')
         if section_filter and request.user.role in ['SUPER_ADMIN', 'ADMIN']:
             from django.db.models import Q
-            students = students.filter(Q(sales_section=section_filter) | Q(sales_section='BOTH'))
+            # Strictly filter by lead's sales_section OR the assigned user's sales_section
+            students = students.filter(Q(sales_section=section_filter) | Q(assigned_to__sales_section=section_filter))
 
         if request.user.role == 'SALES':
             from django.db.models import Q
