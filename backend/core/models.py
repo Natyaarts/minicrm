@@ -307,3 +307,27 @@ class StudentTeacherHandover(models.Model):
         curr = f"{self.current_teacher.first_name} {self.current_teacher.last_name}" if self.current_teacher else "None"
         return f"Handover for {self.student}: {prev} -> {curr}"
 
+
+class FeeEditLog(models.Model):
+    """Audit log for all fee-related changes"""
+    ACTION_CHOICES = [
+        ('FEE_UPDATE', 'Fee Structure Updated'),
+        ('PAYMENT_ADD', 'Payment Recorded'),
+        ('PAYMENT_EDIT', 'Payment Edited'),
+        ('PAYMENT_DELETE', 'Payment Deleted'),
+    ]
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='fee_edit_logs')
+    action = models.CharField(max_length=20, choices=ACTION_CHOICES)
+    field_name = models.CharField(max_length=100, blank=True, null=True, help_text="Which field was changed")
+    old_value = models.TextField(blank=True, null=True)
+    new_value = models.TextField(blank=True, null=True)
+    notes = models.TextField(blank=True, null=True)
+    edited_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='fee_edits_made')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        editor = self.edited_by.get_full_name() if self.edited_by else 'System'
+        return f"{self.student} | {self.action} by {editor} at {self.created_at}"

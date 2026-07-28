@@ -148,6 +148,10 @@ const MentorModule = () => {
     const [feeUpdateData, setFeeUpdateData] = useState({ total_fee: '', fee_due_date: '' });
     const [paymentRecordData, setPaymentRecordData] = useState({ amount: '', paid_date: '', notes: '', month: '' });
     const [feeActionLoading, setFeeActionLoading] = useState(false);
+    const [paymentRecords, setPaymentRecords] = useState([]);
+    const [feeLogs, setFeeLogs] = useState([]);
+    const [feeLogsLoading, setFeeLogsLoading] = useState(false);
+    const [editingPayment, setEditingPayment] = useState(null); // {id, amount, paid_date, notes}
 
     const [isHandoverModalOpen, setIsHandoverModalOpen] = useState(false);
     const [selectedHandoverStudent, setSelectedHandoverStudent] = useState(null);
@@ -155,7 +159,7 @@ const MentorModule = () => {
     const [handoverLoading, setHandoverLoading] = useState(false);
     const [handoverHistoryList, setHandoverHistoryList] = useState([]);
 
-    const handleOpenFeeModal = (student) => {
+    const handleOpenFeeModal = async (student) => {
         setSelectedFeeStudent(student);
         setFeeUpdateData({
             total_fee: student.total_fee || '',
@@ -167,7 +171,24 @@ const MentorModule = () => {
             notes: '',
             month: new Date().toISOString().slice(0, 7) + '-01'
         });
+        setEditingPayment(null);
         setIsFeeManageModalOpen(true);
+        // Load payment records and logs
+        setFeeLogsLoading(true);
+        try {
+            const [prRes, logRes] = await Promise.all([
+                api.get(`students/${student.id}/payment_records/`),
+                api.get(`students/${student.id}/fee_logs/`)
+            ]);
+            setPaymentRecords(prRes.data || []);
+            setFeeLogs(logRes.data || []);
+        } catch (err) {
+            console.error('Failed to load fee data', err);
+            setPaymentRecords([]);
+            setFeeLogs([]);
+        } finally {
+            setFeeLogsLoading(false);
+        }
     };
 
     const handleUpdateFeeDetails = async (e) => {
@@ -4460,35 +4481,149 @@ const MentorModule = () => {
                                 </div>
                             </form>
 
+                            {/* Payment Records - Editable */}
                             <div>
-                                <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-3">Recorded Payments & Transactions</h3>
-                                {selectedFeeStudent.monthly_payments_list && selectedFeeStudent.monthly_payments_list.length > 0 ? (
-                                    <div className="overflow-x-auto border border-slate-200 rounded-2xl bg-white shadow-sm">
-                                        <table className="w-full text-left text-xs">
-                                            <thead>
-                                                <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase">
-                                                    <th className="p-3">Month</th>
-                                                    <th className="p-3">Date Paid</th>
-                                                    <th className="p-3 text-right">Amount</th>
-                                                    <th className="p-3">Recorded By</th>
-                                                    <th className="p-3">Notes</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-slate-100">
-                                                {selectedFeeStudent.monthly_payments_list.map((mp) => (
-                                                    <tr key={mp.id} className="hover:bg-slate-50 transition-colors">
-                                                        <td className="p-3 font-semibold text-slate-800">{mp.month}</td>
-                                                        <td className="p-3 text-slate-600">{mp.paid_date}</td>
-                                                        <td className="p-3 text-right font-bold text-emerald-600">₹{Number(mp.amount).toLocaleString()}</td>
-                                                        <td className="p-3 text-slate-600">{mp.marked_by_name || 'System'}</td>
-                                                        <td className="p-3 text-slate-500">{mp.notes || '-'}</td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
+                                <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-3 flex items-center gap-2">
+                                    <IndianRupee size={14} className="text-emerald-600" /> Recorded Payments
+                                    {feeLogsLoading && <span className="w-3 h-3 border-2 border-indigo-300 border-t-indigo-600 rounded-full animate-spin"></span>}
+                                </h3>
+                                {paymentRecords.length > 0 ? (
+                                    <div className="space-y-2">
+                                        {paymentRecords.map((mp) => (
+                                            <div key={mp.id} className="bg-white border border-slate-200 rounded-xl p-3">
+                                                {editingPayment?.id === mp.id ? (
+                                                    // Edit mode row
+                                                    <div className="space-y-3">
+                                                        <div className="grid grid-cols-3 gap-2">
+                                                            <div>
+                                                                <label className="block text-[10px] font-bold text-slate-500 mb-1">Amount (₹)</label>
+                                                                <input type="number" value={editingPayment.amount}
+                                                                    onChange={e => setEditingPayment({...editingPayment, amount: e.target.value})}
+                                                                    className="w-full px-2 py-1.5 border border-indigo-300 rounded-lg text-xs font-bold focus:ring-1 focus:ring-indigo-200 outline-none" />
+                                                            </div>
+                                                            <div>
+                                                                <label className="block text-[10px] font-bold text-slate-500 mb-1">Paid Date</label>
+                                                                <input type="date" value={editingPayment.paid_date}
+                                                                    onChange={e => setEditingPayment({...editingPayment, paid_date: e.target.value})}
+                                                                    className="w-full px-2 py-1.5 border border-indigo-300 rounded-lg text-xs focus:ring-1 focus:ring-indigo-200 outline-none" />
+                                                            </div>
+                                                            <div>
+                                                                <label className="block text-[10px] font-bold text-slate-500 mb-1">Notes</label>
+                                                                <input type="text" value={editingPayment.notes || ''}
+                                                                    onChange={e => setEditingPayment({...editingPayment, notes: e.target.value})}
+                                                                    className="w-full px-2 py-1.5 border border-indigo-300 rounded-lg text-xs focus:ring-1 focus:ring-indigo-200 outline-none" />
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex gap-2 justify-end">
+                                                            <button onClick={() => setEditingPayment(null)}
+                                                                className="px-3 py-1 text-xs font-bold text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 transition-all">Cancel</button>
+                                                            <button onClick={async () => {
+                                                                setFeeActionLoading(true);
+                                                                try {
+                                                                    const res = await api.post(`students/${selectedFeeStudent.id}/edit_payment/`, {
+                                                                        payment_id: editingPayment.id,
+                                                                        amount: editingPayment.amount,
+                                                                        paid_date: editingPayment.paid_date,
+                                                                        notes: editingPayment.notes
+                                                                    });
+                                                                    setEditingPayment(null);
+                                                                    if (res.data.student) setSelectedFeeStudent(res.data.student);
+                                                                    const [prRes, logRes] = await Promise.all([
+                                                                        api.get(`students/${selectedFeeStudent.id}/payment_records/`),
+                                                                        api.get(`students/${selectedFeeStudent.id}/fee_logs/`)
+                                                                    ]);
+                                                                    setPaymentRecords(prRes.data || []);
+                                                                    setFeeLogs(logRes.data || []);
+                                                                    fetchStudentsWithPagination();
+                                                                } catch(err) { alert(err.response?.data?.error || 'Failed to update payment'); }
+                                                                finally { setFeeActionLoading(false); }
+                                                            }}
+                                                                className="px-3 py-1 text-xs font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-all">Save Changes</button>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    // View mode row
+                                                    <div className="flex items-center justify-between gap-3">
+                                                        <div className="flex items-center gap-4">
+                                                            <div>
+                                                                <span className="text-xs font-black text-slate-800">{new Date(mp.month).toLocaleDateString('en-IN', {month:'long', year:'numeric'})}</span>
+                                                                <span className="block text-[10px] text-slate-400">Paid: {mp.paid_date}</span>
+                                                            </div>
+                                                            <span className="text-sm font-black text-emerald-600">₹{Number(mp.amount).toLocaleString()}</span>
+                                                            {mp.notes && <span className="text-[10px] text-slate-500 italic truncate max-w-[120px]">📝 {mp.notes}</span>}
+                                                        </div>
+                                                        <div className="flex items-center gap-3">
+                                                            <span className="text-[10px] text-slate-400">by {mp.marked_by}</span>
+                                                            <button onClick={() => setEditingPayment({id: mp.id, amount: mp.amount, paid_date: mp.paid_date, notes: mp.notes || ''})}
+                                                                className="px-2 py-1 text-[10px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-100 transition-all">Edit</button>
+                                                            <button onClick={async () => {
+                                                                if (!window.confirm('Delete this payment record? This will reduce the paid amount.')) return;
+                                                                setFeeActionLoading(true);
+                                                                try {
+                                                                    const res = await api.post(`students/${selectedFeeStudent.id}/delete_payment/`, { payment_id: mp.id });
+                                                                    if (res.data.student) setSelectedFeeStudent(res.data.student);
+                                                                    const [prRes, logRes] = await Promise.all([
+                                                                        api.get(`students/${selectedFeeStudent.id}/payment_records/`),
+                                                                        api.get(`students/${selectedFeeStudent.id}/fee_logs/`)
+                                                                    ]);
+                                                                    setPaymentRecords(prRes.data || []);
+                                                                    setFeeLogs(logRes.data || []);
+                                                                    fetchStudentsWithPagination();
+                                                                } catch(err) { alert(err.response?.data?.error || 'Failed to delete payment'); }
+                                                                finally { setFeeActionLoading(false); }
+                                                            }}
+                                                                className="px-2 py-1 text-[10px] font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg border border-red-100 transition-all">Delete</button>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
                                     </div>
                                 ) : (
-                                    <p className="text-xs text-slate-400 italic bg-slate-50 p-4 rounded-xl text-center">No payment transactions recorded yet.</p>
+                                    <p className="text-xs text-slate-400 italic bg-slate-50 p-4 rounded-xl text-center">No payment records yet. Record a payment above.</p>
+                                )}
+                            </div>
+
+                            {/* Fee Edit Audit Log */}
+                            <div>
+                                <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-3 flex items-center gap-2">
+                                    <History size={14} className="text-purple-600" /> Edit History & Audit Log
+                                </h3>
+                                {feeLogs.length > 0 ? (
+                                    <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
+                                        {feeLogs.map((log) => (
+                                            <div key={log.id} className={`p-3 rounded-xl border text-xs ${
+                                                log.action_code === 'FEE_UPDATE' ? 'bg-blue-50 border-blue-100' :
+                                                log.action_code === 'PAYMENT_ADD' ? 'bg-emerald-50 border-emerald-100' :
+                                                log.action_code === 'PAYMENT_EDIT' ? 'bg-amber-50 border-amber-100' :
+                                                'bg-red-50 border-red-100'
+                                            }`}>
+                                                <div className="flex justify-between items-start gap-2">
+                                                    <div>
+                                                        <span className={`inline-block px-2 py-0.5 rounded-md font-black text-[10px] uppercase tracking-wider mr-2 ${
+                                                            log.action_code === 'FEE_UPDATE' ? 'bg-blue-100 text-blue-700' :
+                                                            log.action_code === 'PAYMENT_ADD' ? 'bg-emerald-100 text-emerald-700' :
+                                                            log.action_code === 'PAYMENT_EDIT' ? 'bg-amber-100 text-amber-700' :
+                                                            'bg-red-100 text-red-700'
+                                                        }`}>{log.action}</span>
+                                                        {log.field_name && <span className="text-slate-600">Field: <strong>{log.field_name}</strong></span>}
+                                                    </div>
+                                                    <span className="text-slate-400 whitespace-nowrap text-[10px]">{new Date(log.created_at).toLocaleString('en-IN')}</span>
+                                                </div>
+                                                {(log.old_value || log.new_value) && (
+                                                    <div className="mt-1.5 flex items-center gap-2 text-[10px]">
+                                                        {log.old_value && <span className="px-1.5 py-0.5 bg-white rounded border border-slate-200 text-slate-500 line-through">{log.old_value}</span>}
+                                                        {log.old_value && log.new_value && <span className="text-slate-400">→</span>}
+                                                        {log.new_value && <span className="px-1.5 py-0.5 bg-white rounded border border-slate-200 text-slate-700 font-bold">{log.new_value}</span>}
+                                                    </div>
+                                                )}
+                                                {log.notes && <p className="mt-1 text-[10px] text-slate-500 italic">{log.notes}</p>}
+                                                <p className="mt-1.5 text-[10px] font-bold text-slate-600">👤 {log.edited_by}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="text-xs text-slate-400 italic bg-slate-50 p-4 rounded-xl text-center">No edit history yet.</p>
                                 )}
                             </div>
                         </div>

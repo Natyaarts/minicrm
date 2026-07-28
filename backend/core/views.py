@@ -320,7 +320,7 @@ class StudentViewSet(viewsets.ModelViewSet):
         if self.action in ['create', 'public_lookup', 'partial_update']:
             return [permissions.AllowAny()]
         # Allow students, mentors, teachers, and academic staff to view relevant profiles/lists and perform fee/handover actions
-        if self.request.user.is_authenticated and self.action in ['list', 'retrieve', 'fee_defaulters', 'collected_fees', 'break_metrics', 'record_payment', 'update_fee', 'handover_teacher']:
+        if self.request.user.is_authenticated and self.action in ['list', 'retrieve', 'fee_defaulters', 'collected_fees', 'break_metrics', 'record_payment', 'update_fee', 'handover_teacher', 'fee_logs', 'payment_records', 'edit_payment', 'delete_payment']:
             if self.request.user.role in ['STUDENT', 'MENTOR', 'TEACHER', 'ACADEMIC', 'ACADEMIC_COORDINATOR', 'ADMIN', 'SUPER_ADMIN']:
                 return [permissions.IsAuthenticated()]
         return super().get_permissions()
@@ -724,6 +724,18 @@ class StudentViewSet(viewsets.ModelViewSet):
                 monthly_pay.notes = f"{monthly_pay.notes}\n{notes}".strip()
             monthly_pay.save()
 
+        # Log the payment addition
+        from .models import FeeEditLog
+        FeeEditLog.objects.create(
+            student=student,
+            action='PAYMENT_ADD',
+            field_name='monthly_payment',
+            old_value=None,
+            new_value=f"Month: {m_date.strftime('%B %Y')}, Amount: {amount_dec}",
+            notes=notes if notes else None,
+            edited_by=request.user if request.user.is_authenticated else None
+        )
+
         serializer = self.get_serializer(student)
         return Response({'status': 'Payment recorded successfully', 'student': serializer.data})
 
@@ -732,22 +744,161 @@ class StudentViewSet(viewsets.ModelViewSet):
         student = self.get_object()
         total_fee = request.data.get('total_fee')
         fee_due_date = request.data.get('fee_due_date')
+        from .models import FeeEditLog
 
         if total_fee is not None:
             try:
-                student.total_fee = Decimal(str(total_fee))
+                new_fee = Decimal(str(total_fee))
+                old_fee = student.total_fee
+                if new_fee != old_fee:
+                    FeeEditLog.objects.create(
+                        student=student,
+                        action='FEE_UPDATE',
+                        field_name='total_fee',
+                        old_value=str(old_fee),
+                        new_value=str(new_fee),
+                        edited_by=request.user if request.user.is_authenticated else None
+                    )
+                student.total_fee = new_fee
             except (InvalidOperation, TypeError, ValueError):
                 return Response({'error': 'Invalid total fee format'}, status=status.HTTP_400_BAD_REQUEST)
 
         if fee_due_date is not None:
-            if fee_due_date == '':
-                student.fee_due_date = None
-            else:
-                student.fee_due_date = fee_due_date
+            old_due = str(student.fee_due_date) if student.fee_due_date else ''
+            new_due = fee_due_date if fee_due_date != '' else None
+            if str(old_due) != str(new_due or ''):
+                FeeEditLog.objects.create(
+                    student=student,
+                    action='FEE_UPDATE',
+                    field_name='fee_due_date',
+                    old_value=old_due,
+                    new_value=str(new_due) if new_due else '',
+                    edited_by=request.user if request.user.is_authenticated else None
+                )
+            student.fee_due_date = new_due
 
         student.save()
         serializer = self.get_serializer(student)
         return Response({'status': 'Fee details updated successfully', 'student': serializer.data})
+
+    @action(detail=True, methods=['get'])
+    def fee_logs(self, request, pk=None):
+        """Return all fee edit logs for a student"""
+        student = self.get_object()
+        from .models import FeeEditLog
+        logs = FeeEditLog.objects.filter(student=student).select_related('edited_by')
+        data = []
+        for log in logs:
+            editor = log.edited_by
+            data.append({
+                'id': log.id,
+                'action': log.get_action_display(),
+                'action_code': log.action,
+                'field_name': log.field_name,
+                'old_value': log.old_value,
+                'new_value': log.new_value,
+                'notes': log.notes,
+                'edited_by': editor.get_full_name() or editor.username if editor else 'System',
+                'created_at': log.created_at,
+            })
+        return Response(data)
+
+    @action(detail=True, methods=['get'])
+    def payment_records(self, request, pk=None):
+        """Return all monthly payment records for a student"""
+        student = self.get_object()
+        payments = student.monthly_payments.select_related('marked_by').order_by('-month')
+        data = []
+        for p in payments:
+            marker = p.marked_by
+            data.append({
+                'id': p.id,
+                'month': p.month,
+                'amount': str(p.amount),
+                'paid_date': p.paid_date,
+                'notes': p.notes,
+                'marked_by': marker.get_full_name() or marker.username if marker else 'Unknown',
+            })
+        return Response(data)
+
+    @action(detail=True, methods=['post'])
+    def edit_payment(self, request, pk=None):
+        """Edit an existing monthly payment record"""
+        student = self.get_object()
+        payment_id = request.data.get('payment_id')
+        new_amount = request.data.get('amount')
+        new_paid_date = request.data.get('paid_date')
+        new_notes = request.data.get('notes', '')
+
+        from .models import FeeEditLog
+        try:
+            payment = student.monthly_payments.get(id=payment_id)
+        except Exception:
+            return Response({'error': 'Payment record not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        changes = []
+        if new_amount is not None:
+            try:
+                new_amt = Decimal(str(new_amount))
+                if new_amt != payment.amount:
+                    changes.append(f"amount: {payment.amount} → {new_amt}")
+                    # Adjust student paid_fee
+                    diff = new_amt - payment.amount
+                    student.paid_fee = (student.paid_fee or Decimal('0.00')) + diff
+                    student.save(update_fields=['paid_fee'])
+                    payment.amount = new_amt
+            except (InvalidOperation, TypeError, ValueError):
+                return Response({'error': 'Invalid amount'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if new_paid_date:
+            payment.paid_date = new_paid_date
+        if new_notes is not None:
+            payment.notes = new_notes
+
+        payment.save()
+
+        if changes:
+            FeeEditLog.objects.create(
+                student=student,
+                action='PAYMENT_EDIT',
+                field_name='monthly_payment',
+                old_value='; '.join(changes).split('→')[0].strip(),
+                new_value='; '.join(changes).split('→')[-1].strip() if '→' in '; '.join(changes) else '',
+                notes=f"Month: {payment.month} | Changes: {'; '.join(changes)}",
+                edited_by=request.user if request.user.is_authenticated else None
+            )
+
+        serializer = self.get_serializer(student)
+        return Response({'status': 'Payment updated successfully', 'student': serializer.data})
+
+    @action(detail=True, methods=['post'])
+    def delete_payment(self, request, pk=None):
+        """Delete a monthly payment record"""
+        student = self.get_object()
+        payment_id = request.data.get('payment_id')
+
+        from .models import FeeEditLog
+        try:
+            payment = student.monthly_payments.get(id=payment_id)
+        except Exception:
+            return Response({'error': 'Payment record not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Reduce paid_fee
+        student.paid_fee = max(Decimal('0.00'), (student.paid_fee or Decimal('0.00')) - payment.amount)
+        student.save(update_fields=['paid_fee'])
+
+        FeeEditLog.objects.create(
+            student=student,
+            action='PAYMENT_DELETE',
+            field_name='monthly_payment',
+            old_value=f"Month: {payment.month}, Amount: {payment.amount}",
+            new_value='DELETED',
+            edited_by=request.user if request.user.is_authenticated else None
+        )
+
+        payment.delete()
+        serializer = self.get_serializer(student)
+        return Response({'status': 'Payment deleted successfully', 'student': serializer.data})
 
     @action(detail=True, methods=['post'])
     def handover_teacher(self, request, pk=None):
