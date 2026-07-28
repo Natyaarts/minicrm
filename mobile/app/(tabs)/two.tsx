@@ -83,6 +83,7 @@ export default function SalesScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [totalStudents, setTotalStudents] = useState(0);
   const [sortOrder, setSortOrder] = useState<'-id' | 'id'>('-id');
+  const [viewMode, setViewMode] = useState<'list' | 'card'>('list');
 
   // Pagination & Filtering State for View Applications
   const [selectedFilter, setSelectedFilter] = useState<any>({ label: 'All', type: 'all', value: 'All' });
@@ -429,7 +430,72 @@ export default function SalesScreen() {
     }
   };
 
-  const renderStudent = ({ item }: { item: any }) => (
+  const getStatusColor = (lead_status: string) => {
+    switch (lead_status) {
+      case 'ENROLLED': return { bg: '#C6F6D5', text: '#22543D' };
+      case 'NEW': return { bg: '#EBF8FF', text: '#2B6CB0' };
+      case 'PAYMENT_PENDING': return { bg: '#FEFCBF', text: '#744210' };
+      case 'FOLLOW_UP': return { bg: '#E9D8FD', text: '#553C9A' };
+      case 'DROPPED': return { bg: '#FED7D7', text: '#742A2A' };
+      default: return { bg: '#EDF2F7', text: '#4A5568' };
+    }
+  };
+
+  // Compact list row — shows ~8-10 leads per screen
+  const renderStudentList = ({ item }: { item: any }) => {
+    const sc = getStatusColor(item.lead_status || item.status || 'NEW');
+    const phone = item.phone || item.mobile || '';
+    return (
+      <TouchableOpacity
+        style={[styles.listRow, isDark && styles.darkListRow]}
+        onPress={() => router.push({ pathname: '/lead-details', params: { leadId: item.id } } as any)}
+        activeOpacity={0.7}
+      >
+        {/* Avatar */}
+        <View style={[styles.listAvatar, { backgroundColor: isDark ? '#1E3A5F' : '#EBF8FF' }]}>
+          <Text style={styles.listAvatarText}>{item.first_name?.[0] || '?'}</Text>
+        </View>
+
+        {/* Name + ID + Program */}
+        <View style={styles.listInfo}>
+          <Text style={[styles.listName, isDark && styles.darkText]} numberOfLines={1}>
+            {item.first_name} {item.last_name}
+          </Text>
+          <Text style={[styles.listSub, isDark && styles.darkSubText]} numberOfLines={1}>
+            {item.crm_student_id || item.username} • <Text style={{ color: '#FBBF24', fontWeight: '800' }}>{item.program_name || item.program || ''}</Text>
+          </Text>
+          {phone ? (
+            <Text style={[styles.listPhone, isDark && styles.darkSubText]} numberOfLines={1}>📞 {phone}</Text>
+          ) : null}
+        </View>
+
+        {/* Status badge */}
+        <View style={[styles.listBadge, { backgroundColor: sc.bg }]}>
+          <Text style={[styles.listBadgeText, { color: sc.text }]}>
+            {(item.lead_status || item.status || 'NEW').replace('_', ' ')}
+          </Text>
+        </View>
+
+        {/* Call button */}
+        <TouchableOpacity
+          style={styles.listCallBtn}
+          onPress={() => {
+            if (phone) {
+              router.push({ pathname: '/dialpad', params: { leadId: item.id, phone } } as any);
+            } else {
+              Alert.alert('No Phone', 'This lead does not have a registered phone number.');
+            }
+          }}
+          hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+        >
+          <FontAwesome5 name="phone-alt" size={13} color="#3182CE" />
+        </TouchableOpacity>
+      </TouchableOpacity>
+    );
+  };
+
+  // Original full card view
+  const renderStudentCard = ({ item }: { item: any }) => (
     <TouchableOpacity 
       style={[styles.card, isDark && styles.darkCard]}
       onPress={() => router.push({ pathname: '/lead-details', params: { leadId: item.id } } as any)}
@@ -487,6 +553,8 @@ export default function SalesScreen() {
       </View>
     </TouchableOpacity>
   );
+
+  const renderStudent = viewMode === 'list' ? renderStudentList : renderStudentCard;
 
   return (
     <View style={[styles.container, isDark && styles.darkBg]}>
@@ -562,6 +630,17 @@ export default function SalesScreen() {
                   {sortOrder === '-id' ? 'Newest' : 'Oldest'}
                 </Text>
               </TouchableOpacity>
+              {/* List / Card toggle */}
+              <TouchableOpacity
+                onPress={() => setViewMode(viewMode === 'list' ? 'card' : 'list')}
+                style={{ padding: 8, borderRadius: 10, backgroundColor: isDark ? '#334155' : '#EDF2F7', marginLeft: 6 }}
+              >
+                <FontAwesome5
+                  name={viewMode === 'list' ? 'th-large' : 'list'}
+                  size={13}
+                  color={isDark ? '#94A3B8' : '#718096'}
+                />
+              </TouchableOpacity>
             </View>
 
             {/* Filter Pills ScrollView */}
@@ -629,11 +708,12 @@ export default function SalesScreen() {
               data={students}
               renderItem={renderStudent}
               keyExtractor={(item, index) => item.id?.toString() || index.toString()}
-              contentContainerStyle={styles.list}
+              contentContainerStyle={viewMode === 'list' ? styles.listContent : styles.list}
               refreshing={refreshing}
               onRefresh={handleRefresh}
               onEndReached={handleLoadMore}
               onEndReachedThreshold={0.3}
+              getItemLayout={viewMode === 'list' ? (_, index) => ({ length: 62, offset: 62 * index, index }) : undefined}
               ListFooterComponent={
                 loadingMore ? (
                   <View style={{ padding: 20, alignItems: 'center' }}>
@@ -933,4 +1013,42 @@ const styles = StyleSheet.create({
   darkStatCard: { backgroundColor: '#1E293B', borderColor: '#334155' },
   miniStatLabel: { fontSize: 9, fontWeight: '700', color: '#718096', marginBottom: 2, textAlign: 'center' },
   miniStatValue: { fontSize: 13, fontWeight: '900', textAlign: 'center' },
+  // Compact list styles
+  listContent: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 24 },
+  listRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 2,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EDF2F7',
+  },
+  darkListRow: { backgroundColor: '#1E293B', borderBottomColor: '#334155' },
+  listAvatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+    flexShrink: 0,
+  },
+  listAvatarText: { fontSize: 15, fontWeight: '900', color: '#3182CE' },
+  listInfo: { flex: 1, marginRight: 6 },
+  listName: { fontSize: 14, fontWeight: '800', color: '#1A202C', lineHeight: 18 },
+  listSub: { fontSize: 10, color: '#718096', fontWeight: '600', lineHeight: 14 },
+  listPhone: { fontSize: 10, color: '#718096', lineHeight: 14 },
+  listBadge: { paddingHorizontal: 6, paddingVertical: 3, borderRadius: 7, marginRight: 8, flexShrink: 0 },
+  listBadgeText: { fontSize: 9, fontWeight: '900', letterSpacing: 0.3 },
+  listCallBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: '#EBF8FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
 });
