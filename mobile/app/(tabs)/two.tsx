@@ -49,6 +49,7 @@ export default function SalesScreen() {
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
   const [showPicker, setShowPicker] = useState<'start' | 'end' | null>(null);
+  const [viewMode, setViewMode] = useState<'NEW' | 'PIPELINE'>('NEW');
 
   // ── Init ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -65,7 +66,7 @@ export default function SalesScreen() {
       fetchLeads(1, true);
     }, 300);
     return () => clearTimeout(t);
-  }, [search, selectedFilter, sortOrder, startDate, endDate, authLoading, user?.role]);
+  }, [search, selectedFilter, sortOrder, startDate, endDate, viewMode, authLoading, user?.role]);
 
   const loadUser = async () => {
     try {
@@ -110,6 +111,7 @@ export default function SalesScreen() {
     else if (selectedFilter.type === 'upcoming_followups') params.upcoming_followups = 'true';
     if (startDate) params.start_date = startDate.toISOString().split('T')[0];
     if (endDate) params.end_date = endDate.toISOString().split('T')[0];
+    params.contacted = viewMode === 'NEW' ? 'false' : 'true';
 
     // Sales screen should NEVER show converted/enrolled leads, regardless of user role.
     // They belong to the Mentors view now.
@@ -334,6 +336,22 @@ export default function SalesScreen() {
           )}
         </View>
 
+        {/* View Mode Toggle */}
+        <View style={styles.tabContainer}>
+          <TouchableOpacity 
+            style={[styles.tabBtn, viewMode === 'NEW' && styles.tabBtnActive]} 
+            onPress={() => { setViewMode('NEW'); setCurrentPage(1); }}
+          >
+            <Text style={[styles.tabTxt, viewMode === 'NEW' && styles.tabTxtActive, isDark && viewMode === 'NEW' && { color: '#0F172A' }, isDark && viewMode !== 'NEW' && { color: '#94A3B8' }]}>New Leads</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.tabBtn, viewMode === 'PIPELINE' && styles.tabBtnActive]} 
+            onPress={() => { setViewMode('PIPELINE'); setCurrentPage(1); }}
+          >
+            <Text style={[styles.tabTxt, viewMode === 'PIPELINE' && styles.tabTxtActive, isDark && viewMode === 'PIPELINE' && { color: '#0F172A' }, isDark && viewMode !== 'PIPELINE' && { color: '#94A3B8' }]}>My Pipeline</Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Filter controls row */}
         <View style={styles.controlRow}>
           <TouchableOpacity
@@ -515,6 +533,23 @@ const styles = StyleSheet.create({
   },
   searchBarDark: { backgroundColor: '#0F172A', borderColor: '#334155' },
   searchInput: { flex: 1, fontSize: 14, color: '#1E293B', fontWeight: '500' },
+
+  // Tabs
+  tabContainer: {
+    flexDirection: 'row', backgroundColor: '#F1F5F9', borderRadius: 8, padding: 4, marginBottom: 8
+  },
+  tabBtn: {
+    flex: 1, paddingVertical: 6, alignItems: 'center', borderRadius: 6
+  },
+  tabBtnActive: {
+    backgroundColor: '#FFFFFF', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 2
+  },
+  tabTxt: {
+    fontSize: 13, fontWeight: '600', color: '#64748B'
+  },
+  tabTxtActive: {
+    color: '#0F172A', fontWeight: '700'
+  },
 
   // Controls
   controlRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
