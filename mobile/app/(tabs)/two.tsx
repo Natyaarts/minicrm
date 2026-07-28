@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getStudents } from '../../src/api/sales';
 import client from '../../src/api/client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -12,6 +13,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 export default function SalesScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
+  const insets = useSafeAreaInsets();
 
   // ── Auth & user ──────────────────────────────────────────────────────────
   const [user, setUser] = useState<any>(null);
@@ -265,7 +267,7 @@ export default function SalesScreen() {
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
       {/* ── HEADER ── */}
-      <View style={[styles.header, isDark && styles.headerDark]}>
+      <View style={[styles.header, isDark && styles.headerDark, { paddingTop: Math.max(insets.top + 8, 16) }]}>
         <View style={styles.headerTop}>
           <View>
             <Text style={[styles.headerTitle, isDark && { color: '#F1F5F9' }]}>Sales & Admissions</Text>
@@ -394,7 +396,7 @@ export default function SalesScreen() {
           onRefresh={handleRefresh}
           onEndReached={handleLoadMore}
           onEndReachedThreshold={0.4}
-          getItemLayout={(_, i) => ({ length: 70, offset: 70 * i, index: i })}
+          getItemLayout={(_, i) => ({ length: 55, offset: 55 * i, index: i })}
           ListEmptyComponent={
             <View style={styles.center}>
               <FontAwesome5 name="inbox" size={36} color="#CBD5E1" />
@@ -428,9 +430,8 @@ const styles = StyleSheet.create({
   // Header
   header: {
     backgroundColor: '#FFFFFF',
-    paddingTop: 55,
     paddingHorizontal: 16,
-    paddingBottom: 10,
+    paddingBottom: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#E2E8F0',
     shadowColor: '#000',
@@ -508,9 +509,9 @@ const styles = StyleSheet.create({
   leadRow: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    paddingVertical: 10, paddingRight: 14,
+    paddingVertical: 6, paddingRight: 10,
     borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
-    minHeight: 70,
+    minHeight: 55,
   },
   leadRowDark: { backgroundColor: '#1E293B', borderBottomColor: '#334155' },
   stripe: { width: 4, alignSelf: 'stretch', borderRadius: 0 },
