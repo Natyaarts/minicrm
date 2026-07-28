@@ -226,8 +226,10 @@ const StatLeadsModal = ({ config, onClose, onViewLead, salesSectionFilter, pipel
                                                     )}
                                                 </td>
                                                 <td className="px-4 py-3">
-                                                    <span className={`px-2 py-1 rounded-md text-[10px] font-bold tracking-wide uppercase ${getStatusStyle(lead.lead_status_display)}`}>
-                                                        {lead.lead_status_display || 'New Lead'}
+                                                    <span className={`px-2 py-1 rounded-md text-[10px] font-bold tracking-wide uppercase ${getStatusStyle(
+                                                        pipelineStages.find(s => (s.id || s.name).toString() === (lead.lead_status || '').toString())?.name || lead.lead_status || 'New Lead'
+                                                    )}`}>
+                                                        {pipelineStages.find(s => (s.id || s.name).toString() === (lead.lead_status || '').toString())?.name || lead.lead_status || 'New Lead'}
                                                     </span>
                                                 </td>
                                                 <td className="px-4 py-3">
