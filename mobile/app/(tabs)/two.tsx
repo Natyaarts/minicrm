@@ -2,10 +2,10 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   StyleSheet, FlatList, TextInput, ActivityIndicator,
   TouchableOpacity, Alert, Text, View, useColorScheme, StatusBar
-} from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { getStudents } from '../../src/api/sales';
 import client from '../../src/api/client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -45,6 +45,9 @@ export default function SalesScreen() {
   const [sortOrder, setSortOrder] = useState<'-id' | 'id'>('-id');
   const [selectedFilter, setSelectedFilter] = useState<any>({ label: 'All', type: 'all', value: 'All' });
   const [showFilters, setShowFilters] = useState(false);
+  const [startDate, setStartDate] = useState<Date | null>(null);
+  const [endDate, setEndDate] = useState<Date | null>(null);
+  const [showPicker, setShowPicker] = useState<'start' | 'end' | null>(null);
 
   // ── Init ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -61,7 +64,7 @@ export default function SalesScreen() {
       fetchLeads(1, true);
     }, 300);
     return () => clearTimeout(t);
-  }, [search, selectedFilter, sortOrder, authLoading, user?.role]);
+  }, [search, selectedFilter, sortOrder, startDate, endDate, authLoading, user?.role]);
 
   const loadUser = async () => {
     try {
@@ -104,6 +107,8 @@ export default function SalesScreen() {
     if (search) params.search = search;
     if (selectedFilter.type === 'lead_status') params.lead_status = selectedFilter.value;
     else if (selectedFilter.type === 'upcoming_followups') params.upcoming_followups = 'true';
+    if (startDate) params.start_date = startDate.toISOString().split('T')[0];
+    if (endDate) params.end_date = endDate.toISOString().split('T')[0];
 
     // Sales screen should NEVER show converted/enrolled leads, regardless of user role.
     // They belong to the Mentors view now.
@@ -349,6 +354,21 @@ export default function SalesScreen() {
             <Text style={styles.controlTxt}>{sortOrder === '-id' ? 'Newest' : 'Oldest'}</Text>
           </TouchableOpacity>
 
+          <TouchableOpacity
+            style={[styles.controlBtn, (startDate || endDate) && { backgroundColor: '#3B82F6' }]}
+            onPress={() => setShowPicker('start')}
+          >
+            <FontAwesome5 name="calendar-alt" size={11} color={(startDate || endDate) ? '#fff' : '#64748B'} />
+            <Text style={[styles.controlTxt, (startDate || endDate) && { color: '#fff' }]}>
+              {startDate && endDate ? `${startDate.toLocaleDateString('en-GB', {day:'2-digit', month:'short'})} - ${endDate.toLocaleDateString('en-GB', {day:'2-digit', month:'short'})}` : (startDate ? 'Start Date Set' : 'Dates')}
+            </Text>
+            {(startDate || endDate) && (
+              <TouchableOpacity onPress={() => { setStartDate(null); setEndDate(null); setCurrentPage(1); }} style={{ marginLeft: 4 }}>
+                <FontAwesome5 name="times-circle" size={11} color="#fff" />
+              </TouchableOpacity>
+            )}
+          </TouchableOpacity>
+
           {selectedFilter.type !== 'all' && (
             <View style={styles.activeFilter}>
               <Text style={styles.activeFilterTxt}>{selectedFilter.label}</Text>
@@ -377,6 +397,29 @@ export default function SalesScreen() {
               );
             })}
           </View>
+        )}
+
+        {showPicker && (
+          <DateTimePicker
+            value={showPicker === 'start' ? (startDate || new Date()) : (endDate || new Date())}
+            mode="date"
+            display="default"
+            onChange={(event, date) => {
+              if (event.type === 'dismissed') {
+                setShowPicker(null);
+                return;
+              }
+              if (date) {
+                if (showPicker === 'start') {
+                  setStartDate(date);
+                  setShowPicker('end'); // Ask for end date next
+                } else {
+                  setEndDate(date);
+                  setShowPicker(null);
+                }
+              }
+            }}
+          />
         )}
       </View>
 

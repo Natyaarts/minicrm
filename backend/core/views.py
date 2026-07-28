@@ -479,6 +479,14 @@ class StudentViewSet(viewsets.ModelViewSet):
         if program:
             qs = qs.filter(program_type_id=program)
 
+        start_date = self.request.query_params.get('start_date')
+        if start_date:
+            qs = qs.filter(created_at__date__gte=start_date)
+
+        end_date = self.request.query_params.get('end_date')
+        if end_date:
+            qs = qs.filter(created_at__date__lte=end_date)
+
         teacher_id = self.request.query_params.get('teacher_id')
         if teacher_id:
             qs = qs.filter(batch__teacher_id=teacher_id)
