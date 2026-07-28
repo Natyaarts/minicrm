@@ -24,8 +24,7 @@ const StatLeadsModal = ({ config, onClose, onViewLead, salesSectionFilter }) => 
             if (config.type === 'stage') {
                 params.append('lead_status', config.value);
             } else if (config.type === 'assignee') {
-                if (config.value === 'unassigned') params.append('assigned_to__isnull', 'True');
-                else params.append('assigned_to', config.value);
+                params.append('assigned_to', config.value);
             } else if (config.type === 'contacted') {
                 params.append('contacted', config.value);
             } else if (config.type === 'status') {

@@ -99,7 +99,7 @@ const CRMDashboard = ({ onStatClick, onBdeClick }) => {
             </div>
             
             {/* Top Stat Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4 mb-6">
                 <StatCard 
                     title="Total Leads" 
                     value={stats.total_leads} 
@@ -115,6 +115,14 @@ const CRMDashboard = ({ onStatClick, onBdeClick }) => {
                     bg="bg-rose-50" 
                     text="text-rose-600"
                     onClick={() => onStatClick('assignee', 'unassigned', 'Unassigned Leads')}
+                />
+                <StatCard 
+                    title="Assigned Leads" 
+                    value={stats.assigned_leads} 
+                    icon={<UserCheck size={24} />} 
+                    bg="bg-sky-50" 
+                    text="text-sky-600"
+                    onClick={() => onStatClick('assignee', 'assigned', 'Assigned Leads')}
                 />
                 <StatCard 
                     title="Contacted Leads" 

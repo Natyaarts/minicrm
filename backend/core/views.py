@@ -451,6 +451,8 @@ class StudentViewSet(viewsets.ModelViewSet):
         if assigned_to:
             if assigned_to == 'unassigned':
                 qs = qs.filter(assigned_to__isnull=True)
+            elif assigned_to == 'assigned':
+                qs = qs.filter(assigned_to__isnull=False)
             else:
                 qs = qs.filter(assigned_to_id=assigned_to)
 
