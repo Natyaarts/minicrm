@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   StyleSheet, FlatList, TextInput, ActivityIndicator,
   TouchableOpacity, Alert, Text, View, useColorScheme, StatusBar
+} from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
