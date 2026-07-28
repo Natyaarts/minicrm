@@ -213,6 +213,12 @@ class LeadInteractionViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
+        print("======== DEBUG INTERACTION UPLOAD ========")
+        print("request.data:", self.request.data)
+        print("request.FILES:", self.request.FILES)
+        print("audio_recording from data:", self.request.data.get('audio_recording'))
+        print("audio_recording type:", type(self.request.data.get('audio_recording')))
+        print("==========================================")
         interaction = serializer.save(author=self.request.user)
         
         # Manually update new fields if provided
@@ -247,7 +253,7 @@ class LeadInteractionViewSet(viewsets.ModelViewSet):
                 task_type='CALL',
                 status='PENDING',
                 due_date=next_followup_date,
-                notes=f"Follow-up from previous interaction."
+                notes=self.request.data.get('notes', 'Follow-up from previous interaction.')
             )
 
 class CampaignViewSet(viewsets.ModelViewSet):

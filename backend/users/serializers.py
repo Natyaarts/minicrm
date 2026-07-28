@@ -29,7 +29,9 @@ class UserSerializer(serializers.ModelSerializer):
         return False
 
     def get_teacher_batches_details(self, obj):
-        return [{"id": b.id, "name": b.name} for b in obj.teacher_batches.all()]
+        if obj.role == 'TEACHER':
+            return [{'id': b.id, 'name': b.name} for b in obj.teacher_batches.all()]
+        return []
     
     def get_total_classes_conducted(self, obj):
         from core.models import ClassSession
