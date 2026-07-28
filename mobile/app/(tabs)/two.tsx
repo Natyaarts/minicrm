@@ -103,21 +103,20 @@ export default function SalesScreen() {
     if (selectedFilter.type === 'lead_status') params.lead_status = selectedFilter.value;
     else if (selectedFilter.type === 'upcoming_followups') params.upcoming_followups = 'true';
 
-    // Sales team should NOT see converted/enrolled leads
-    if (isSalesOnly) params.hide_converted = 'true';
+    // Sales screen should NEVER show converted/enrolled leads, regardless of user role.
+    // They belong to the Mentors view now.
+    params.hide_converted = 'true';
 
     const data = await getStudents(params);
     let list = data.results || [];
     
-    // ── FRONTEND HARD-FILTER: Absolutely force hide converted leads for Sales ──
-    if (isSalesOnly) {
-      list = list.filter((item: any) => {
-        const raw = item.lead_status || item.status || 'NEW';
-        const name = resolveStage(raw).toUpperCase();
-        const id = String(raw).toUpperCase();
-        return !name.includes('ENROL') && !name.includes('CONVERT') && id !== 'ENROLLED' && id !== 'CONVERTED';
-      });
-    }
+    // ── FRONTEND HARD-FILTER: Absolutely force hide converted leads for EVERYONE on this screen ──
+    list = list.filter((item: any) => {
+      const raw = item.lead_status || item.status || 'NEW';
+      const name = resolveStage(raw).toUpperCase();
+      const id = String(raw).toUpperCase();
+      return !name.includes('ENROL') && !name.includes('CONVERT') && id !== 'ENROLLED' && id !== 'CONVERTED';
+    });
 
     const count = data.count || list.length;
 
@@ -173,13 +172,10 @@ export default function SalesScreen() {
     { label: 'Follow-ups', type: 'upcoming_followups', value: 'true' },
     ...pipelineStages
       .filter((s: any) => {
-        // Sales team should not see the converted/enrolled stage filter
-        if (isSalesOnly) {
-          const n = (s.name || '').toUpperCase();
-          const id = (String(s.id) || '').toUpperCase();
-          return !n.includes('ENROL') && !n.includes('CONVERT') && id !== 'ENROLLED' && id !== 'CONVERTED';
-        }
-        return true;
+        // No one should see the converted/enrolled stage filter on the Sales screen
+        const n = (s.name || '').toUpperCase();
+        const id = (String(s.id) || '').toUpperCase();
+        return !n.includes('ENROL') && !n.includes('CONVERT') && id !== 'ENROLLED' && id !== 'CONVERTED';
       })
       .map(s => ({ label: s.name, type: 'lead_status', value: s.id })),
   ];
