@@ -40,7 +40,7 @@ const StatLeadsModal = ({ config, onClose, onViewLead, salesSectionFilter, pipel
             } else {
                 if (status) params.append('lead_status', status);
                 else if (config.type === 'status') {
-                    params.append('lead_status__in', 'ENROLLED,CONVERTED,4');
+                    params.append('lead_status', 'CONVERTED');
                 }
             }
 
