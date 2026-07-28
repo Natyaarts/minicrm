@@ -453,6 +453,12 @@ class StudentViewSet(viewsets.ModelViewSet):
                 qs = qs.filter(assigned_to__isnull=True)
             else:
                 qs = qs.filter(assigned_to_id=assigned_to)
+
+        contacted = self.request.query_params.get('contacted')
+        if contacted == 'true':
+            qs = qs.filter(crm_interactions__isnull=False).distinct()
+        elif contacted == 'false':
+            qs = qs.filter(crm_interactions__isnull=True)
             
         assigned_only = self.request.query_params.get('assigned_only')
         if assigned_only == 'true':

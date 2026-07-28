@@ -121,6 +121,7 @@ const CRMDashboard = ({ onStatClick, onBdeClick }) => {
                     icon={<PhoneCall size={24} />} 
                     bg="bg-emerald-50" 
                     text="text-emerald-600"
+                    onClick={() => onStatClick('contacted', 'true')}
                 />
                 <StatCard 
                     title="Revenue Generated" 

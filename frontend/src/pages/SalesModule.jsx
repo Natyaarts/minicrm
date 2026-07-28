@@ -35,6 +35,7 @@ const SalesModule = () => {
     const [selectedCourse, setSelectedCourse] = useState('');
     const [selectedStageFilter, setSelectedStageFilter] = useState('');
     const [selectedAssigneeFilter, setSelectedAssigneeFilter] = useState('');
+    const [selectedContactedFilter, setSelectedContactedFilter] = useState('');
 
     // Form Data
     const [formData, setFormData] = useState({
@@ -226,6 +227,7 @@ const SalesModule = () => {
             if (selectedCourse) params.append('course', selectedCourse);
             if (selectedStageFilter) params.append('lead_status', selectedStageFilter);
             if (selectedAssigneeFilter) params.append('assigned_to', selectedAssigneeFilter);
+            if (selectedContactedFilter) params.append('contacted', selectedContactedFilter);
             if (hideConverted) params.append('hide_converted', 'true');
             if (salesSectionFilter && salesSectionFilter !== 'ALL') params.append('sales_section', salesSectionFilter);
 
@@ -370,6 +372,7 @@ const SalesModule = () => {
             if (selectedCourse) params.append('course', selectedCourse);
             if (selectedStageFilter) params.append('lead_status', selectedStageFilter);
             if (selectedAssigneeFilter) params.append('assigned_to', selectedAssigneeFilter);
+            if (selectedContactedFilter) params.append('contacted', selectedContactedFilter);
             if (hideConverted) params.append('hide_converted', 'true');
             if (salesSectionFilter && salesSectionFilter !== 'ALL') params.append('sales_section', salesSectionFilter);
 
@@ -1093,17 +1096,21 @@ const SalesModule = () => {
                                         ))}
                                     </select>
 
-                                    {(selectedStageFilter || selectedAssigneeFilter) && (
-                                        <button 
-                                            onClick={() => {
-                                                setSelectedStageFilter('');
-                                                setSelectedAssigneeFilter('');
-                                            }}
+                                    {(selectedStageFilter || selectedAssigneeFilter || selectedContactedFilter) && (
+                                        <div className="flex items-center gap-2">
+                                            {selectedContactedFilter && <span className="text-[10px] font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full uppercase">Contacted Only</span>}
+                                            <button 
+                                                onClick={() => {
+                                                    setSelectedStageFilter('');
+                                                    setSelectedAssigneeFilter('');
+                                                    setSelectedContactedFilter('');
+                                                }}
                                             className="p-1 text-indigo-400 hover:text-rose-500 transition-colors self-end sm:self-center"
                                             title="Clear Pipeline Filters"
                                         >
                                             <X size={12} />
                                         </button>
+                                        </div>
                                     )}
                                 </div>
 
@@ -1496,11 +1503,19 @@ const SalesModule = () => {
                                     }
                                     if (type === 'assignee') {
                                         setSelectedAssigneeFilter(value);
+                                        setSelectedContactedFilter('');
+                                        setActiveTab('list');
+                                    }
+                                    if (type === 'contacted') {
+                                        setSelectedStageFilter('');
+                                        setSelectedAssigneeFilter('');
+                                        setSelectedContactedFilter(value);
                                         setActiveTab('list');
                                     }
                                     if (type === 'all') {
                                         setSelectedStageFilter('');
                                         setSelectedAssigneeFilter('');
+                                        setSelectedContactedFilter('');
                                         setActiveTab('list');
                                     }
                                     if (type === 'single') {
