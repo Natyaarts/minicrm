@@ -96,10 +96,15 @@ export default function SalesScreen() {
     if (reset) setLoading(true);
     else setLoadingMore(true);
 
+    const isSalesOnly = user?.role === 'SALES';
+
     const params: any = { page, page_size: PAGE_SIZE, ordering: sortOrder };
     if (search) params.search = search;
     if (selectedFilter.type === 'lead_status') params.lead_status = selectedFilter.value;
     else if (selectedFilter.type === 'upcoming_followups') params.upcoming_followups = 'true';
+
+    // Sales team should NOT see converted/enrolled leads
+    if (isSalesOnly) params.hide_converted = 'true';
 
     const data = await getStudents(params);
     const list = data.results || [];
@@ -150,10 +155,22 @@ export default function SalesScreen() {
     return { bg: '#F1F5F9', text: '#475569', stripe: '#94A3B8' };
   };
 
+  const isSalesOnly = user?.role === 'SALES';
+
   const filterOptions = [
     { label: 'All', type: 'all', value: 'All' },
     { label: 'Follow-ups', type: 'upcoming_followups', value: 'true' },
-    ...pipelineStages.map(s => ({ label: s.name, type: 'lead_status', value: s.id })),
+    ...pipelineStages
+      .filter((s: any) => {
+        // Sales team should not see the converted/enrolled stage filter
+        if (isSalesOnly) {
+          const n = (s.name || '').toUpperCase();
+          const id = (String(s.id) || '').toUpperCase();
+          return !n.includes('ENROL') && !n.includes('CONVERT') && id !== 'ENROLLED' && id !== 'CONVERTED';
+        }
+        return true;
+      })
+      .map(s => ({ label: s.name, type: 'lead_status', value: s.id })),
   ];
 
   // ── Render lead row ───────────────────────────────────────────────────────
