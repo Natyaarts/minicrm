@@ -2,10 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { Users, TrendingUp, DollarSign, Activity, UserMinus, UserCheck, PhoneCall, Clock } from 'lucide-react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from 'recharts';
 import api from '../api/axios';
+import { useAuth } from '../context/AuthContext';
 
 const COLORS = ['#4f46e5', '#0ea5e9', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6', '#ec4899'];
 
 const CRMDashboard = ({ onStatClick, onBdeClick }) => {
+    const { user } = useAuth();
+    const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
+    const [sectionFilter, setSectionFilter] = useState('');
+
     const [stats, setStats] = useState({
         total_leads: 0,
         unassigned_leads: 0,
@@ -21,9 +26,14 @@ const CRMDashboard = ({ onStatClick, onBdeClick }) => {
 
     useEffect(() => {
         const fetchStats = async () => {
+            setLoading(true);
             try {
+                let statsUrl = '/crm/dashboard-stats/';
+                if (isAdmin && sectionFilter) {
+                    statsUrl += `?sales_section=${sectionFilter}`;
+                }
                 const [statsRes, tasksRes] = await Promise.all([
-                    api.get('/crm/dashboard-stats/'),
+                    api.get(statsUrl),
                     api.get('/crm/tasks/?status=PENDING')
                 ]);
                 setStats(statsRes.data);
@@ -35,9 +45,9 @@ const CRMDashboard = ({ onStatClick, onBdeClick }) => {
             }
         };
         fetchStats();
-    }, []);
+    }, [sectionFilter, isAdmin]);
 
-    if (loading) {
+    if (loading && !stats.total_leads) {
         return (
             <div className="p-8 flex justify-center items-center h-[500px]">
                 <div className="flex flex-col items-center">
@@ -65,10 +75,27 @@ const CRMDashboard = ({ onStatClick, onBdeClick }) => {
 
     return (
         <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
-            <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
-                <Activity className="text-indigo-600" />
-                Sales Analytics & Performance
-            </h2>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
+                <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                    <Activity className="text-indigo-600" />
+                    Sales Analytics & Performance
+                </h2>
+                
+                {isAdmin && (
+                    <div className="flex items-center gap-2">
+                        <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">View Section:</label>
+                        <select 
+                            value={sectionFilter} 
+                            onChange={(e) => setSectionFilter(e.target.value)}
+                            className="text-sm border border-slate-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-indigo-500 outline-none font-medium text-slate-700 bg-white"
+                        >
+                            <option value="">All Sections</option>
+                            <option value="REGULAR">Regular</option>
+                            <option value="CAREER_ACADEMY">Career Academy</option>
+                        </select>
+                    </div>
+                )}
+            </div>
             
             {/* Top Stat Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
