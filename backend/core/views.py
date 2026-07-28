@@ -6,14 +6,15 @@ from rest_framework.response import Response
 from django.db.models import Q, Sum, Count, F
 from django.http import HttpResponse
 from django.contrib.auth import get_user_model
+from decimal import Decimal, InvalidOperation
 import pandas as pd
 
-from .models import Program, SubProgram, Course, Batch, Student, Transaction, Document, SyllabusPart, ClassSession, Attendance, BatchResource, Exam, ExamResult, Question, QuestionOption, StudentSubmission
+from .models import Program, SubProgram, Course, Batch, Student, Transaction, Document, SyllabusPart, ClassSession, Attendance, BatchResource, Exam, ExamResult, Question, QuestionOption, StudentSubmission, MonthlyPayment, StudentTeacherHandover
 from .serializers import (
     ProgramSerializer, SubProgramSerializer, CourseSerializer, 
     BatchSerializer, StudentSerializer, TransactionSerializer, DocumentSerializer,
     ProgramHierarchySerializer, SyllabusPartSerializer, ClassSessionSerializer, AttendanceSerializer, BatchResourceSerializer,
-    ExamSerializer, ExamResultSerializer, QuestionSerializer, StudentSubmissionSerializer
+    ExamSerializer, ExamResultSerializer, QuestionSerializer, StudentSubmissionSerializer, MonthlyPaymentSerializer, StudentTeacherHandoverSerializer
 )
 from rest_framework.views import APIView
 from .permissions import DynamicRolePermission, IsMentorOwner
@@ -318,11 +319,12 @@ class StudentViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ['create', 'public_lookup', 'partial_update']:
             return [permissions.AllowAny()]
-        # Allow students, mentors, teachers, and academic staff to view relevant profiles/lists
-        if self.request.user.is_authenticated and self.action in ['list', 'retrieve', 'fee_defaulters', 'collected_fees', 'break_metrics']:
-            if self.request.user.role in ['STUDENT', 'MENTOR', 'TEACHER', 'ACADEMIC', 'ACADEMIC_COORDINATOR']:
+        # Allow students, mentors, teachers, and academic staff to view relevant profiles/lists and perform fee/handover actions
+        if self.request.user.is_authenticated and self.action in ['list', 'retrieve', 'fee_defaulters', 'collected_fees', 'break_metrics', 'record_payment', 'update_fee', 'handover_teacher']:
+            if self.request.user.role in ['STUDENT', 'MENTOR', 'TEACHER', 'ACADEMIC', 'ACADEMIC_COORDINATOR', 'ADMIN', 'SUPER_ADMIN']:
                 return [permissions.IsAuthenticated()]
         return super().get_permissions()
+
 
     @action(detail=False, methods=['get'], permission_classes=[permissions.AllowAny])
     def public_lookup(self, request):
@@ -649,6 +651,116 @@ class StudentViewSet(viewsets.ModelViewSet):
         student.delete()
         return Response({'status': 'student permanently deleted'})
 
+    @action(detail=True, methods=['post'])
+    def record_payment(self, request, pk=None):
+        student = self.get_object()
+        amount = request.data.get('amount')
+        paid_date = request.data.get('paid_date')
+        notes = request.data.get('notes', '')
+        month_str = request.data.get('month')
+
+        if not amount:
+            return Response({'error': 'Payment amount is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            amount_dec = Decimal(str(amount))
+        except (InvalidOperation, TypeError, ValueError):
+            return Response({'error': 'Invalid amount format'}, status=status.HTTP_400_BAD_REQUEST)
+
+        student.paid_fee = (student.paid_fee or Decimal('0.00')) + amount_dec
+        student.save(update_fields=['paid_fee'])
+
+        import uuid
+        Transaction.objects.create(
+            student=student,
+            transaction_id=f"TXN-{uuid.uuid4().hex[:8].upper()}",
+            amount=amount_dec,
+        )
+
+        from datetime import datetime, date
+        if month_str:
+            try:
+                m_date = datetime.strptime(month_str[:7] + "-01", "%Y-%m-%d").date()
+            except ValueError:
+                m_date = date.today().replace(day=1)
+        else:
+            m_date = date.today().replace(day=1)
+
+        monthly_pay, created = MonthlyPayment.objects.get_or_create(
+            student=student,
+            month=m_date,
+            defaults={
+                'amount': amount_dec,
+                'paid_date': paid_date if paid_date else date.today(),
+                'marked_by': request.user if request.user.is_authenticated else None,
+                'notes': notes
+            }
+        )
+        if not created:
+            monthly_pay.amount += amount_dec
+            if notes:
+                monthly_pay.notes = f"{monthly_pay.notes}\n{notes}".strip()
+            monthly_pay.save()
+
+        serializer = self.get_serializer(student)
+        return Response({'status': 'Payment recorded successfully', 'student': serializer.data})
+
+    @action(detail=True, methods=['post', 'patch'])
+    def update_fee(self, request, pk=None):
+        student = self.get_object()
+        total_fee = request.data.get('total_fee')
+        fee_due_date = request.data.get('fee_due_date')
+
+        if total_fee is not None:
+            try:
+                student.total_fee = Decimal(str(total_fee))
+            except (InvalidOperation, TypeError, ValueError):
+                return Response({'error': 'Invalid total fee format'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if fee_due_date is not None:
+            if fee_due_date == '':
+                student.fee_due_date = None
+            else:
+                student.fee_due_date = fee_due_date
+
+        student.save()
+        serializer = self.get_serializer(student)
+        return Response({'status': 'Fee details updated successfully', 'student': serializer.data})
+
+    @action(detail=True, methods=['post'])
+    def handover_teacher(self, request, pk=None):
+        student = self.get_object()
+        new_teacher_id = request.data.get('new_teacher_id')
+        reason = request.data.get('reason', '')
+
+        if not new_teacher_id:
+            return Response({'error': 'New teacher ID is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        User = get_user_model()
+        try:
+            new_teacher = User.objects.get(id=new_teacher_id)
+        except User.DoesNotExist:
+            return Response({'error': 'Selected teacher does not exist'}, status=status.HTTP_404_NOT_FOUND)
+
+        previous_teacher = student.batch.teacher if student.batch else None
+
+        from .models import StudentTeacherHandover
+        StudentTeacherHandover.objects.create(
+            student=student,
+            previous_teacher=previous_teacher,
+            current_teacher=new_teacher,
+            reason=reason,
+            changed_by=request.user if request.user.is_authenticated else None
+        )
+
+        if student.batch:
+            student.batch.teacher = new_teacher
+            student.batch.save(update_fields=['teacher'])
+
+        serializer = self.get_serializer(student)
+        return Response({'status': 'Teacher handover completed successfully', 'student': serializer.data})
+
+
     @action(detail=False, methods=['post'])
     def bulk_assign(self, request):
         student_ids = request.data.get('student_ids', [])
@@ -888,6 +1000,92 @@ class StudentViewSet(viewsets.ModelViewSet):
             })
             
         return Response(data)
+
+    @action(detail=True, methods=['post'])
+    def record_payment(self, request, pk=None):
+        student = self.get_object()
+        amount_raw = request.data.get('amount')
+        payment_mode = request.data.get('payment_mode', 'CASH')
+        transaction_id = request.data.get('transaction_id')
+        notes = request.data.get('notes', '')
+        due_date_str = request.data.get('fee_due_date')
+
+        try:
+            amount = Decimal(str(amount_raw))
+            if amount <= 0:
+                return Response({'error': 'Payment amount must be greater than zero.'}, status=status.HTTP_400_BAD_REQUEST)
+        except (TypeError, ValueError, InvalidOperation):
+            return Response({'error': 'Invalid payment amount.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not transaction_id:
+            import time
+            transaction_id = f"PAY-{int(time.time())}"
+
+        txn = Transaction.objects.create(
+            student=student,
+            transaction_id=transaction_id,
+            amount=amount
+        )
+
+        student.paid_fee = (student.paid_fee or Decimal('0.00')) + amount
+
+        if due_date_str:
+            if due_date_str == '' or due_date_str == 'null':
+                student.fee_due_date = None
+            else:
+                from django.utils.dateparse import parse_date
+                parsed_date = parse_date(due_date_str)
+                if parsed_date:
+                    student.fee_due_date = parsed_date
+
+        student.save()
+
+        serializer = self.get_serializer(student)
+        return Response({
+            'status': 'Payment recorded successfully',
+            'student': serializer.data,
+            'transaction': {
+                'id': txn.id,
+                'transaction_id': txn.transaction_id,
+                'amount': float(txn.amount),
+                'date': txn.date.isoformat() if txn.date else None
+            }
+        })
+
+    @action(detail=True, methods=['post', 'patch'])
+    def update_fee_details(self, request, pk=None):
+        student = self.get_object()
+        total_fee = request.data.get('total_fee')
+        paid_fee = request.data.get('paid_fee')
+        fee_due_date = request.data.get('fee_due_date')
+
+        if total_fee is not None:
+            try:
+                student.total_fee = Decimal(str(total_fee))
+            except (TypeError, ValueError, InvalidOperation):
+                return Response({'error': 'Invalid total fee amount.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if paid_fee is not None:
+            try:
+                student.paid_fee = Decimal(str(paid_fee))
+            except (TypeError, ValueError, InvalidOperation):
+                return Response({'error': 'Invalid paid fee amount.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if fee_due_date is not None:
+            if fee_due_date == '' or fee_due_date == 'null':
+                student.fee_due_date = None
+            else:
+                from django.utils.dateparse import parse_date
+                parsed_date = parse_date(fee_due_date)
+                if parsed_date:
+                    student.fee_due_date = parsed_date
+
+        student.save()
+        serializer = self.get_serializer(student)
+        return Response({
+            'status': 'Fee details updated successfully',
+            'student': serializer.data
+        })
 
     @action(detail=False, methods=['get'])
     def collected_fees(self, request):
@@ -1176,6 +1374,88 @@ class StudentViewSet(viewsets.ModelViewSet):
                 'notes': p.notes
             })
         return Response(data)
+
+    @action(detail=True, methods=['post'], url_path='record-payment')
+    def record_payment(self, request, pk=None):
+        student = self.get_object()
+        amount_val = request.data.get('amount')
+        if amount_val is None:
+            return Response({'error': 'amount is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            from decimal import Decimal
+            amount = Decimal(str(amount_val))
+            if amount <= 0:
+                return Response({'error': 'amount must be greater than 0'}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception:
+            return Response({'error': 'invalid amount format'}, status=status.HTTP_400_BAD_REQUEST)
+
+        import time
+        transaction_id = request.data.get('transaction_id') or f"TXN-{int(time.time())}"
+        transaction_link = request.data.get('transaction_link', '')
+        
+        from core.models import Transaction
+        txn = Transaction.objects.create(
+            student=student,
+            transaction_id=transaction_id,
+            amount=amount,
+            transaction_link=transaction_link
+        )
+        
+        student.paid_fee = (student.paid_fee or Decimal('0.00')) + amount
+        
+        due_date_str = request.data.get('fee_due_date')
+        if due_date_str:
+            from django.utils.dateparse import parse_date
+            parsed_date = parse_date(due_date_str)
+            if parsed_date:
+                student.fee_due_date = parsed_date
+                
+        student.save()
+        
+        serializer = self.get_serializer(student)
+        return Response({
+            'status': 'Payment recorded successfully',
+            'transaction_id': txn.transaction_id,
+            'amount': float(txn.amount),
+            'student': serializer.data
+        })
+
+    @action(detail=True, methods=['post', 'patch'], url_path='update-fee-details')
+    def update_fee_details(self, request, pk=None):
+        student = self.get_object()
+        total_fee = request.data.get('total_fee')
+        paid_fee = request.data.get('paid_fee')
+        fee_due_date = request.data.get('fee_due_date')
+        
+        from decimal import Decimal
+        if total_fee is not None:
+            try:
+                student.total_fee = Decimal(str(total_fee))
+            except Exception:
+                pass
+                
+        if paid_fee is not None:
+            try:
+                student.paid_fee = Decimal(str(paid_fee))
+            except Exception:
+                pass
+
+        if fee_due_date is not None:
+            if fee_due_date == '' or fee_due_date is None:
+                student.fee_due_date = None
+            else:
+                from django.utils.dateparse import parse_date
+                parsed_date = parse_date(fee_due_date)
+                if parsed_date:
+                    student.fee_due_date = parsed_date
+
+        student.save()
+        serializer = self.get_serializer(student)
+        return Response({
+            'status': 'Fee details updated successfully',
+            'student': serializer.data
+        })
 
 class TransactionViewSet(viewsets.ModelViewSet):
     queryset = Transaction.objects.all()
@@ -1691,3 +1971,16 @@ class CalendarEventsView(APIView):
             })
             
         return Response(events)
+
+class StudentTeacherHandoverViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = StudentTeacherHandover.objects.select_related('student', 'previous_teacher', 'current_teacher', 'changed_by').all()
+    serializer_class = StudentTeacherHandoverSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        student_id = self.request.query_params.get('student_id')
+        if student_id:
+            qs = qs.filter(student_id=student_id)
+        return qs
+

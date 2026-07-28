@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from django.apps import apps
 from django.db import transaction as db_transaction
 from django.db.models import Sum, Count
-from .models import Program, SubProgram, Course, Batch, Student, Transaction, Document, SyllabusPart, ClassSession, Attendance, BatchResource, Exam, ExamResult, Question, QuestionOption, StudentSubmission
+from .models import Program, SubProgram, Course, Batch, Student, Transaction, Document, SyllabusPart, ClassSession, Attendance, BatchResource, Exam, ExamResult, Question, QuestionOption, StudentSubmission, MonthlyPayment, StudentTeacherHandover
 
 User = get_user_model()
 
@@ -173,6 +173,43 @@ class StudentDynamicValueReadSerializer(serializers.ModelSerializer):
         model = apps.get_model('forms_builder', 'StudentDynamicValue')
         fields = ('id', 'field_label', 'field_group', 'value', 'field')
 
+class MonthlyPaymentSerializer(serializers.ModelSerializer):
+    marked_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MonthlyPayment
+        fields = '__all__'
+
+    def get_marked_by_name(self, obj):
+        if obj.marked_by:
+            return f"{obj.marked_by.first_name} {obj.marked_by.last_name}".strip() or obj.marked_by.username
+        return "System"
+
+class StudentTeacherHandoverSerializer(serializers.ModelSerializer):
+    previous_teacher_name = serializers.SerializerMethodField()
+    current_teacher_name = serializers.SerializerMethodField()
+    changed_by_name = serializers.SerializerMethodField()
+    student_name = serializers.CharField(source='student.first_name', read_only=True)
+
+    class Meta:
+        model = StudentTeacherHandover
+        fields = '__all__'
+
+    def get_previous_teacher_name(self, obj):
+        if obj.previous_teacher:
+            return f"{obj.previous_teacher.first_name} {obj.previous_teacher.last_name}".strip() or obj.previous_teacher.username
+        return "None"
+
+    def get_current_teacher_name(self, obj):
+        if obj.current_teacher:
+            return f"{obj.current_teacher.first_name} {obj.current_teacher.last_name}".strip() or obj.current_teacher.username
+        return "None"
+
+    def get_changed_by_name(self, obj):
+        if obj.changed_by:
+            return f"{obj.changed_by.first_name} {obj.changed_by.last_name}".strip() or obj.changed_by.username
+        return "System"
+
 class StudentSerializer(serializers.ModelSerializer):
     # Field to accept dynamic values as a JSON string or dict
     dynamic_values = serializers.JSONField(required=False, write_only=True)
@@ -197,11 +234,14 @@ class StudentSerializer(serializers.ModelSerializer):
     
     # Assignment
     assigned_to_name = serializers.SerializerMethodField()
+    teacher_name = serializers.SerializerMethodField()
     
     # Detail lists for read
     dynamic_values_list = StudentDynamicValueReadSerializer(source='dynamic_values', many=True, read_only=True)
     documents_list = DocumentSerializer(source='documents', many=True, read_only=True)
     transactions_list = TransactionSerializer(source='transactions', many=True, read_only=True)
+    monthly_payments_list = MonthlyPaymentSerializer(source='monthly_payments', many=True, read_only=True)
+    teacher_handovers_list = StudentTeacherHandoverSerializer(source='teacher_handovers', many=True, read_only=True)
     
     # Financial fields
     total_paid = serializers.SerializerMethodField()
@@ -213,6 +253,7 @@ class StudentSerializer(serializers.ModelSerializer):
     sub_program_id = serializers.IntegerField(source='sub_program.id', read_only=True, allow_null=True)
     course_id = serializers.IntegerField(source='course.id', read_only=True, allow_null=True)
     batch_id = serializers.IntegerField(source='batch.id', read_only=True, allow_null=True)
+
 
     class Meta:
         model = Student
@@ -226,6 +267,12 @@ class StudentSerializer(serializers.ModelSerializer):
         if obj.assigned_to:
             return f"{obj.assigned_to.first_name} {obj.assigned_to.last_name}".strip() or obj.assigned_to.username
         return None
+
+    def get_teacher_name(self, obj):
+        if obj.batch and obj.batch.teacher:
+            return f"{obj.batch.teacher.first_name} {obj.batch.teacher.last_name}".strip() or obj.batch.teacher.username
+        return "Not Assigned"
+
 
     def get_total_due(self, obj):
         course_fee = obj.course.fee_amount if obj.course else 0

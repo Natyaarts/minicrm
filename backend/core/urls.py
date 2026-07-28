@@ -6,7 +6,7 @@ from .views import (
     BatchViewSet, StudentViewSet, TransactionViewSet, DocumentViewSet,
     SyllabusPartViewSet, ClassSessionViewSet, AttendanceViewSet, BatchResourceViewSet,
     ExamViewSet, ExamResultViewSet, QuestionViewSet, DashboardStatsView, AnalyticsDetailView,
-    StudentSubmissionViewSet, CalendarEventsView
+    StudentSubmissionViewSet, CalendarEventsView, StudentTeacherHandoverViewSet
 )
 from .bulk_views import BulkUploadView
 
@@ -26,6 +26,8 @@ router.register(r'exams', ExamViewSet, basename='core-exam')
 router.register(r'exam-results', ExamResultViewSet, basename='core-result')
 router.register(r'questions', QuestionViewSet, basename='core-question')
 router.register(r'student-submissions', StudentSubmissionViewSet, basename='core-submission')
+router.register(r'teacher-handovers', StudentTeacherHandoverViewSet, basename='core-teacher-handover')
+
 
 urlpatterns = [
     path('', include(router.urls)),

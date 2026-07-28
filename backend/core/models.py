@@ -290,3 +290,20 @@ class MonthlyPayment(models.Model):
 
     def __str__(self):
         return f"{self.student} - {self.month.strftime('%B %Y')} - {self.amount}"
+
+class StudentTeacherHandover(models.Model):
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='teacher_handovers')
+    previous_teacher = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='previous_teacher_handovers')
+    current_teacher = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='current_teacher_handovers')
+    reason = models.TextField(blank=True, null=True)
+    changed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='teacher_handovers_initiated')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        prev = f"{self.previous_teacher.first_name} {self.previous_teacher.last_name}" if self.previous_teacher else "None"
+        curr = f"{self.current_teacher.first_name} {self.current_teacher.last_name}" if self.current_teacher else "None"
+        return f"Handover for {self.student}: {prev} -> {curr}"
+

@@ -138,6 +138,115 @@ const MentorModule = () => {
     const [historyLoading, setHistoryLoading] = useState(false);
     const [dashboardStats, setDashboardStats] = useState(null);
 
+    // Fee Management & Handover States
+    const [isFeeManageModalOpen, setIsFeeManageModalOpen] = useState(false);
+    const [selectedFeeStudent, setSelectedFeeStudent] = useState(null);
+    const [feeUpdateData, setFeeUpdateData] = useState({ total_fee: '', fee_due_date: '' });
+    const [paymentRecordData, setPaymentRecordData] = useState({ amount: '', paid_date: '', notes: '', month: '' });
+    const [feeActionLoading, setFeeActionLoading] = useState(false);
+
+    const [isHandoverModalOpen, setIsHandoverModalOpen] = useState(false);
+    const [selectedHandoverStudent, setSelectedHandoverStudent] = useState(null);
+    const [handoverData, setHandoverData] = useState({ new_teacher_id: '', reason: '' });
+    const [handoverLoading, setHandoverLoading] = useState(false);
+    const [handoverHistoryList, setHandoverHistoryList] = useState([]);
+
+    const handleOpenFeeModal = (student) => {
+        setSelectedFeeStudent(student);
+        setFeeUpdateData({
+            total_fee: student.total_fee || '',
+            fee_due_date: student.fee_due_date || ''
+        });
+        setPaymentRecordData({
+            amount: '',
+            paid_date: new Date().toISOString().split('T')[0],
+            notes: '',
+            month: new Date().toISOString().slice(0, 7) + '-01'
+        });
+        setIsFeeManageModalOpen(true);
+    };
+
+    const handleUpdateFeeDetails = async (e) => {
+        e.preventDefault();
+        if (!selectedFeeStudent) return;
+        setFeeActionLoading(true);
+        try {
+            const res = await api.post(`/api/students/${selectedFeeStudent.id}/update_fee/`, feeUpdateData);
+            alert('Fee details updated successfully');
+            if (res.data && res.data.student) {
+                setSelectedFeeStudent(res.data.student);
+                if (typeof fetchStudents === 'function') fetchStudents();
+            }
+        } catch (err) {
+            alert(err.response?.data?.error || 'Failed to update fee details');
+        } finally {
+            setFeeActionLoading(false);
+        }
+    };
+
+    const handleRecordPayment = async (e) => {
+        e.preventDefault();
+        if (!selectedFeeStudent || !paymentRecordData.amount) return;
+        setFeeActionLoading(true);
+        try {
+            const res = await api.post(`/api/students/${selectedFeeStudent.id}/record_payment/`, paymentRecordData);
+            alert('Payment recorded successfully!');
+            if (res.data && res.data.student) {
+                setSelectedFeeStudent(res.data.student);
+                setPaymentRecordData({
+                    amount: '',
+                    paid_date: new Date().toISOString().split('T')[0],
+                    notes: '',
+                    month: new Date().toISOString().slice(0, 7) + '-01'
+                });
+                if (typeof fetchStudents === 'function') fetchStudents();
+            }
+        } catch (err) {
+            alert(err.response?.data?.error || 'Failed to record payment');
+        } finally {
+            setFeeActionLoading(false);
+        }
+    };
+
+    const handleOpenHandoverModal = async (student) => {
+        setSelectedHandoverStudent(student);
+        setHandoverData({
+            new_teacher_id: student.batch?.teacher?.id || student.batch?.teacher || '',
+            reason: ''
+        });
+        setIsHandoverModalOpen(true);
+        try {
+            const res = await api.get(`/api/teacher-handovers/?student_id=${student.id}`);
+            setHandoverHistoryList(res.data.results || res.data || []);
+        } catch (err) {
+            setHandoverHistoryList(student.teacher_handovers_list || []);
+        }
+    };
+
+    const handleSubmitHandover = async (e) => {
+        e.preventDefault();
+        if (!selectedHandoverStudent || !handoverData.new_teacher_id) {
+            alert('Please select a new teacher');
+            return;
+        }
+        setHandoverLoading(true);
+        try {
+            const res = await api.post(`/api/students/${selectedHandoverStudent.id}/handover_teacher/`, handoverData);
+            alert('Teacher handover recorded successfully!');
+            if (res.data && res.data.student) {
+                setSelectedHandoverStudent(res.data.student);
+                if (typeof fetchStudents === 'function') fetchStudents();
+                const hRes = await api.get(`/api/teacher-handovers/?student_id=${selectedHandoverStudent.id}`);
+                setHandoverHistoryList(hRes.data.results || hRes.data || []);
+            }
+        } catch (err) {
+            alert(err.response?.data?.error || 'Failed to record teacher handover');
+        } finally {
+            setHandoverLoading(false);
+        }
+    };
+
+
     useEffect(() => {
         if (isAddStudentModalOpen) {
             fetchUnassignedStudents();
@@ -2188,10 +2297,22 @@ const MentorModule = () => {
                                                             </button>
                                                         )}
                                                         <button 
-                                                            onClick={(e) => { e.stopPropagation(); setDueFilterBatch(selectedTeacherBatchId); setDueSearch(student.user_name || student.name); setIsFeeModalOpen(true); }} 
+                                                onClick={(e) => { e.stopPropagation(); setDueFilterBatch(selectedTeacherBatchId); setDueSearch(student.user_name || student.name); setIsFeeModalOpen(true); }} 
                                                             className="text-xs font-semibold px-3 py-1.5 bg-yellow-50 text-yellow-700 rounded-lg hover:bg-yellow-100 transition-colors"
                                                         >
                                                             Unpaid
+                                                        </button>
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); handleOpenFeeModal(student); }} 
+                                                            className="text-xs font-semibold px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-lg hover:bg-emerald-100 transition-colors"
+                                                        >
+                                                            Fee Details
+                                                        </button>
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); handleOpenHandoverModal(student); }} 
+                                                            className="text-xs font-semibold px-3 py-1.5 bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 transition-colors"
+                                                        >
+                                                            Handover History
                                                         </button>
                                                         <button 
                                                             onClick={(e) => { e.stopPropagation(); setCollectedFilterBatch(selectedTeacherBatchId); setCollectedSearch(student.user_name || student.name); setIsCollectedModalOpen(true); }} 
@@ -2447,6 +2568,20 @@ const MentorModule = () => {
                                                         {student.lms_student_id ? 'Linked' : 'Link Wise'}
                                                     </button>
                                                 )}
+                                                <button
+                                                    onClick={() => handleOpenFeeModal(student)}
+                                                    className="px-3 py-2 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-bold hover:bg-emerald-100 transition-all flex items-center gap-1"
+                                                >
+                                                    <IndianRupee size={13} />
+                                                    Fee Details
+                                                </button>
+                                                <button
+                                                    onClick={() => handleOpenHandoverModal(student)}
+                                                    className="px-3 py-2 bg-purple-50 text-purple-700 rounded-xl text-xs font-bold hover:bg-purple-100 transition-all flex items-center gap-1"
+                                                >
+                                                    <Users size={13} />
+                                                    Handover
+                                                </button>
                                                 <button
                                                     onClick={() => setSelectedStudentProfile(student)}
                                                     className="px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl text-xs font-bold hover:bg-indigo-100 transition-all flex items-center gap-2"
@@ -4079,8 +4214,270 @@ const MentorModule = () => {
                     </div>
                 </div>
             )}
+            {/* Student Fee Details & Management Modal */}
+            {isFeeManageModalOpen && selectedFeeStudent && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-[95] animate-fadeIn">
+                    <div className="bg-white rounded-3xl w-full max-w-3xl overflow-hidden shadow-2xl animate-fadeIn max-h-[90vh] flex flex-col">
+                        <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-indigo-50/30">
+                            <div>
+                                <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                                    <span className="w-9 h-9 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
+                                        ₹
+                                    </span>
+                                    Manage Student Fee Details
+                                </h2>
+                                <p className="text-xs text-slate-500 mt-1">
+                                    {selectedFeeStudent.first_name} {selectedFeeStudent.last_name} ({selectedFeeStudent.crm_student_id})
+                                </p>
+                            </div>
+                            <button onClick={() => setIsFeeManageModalOpen(false)} className="text-slate-400 hover:text-slate-600 bg-white hover:bg-slate-100 p-2 rounded-full transition-all border border-slate-200">
+                                <X size={20} />
+                            </button>
+                        </div>
+                        
+                        <div className="p-6 overflow-y-auto flex-1 space-y-6 custom-scrollbar">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl">
+                                    <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Total Fee</span>
+                                    <div className="text-2xl font-bold text-slate-800 mt-1">₹{Number(selectedFeeStudent.total_fee || 0).toLocaleString()}</div>
+                                </div>
+                                <div className="p-4 bg-emerald-50/60 border border-emerald-200 rounded-2xl">
+                                    <span className="text-xs font-bold uppercase tracking-wider text-emerald-600">Paid Amount</span>
+                                    <div className="text-2xl font-bold text-emerald-700 mt-1">₹{Number(selectedFeeStudent.paid_fee || 0).toLocaleString()}</div>
+                                </div>
+                                <div className="p-4 bg-red-50/60 border border-red-200 rounded-2xl">
+                                    <span className="text-xs font-bold uppercase tracking-wider text-red-500">Pending Due</span>
+                                    <div className="text-2xl font-bold text-red-600 mt-1">₹{Math.max(0, Number(selectedFeeStudent.total_fee || 0) - Number(selectedFeeStudent.paid_fee || 0)).toLocaleString()}</div>
+                                </div>
+                            </div>
+
+                            <form onSubmit={handleUpdateFeeDetails} className="bg-slate-50 p-5 rounded-2xl border border-slate-200 space-y-4">
+                                <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Update Fee Structure & Due Date</h3>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-600 mb-1">Total Fee Amount (₹)</label>
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            value={feeUpdateData.total_fee}
+                                            onChange={(e) => setFeeUpdateData({ ...feeUpdateData, total_fee: e.target.value })}
+                                            className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 text-sm font-bold text-slate-800"
+                                            placeholder="Enter total fee"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-600 mb-1">Fee Due Date</label>
+                                        <input
+                                            type="date"
+                                            value={feeUpdateData.fee_due_date || ''}
+                                            onChange={(e) => setFeeUpdateData({ ...feeUpdateData, fee_due_date: e.target.value })}
+                                            className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 text-sm font-medium text-slate-800"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="flex justify-end">
+                                    <button
+                                        type="submit"
+                                        disabled={feeActionLoading}
+                                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-2"
+                                    >
+                                        {feeActionLoading ? <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></span> : 'Update Fee Structure'}
+                                    </button>
+                                </div>
+                            </form>
+
+                            <form onSubmit={handleRecordPayment} className="bg-emerald-50/40 p-5 rounded-2xl border border-emerald-200/80 space-y-4">
+                                <h3 className="text-sm font-bold text-emerald-800 uppercase tracking-wider">Record Fee Payment</h3>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-600 mb-1">Amount Paid (₹) *</label>
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            required
+                                            value={paymentRecordData.amount}
+                                            onChange={(e) => setPaymentRecordData({ ...paymentRecordData, amount: e.target.value })}
+                                            className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-100 focus:border-emerald-400 text-sm font-bold text-slate-800"
+                                            placeholder="e.g. 5000"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-600 mb-1">Payment Date</label>
+                                        <input
+                                            type="date"
+                                            value={paymentRecordData.paid_date}
+                                            onChange={(e) => setPaymentRecordData({ ...paymentRecordData, paid_date: e.target.value })}
+                                            className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-100 focus:border-emerald-400 text-sm font-medium text-slate-800"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-600 mb-1">Payment Month</label>
+                                        <input
+                                            type="month"
+                                            value={paymentRecordData.month ? paymentRecordData.month.slice(0, 7) : ''}
+                                            onChange={(e) => setPaymentRecordData({ ...paymentRecordData, month: e.target.value ? e.target.value + '-01' : '' })}
+                                            className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-100 focus:border-emerald-400 text-sm font-medium text-slate-800"
+                                        />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-600 mb-1">Notes / Transaction Ref (Optional)</label>
+                                    <input
+                                        type="text"
+                                        value={paymentRecordData.notes}
+                                        onChange={(e) => setPaymentRecordData({ ...paymentRecordData, notes: e.target.value })}
+                                        placeholder="e.g. GPay / Cash receipt #104"
+                                        className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-100 focus:border-emerald-400 text-sm"
+                                    />
+                                </div>
+                                <div className="flex justify-end">
+                                    <button
+                                        type="submit"
+                                        disabled={feeActionLoading}
+                                        className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-2"
+                                    >
+                                        {feeActionLoading ? <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span> : 'Record Payment'}
+                                    </button>
+                                </div>
+                            </form>
+
+                            <div>
+                                <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-3">Recorded Payments & Transactions</h3>
+                                {selectedFeeStudent.monthly_payments_list && selectedFeeStudent.monthly_payments_list.length > 0 ? (
+                                    <div className="overflow-x-auto border border-slate-200 rounded-2xl bg-white shadow-sm">
+                                        <table className="w-full text-left text-xs">
+                                            <thead>
+                                                <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase">
+                                                    <th className="p-3">Month</th>
+                                                    <th className="p-3">Date Paid</th>
+                                                    <th className="p-3 text-right">Amount</th>
+                                                    <th className="p-3">Recorded By</th>
+                                                    <th className="p-3">Notes</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {selectedFeeStudent.monthly_payments_list.map((mp) => (
+                                                    <tr key={mp.id} className="hover:bg-slate-50 transition-colors">
+                                                        <td className="p-3 font-semibold text-slate-800">{mp.month}</td>
+                                                        <td className="p-3 text-slate-600">{mp.paid_date}</td>
+                                                        <td className="p-3 text-right font-bold text-emerald-600">₹{Number(mp.amount).toLocaleString()}</td>
+                                                        <td className="p-3 text-slate-600">{mp.marked_by_name || 'System'}</td>
+                                                        <td className="p-3 text-slate-500">{mp.notes || '-'}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                ) : (
+                                    <p className="text-xs text-slate-400 italic bg-slate-50 p-4 rounded-xl text-center">No payment transactions recorded yet.</p>
+                                )}
+                            </div>
+                        </div>
+                        
+                        <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end">
+                            <button onClick={() => setIsFeeManageModalOpen(false)} className="px-5 py-2 text-sm font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-100 rounded-xl transition-all">Close</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Teacher Handover History & Change Modal */}
+            {isHandoverModalOpen && selectedHandoverStudent && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-[95] animate-fadeIn">
+                    <div className="bg-white rounded-3xl w-full max-w-3xl overflow-hidden shadow-2xl animate-fadeIn max-h-[90vh] flex flex-col">
+                        <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-gradient-to-r from-indigo-50/50 to-purple-50/50">
+                            <div>
+                                <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                                    <Users size={22} className="text-indigo-600" />
+                                    Teacher Handover & History
+                                </h2>
+                                <p className="text-xs text-slate-500 mt-1">
+                                    Student: <span className="font-semibold text-slate-800">{selectedHandoverStudent.first_name} {selectedHandoverStudent.last_name}</span> | Current Teacher: <span className="font-semibold text-indigo-600">{selectedHandoverStudent.teacher_name || 'Not Assigned'}</span>
+                                </p>
+                            </div>
+                            <button onClick={() => setIsHandoverModalOpen(false)} className="text-slate-400 hover:text-slate-600 bg-white hover:bg-slate-100 p-2 rounded-full transition-all border border-slate-200">
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        <div className="p-6 overflow-y-auto flex-1 space-y-6 custom-scrollbar">
+                            <form onSubmit={handleSubmitHandover} className="bg-indigo-50/40 p-5 rounded-2xl border border-indigo-100 space-y-4">
+                                <h3 className="text-sm font-bold text-indigo-900 uppercase tracking-wider">Initiate New Teacher Handover</h3>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-700 mb-1">Select New Teacher *</label>
+                                        <select
+                                            required
+                                            value={handoverData.new_teacher_id}
+                                            onChange={(e) => setHandoverData({ ...handoverData, new_teacher_id: e.target.value })}
+                                            className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 text-sm font-semibold text-slate-800 bg-white"
+                                        >
+                                            <option value="">-- Choose Teacher --</option>
+                                            {teachers.map(t => (
+                                                <option key={t.id} value={t.id}>
+                                                    {t.first_name ? `${t.first_name} ${t.last_name || ''}`.trim() : t.username}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-700 mb-1">Reason for Handover (Optional)</label>
+                                        <input
+                                            type="text"
+                                            value={handoverData.reason}
+                                            onChange={(e) => setHandoverData({ ...handoverData, reason: e.target.value })}
+                                            placeholder="e.g. Schedule conflict, batch re-allocation..."
+                                            className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 text-sm bg-white"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="flex justify-end">
+                                    <button
+                                        type="submit"
+                                        disabled={handoverLoading}
+                                        className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-2"
+                                    >
+                                        {handoverLoading ? <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span> : 'Record Handover'}
+                                    </button>
+                                </div>
+                            </form>
+
+                            <div>
+                                <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-3">Handover Audit Trail</h3>
+                                {handoverHistoryList && handoverHistoryList.length > 0 ? (
+                                    <div className="space-y-3">
+                                        {handoverHistoryList.map((h, i) => (
+                                            <div key={h.id || i} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                                <div className="space-y-1">
+                                                    <div className="flex items-center gap-2 text-sm font-bold text-slate-800">
+                                                        <span className="text-slate-500 font-normal">{h.previous_teacher_name || 'None'}</span>
+                                                        <span className="text-indigo-600 font-bold">➔</span>
+                                                        <span className="text-emerald-700">{h.current_teacher_name || 'None'}</span>
+                                                    </div>
+                                                    {h.reason && <p className="text-xs text-slate-600 italic">"Reason: {h.reason}"</p>}
+                                                    <p className="text-[11px] text-slate-400">Initiated by: {h.changed_by_name || 'System'}</p>
+                                                </div>
+                                                <div className="text-xs text-slate-400 font-medium whitespace-nowrap">
+                                                    {h.created_at ? new Date(h.created_at).toLocaleString() : 'Recent'}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="text-xs text-slate-400 italic bg-slate-50 p-4 rounded-xl text-center">No teacher handovers recorded for this student yet.</p>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end">
+                            <button onClick={() => setIsHandoverModalOpen(false)} className="px-5 py-2 text-sm font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-100 rounded-xl transition-all">Close</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
+
 }
 
 export default MentorModule;
