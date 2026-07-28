@@ -1343,7 +1343,16 @@ class DashboardStatsView(APIView):
         from decimal import Decimal
         
         # Base querysets
-        student_qs = Student.objects.filter(is_active=True)
+        converted_stage_ids = ['CONVERTED', 'ENROLLED']
+        try:
+            from crm.models import PipelineStage
+            stages = PipelineStage.objects.filter(Q(name__icontains='convert') | Q(name__icontains='enroll'))
+            for stage in stages:
+                converted_stage_ids.append(str(stage.id))
+        except Exception:
+            pass
+
+        student_qs = Student.objects.filter(is_active=True, lead_status__in=converted_stage_ids)
         batch_qs = Batch.objects.all()
         trans_qs = Transaction.objects.all()
         
