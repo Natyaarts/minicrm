@@ -1792,7 +1792,9 @@ const MentorModule = () => {
                                     >
                                         <option value="">All Fee Statuses</option>
                                         <option value="PAID">Fully Paid</option>
+                                        <option value="PARTIAL">Partial Payment</option>
                                         <option value="DEFAULTER">Fee Due / Defaulters</option>
+                                        <option value="MONTHLY_UNPAID">Monthly Unpaid</option>
                                     </select>
                                 </div>
                             </div>
@@ -1817,13 +1819,25 @@ const MentorModule = () => {
                                         onClick={() => setStudentFilterStatus('INACTIVE')}
                                         className={`px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${studentFilterStatus === 'INACTIVE' ? 'bg-amber-600 text-white shadow-sm' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'}`}
                                     >
-                                        <span className="w-2 h-2 rounded-full bg-amber-400"></span> Inactive / Break
+                                        <span className="w-2 h-2 rounded-full bg-amber-400"></span> Inactive
                                     </button>
                                     <button
                                         onClick={() => setStudentFilterStatus('NEW_ADMISSION')}
                                         className={`px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${studentFilterStatus === 'NEW_ADMISSION' ? 'bg-blue-600 text-white shadow-sm' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
                                     >
                                         <span className="w-2 h-2 rounded-full bg-blue-400"></span> New Admission
+                                    </button>
+                                    <button
+                                        onClick={() => setStudentFilterStatus('ON_BREAK')}
+                                        className={`px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${studentFilterStatus === 'ON_BREAK' ? 'bg-orange-600 text-white shadow-sm' : 'bg-orange-50 text-orange-700 hover:bg-orange-100'}`}
+                                    >
+                                        <span className="w-2 h-2 rounded-full bg-orange-400"></span> On Break
+                                    </button>
+                                    <button
+                                        onClick={() => setStudentFilterStatus('DISCONTINUED')}
+                                        className={`px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${studentFilterStatus === 'DISCONTINUED' ? 'bg-red-600 text-white shadow-sm' : 'bg-red-50 text-red-700 hover:bg-red-100'}`}
+                                    >
+                                        <span className="w-2 h-2 rounded-full bg-red-400"></span> Discontinued
                                     </button>
                                 </div>
 

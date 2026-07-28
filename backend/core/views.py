@@ -478,9 +478,15 @@ class StudentViewSet(viewsets.ModelViewSet):
         fee_status = self.request.query_params.get('fee_status')
         if fee_status:
             if fee_status.upper() == 'PAID':
-                qs = qs.filter(paid_fee__gte=F('total_fee'))
+                qs = qs.filter(paid_fee__gte=F('total_fee'), total_fee__gt=0)
+            elif fee_status.upper() == 'PARTIAL':
+                qs = qs.filter(paid_fee__gt=0, paid_fee__lt=F('total_fee'))
             elif fee_status.upper() == 'DEFAULTER':
                 qs = qs.filter(paid_fee__lt=F('total_fee'))
+            elif fee_status.upper() == 'MONTHLY_UNPAID':
+                from datetime import date
+                current_month = date.today().strftime('%Y-%m-01')
+                qs = qs.exclude(monthly_payment_months__contains=current_month)
 
         mentor_id = self.request.query_params.get('mentor_id')
 
@@ -502,6 +508,10 @@ class StudentViewSet(viewsets.ModelViewSet):
         sub_program = self.request.query_params.get('sub_program')
         if sub_program:
             qs = qs.filter(sub_program_id=sub_program)
+
+        batch = self.request.query_params.get('batch')
+        if batch:
+            qs = qs.filter(batch_id=batch)
 
         course = self.request.query_params.get('course')
         if course:
