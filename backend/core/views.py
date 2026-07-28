@@ -430,8 +430,10 @@ class StudentViewSet(viewsets.ModelViewSet):
         qs = qs.filter(is_active=is_active)
         
         hide_converted = self.request.query_params.get('hide_converted')
-        if hide_converted == 'true' and converted_stage_ids:
-            qs = qs.exclude(lead_status__in=converted_stage_ids)
+        if hide_converted == 'true':
+            # ensure all variations of enrolled/converted are excluded
+            exclude_statuses = converted_stage_ids + ['ENROLLED', 'CONVERTED', 'enrolled', 'converted', 'Enrolled', 'Converted']
+            qs = qs.exclude(lead_status__in=exclude_statuses)
 
         sales_section_filter = self.request.query_params.get('sales_section')
         if sales_section_filter and sales_section_filter.upper() != 'ALL':

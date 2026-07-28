@@ -59,7 +59,7 @@ export default function SalesScreen() {
       fetchLeads(1, true);
     }, 300);
     return () => clearTimeout(t);
-  }, [search, selectedFilter, sortOrder, authLoading]);
+  }, [search, selectedFilter, sortOrder, authLoading, user?.role]);
 
   const loadUser = async () => {
     try {
@@ -280,8 +280,8 @@ export default function SalesScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Stats row — only for managers */}
-        {isManager && stats && (
+        {/* Stats row — show to sales so they can see the converted count */}
+        {stats && (
           <View style={styles.statsRow}>
             <View style={[styles.statCard, { borderLeftColor: '#3B82F6' }]}>
               <Text style={styles.statVal}>{stats.total_leads || 0}</Text>
