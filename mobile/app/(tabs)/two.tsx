@@ -613,35 +613,9 @@ export default function SalesScreen() {
             </TouchableOpacity>
         </View>
         
-        {/* Segmented Toggle Bar */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
-          <View style={[styles.segmentContainer, isDark && styles.darkSegmentContainer, { width: 'auto' }]}>
-            <TouchableOpacity style={[styles.segmentButton, activeTab === 'single' && (isDark ? styles.darkSegmentActive : styles.segmentActive)]} onPress={() => setActiveTab('single')}>
-              <Text style={[styles.segmentText, activeTab === 'single' && (isDark ? styles.darkSegmentTextActive : styles.segmentTextActive)]}>Single App</Text>
-            </TouchableOpacity>
-            
-            {isManager && (
-              <TouchableOpacity style={[styles.segmentButton, activeTab === 'bulk' && (isDark ? styles.darkSegmentActive : styles.segmentActive)]} onPress={() => setActiveTab('bulk')}>
-                <Text style={[styles.segmentText, activeTab === 'bulk' && (isDark ? styles.darkSegmentTextActive : styles.segmentTextActive)]}>Bulk Upload</Text>
-              </TouchableOpacity>
-            )}
 
-            <TouchableOpacity style={[styles.segmentButton, activeTab === 'view' && (isDark ? styles.darkSegmentActive : styles.segmentActive)]} onPress={() => setActiveTab('view')}>
-              <Text style={[styles.segmentText, activeTab === 'view' && (isDark ? styles.darkSegmentTextActive : styles.segmentTextActive)]}>View Apps</Text>
-            </TouchableOpacity>
-
-            {isManager && (
-              <TouchableOpacity style={[styles.segmentButton, activeTab === 'web' && (isDark ? styles.darkSegmentActive : styles.segmentActive)]} onPress={() => { setActiveTab('web'); handleOpenWebPortal(); }}>
-                <FontAwesome5 name="globe" size={12} color={activeTab === 'web' ? '#FBBF24' : '#718096'} style={{ marginRight: 4 }} />
-                <Text style={[styles.segmentText, activeTab === 'web' && (isDark ? styles.darkSegmentTextActive : styles.segmentTextActive)]}>Web Portal</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        </ScrollView>
-
-        {/* Search & Filter Bar (Only visible in View Applications tab) */}
-        {activeTab === 'view' && (
-          <View style={{ backgroundColor: 'transparent' }}>
+        {/* Search & Filter Bar */}
+        <View style={{ backgroundColor: 'transparent' }}>
 
             {/* Row 1: Search + controls — always visible */}
             <View style={[styles.searchBar, isDark && styles.darkHeader, { marginBottom: 6 }]}>
@@ -735,12 +709,10 @@ export default function SalesScreen() {
                 <Text style={{ color: '#A0AEC0', fontSize: 11 }}>{totalStudents} leads</Text>
               </View>
             )}
-          </View>
-        )}
       </View>
 
-      {/* TAB CONTENT: 1. VIEW APPLICATIONS */}
-      {activeTab === 'view' && (
+      {/* LEADS LIST */}
+      {
         loading && !refreshing ? (
           <View style={[styles.loadingContainer, isDark && styles.darkBg]}>
             <ActivityIndicator size="large" color="#FBBF24" />
@@ -789,148 +761,7 @@ export default function SalesScreen() {
         )
       )}
 
-      {/* TAB CONTENT: 2. SINGLE APPLICATION FORM */}
-      {activeTab === 'single' && (
-        <ScrollView style={styles.formScroll} contentContainerStyle={styles.formContainer}>
-          <View style={[styles.formCard, isDark && styles.darkCard]}>
-            <View style={styles.stepBadge}><Text style={styles.stepBadgeText}>STEP 1: PROGRAM SELECTION</Text></View>
-            <Text style={[styles.formHeader, isDark && styles.darkText]}>SELECT ACADEMIC TRACK</Text>
-            
-            {/* PROGRAM SELECTION FIELD */}
-            <View style={styles.inputGroup}>
-              <Text style={[styles.label, isDark && styles.darkText]}>Program Selection</Text>
-              <Text style={styles.subLabel}>Select Program *</Text>
-              <TouchableOpacity style={[styles.programSelectorBtn, isDark && styles.darkHeader]} onPress={handleOpenProgramModal}>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <FontAwesome5 name="university" size={16} color="#3182CE" style={{ marginRight: 12 }} />
-                  <Text style={[styles.programSelectorText, isDark && styles.darkText]}>{program}</Text>
-                </View>
-                <FontAwesome5 name="chevron-down" size={14} color="#718096" />
-              </TouchableOpacity>
-            </View>
 
-            {/* SUB-PROGRAM / CATEGORY SELECTION FIELD */}
-            {subProgramsList.length > 0 && (
-              <View style={styles.inputGroup}>
-                <Text style={[styles.label, isDark && styles.darkText]}>Category / Sub-Program</Text>
-                <Text style={styles.subLabel}>Select Category *</Text>
-                <TouchableOpacity style={[styles.programSelectorBtn, isDark && styles.darkHeader]} onPress={handleOpenSubProgramModal}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <FontAwesome5 name="layer-group" size={16} color="#805AD5" style={{ marginRight: 12 }} />
-                    <Text style={[styles.programSelectorText, isDark && styles.darkText]}>{selectedSubProgramObj?.name || '-- Select Category --'}</Text>
-                  </View>
-                  <FontAwesome5 name="chevron-down" size={14} color="#718096" />
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {/* COURSE / SUBJECT SELECTION FIELD */}
-            {coursesList.length > 0 && (
-              <View style={styles.inputGroup}>
-                <Text style={[styles.label, isDark && styles.darkText]}>Course / Subject</Text>
-                <Text style={styles.subLabel}>Select Course *</Text>
-                <TouchableOpacity style={[styles.programSelectorBtn, isDark && styles.darkHeader]} onPress={handleOpenCourseModal}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <FontAwesome5 name="graduation-cap" size={16} color="#38A169" style={{ marginRight: 12 }} />
-                    <Text style={[styles.programSelectorText, isDark && styles.darkText]}>{selectedCourseObj?.name || course || '-- Select Course --'}</Text>
-                  </View>
-                  <FontAwesome5 name="chevron-down" size={14} color="#718096" />
-                </TouchableOpacity>
-              </View>
-            )}
-
-            <View style={[styles.stepBadge, { marginTop: 20, backgroundColor: isDark ? '#1E293B' : '#EBF8FF' }]}>
-              <Text style={[styles.stepBadgeText, { color: isDark ? '#FBBF24' : '#2B6CB0' }]}>STEP 2: APPLICANT DETAILS</Text>
-            </View>
-            <Text style={[styles.formHeader, isDark && styles.darkText]}>CORE & DYNAMIC FIELDS</Text>
-
-            <View style={styles.inputGroup}>
-              <Text style={[styles.label, isDark && styles.darkText]}>First Name *</Text>
-              <TextInput style={[styles.formInput, isDark && styles.darkInput]} placeholder="Enter first name" placeholderTextColor="#A0AEC0" value={firstName} onChangeText={setFirstName} />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={[styles.label, isDark && styles.darkText]}>Last Name</Text>
-              <TextInput style={[styles.formInput, isDark && styles.darkInput]} placeholder="Enter last name" placeholderTextColor="#A0AEC0" value={lastName} onChangeText={setLastName} />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={[styles.label, isDark && styles.darkText]}>Phone Number *</Text>
-              <TextInput style={[styles.formInput, isDark && styles.darkInput]} placeholder="Enter phone number" placeholderTextColor="#A0AEC0" keyboardType="phone-pad" value={phone} onChangeText={setPhone} />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={[styles.label, isDark && styles.darkText]}>Email Address</Text>
-              <TextInput style={[styles.formInput, isDark && styles.darkInput]} placeholder="Enter email address" placeholderTextColor="#A0AEC0" keyboardType="email-address" autoCapitalize="none" value={email} onChangeText={setEmail} />
-            </View>
-
-            {coursesList.length === 0 && (
-              <View style={styles.inputGroup}>
-                <Text style={[styles.label, isDark && styles.darkText]}>Interested Course</Text>
-                <TextInput style={[styles.formInput, isDark && styles.darkInput]} placeholder="e.g. Bharatanatyam Advanced" placeholderTextColor="#A0AEC0" value={course} onChangeText={setCourse} />
-              </View>
-            )}
-
-            {/* DYNAMIC FIELDS RENDERER */}
-            {dynamicFieldsList.map((field, idx) => (
-              <View key={idx} style={styles.inputGroup}>
-                <Text style={[styles.label, isDark && styles.darkText]}>{field.label} {field.is_required ? '*' : ''}</Text>
-                {field.field_type === 'dropdown' ? (
-                  <TouchableOpacity style={[styles.formInput, isDark && styles.darkInput]} onPress={() => handleOpenDynamicFieldModal(field)}>
-                    <Text style={{ color: dynamicValues[field.id] ? (isDark ? '#FFF' : '#1A202C') : '#A0AEC0', fontSize: 15 }}>
-                      {dynamicValues[field.id] || `Select ${field.label}`}
-                    </Text>
-                  </TouchableOpacity>
-                ) : (
-                  <TextInput
-                    style={[styles.formInput, isDark && styles.darkInput]}
-                    placeholder={field.placeholder || `Enter ${field.label.toLowerCase()}`}
-                    placeholderTextColor="#A0AEC0"
-                    value={dynamicValues[field.id] || ''}
-                    onChangeText={(text) => setDynamicValues({...dynamicValues, [field.id]: text})}
-                  />
-                )}
-              </View>
-            ))}
-
-            <TouchableOpacity style={styles.submitButton} onPress={handleSingleSubmit} disabled={submitting}>
-              {submitting ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <>
-                  <Text style={styles.submitButtonText}>Submit Application</Text>
-                  <FontAwesome5 name="check-circle" size={16} color="#FFFFFF" />
-                </>
-              )}
-            </TouchableOpacity>
-          </View>
-        </ScrollView>
-      )}
-
-      {/* TAB CONTENT: 3. BULK UPLOAD */}
-      {activeTab === 'bulk' && (
-        <View style={styles.bulkContainer}>
-          <View style={[styles.bulkCard, isDark && styles.darkCard]}>
-            <View style={styles.uploadIconContainer}>
-              <FontAwesome5 name="file-csv" size={48} color="#3182CE" />
-            </View>
-            <Text style={[styles.bulkTitle, isDark && styles.darkText]}>Bulk Import Student Applications</Text>
-            <Text style={[styles.bulkDesc, isDark && styles.darkSubText]}>
-              Upload a CSV file containing multiple student records. The system will automatically validate and queue them for batch insertion into the production database.
-            </Text>
-            
-            <TouchableOpacity style={styles.uploadButton} onPress={handleBulkUpload}>
-              <FontAwesome5 name="upload" size={16} color="#FFFFFF" />
-              <Text style={styles.uploadButtonText}>Select CSV File</Text>
-            </TouchableOpacity>
-
-            <View style={[styles.templateBox, isDark && styles.darkHeader]}>
-              <FontAwesome5 name="info-circle" size={14} color="#718096" />
-              <Text style={styles.templateText}>Required columns: first_name, last_name, phone, email, course, program</Text>
-            </View>
-          </View>
-        </View>
-      )}
 
       {/* SELECTION MODAL */}
       <Modal
