@@ -106,7 +106,7 @@ const CRMDashboard = ({ onStatClick, onBdeClick }) => {
                     icon={<Users size={24} />} 
                     bg="bg-indigo-50" 
                     text="text-indigo-600"
-                    onClick={() => onStatClick('all', '')}
+                    onClick={() => onStatClick('all', '', 'Total Leads')}
                 />
                 <StatCard 
                     title="Unassigned Leads" 
@@ -114,7 +114,7 @@ const CRMDashboard = ({ onStatClick, onBdeClick }) => {
                     icon={<UserMinus size={24} />} 
                     bg="bg-rose-50" 
                     text="text-rose-600"
-                    onClick={() => onStatClick('assignee', 'unassigned')}
+                    onClick={() => onStatClick('assignee', 'unassigned', 'Unassigned Leads')}
                 />
                 <StatCard 
                     title="Contacted Leads" 
@@ -122,7 +122,7 @@ const CRMDashboard = ({ onStatClick, onBdeClick }) => {
                     icon={<PhoneCall size={24} />} 
                     bg="bg-emerald-50" 
                     text="text-emerald-600"
-                    onClick={() => onStatClick('contacted', 'true')}
+                    onClick={() => onStatClick('contacted', 'true', 'Contacted Leads')}
                 />
                 <StatCard 
                     title="Pending Leads" 
@@ -130,7 +130,7 @@ const CRMDashboard = ({ onStatClick, onBdeClick }) => {
                     icon={<Clock size={24} />} 
                     bg="bg-orange-50" 
                     text="text-orange-600"
-                    onClick={() => onStatClick('contacted', 'false')}
+                    onClick={() => onStatClick('contacted', 'false', 'Pending Leads')}
                 />
                 <StatCard 
                     title="Converted Leads" 
@@ -138,7 +138,7 @@ const CRMDashboard = ({ onStatClick, onBdeClick }) => {
                     icon={<UserCheck size={24} />} 
                     bg="bg-blue-50" 
                     text="text-blue-600"
-                    onClick={() => onStatClick('status', 'converted')}
+                    onClick={() => onStatClick('status', 'converted', 'Converted Leads')}
                 />
                 <StatCard 
                     title="Revenue" 
@@ -169,7 +169,7 @@ const CRMDashboard = ({ onStatClick, onBdeClick }) => {
                                         outerRadius={100}
                                         paddingAngle={5}
                                         dataKey="count"
-                                        onClick={(data) => onStatClick('stage', data.id)}
+                                        onClick={(data) => onStatClick('stage', data.id, data.id)}
                                         style={{ cursor: 'pointer' }}
                                     >
                                         {stats.pipeline_stages.map((entry, index) => (
@@ -184,7 +184,7 @@ const CRMDashboard = ({ onStatClick, onBdeClick }) => {
                                         layout="vertical" 
                                         verticalAlign="middle" 
                                         align="right"
-                                        onClick={(data) => onStatClick('stage', data.payload.id)}
+                                        onClick={(data) => onStatClick('stage', data.payload.id, data.payload.id)}
                                         wrapperStyle={{ cursor: 'pointer', fontSize: '12px' }}
                                     />
                                 </PieChart>
@@ -210,7 +210,7 @@ const CRMDashboard = ({ onStatClick, onBdeClick }) => {
                                     onClick={(data) => {
                                         if (data && data.activePayload) {
                                             if (onBdeClick) onBdeClick(data.activePayload[0].payload.id);
-                                            else onStatClick('assignee', data.activePayload[0].payload.id);
+                                            else onStatClick('assignee', data.activePayload[0].payload.id, data.activePayload[0].payload.name);
                                         }
                                     }}
                                 >
@@ -284,7 +284,7 @@ const CRMDashboard = ({ onStatClick, onBdeClick }) => {
                                         <td className="border-b border-slate-100 py-3 text-right">
                                             {task.student && (
                                                 <button 
-                                                    onClick={() => onStatClick('single', task.student)}
+                                                    onClick={() => onStatClick('single', task.student, 'Lead Details')}
                                                     className="text-[10px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded transition-colors"
                                                 >
                                                     View Lead

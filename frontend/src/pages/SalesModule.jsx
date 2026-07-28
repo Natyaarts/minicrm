@@ -13,6 +13,7 @@ import TeamReports from '../components/TeamReports';
 import CallAnalyticsDashboard from '../components/CallAnalyticsDashboard';
 import CRMTasks from '../components/CRMTasks';
 import CRMCampaigns from '../components/CRMCampaigns';
+import StatLeadsModal from '../components/StatLeadsModal';
 
 const SalesModule = () => {
     const { user: authUser } = useAuth();
@@ -94,6 +95,7 @@ const SalesModule = () => {
     const [selectedLeadIds, setSelectedLeadIds] = useState([]);
     const [showBulkAssignModal, setShowBulkAssignModal] = useState(false);
     const [bulkAssignTo, setBulkAssignTo] = useState('');
+    const [statModalConfig, setStatModalConfig] = useState(null);
     const [wiseData, setWiseData] = useState(null);
     const [loadingWise, setLoadingWise] = useState(false);
 
@@ -1496,28 +1498,7 @@ const SalesModule = () => {
                     ) : activeTab === 'dashboard' && isAuthenticated ? (
                         <div className="bg-slate-50 min-h-[500px]">
                             <CRMDashboard 
-                                onStatClick={async (type, value) => {
-                                    if (type === 'stage') {
-                                        setSelectedStageFilter(value);
-                                        setActiveTab('list');
-                                    }
-                                    if (type === 'assignee') {
-                                        setSelectedAssigneeFilter(value);
-                                        setSelectedContactedFilter('');
-                                        setActiveTab('list');
-                                    }
-                                    if (type === 'contacted') {
-                                        setSelectedStageFilter('');
-                                        setSelectedAssigneeFilter('');
-                                        setSelectedContactedFilter(value);
-                                        setActiveTab('list');
-                                    }
-                                    if (type === 'all') {
-                                        setSelectedStageFilter('');
-                                        setSelectedAssigneeFilter('');
-                                        setSelectedContactedFilter('');
-                                        setActiveTab('list');
-                                    }
+                                onStatClick={async (type, value, title) => {
                                     if (type === 'single') {
                                         try {
                                             const res = await api.get(`students/${value}/`);
@@ -1525,7 +1506,10 @@ const SalesModule = () => {
                                         } catch(e) {
                                             console.error("Failed to load student profile", e);
                                         }
+                                        return;
                                     }
+                                    // Open Stat Modal
+                                    setStatModalConfig({ type, value, title: title || (type === 'stage' ? value : 'Leads') });
                                 }}
                                 onBdeClick={setSelectedBdeId}
                             />
@@ -2371,6 +2355,20 @@ const SalesModule = () => {
             )}
             {/* BDE Report Modal */}
             <BDEReport bdeId={selectedBdeId} onClose={() => setSelectedBdeId(null)} />
+            
+            <StatLeadsModal 
+                config={statModalConfig} 
+                onClose={() => setStatModalConfig(null)} 
+                onViewLead={async (id) => {
+                    try {
+                        const res = await api.get(`students/${id}/`);
+                        setSelectedStudentProfile(res.data);
+                    } catch(e) {
+                        console.error("Failed to load student profile", e);
+                    }
+                }}
+                salesSectionFilter={salesSectionFilter}
+            />
 
         </div>
     );
