@@ -84,6 +84,7 @@ export default function SalesScreen() {
   const [totalStudents, setTotalStudents] = useState(0);
   const [sortOrder, setSortOrder] = useState<'-id' | 'id'>('-id');
   const [viewMode, setViewMode] = useState<'list' | 'card'>('list');
+  const [showFilters, setShowFilters] = useState(false);
 
   // Pagination & Filtering State for View Applications
   const [selectedFilter, setSelectedFilter] = useState<any>({ label: 'All', type: 'all', value: 'All' });
@@ -441,55 +442,66 @@ export default function SalesScreen() {
     }
   };
 
-  // Compact list row — shows ~8-10 leads per screen
+  // Compact list row — shows ~10+ leads per screen with stage color
   const renderStudentList = ({ item }: { item: any }) => {
     const sc = getStatusColor(item.lead_status || item.status || 'NEW');
     const phone = item.phone || item.mobile || '';
+    const stageName = (item.lead_status || item.status || 'NEW').replace(/_/g, ' ');
     return (
       <TouchableOpacity
         style={[styles.listRow, isDark && styles.darkListRow]}
         onPress={() => router.push({ pathname: '/lead-details', params: { leadId: item.id } } as any)}
         activeOpacity={0.7}
       >
+        {/* Stage color stripe on left */}
+        <View style={[styles.listStripe, { backgroundColor: sc.text }]} />
+
         {/* Avatar */}
         <View style={[styles.listAvatar, { backgroundColor: isDark ? '#1E3A5F' : '#EBF8FF' }]}>
           <Text style={styles.listAvatarText}>{item.first_name?.[0] || '?'}</Text>
         </View>
 
-        {/* Name + ID + Program */}
+        {/* Name + ID + Stage */}
         <View style={styles.listInfo}>
           <Text style={[styles.listName, isDark && styles.darkText]} numberOfLines={1}>
             {item.first_name} {item.last_name}
           </Text>
-          <Text style={[styles.listSub, isDark && styles.darkSubText]} numberOfLines={1}>
-            {item.crm_student_id || item.username} • <Text style={{ color: '#FBBF24', fontWeight: '800' }}>{item.program_name || item.program || ''}</Text>
-          </Text>
-          {phone ? (
-            <Text style={[styles.listPhone, isDark && styles.darkSubText]} numberOfLines={1}>📞 {phone}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 1 }}>
+            <View style={[styles.stageChip, { backgroundColor: sc.bg }]}>
+              <Text style={[styles.stageChipText, { color: sc.text }]}>{stageName}</Text>
+            </View>
+            <Text style={[styles.listSub, isDark && styles.darkSubText]} numberOfLines={1}>
+              {item.crm_student_id || item.username}
+            </Text>
+          </View>
+          {item.program_name || item.program ? (
+            <Text style={{ fontSize: 10, color: '#FBBF24', fontWeight: '700', marginTop: 1 }} numberOfLines={1}>
+              {item.program_name || item.program}
+            </Text>
           ) : null}
         </View>
 
-        {/* Status badge */}
-        <View style={[styles.listBadge, { backgroundColor: sc.bg }]}>
-          <Text style={[styles.listBadgeText, { color: sc.text }]}>
-            {(item.lead_status || item.status || 'NEW').replace('_', ' ')}
-          </Text>
+        {/* Phone + Call button */}
+        <View style={{ alignItems: 'flex-end', gap: 4 }}>
+          {phone ? (
+            <Text style={{ fontSize: 9, color: isDark ? '#64748B' : '#A0AEC0', fontWeight: '600' }} numberOfLines={1}>
+              {phone.slice(-10)}
+            </Text>
+          ) : null}
+          <TouchableOpacity
+            style={styles.listCallBtn}
+            onPress={() => {
+              if (phone) {
+                router.push({ pathname: '/dialpad', params: { leadId: item.id, phone } } as any);
+              } else {
+                Alert.alert('No Phone', 'This lead does not have a registered phone number.');
+              }
+            }}
+            hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+          >
+            <FontAwesome5 name="phone-alt" size={12} color="#3182CE" />
+          </TouchableOpacity>
         </View>
-
-        {/* Call button */}
-        <TouchableOpacity
-          style={styles.listCallBtn}
-          onPress={() => {
-            if (phone) {
-              router.push({ pathname: '/dialpad', params: { leadId: item.id, phone } } as any);
-            } else {
-              Alert.alert('No Phone', 'This lead does not have a registered phone number.');
-            }
-          }}
-          hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
-        >
-          <FontAwesome5 name="phone-alt" size={13} color="#3182CE" />
-        </TouchableOpacity>
       </TouchableOpacity>
     );
   };
@@ -606,90 +618,97 @@ export default function SalesScreen() {
         {/* Search & Filter Bar (Only visible in View Applications tab) */}
         {activeTab === 'view' && (
           <View style={{ backgroundColor: 'transparent' }}>
-            <View style={[styles.searchBar, isDark && styles.darkHeader]}>
-              <FontAwesome5 name="search" size={16} color="#A0AEC0" />
-              <TextInput 
-                style={[styles.input, isDark && styles.darkText]} 
-                placeholder="Search applications..." 
-                placeholderTextColor="#A0AEC0" 
-                value={search} 
-                onChangeText={(text) => { setSearch(text); setCurrentPage(1); }} 
+
+            {/* Row 1: Search + controls — always visible */}
+            <View style={[styles.searchBar, isDark && styles.darkHeader, { marginBottom: 6 }]}>
+              <FontAwesome5 name="search" size={15} color="#A0AEC0" />
+              <TextInput
+                style={[styles.input, isDark && styles.darkText]}
+                placeholder="Search leads..."
+                placeholderTextColor="#A0AEC0"
+                value={search}
+                onChangeText={(text) => { setSearch(text); setCurrentPage(1); }}
               />
+              {/* Sort */}
               <TouchableOpacity
-                onPress={() => {
-                  setSortOrder(prev => prev === '-id' ? 'id' : '-id');
-                }}
-                style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#EBF8FF', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, marginLeft: 8, gap: 4 }}
+                onPress={() => setSortOrder(prev => prev === '-id' ? 'id' : '-id')}
+                style={{ padding: 7, borderRadius: 10, backgroundColor: '#EBF8FF', marginLeft: 6 }}
               >
-                <FontAwesome5
-                  name={sortOrder === '-id' ? 'sort-amount-down' : 'sort-amount-up'}
-                  size={12}
-                  color="#3182CE"
-                />
-                <Text style={{ color: '#3182CE', fontSize: 11, fontWeight: '800' }}>
-                  {sortOrder === '-id' ? 'Newest' : 'Oldest'}
-                </Text>
+                <FontAwesome5 name={sortOrder === '-id' ? 'sort-amount-down' : 'sort-amount-up'} size={12} color="#3182CE" />
               </TouchableOpacity>
-              {/* List / Card toggle */}
+              {/* View toggle */}
               <TouchableOpacity
                 onPress={() => setViewMode(viewMode === 'list' ? 'card' : 'list')}
-                style={{ padding: 8, borderRadius: 10, backgroundColor: isDark ? '#334155' : '#EDF2F7', marginLeft: 6 }}
+                style={{ padding: 7, borderRadius: 10, backgroundColor: isDark ? '#334155' : '#EDF2F7', marginLeft: 6 }}
               >
-                <FontAwesome5
-                  name={viewMode === 'list' ? 'th-large' : 'list'}
-                  size={13}
-                  color={isDark ? '#94A3B8' : '#718096'}
-                />
+                <FontAwesome5 name={viewMode === 'list' ? 'th-large' : 'list'} size={12} color={isDark ? '#94A3B8' : '#718096'} />
+              </TouchableOpacity>
+              {/* Filter toggle */}
+              <TouchableOpacity
+                onPress={() => setShowFilters(f => !f)}
+                style={{ padding: 7, borderRadius: 10, backgroundColor: showFilters ? '#3182CE' : (isDark ? '#334155' : '#EDF2F7'), marginLeft: 6, flexDirection: 'row', alignItems: 'center', gap: 3 }}
+              >
+                <FontAwesome5 name="filter" size={11} color={showFilters ? '#fff' : (isDark ? '#94A3B8' : '#718096')} />
+                {selectedFilter.type !== 'all' && (
+                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#FBBF24', position: 'absolute', top: 4, right: 4 }} />
+                )}
               </TouchableOpacity>
             </View>
 
-            {/* Filter Pills ScrollView */}
-            <View style={styles.filterContainer}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
-                {filterOptions.map((filter, idx) => {
-                  const isActive = (selectedFilter.type === filter.type && selectedFilter.value === filter.value);
-                  return (
-                    <TouchableOpacity 
-                      key={idx} 
-                      style={[
-                        styles.filterPill, 
-                        isDark && styles.darkFilterPill,
-                        isActive && styles.filterPillActive
-                      ]} 
-                      onPress={() => { setSelectedFilter(filter); setCurrentPage(1); }}
-                    >
-                      <Text style={[
-                        styles.filterPillText, 
-                        isDark && styles.darkFilterPillText,
-                        isActive && styles.filterPillTextActive
-                      ]}>
-                        {filter.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-            </View>
+            {/* Row 2: Collapsible filters + stats */}
+            {showFilters && (
+              <View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.filterScroll, { marginBottom: 6 }]}>
+                  {filterOptions.map((filter, idx) => {
+                    const isActive = (selectedFilter.type === filter.type && selectedFilter.value === filter.value);
+                    return (
+                      <TouchableOpacity
+                        key={idx}
+                        style={[styles.filterPill, isDark && styles.darkFilterPill, isActive && styles.filterPillActive]}
+                        onPress={() => { setSelectedFilter(filter); setCurrentPage(1); }}
+                      >
+                        <Text style={[styles.filterPillText, isDark && styles.darkFilterPillText, isActive && styles.filterPillTextActive]}>
+                          {filter.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
 
-            {/* Sales Dashboard Stats Grid */}
-            {isManager && stats && (
-              <View style={styles.statsRowGrid}>
-                <View style={[styles.miniStatCard, isDark && styles.darkStatCard]}>
-                  <Text style={styles.miniStatLabel}>Total Leads</Text>
-                  <Text style={[styles.miniStatValue, { color: '#3182CE' }]}>{stats.total_leads}</Text>
+                {isManager && stats && (
+                  <View style={[styles.statsRowGrid, { marginBottom: 6 }]}>
+                    <View style={[styles.miniStatCard, isDark && styles.darkStatCard]}>
+                      <Text style={styles.miniStatLabel}>Total</Text>
+                      <Text style={[styles.miniStatValue, { color: '#3182CE' }]}>{stats.total_leads}</Text>
+                    </View>
+                    <View style={[styles.miniStatCard, isDark && styles.darkStatCard]}>
+                      <Text style={styles.miniStatLabel}>Unassigned</Text>
+                      <Text style={[styles.miniStatValue, { color: '#E53E3E' }]}>{stats.unassigned_leads}</Text>
+                    </View>
+                    <View style={[styles.miniStatCard, isDark && styles.darkStatCard]}>
+                      <Text style={styles.miniStatLabel}>Contacted</Text>
+                      <Text style={[styles.miniStatValue, { color: '#38A169' }]}>{stats.contacted_leads}</Text>
+                    </View>
+                    <View style={[styles.miniStatCard, isDark && styles.darkStatCard]}>
+                      <Text style={styles.miniStatLabel}>Revenue</Text>
+                      <Text style={[styles.miniStatValue, { color: '#D69E2E' }]}>₹{stats.revenue}</Text>
+                    </View>
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* Active filter indicator row */}
+            {selectedFilter.type !== 'all' && !showFilters && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4, gap: 6 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#3182CE', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, gap: 5 }}>
+                  <FontAwesome5 name="tag" size={9} color="#fff" />
+                  <Text style={{ color: '#fff', fontSize: 11, fontWeight: '800' }}>{selectedFilter.label}</Text>
+                  <TouchableOpacity onPress={() => { setSelectedFilter({ label: 'All', type: 'all', value: 'All' }); setCurrentPage(1); }}>
+                    <FontAwesome5 name="times" size={9} color="#fff" />
+                  </TouchableOpacity>
                 </View>
-                <View style={[styles.miniStatCard, isDark && styles.darkStatCard]}>
-                  <Text style={styles.miniStatLabel}>Unassigned</Text>
-                  <Text style={[styles.miniStatValue, { color: '#E53E3E' }]}>{stats.unassigned_leads}</Text>
-                </View>
-                <View style={[styles.miniStatCard, isDark && styles.darkStatCard]}>
-                  <Text style={styles.miniStatLabel}>Contacted</Text>
-                  <Text style={[styles.miniStatValue, { color: '#38A169' }]}>{stats.contacted_leads}</Text>
-                </View>
-                <View style={[styles.miniStatCard, isDark && styles.darkStatCard]}>
-                  <Text style={styles.miniStatLabel}>Revenue</Text>
-                  <Text style={[styles.miniStatValue, { color: '#D69E2E' }]}>₹{stats.revenue}</Text>
-                </View>
+                <Text style={{ color: '#A0AEC0', fontSize: 11 }}>{totalStudents} leads</Text>
               </View>
             )}
           </View>
@@ -1013,22 +1032,21 @@ const styles = StyleSheet.create({
   darkStatCard: { backgroundColor: '#1E293B', borderColor: '#334155' },
   miniStatLabel: { fontSize: 9, fontWeight: '700', color: '#718096', marginBottom: 2, textAlign: 'center' },
   miniStatValue: { fontSize: 13, fontWeight: '900', textAlign: 'center' },
-  // Compact list styles
-  listContent: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 24 },
+  listContent: { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 24 },
   listRow: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 2,
+    paddingVertical: 9,
     borderBottomWidth: 1,
-    borderBottomColor: '#EDF2F7',
+    borderBottomColor: '#F1F5F9',
   },
   darkListRow: { backgroundColor: '#1E293B', borderBottomColor: '#334155' },
+  listStripe: { width: 3, height: 38, borderRadius: 3, marginRight: 10, flexShrink: 0 },
   listAvatar: {
-    width: 34,
-    height: 34,
+    width: 36,
+    height: 36,
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1036,19 +1054,22 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   listAvatarText: { fontSize: 15, fontWeight: '900', color: '#3182CE' },
-  listInfo: { flex: 1, marginRight: 6 },
+  listInfo: { flex: 1, marginRight: 8 },
   listName: { fontSize: 14, fontWeight: '800', color: '#1A202C', lineHeight: 18 },
-  listSub: { fontSize: 10, color: '#718096', fontWeight: '600', lineHeight: 14 },
+  listSub: { fontSize: 10, color: '#718096', fontWeight: '600' },
   listPhone: { fontSize: 10, color: '#718096', lineHeight: 14 },
+  stageChip: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  stageChipText: { fontSize: 9, fontWeight: '900', letterSpacing: 0.3 },
   listBadge: { paddingHorizontal: 6, paddingVertical: 3, borderRadius: 7, marginRight: 8, flexShrink: 0 },
   listBadgeText: { fontSize: 9, fontWeight: '900', letterSpacing: 0.3 },
   listCallBtn: {
-    width: 34,
-    height: 34,
+    width: 32,
+    height: 32,
     borderRadius: 10,
     backgroundColor: '#EBF8FF',
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
+    marginTop: 2,
   },
 });
