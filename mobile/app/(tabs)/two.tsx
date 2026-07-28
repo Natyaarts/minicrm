@@ -107,7 +107,18 @@ export default function SalesScreen() {
     if (isSalesOnly) params.hide_converted = 'true';
 
     const data = await getStudents(params);
-    const list = data.results || [];
+    let list = data.results || [];
+    
+    // ── FRONTEND HARD-FILTER: Absolutely force hide converted leads for Sales ──
+    if (isSalesOnly) {
+      list = list.filter((item: any) => {
+        const raw = item.lead_status || item.status || 'NEW';
+        const name = resolveStage(raw).toUpperCase();
+        const id = String(raw).toUpperCase();
+        return !name.includes('ENROL') && !name.includes('CONVERT') && id !== 'ENROLLED' && id !== 'CONVERTED';
+      });
+    }
+
     const count = data.count || list.length;
 
     setLeads(prev => (reset || page === 1) ? list : [...prev, ...list]);
