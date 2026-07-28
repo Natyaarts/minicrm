@@ -432,21 +432,45 @@ export default function SalesScreen() {
   };
 
   const getStatusColor = (lead_status: string) => {
-    switch (lead_status) {
-      case 'ENROLLED': return { bg: '#C6F6D5', text: '#22543D' };
-      case 'NEW': return { bg: '#EBF8FF', text: '#2B6CB0' };
-      case 'PAYMENT_PENDING': return { bg: '#FEFCBF', text: '#744210' };
-      case 'FOLLOW_UP': return { bg: '#E9D8FD', text: '#553C9A' };
-      case 'DROPPED': return { bg: '#FED7D7', text: '#742A2A' };
-      default: return { bg: '#EDF2F7', text: '#4A5568' };
-    }
+    const s = (lead_status || '').toUpperCase();
+    if (s.includes('ENROL')) return { bg: '#C6F6D5', text: '#22543D' };
+    if (s === 'NEW') return { bg: '#EBF8FF', text: '#2B6CB0' };
+    if (s.includes('PAYMENT') || s.includes('PENDING')) return { bg: '#FEFCBF', text: '#744210' };
+    if (s.includes('FOLLOW') || s.includes('FOLLOWUP')) return { bg: '#E9D8FD', text: '#553C9A' };
+    if (s.includes('DROP')) return { bg: '#FED7D7', text: '#742A2A' };
+    if (s.includes('CONTACT')) return { bg: '#BEE3F8', text: '#2C5282' };
+    // Dynamic stage ID — use a neutral accent color
+    return { bg: '#EDF2F7', text: '#4A5568' };
+  };
+
+  // Resolve lead_status code/ID to a human-readable stage name
+  const resolveStage = (lead_status: string): string => {
+    if (!lead_status) return 'New';
+    // Standard fixed codes
+    const fixed: Record<string, string> = {
+      'NEW': 'New',
+      'FOLLOW_UP': 'Follow Up',
+      'PAYMENT_PENDING': 'Payment Pending',
+      'ENROLLED': 'Enrolled',
+      'DROPPED': 'Dropped',
+      'CONTACTED': 'Contacted',
+    };
+    if (fixed[lead_status.toUpperCase()]) return fixed[lead_status.toUpperCase()];
+    // Dynamic stage ID from pipelineStages list
+    const match = pipelineStages.find(
+      (s: any) => String(s.id) === String(lead_status) || s.name === lead_status
+    );
+    if (match) return match.name;
+    // Fallback: prettify the raw value
+    return lead_status.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
   };
 
   // Compact list row — shows ~10+ leads per screen with stage color
   const renderStudentList = ({ item }: { item: any }) => {
-    const sc = getStatusColor(item.lead_status || item.status || 'NEW');
+    const rawStatus = item.lead_status || item.status || 'NEW';
+    const sc = getStatusColor(rawStatus);
     const phone = item.phone || item.mobile || '';
-    const stageName = (item.lead_status || item.status || 'NEW').replace(/_/g, ' ');
+    const stageName = resolveStage(rawStatus);
     return (
       <TouchableOpacity
         style={[styles.listRow, isDark && styles.darkListRow]}
@@ -522,9 +546,9 @@ export default function SalesScreen() {
             {item.crm_student_id || item.username} • <Text style={{ color: '#FBBF24', fontWeight: '800' }}>{item.program_name || item.program || 'Wise Import'}</Text>
           </Text>
         </View>
-        <View style={[styles.badge, { backgroundColor: item.lead_status === 'ENROLLED' || item.status === 'ACTIVE' ? '#C6F6D5' : item.lead_status === 'NEW' || item.status === 'NEW' ? '#EBF8FF' : '#FEFCBF' }]}>
-          <Text style={[styles.badgeText, { color: item.lead_status === 'ENROLLED' || item.status === 'ACTIVE' ? '#22543D' : item.lead_status === 'NEW' || item.status === 'NEW' ? '#2B6CB0' : '#744210' }]}>
-            {item.lead_status || item.status || 'NEW'}
+        <View style={[styles.badge, { backgroundColor: getStatusColor(item.lead_status || item.status || 'NEW').bg }]}>
+          <Text style={[styles.badgeText, { color: getStatusColor(item.lead_status || item.status || 'NEW').text }]}>
+            {resolveStage(item.lead_status || item.status || 'NEW')}
           </Text>
         </View>
       </View>
