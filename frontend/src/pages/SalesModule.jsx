@@ -2368,6 +2368,8 @@ const SalesModule = () => {
                     }
                 }}
                 salesSectionFilter={salesSectionFilter}
+                pipelineStages={pipelineStages}
+                salesUsers={salesUsers}
             />
 
         </div>

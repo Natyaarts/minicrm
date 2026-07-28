@@ -1,15 +1,27 @@
 import React, { useState, useEffect } from 'react';
-import { X, ChevronLeft, ChevronRight, User, Phone, Mail, Clock, Eye } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, User, Phone, Mail, Clock, Eye, Search, Filter } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../api/axios';
 
-const StatLeadsModal = ({ config, onClose, onViewLead, salesSectionFilter }) => {
+const StatLeadsModal = ({ config, onClose, onViewLead, salesSectionFilter, pipelineStages = [], salesUsers = [] }) => {
     const [leads, setLeads] = useState([]);
     const [loading, setLoading] = useState(true);
     const [page, setPage] = useState(1);
     const [pagination, setPagination] = useState({ count: 0, next: null, previous: null });
 
-    const fetchLeads = async (currentPage) => {
+    const [searchTerm, setSearchTerm] = useState('');
+    const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+    const [statusFilter, setStatusFilter] = useState('');
+    const [assigneeFilter, setAssigneeFilter] = useState('');
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedSearchTerm(searchTerm);
+        }, 500);
+        return () => clearTimeout(timer);
+    }, [searchTerm]);
+
+    const fetchLeads = async (currentPage, search = debouncedSearchTerm, status = statusFilter, assignee = assigneeFilter) => {
         setLoading(true);
         try {
             const params = new URLSearchParams({
@@ -17,19 +29,35 @@ const StatLeadsModal = ({ config, onClose, onViewLead, salesSectionFilter }) => 
                 page: currentPage.toString()
             });
 
+            if (search) params.append('search', search);
+
             if (salesSectionFilter && salesSectionFilter !== 'ALL') {
                 params.append('sales_section', salesSectionFilter);
             }
 
             if (config.type === 'stage') {
                 params.append('lead_status', config.value);
-            } else if (config.type === 'assignee') {
+            } else {
+                if (status) params.append('lead_status', status);
+                else if (config.type === 'status') {
+                    params.append('lead_status__in', 'ENROLLED,CONVERTED,4');
+                }
+            }
+
+            if (config.type === 'assignee') {
                 params.append('assigned_to', config.value);
-            } else if (config.type === 'contacted') {
+            } else {
+                if (assignee) {
+                    if (assignee === 'unassigned') params.append('unassigned', 'true');
+                    else params.append('assigned_to', assignee);
+                }
+            }
+
+            if (config.type === 'contacted') {
                 params.append('contacted', config.value);
-            } else if (config.type === 'status') {
-                params.append('lead_status__in', 'ENROLLED,CONVERTED,4');
-            } else if (config.type === 'all') {
+            }
+
+            if (config.type === 'all') {
                 params.append('hide_converted', 'true');
             }
 
@@ -50,9 +78,9 @@ const StatLeadsModal = ({ config, onClose, onViewLead, salesSectionFilter }) => 
     useEffect(() => {
         if (config) {
             setPage(1);
-            fetchLeads(1);
+            fetchLeads(1, debouncedSearchTerm, statusFilter, assigneeFilter);
         }
-    }, [config]);
+    }, [config, debouncedSearchTerm, statusFilter, assigneeFilter]);
 
     const handleNext = () => {
         if (pagination.next) {
@@ -103,6 +131,47 @@ const StatLeadsModal = ({ config, onClose, onViewLead, salesSectionFilter }) => 
                         <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-200 text-slate-500 transition-colors">
                             <X size={20} />
                         </button>
+                    </div>
+
+                    {/* Filters */}
+                    <div className="px-6 py-3 border-b border-slate-200 bg-white flex flex-col sm:flex-row items-center gap-3">
+                        <div className="relative flex-1 w-full">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                            <input 
+                                type="text"
+                                placeholder="Search leads by name, email or phone..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:bg-white focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all text-slate-700 placeholder-slate-400"
+                            />
+                        </div>
+                        <div className="flex items-center gap-2 w-full sm:w-auto">
+                            {config.type !== 'stage' && (
+                                <select 
+                                    value={statusFilter}
+                                    onChange={(e) => setStatusFilter(e.target.value)}
+                                    className="bg-slate-50 border border-slate-200 text-sm font-semibold text-slate-700 px-3 py-2 rounded-xl outline-none min-w-[140px] focus:border-indigo-300 focus:bg-white transition-all w-full sm:w-auto"
+                                >
+                                    <option value="">All Stages</option>
+                                    {pipelineStages.map(s => (
+                                        <option key={s.id} value={s.id || s.name}>{s.name}</option>
+                                    ))}
+                                </select>
+                            )}
+                            {config.type !== 'assignee' && (
+                                <select 
+                                    value={assigneeFilter}
+                                    onChange={(e) => setAssigneeFilter(e.target.value)}
+                                    className="bg-slate-50 border border-slate-200 text-sm font-semibold text-slate-700 px-3 py-2 rounded-xl outline-none min-w-[140px] focus:border-indigo-300 focus:bg-white transition-all w-full sm:w-auto"
+                                >
+                                    <option value="">All Assignees</option>
+                                    <option value="unassigned">Unassigned</option>
+                                    {salesUsers.map(u => (
+                                        <option key={u.id} value={u.id}>{u.first_name} {u.last_name}</option>
+                                    ))}
+                                </select>
+                            )}
+                        </div>
                     </div>
 
                     {/* Content */}
