@@ -465,8 +465,8 @@ const styles = StyleSheet.create({
   searchBar: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: '#F1F5F9', borderRadius: 12,
-    paddingHorizontal: 12, paddingVertical: 10,
-    marginBottom: 8, borderWidth: 1, borderColor: '#E2E8F0',
+    paddingHorizontal: 12, paddingVertical: 6,
+    marginBottom: 6, borderWidth: 1, borderColor: '#E2E8F0',
   },
   searchBarDark: { backgroundColor: '#0F172A', borderColor: '#334155' },
   searchInput: { flex: 1, fontSize: 14, color: '#1E293B', fontWeight: '500' },
