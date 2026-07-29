@@ -166,6 +166,41 @@ class DashboardStatsView(APIView):
             "revenue": revenue
         })
 
+class MentorDashboardStatsView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        if user.role != 'MENTOR':
+            return Response({"error": "Only mentors can access this dashboard"}, status=403)
+            
+        from core.models import Student, Batch
+        from django.db.models import Q
+        
+        # Get batches where user is primary or secondary mentor
+        batches = Batch.objects.filter(Q(primary_mentor=user) | Q(secondary_mentors=user)).distinct()
+        
+        # Get all students in those batches
+        students = Student.objects.filter(batch__in=batches).distinct()
+        
+        # Calculate stats
+        total_students = students.count()
+        active_students = students.filter(academic_status='ACTIVE').count()
+        on_break_students = students.filter(academic_status='ON_BREAK').count()
+        discontinued_students = students.filter(academic_status='DISCONTINUED').count()
+        
+        # Serialize students for the list view
+        from core.serializers import StudentSerializer
+        student_data = StudentSerializer(students, many=True).data
+        
+        return Response({
+            "total_students": total_students,
+            "active_students": active_students,
+            "on_break_students": on_break_students,
+            "discontinued_students": discontinued_students,
+            "results": student_data
+        })
+
 class WebhookEndpointSerializer(serializers.ModelSerializer):
     webhook_url = serializers.SerializerMethodField()
 
