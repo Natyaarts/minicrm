@@ -50,6 +50,15 @@ class DashboardStatsView(APIView):
             if not is_sales_manager:
                 students = students.filter(assigned_to=request.user)
         
+        assigned_to_param = request.query_params.get('assigned_to')
+        if assigned_to_param:
+            if assigned_to_param == 'unassigned':
+                students = students.filter(assigned_to__isnull=True)
+            elif assigned_to_param != 'assigned':
+                students = students.filter(assigned_to_id=assigned_to_param)
+            else:
+                students = students.filter(assigned_to__isnull=False)
+
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
         

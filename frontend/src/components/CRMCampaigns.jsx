@@ -39,6 +39,7 @@ const CRMCampaigns = () => {
     const [leadsLoading, setLeadsLoading] = useState(true);
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
+    const [totalLeadsCount, setTotalLeadsCount] = useState(0);
     const [sortOrder, setSortOrder] = useState('desc');
     const [salesUsers, setSalesUsers] = useState([]);
     const [pipelineStages, setPipelineStages] = useState({});
@@ -97,9 +98,7 @@ const CRMCampaigns = () => {
     useEffect(() => {
         if (activeTab === 'leads' || activeTab === 'assigned') {
             fetchLeads(leadsStartDate, leadsEndDate, selectedAssigneeFilter, searchTerm, selectedStageFilter);
-        }
-        if (activeTab === 'assigned') {
-            fetchAssignedStats(leadsStartDate, leadsEndDate);
+            fetchAssignedStats(leadsStartDate, leadsEndDate, selectedAssigneeFilter);
         }
     }, [activeTab, currentPage, leadsStartDate, leadsEndDate, selectedAssigneeFilter, searchTerm, selectedStageFilter]);
 
@@ -121,13 +120,14 @@ const CRMCampaigns = () => {
         }
     };
 
-    const fetchAssignedStats = async (startDate, endDate) => {
+    const fetchAssignedStats = async (startDate, endDate, assignee) => {
         setAssignedStatsLoading(true);
         try {
             let url = 'crm/dashboard-stats/';
             const params = new URLSearchParams();
             if (startDate) params.append('start_date', startDate);
             if (endDate) params.append('end_date', endDate);
+            if (assignee) params.append('assigned_to', assignee);
             if (params.toString()) url += `?${params.toString()}`;
             
             const res = await api.get(url);
@@ -182,6 +182,7 @@ const CRMCampaigns = () => {
             const res = await api.get(url); 
             setLeads(res.data.results || res.data || []);
             if (res.data.count !== undefined) {
+                setTotalLeadsCount(res.data.count);
                 setTotalPages(Math.ceil(res.data.count / 20));
             }
         } catch (error) {
@@ -875,13 +876,12 @@ const CRMCampaigns = () => {
                                             </span>
                                         )}
                                     </div>
-                                    <p className="text-xs text-slate-500 mt-0.5 font-medium">Assigned Leads Overview for Selected Filter</p>
                                 </div>
                             </div>
 
                             <div className="flex items-center gap-2 self-start sm:self-auto">
                                 <div className="bg-indigo-50 border border-indigo-100 px-3 py-1 rounded-xl text-xs font-semibold text-indigo-900">
-                                    Total Assigned: <strong className="text-indigo-600 text-sm ml-1">{leads.length}</strong> Leads
+                                    Total Assigned: <strong className="text-indigo-600 text-sm ml-1">{assignedStats?.assigned_leads ?? totalLeadsCount}</strong> Leads
                                 </div>
                                 <button 
                                     onClick={() => { setLeadsStartDate(''); setLeadsEndDate(''); setSelectedAssigneeFilter(''); setSelectedStageFilter(''); setSearchTerm(''); setCurrentPage(1); }}
@@ -908,9 +908,13 @@ const CRMCampaigns = () => {
                             </div>
 
                             <div className="flex flex-wrap items-center gap-2">
-                                {Object.keys(statusCounts).map((statusName) => {
-                                    const count = statusCounts[statusName];
-                                    const stageId = Object.keys(pipelineStages).find(key => pipelineStages[key] === statusName) || statusName;
+                                {(assignedStats?.pipeline_stages?.length > 0 
+                                    ? assignedStats.pipeline_stages 
+                                    : Object.keys(statusCounts).map(name => ({ id: name, name, count: statusCounts[name] }))
+                                ).map((st) => {
+                                    const statusName = st.name;
+                                    const count = st.count;
+                                    const stageId = st.id;
                                     const isSelected = selectedStageFilter === stageId || selectedStageFilter === statusName;
 
                                     const sLower = statusName.toLowerCase();
@@ -933,7 +937,7 @@ const CRMCampaigns = () => {
 
                                     return (
                                         <button
-                                            key={statusName}
+                                            key={stageId || statusName}
                                             onClick={() => {
                                                 if (isSelected) setSelectedStageFilter('');
                                                 else setSelectedStageFilter(stageId);
