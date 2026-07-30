@@ -331,6 +331,22 @@ const CRMCampaigns = () => {
         return sortOrder === 'asc' ? timeA - timeB : timeB - timeA;
     });
 
+    const getAssigneeDisplayName = () => {
+        if (selectedAssigneeFilter === 'unassigned') return 'Unassigned Leads';
+        if (!selectedAssigneeFilter) return activeTab === 'assigned' ? 'All Assigned Reps' : 'All Sales Reps';
+        const found = salesUsers.find(u => u.id.toString() === selectedAssigneeFilter.toString());
+        if (found) {
+            return found.name || (found.first_name ? `${found.first_name} ${found.last_name || ''}`.trim() : found.username || `User #${found.id}`);
+        }
+        return `User #${selectedAssigneeFilter}`;
+    };
+
+    const statusCounts = leads.reduce((acc, lead) => {
+        const statusName = pipelineStages[lead.lead_status] || lead.lead_status || 'NEW LEAD';
+        acc[statusName] = (acc[statusName] || 0) + 1;
+        return acc;
+    }, {});
+
     const handleExportCSV = () => {
         const headers = ["Lead ID", "First Name", "Last Name", "Email", "Mobile", "Status", "Date Created", "Assigned To"];
         const csvContent = [
@@ -839,6 +855,60 @@ const CRMCampaigns = () => {
                     </div>
                 )}
 
+                {/* Active Selection Status & Date Breakdown Banner */}
+                {(selectedAssigneeFilter || leadsStartDate || leadsEndDate || selectedStageFilter) && (
+                    <div className="bg-gradient-to-r from-indigo-900 via-indigo-800 to-slate-900 text-white p-4 rounded-2xl shadow-md border border-indigo-700/50">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-indigo-700/50 pb-3 mb-3">
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></div>
+                                <h4 className="font-bold text-sm text-indigo-100">
+                                    Assigned Summary: <span className="text-white underline decoration-indigo-400 underline-offset-4">{getAssigneeDisplayName()}</span>
+                                </h4>
+                                {(leadsStartDate || leadsEndDate) && (
+                                    <span className="text-xs bg-indigo-700/70 text-indigo-200 px-2.5 py-0.5 rounded-full font-medium border border-indigo-500/30">
+                                        📅 {leadsStartDate || 'Start'} → {leadsEndDate || 'Today'}
+                                    </span>
+                                )}
+                            </div>
+                            <div className="text-xs text-indigo-200 font-semibold bg-indigo-950/70 px-3 py-1 rounded-lg border border-indigo-700/50 self-start sm:self-auto">
+                                Total Assigned on Date Range: <strong className="text-white text-sm ml-1">{leads.length}</strong> Leads
+                            </div>
+                        </div>
+
+                        {/* Status-wise Pills Breakdown */}
+                        <div>
+                            <p className="text-[11px] font-semibold text-indigo-300 uppercase tracking-wider mb-2">Status-wise Breakdown for this selection (click any status to filter):</p>
+                            <div className="flex flex-wrap items-center gap-2">
+                                {Object.keys(statusCounts).map((statusName) => {
+                                    const count = statusCounts[statusName];
+                                    const isSelected = selectedStageFilter === statusName || selectedStageFilter === (Object.keys(pipelineStages).find(key => pipelineStages[key] === statusName));
+                                    return (
+                                        <button
+                                            key={statusName}
+                                            onClick={() => {
+                                                const stageId = Object.keys(pipelineStages).find(key => pipelineStages[key] === statusName) || statusName;
+                                                if (selectedStageFilter === stageId) setSelectedStageFilter('');
+                                                else setSelectedStageFilter(stageId);
+                                                setCurrentPage(1);
+                                            }}
+                                            className={`text-xs font-bold px-3 py-1 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+                                                isSelected 
+                                                    ? 'bg-white text-indigo-950 shadow-md ring-2 ring-emerald-400 font-extrabold scale-105' 
+                                                    : 'bg-indigo-800/80 hover:bg-indigo-700 text-indigo-100 border border-indigo-600/50'
+                                            }`}
+                                        >
+                                            <span>{statusName}</span>
+                                            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-extrabold ${isSelected ? 'bg-indigo-900 text-white' : 'bg-indigo-950 text-emerald-300'}`}>
+                                                {count}
+                                            </span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                  {/* Filter & Action Bar */}
                  <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
                     <div className="flex flex-wrap items-center gap-3 flex-1">
@@ -868,6 +938,23 @@ const CRMCampaigns = () => {
                                 {salesUsers.map(user => (
                                     <option key={user.id} value={user.id} className="text-slate-900 bg-white">
                                         {user.name || (user.first_name ? `${user.first_name} ${user.last_name || ''}`.trim() : user.username || `User #${user.id}`)}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {/* Status Filter */}
+                        <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 focus-within:ring-2 focus-within:ring-indigo-500/20">
+                            <span className="text-xs font-semibold text-slate-500 whitespace-nowrap">Status:</span>
+                            <select 
+                                value={selectedStageFilter}
+                                onChange={(e) => { setSelectedStageFilter(e.target.value); setCurrentPage(1); }}
+                                className="bg-transparent text-sm font-semibold text-indigo-700 outline-none cursor-pointer text-slate-800"
+                            >
+                                <option value="" className="text-slate-900 bg-white">All Statuses</option>
+                                {Object.keys(pipelineStages).map(stageId => (
+                                    <option key={stageId} value={stageId} className="text-slate-900 bg-white">
+                                        {pipelineStages[stageId]}
                                     </option>
                                 ))}
                             </select>
