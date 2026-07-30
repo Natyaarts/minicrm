@@ -45,6 +45,7 @@ const CRMCampaigns = () => {
     const [leadsStartDate, setLeadsStartDate] = useState('');
     const [leadsEndDate, setLeadsEndDate] = useState('');
     const [selectedAssigneeFilter, setSelectedAssigneeFilter] = useState('');
+    const [selectedStageFilter, setSelectedStageFilter] = useState('');
     
     // UI States for Campaigns
     const [searchTerm, setSearchTerm] = useState('');
@@ -95,9 +96,12 @@ const CRMCampaigns = () => {
 
     useEffect(() => {
         if (activeTab === 'leads' || activeTab === 'assigned') {
-            fetchLeads(leadsStartDate, leadsEndDate, selectedAssigneeFilter, searchTerm);
+            fetchLeads(leadsStartDate, leadsEndDate, selectedAssigneeFilter, searchTerm, selectedStageFilter);
         }
-    }, [activeTab, currentPage, leadsStartDate, leadsEndDate, selectedAssigneeFilter, searchTerm]);
+        if (activeTab === 'assigned') {
+            fetchAssignedStats(leadsStartDate, leadsEndDate);
+        }
+    }, [activeTab, currentPage, leadsStartDate, leadsEndDate, selectedAssigneeFilter, searchTerm, selectedStageFilter]);
 
     const fetchDashboardData = async () => {
         setDashboardLoading(true);
@@ -139,7 +143,7 @@ const CRMCampaigns = () => {
         }
     };
     
-    const fetchLeads = async (startDate, endDate, assignee, search) => {
+    const fetchLeads = async (startDate, endDate, assignee, search, stage) => {
         setLeadsLoading(true);
         try {
             let url = `students/?page=${currentPage}`;
@@ -154,6 +158,7 @@ const CRMCampaigns = () => {
             if (startDate) url += `&start_date=${startDate}`;
             if (endDate) url += `&end_date=${endDate}`;
             if (search) url += `&search=${encodeURIComponent(search)}`;
+            if (stage) url += `&lead_status=${encodeURIComponent(stage)}`;
 
             console.log('[fetchLeads] URL:', url);
             const res = await api.get(url); 
@@ -689,6 +694,61 @@ const CRMCampaigns = () => {
                             </div>
                         </div>
 
+                        {/* Dynamic Pipeline Stages Breakdown Cards */}
+                        {assignedStats?.pipeline_stages?.length > 0 && (
+                            <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
+                                <div className="flex items-center justify-between mb-3">
+                                    <div>
+                                        <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wider">Dynamic Pipeline Stages Breakdown</h3>
+                                        <p className="text-xs text-slate-500 mt-0.5">Real-time distribution of leads across all dynamic pipeline stages (click any stage to filter).</p>
+                                    </div>
+                                    {selectedStageFilter && (
+                                        <button 
+                                            onClick={() => { setSelectedStageFilter(''); setCurrentPage(1); }}
+                                            className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-3 py-1 rounded-lg transition-colors"
+                                        >
+                                            Show All Stages
+                                        </button>
+                                    )}
+                                </div>
+
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-3">
+                                    {assignedStats.pipeline_stages.map((stage) => {
+                                        const isSelected = selectedStageFilter === stage.id;
+                                        return (
+                                            <div 
+                                                key={stage.id}
+                                                onClick={() => {
+                                                    if (isSelected) setSelectedStageFilter('');
+                                                    else setSelectedStageFilter(stage.id);
+                                                    setCurrentPage(1);
+                                                }}
+                                                className={`p-3.5 rounded-xl border text-center transition-all cursor-pointer ${
+                                                    isSelected 
+                                                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-md ring-2 ring-indigo-300' 
+                                                        : 'bg-slate-50/80 text-slate-800 border-slate-200 hover:bg-white hover:border-indigo-300 hover:shadow-sm'
+                                                }`}
+                                            >
+                                                <p className={`text-[11px] font-semibold truncate ${isSelected ? 'text-indigo-100' : 'text-slate-500'}`}>
+                                                    {stage.name}
+                                                </p>
+                                                <h4 className={`text-xl font-bold mt-0.5 ${isSelected ? 'text-white' : 'text-slate-900'}`}>
+                                                    {stage.count}
+                                                </h4>
+                                                <span className={`text-[9px] font-bold inline-block mt-1 px-2 py-0.5 rounded-full ${
+                                                    isSelected ? 'bg-white/20 text-white' : 'bg-indigo-100 text-indigo-700'
+                                                }`}>
+                                                    {assignedStats.total_leads > 0 
+                                                        ? `${Math.round((stage.count / assignedStats.total_leads) * 100)}%` 
+                                                        : '0%'}
+                                                </span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+
                         {/* Agent Activity & Contact Progress Breakdown */}
                         {assignedStats?.leaderboard?.length > 0 && (
                             <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
@@ -813,9 +873,9 @@ const CRMCampaigns = () => {
                             />
                         </div>
 
-                        {(leadsStartDate || leadsEndDate || selectedAssigneeFilter || searchTerm) && (
+                        {(leadsStartDate || leadsEndDate || selectedAssigneeFilter || selectedStageFilter || searchTerm) && (
                             <button 
-                                onClick={() => { setLeadsStartDate(''); setLeadsEndDate(''); setSelectedAssigneeFilter(''); setSearchTerm(''); setCurrentPage(1); }}
+                                onClick={() => { setLeadsStartDate(''); setLeadsEndDate(''); setSelectedAssigneeFilter(''); setSelectedStageFilter(''); setSearchTerm(''); setCurrentPage(1); }}
                                 className="px-3 py-1.5 text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors flex items-center gap-1"
                                 title="Reset all filters"
                             >
