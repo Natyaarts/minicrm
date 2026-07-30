@@ -32,8 +32,12 @@ class DashboardStatsView(APIView):
 
         if request.user.role == 'SALES':
             from django.db.models import Q
-            if getattr(request.user, 'sales_section', 'BOTH') != 'BOTH':
-                students = students.filter(Q(sales_section=request.user.sales_section) | Q(sales_section='BOTH'))
+            user_section = getattr(request.user, 'sales_section', 'BOTH')
+            if user_section != 'BOTH':
+                students = students.filter(
+                    Q(assigned_to__sales_section=user_section) |
+                    (Q(assigned_to__isnull=True) & Q(sales_section__in=[user_section, 'BOTH']))
+                )
                 
             is_sales_manager = False
             if hasattr(request.user, 'hrms_profile'):
