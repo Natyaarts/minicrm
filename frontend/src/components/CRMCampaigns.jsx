@@ -9,13 +9,15 @@ const CRMCampaigns = () => {
     const { user: authUser } = useAuth();
     
     // Tab State
-    const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard', 'campaigns', 'leads'
+    const [activeTab, setActiveTab] = useState('assigned'); 
 
     useEffect(() => {
         if (authUser) {
-            const isManager = authUser.role === 'SUPER_ADMIN' || authUser.role === 'ADMIN' || authUser.is_manager;
-            if (!isManager && (activeTab === 'dashboard' || activeTab === 'campaigns')) {
-                setActiveTab('leads');
+            const isAdmin = authUser.role === 'SUPER_ADMIN' || authUser.role === 'ADMIN';
+            if (!isAdmin && (activeTab === 'dashboard' || activeTab === 'campaigns')) {
+                setActiveTab('assigned');
+            } else if (isAdmin && activeTab === 'assigned' && !activeTab) {
+                setActiveTab('dashboard');
             }
         }
     }, [authUser]);
@@ -1206,7 +1208,7 @@ const CRMCampaigns = () => {
                     <p className="text-slate-500 mt-1">Manage marketing sources, track budgets, and route leads.</p>
                 </div>
                 <div className="flex bg-slate-100 p-1 rounded-xl w-full md:w-auto overflow-x-auto">
-                    {(authUser?.role === 'SUPER_ADMIN' || authUser?.role === 'ADMIN' || authUser?.is_manager) && (
+                    {(authUser?.role === 'SUPER_ADMIN' || authUser?.role === 'ADMIN') && (
                         <>
                             <button 
                                 onClick={() => setActiveTab('dashboard')}
