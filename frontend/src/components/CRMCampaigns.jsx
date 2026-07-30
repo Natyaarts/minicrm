@@ -121,6 +121,24 @@ const CRMCampaigns = () => {
         }
     };
 
+    const fetchAssignedStats = async (startDate, endDate) => {
+        setAssignedStatsLoading(true);
+        try {
+            let url = 'crm/dashboard-stats/';
+            const params = new URLSearchParams();
+            if (startDate) params.append('start_date', startDate);
+            if (endDate) params.append('end_date', endDate);
+            if (params.toString()) url += `?${params.toString()}`;
+            
+            const res = await api.get(url);
+            setAssignedStats(res.data);
+        } catch (error) {
+            console.error('Error fetching assigned dashboard stats:', error);
+        } finally {
+            setAssignedStatsLoading(false);
+        }
+    };
+
     const fetchCampaigns = async () => {
         setLoading(true);
         try {
