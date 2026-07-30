@@ -1089,11 +1089,11 @@ const SalesModule = () => {
                                         onChange={(e) => setSelectedAssigneeFilter(e.target.value)}
                                         className="bg-transparent text-xs font-semibold text-indigo-700 px-2 py-1 sm:py-0.5 outline-none min-w-[120px] cursor-pointer w-full sm:w-auto"
                                     >
-                                        <option value="">All Sales Reps</option>
-                                        <option value="unassigned">Unassigned Leads</option>
+                                        <option value="" className="text-slate-900 bg-white">All Sales Reps</option>
+                                        <option value="unassigned" className="text-slate-900 bg-white">Unassigned Leads</option>
                                         {salesUsers.map(u => (
-                                            <option key={u.id} value={u.id}>
-                                                {u.first_name} {u.last_name}
+                                            <option key={u.id} value={u.id} className="text-slate-900 bg-white">
+                                                {u.name || (u.first_name ? `${u.first_name} ${u.last_name || ''}`.trim() : u.username || `User #${u.id}`)}
                                             </option>
                                         ))}
                                     </select>

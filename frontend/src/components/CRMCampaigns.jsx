@@ -40,6 +40,7 @@ const CRMCampaigns = () => {
     const [pipelineStages, setPipelineStages] = useState({});
     const [leadsStartDate, setLeadsStartDate] = useState('');
     const [leadsEndDate, setLeadsEndDate] = useState('');
+    const [selectedAssigneeFilter, setSelectedAssigneeFilter] = useState('');
     
     // UI States for Campaigns
     const [searchTerm, setSearchTerm] = useState('');
@@ -81,7 +82,7 @@ const CRMCampaigns = () => {
             fetchCampaigns();
             fetchWebhooks();
             fetchPrograms();
-        } else if (activeTab === 'leads') {
+        } else if (activeTab === 'leads' || activeTab === 'assigned') {
             fetchSalesUsers();
             fetchPipelineStages();
             fetchPrograms();
@@ -89,10 +90,10 @@ const CRMCampaigns = () => {
     }, [activeTab]);
 
     useEffect(() => {
-        if (activeTab === 'leads') {
-            fetchLeads(leadsStartDate, leadsEndDate);
+        if (activeTab === 'leads' || activeTab === 'assigned') {
+            fetchLeads(leadsStartDate, leadsEndDate, selectedAssigneeFilter, searchTerm);
         }
-    }, [activeTab, currentPage, leadsStartDate, leadsEndDate]);
+    }, [activeTab, currentPage, leadsStartDate, leadsEndDate, selectedAssigneeFilter, searchTerm]);
 
     const fetchDashboardData = async () => {
         setDashboardLoading(true);
@@ -134,12 +135,22 @@ const CRMCampaigns = () => {
         }
     };
     
-    const fetchLeads = async (startDate, endDate) => {
+    const fetchLeads = async (startDate, endDate, assignee, search) => {
         setLeadsLoading(true);
         try {
-            let url = `students/?campaign_only=true&page=${currentPage}`;
+            let url = `students/?page=${currentPage}`;
+            if (activeTab === 'leads') {
+                url += `&campaign_only=true`;
+            }
+            if (activeTab === 'assigned' && !assignee) {
+                url += `&assigned_to=assigned`;
+            } else if (assignee) {
+                url += `&assigned_to=${assignee}`;
+            }
             if (startDate) url += `&start_date=${startDate}`;
             if (endDate) url += `&end_date=${endDate}`;
+            if (search) url += `&search=${encodeURIComponent(search)}`;
+
             console.log('[fetchLeads] URL:', url);
             const res = await api.get(url); 
             setLeads(res.data.results || res.data || []);
@@ -613,64 +624,92 @@ const CRMCampaigns = () => {
     const renderLeadsTable = () => {
         return (
             <div className="space-y-6">
-                 {/* Bulk Action Bar */}
-                 <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div className="relative max-w-xs w-full">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
-                        <input
-                            type="text"
-                            placeholder="Search leads..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 text-sm"
-                        />
-                    </div>
-                    
-                    <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500/20">
-                        <input 
-                            type="date" 
-                            value={leadsStartDate} 
-                            onChange={(e) => { setLeadsStartDate(e.target.value); setCurrentPage(1); }} 
-                            className="px-3 py-2 text-sm outline-none bg-transparent border-r border-slate-200 text-slate-700" 
-                        />
-                        <span className="px-2 text-slate-400 text-sm">to</span>
-                        <input 
-                            type="date" 
-                            value={leadsEndDate} 
-                            onChange={(e) => { setLeadsEndDate(e.target.value); setCurrentPage(1); }} 
-                            className="px-3 py-2 text-sm outline-none bg-transparent text-slate-700" 
-                        />
-                        {(leadsStartDate || leadsEndDate) && (
-                            <button 
-                                onClick={() => { setLeadsStartDate(''); setLeadsEndDate(''); setCurrentPage(1); }}
-                                className="px-2 py-1 mr-1 text-xs font-semibold text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition-colors"
+                 {/* Filter & Action Bar */}
+                 <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+                    <div className="flex flex-wrap items-center gap-3 flex-1">
+                        <div className="relative max-w-xs w-full min-w-[200px]">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                            <input
+                                type="text"
+                                placeholder="Search leads by name, email, phone..."
+                                value={searchTerm}
+                                onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+                                className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 text-sm text-slate-800"
+                            />
+                        </div>
+                        
+                        {/* Assigned Person Filter */}
+                        <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 focus-within:ring-2 focus-within:ring-indigo-500/20">
+                            <span className="text-xs font-semibold text-slate-500 whitespace-nowrap">Assigned To:</span>
+                            <select 
+                                value={selectedAssigneeFilter}
+                                onChange={(e) => { setSelectedAssigneeFilter(e.target.value); setCurrentPage(1); }}
+                                className="bg-transparent text-sm font-semibold text-indigo-700 outline-none cursor-pointer text-slate-800"
                             >
-                                ✕
+                                <option value="" className="text-slate-900 bg-white">
+                                    {activeTab === 'assigned' ? 'All Assigned Leads' : 'All Sales Reps'}
+                                </option>
+                                <option value="unassigned" className="text-slate-900 bg-white">Unassigned Leads</option>
+                                {salesUsers.map(user => (
+                                    <option key={user.id} value={user.id} className="text-slate-900 bg-white">
+                                        {user.name || (user.first_name ? `${user.first_name} ${user.last_name || ''}`.trim() : user.username || `User #${user.id}`)}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {/* Creation Date Filter */}
+                        <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500/20 px-2 py-1">
+                            <span className="text-xs font-semibold text-slate-500 whitespace-nowrap">Created Date:</span>
+                            <input 
+                                type="date" 
+                                value={leadsStartDate} 
+                                onChange={(e) => { setLeadsStartDate(e.target.value); setCurrentPage(1); }} 
+                                className="px-2 py-1 text-xs outline-none bg-transparent border-r border-slate-200 text-slate-700 font-medium" 
+                            />
+                            <span className="px-1 text-slate-400 text-xs">to</span>
+                            <input 
+                                type="date" 
+                                value={leadsEndDate} 
+                                onChange={(e) => { setLeadsEndDate(e.target.value); setCurrentPage(1); }} 
+                                className="px-2 py-1 text-xs outline-none bg-transparent text-slate-700 font-medium" 
+                            />
+                        </div>
+
+                        {(leadsStartDate || leadsEndDate || selectedAssigneeFilter || searchTerm) && (
+                            <button 
+                                onClick={() => { setLeadsStartDate(''); setLeadsEndDate(''); setSelectedAssigneeFilter(''); setSearchTerm(''); setCurrentPage(1); }}
+                                className="px-3 py-1.5 text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors flex items-center gap-1"
+                                title="Reset all filters"
+                            >
+                                ✕ Clear Filters
                             </button>
                         )}
                     </div>
                     
                     <div className="flex items-center gap-3 p-2 bg-indigo-50 rounded-xl border border-indigo-100">
-                        <button onClick={handleExportCSV} className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-50 transition-colors mr-2 shadow-sm">
+                        <button onClick={handleExportCSV} className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-50 transition-colors shadow-sm">
                             <Download className="w-4 h-4" /> Export
                         </button>
-                        <span className="text-sm text-indigo-700 font-medium px-2 border-l border-indigo-200 pl-4">
-                            {selectedLeads.length} leads selected
+                        <span className="text-sm text-indigo-700 font-medium px-2 border-l border-indigo-200 pl-3 whitespace-nowrap">
+                            {selectedLeads.length} selected
                         </span>
                         <select 
                             className="text-sm bg-white border border-indigo-200 rounded-lg px-3 py-1.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
                             value={assignSalesUserId}
                             onChange={(e) => setAssignSalesUserId(e.target.value)}
                         >
-                            <option value="">Assign to Sales Rep...</option>
+                            <option value="" className="text-slate-900 bg-white">Assign to Sales Rep...</option>
                             {salesUsers.map(user => (
-                                <option key={user.id} value={user.id}>{user.name}</option>
+                                <option key={user.id} value={user.id} className="text-slate-900 bg-white">
+                                    {user.name || (user.first_name ? `${user.first_name} ${user.last_name || ''}`.trim() : user.username || `User #${user.id}`)}
+                                </option>
                             ))}
                         </select>
                         <button 
                             onClick={handleBulkAssign}
                             disabled={isAssigning || selectedLeads.length === 0 || !assignSalesUserId}
-                            className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                         >
                             {isAssigning ? 'Assigning...' : 'Assign'}
                         </button>
@@ -803,18 +842,18 @@ const CRMCampaigns = () => {
                     <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Marketing</h1>
                     <p className="text-slate-500 mt-1">Manage marketing sources, track budgets, and route leads.</p>
                 </div>
-                <div className="flex bg-slate-100 p-1 rounded-xl w-full md:w-auto">
+                <div className="flex bg-slate-100 p-1 rounded-xl w-full md:w-auto overflow-x-auto">
                     {(authUser?.role === 'SUPER_ADMIN' || authUser?.role === 'ADMIN' || authUser?.is_manager) && (
                         <>
                             <button 
                                 onClick={() => setActiveTab('dashboard')}
-                                className={`flex-1 md:flex-none px-6 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === 'dashboard' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                className={`px-5 py-2 text-sm font-medium rounded-lg transition-all whitespace-nowrap ${activeTab === 'dashboard' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                             >
                                 Dashboard
                             </button>
                             <button 
                                 onClick={() => setActiveTab('campaigns')}
-                                className={`flex-1 md:flex-none px-6 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === 'campaigns' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                className={`px-5 py-2 text-sm font-medium rounded-lg transition-all whitespace-nowrap ${activeTab === 'campaigns' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                             >
                                 Campaigns
                             </button>
@@ -822,9 +861,15 @@ const CRMCampaigns = () => {
                     )}
                     <button 
                         onClick={() => setActiveTab('leads')}
-                        className={`flex-1 md:flex-none px-6 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === 'leads' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        className={`px-5 py-2 text-sm font-medium rounded-lg transition-all whitespace-nowrap ${activeTab === 'leads' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                     >
                         Leads Table
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab('assigned')}
+                        className={`px-5 py-2 text-sm font-medium rounded-lg transition-all whitespace-nowrap ${activeTab === 'assigned' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                        Assigned Leads
                     </button>
                 </div>
             </div>
@@ -833,7 +878,7 @@ const CRMCampaigns = () => {
             <div className="mt-6">
                 {activeTab === 'dashboard' && renderDashboard()}
                 {activeTab === 'campaigns' && renderCampaigns()}
-                {activeTab === 'leads' && renderLeadsTable()}
+                {(activeTab === 'leads' || activeTab === 'assigned') && renderLeadsTable()}
             </div>
 
             {/* Bulk Upload Modal */}
