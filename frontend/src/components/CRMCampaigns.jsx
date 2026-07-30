@@ -956,111 +956,122 @@ const CRMCampaigns = () => {
                 )}
 
                  {/* Filter & Action Bar */}
-                 <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-                    <div className="flex flex-wrap items-center gap-3 flex-1">
-                        <div className="relative max-w-xs w-full min-w-[200px]">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
-                            <input
-                                type="text"
-                                placeholder="Search leads by name, email, phone..."
-                                value={searchTerm}
-                                onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
-                                className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 text-sm text-slate-800"
-                            />
+                 <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 space-y-3">
+                    {/* Row 1: Search & Filter Inputs */}
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-[280px]">
+                            {/* Search */}
+                            <div className="relative flex-1 min-w-[180px] max-w-xs">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                                <input
+                                    type="text"
+                                    placeholder="Search leads..."
+                                    value={searchTerm}
+                                    onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+                                    className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-xs text-slate-800"
+                                />
+                            </div>
+                            
+                            {/* Assigned Person Filter */}
+                            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 focus-within:ring-2 focus-within:ring-indigo-500/20">
+                                <span className="text-xs font-semibold text-slate-500 whitespace-nowrap">Assigned To:</span>
+                                <select 
+                                    value={selectedAssigneeFilter}
+                                    onChange={(e) => { setSelectedAssigneeFilter(e.target.value); setCurrentPage(1); }}
+                                    className="bg-transparent text-xs font-semibold text-indigo-700 outline-none cursor-pointer"
+                                >
+                                    <option value="" className="text-slate-900 bg-white">
+                                        {activeTab === 'assigned' ? 'All Assigned Leads' : 'All Sales Reps'}
+                                    </option>
+                                    <option value="unassigned" className="text-slate-900 bg-white">Unassigned Leads</option>
+                                    {salesUsers.map(user => (
+                                        <option key={user.id} value={user.id} className="text-slate-900 bg-white">
+                                            {user.name || (user.first_name ? `${user.first_name} ${user.last_name || ''}`.trim() : user.username || `User #${user.id}`)}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Status Filter */}
+                            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 focus-within:ring-2 focus-within:ring-indigo-500/20">
+                                <span className="text-xs font-semibold text-slate-500 whitespace-nowrap">Status:</span>
+                                <select 
+                                    value={selectedStageFilter}
+                                    onChange={(e) => { setSelectedStageFilter(e.target.value); setCurrentPage(1); }}
+                                    className="bg-transparent text-xs font-semibold text-indigo-700 outline-none cursor-pointer"
+                                >
+                                    <option value="" className="text-slate-900 bg-white">All Statuses</option>
+                                    {Object.keys(pipelineStages).map(stageId => (
+                                        <option key={stageId} value={stageId} className="text-slate-900 bg-white">
+                                            {pipelineStages[stageId]}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Creation Date Filter */}
+                            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 focus-within:ring-2 focus-within:ring-indigo-500/20">
+                                <span className="text-xs font-semibold text-slate-500 whitespace-nowrap">Created Date:</span>
+                                <input 
+                                    type="date" 
+                                    value={leadsStartDate} 
+                                    onChange={(e) => { setLeadsStartDate(e.target.value); setCurrentPage(1); }} 
+                                    className="px-1 text-xs outline-none bg-transparent text-slate-700 font-medium" 
+                                />
+                                <span className="text-slate-400 text-xs">to</span>
+                                <input 
+                                    type="date" 
+                                    value={leadsEndDate} 
+                                    onChange={(e) => { setLeadsEndDate(e.target.value); setCurrentPage(1); }} 
+                                    className="px-1 text-xs outline-none bg-transparent text-slate-700 font-medium" 
+                                />
+                            </div>
+
+                            {(leadsStartDate || leadsEndDate || selectedAssigneeFilter || selectedStageFilter || searchTerm) && (
+                                <button 
+                                    onClick={() => { setLeadsStartDate(''); setLeadsEndDate(''); setSelectedAssigneeFilter(''); setSelectedStageFilter(''); setSearchTerm(''); setCurrentPage(1); }}
+                                    className="px-2.5 py-1 text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors flex items-center gap-1 border border-rose-200/60"
+                                    title="Reset all filters"
+                                >
+                                    ✕ Clear Filters
+                                </button>
+                            )}
                         </div>
-                        
-                        {/* Assigned Person Filter */}
-                        <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 focus-within:ring-2 focus-within:ring-indigo-500/20">
-                            <span className="text-xs font-semibold text-slate-500 whitespace-nowrap">Assigned To:</span>
+                    </div>
+                    
+                    {/* Row 2: Actions & Bulk Assignment Toolbar */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 pt-2.5 border-t border-slate-100">
+                        <div className="text-xs font-medium text-slate-500">
+                            Showing <strong className="text-slate-800">{leads.length}</strong> leads
+                        </div>
+
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <button onClick={handleExportCSV} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition-colors shadow-xs">
+                                <Download className="w-3.5 h-3.5 text-slate-500" /> Export CSV
+                            </button>
+                            <span className="text-xs text-indigo-700 font-semibold px-2 border-l border-slate-200 pl-3 whitespace-nowrap">
+                                {selectedLeads.length} selected
+                            </span>
                             <select 
-                                value={selectedAssigneeFilter}
-                                onChange={(e) => { setSelectedAssigneeFilter(e.target.value); setCurrentPage(1); }}
-                                className="bg-transparent text-sm font-semibold text-indigo-700 outline-none cursor-pointer text-slate-800"
+                                className="text-xs bg-white border border-indigo-200 rounded-xl px-3 py-1.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-medium"
+                                value={assignSalesUserId}
+                                onChange={(e) => setAssignSalesUserId(e.target.value)}
                             >
-                                <option value="" className="text-slate-900 bg-white">
-                                    {activeTab === 'assigned' ? 'All Assigned Leads' : 'All Sales Reps'}
-                                </option>
-                                <option value="unassigned" className="text-slate-900 bg-white">Unassigned Leads</option>
+                                <option value="" className="text-slate-900 bg-white">Assign to Sales Rep...</option>
                                 {salesUsers.map(user => (
                                     <option key={user.id} value={user.id} className="text-slate-900 bg-white">
                                         {user.name || (user.first_name ? `${user.first_name} ${user.last_name || ''}`.trim() : user.username || `User #${user.id}`)}
                                     </option>
                                 ))}
                             </select>
-                        </div>
-
-                        {/* Status Filter */}
-                        <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 focus-within:ring-2 focus-within:ring-indigo-500/20">
-                            <span className="text-xs font-semibold text-slate-500 whitespace-nowrap">Status:</span>
-                            <select 
-                                value={selectedStageFilter}
-                                onChange={(e) => { setSelectedStageFilter(e.target.value); setCurrentPage(1); }}
-                                className="bg-transparent text-sm font-semibold text-indigo-700 outline-none cursor-pointer text-slate-800"
-                            >
-                                <option value="" className="text-slate-900 bg-white">All Statuses</option>
-                                {Object.keys(pipelineStages).map(stageId => (
-                                    <option key={stageId} value={stageId} className="text-slate-900 bg-white">
-                                        {pipelineStages[stageId]}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-
-                        {/* Creation Date Filter */}
-                        <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500/20 px-2 py-1">
-                            <span className="text-xs font-semibold text-slate-500 whitespace-nowrap">Created Date:</span>
-                            <input 
-                                type="date" 
-                                value={leadsStartDate} 
-                                onChange={(e) => { setLeadsStartDate(e.target.value); setCurrentPage(1); }} 
-                                className="px-2 py-1 text-xs outline-none bg-transparent border-r border-slate-200 text-slate-700 font-medium" 
-                            />
-                            <span className="px-1 text-slate-400 text-xs">to</span>
-                            <input 
-                                type="date" 
-                                value={leadsEndDate} 
-                                onChange={(e) => { setLeadsEndDate(e.target.value); setCurrentPage(1); }} 
-                                className="px-2 py-1 text-xs outline-none bg-transparent text-slate-700 font-medium" 
-                            />
-                        </div>
-
-                        {(leadsStartDate || leadsEndDate || selectedAssigneeFilter || selectedStageFilter || searchTerm) && (
                             <button 
-                                onClick={() => { setLeadsStartDate(''); setLeadsEndDate(''); setSelectedAssigneeFilter(''); setSelectedStageFilter(''); setSearchTerm(''); setCurrentPage(1); }}
-                                className="px-3 py-1.5 text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors flex items-center gap-1"
-                                title="Reset all filters"
+                                onClick={handleBulkAssign}
+                                disabled={isAssigning || selectedLeads.length === 0 || !assignSalesUserId}
+                                className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shadow-xs"
                             >
-                                ✕ Clear Filters
+                                {isAssigning ? 'Assigning...' : 'Assign'}
                             </button>
-                        )}
-                    </div>
-                    
-                    <div className="flex items-center gap-3 p-2 bg-indigo-50 rounded-xl border border-indigo-100">
-                        <button onClick={handleExportCSV} className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-50 transition-colors shadow-sm">
-                            <Download className="w-4 h-4" /> Export
-                        </button>
-                        <span className="text-sm text-indigo-700 font-medium px-2 border-l border-indigo-200 pl-3 whitespace-nowrap">
-                            {selectedLeads.length} selected
-                        </span>
-                        <select 
-                            className="text-sm bg-white border border-indigo-200 rounded-lg px-3 py-1.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
-                            value={assignSalesUserId}
-                            onChange={(e) => setAssignSalesUserId(e.target.value)}
-                        >
-                            <option value="" className="text-slate-900 bg-white">Assign to Sales Rep...</option>
-                            {salesUsers.map(user => (
-                                <option key={user.id} value={user.id} className="text-slate-900 bg-white">
-                                    {user.name || (user.first_name ? `${user.first_name} ${user.last_name || ''}`.trim() : user.username || `User #${user.id}`)}
-                                </option>
-                            ))}
-                        </select>
-                        <button 
-                            onClick={handleBulkAssign}
-                            disabled={isAssigning || selectedLeads.length === 0 || !assignSalesUserId}
-                            className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-                        >
-                            {isAssigning ? 'Assigning...' : 'Assign'}
-                        </button>
+                        </div>
                     </div>
                 </div>
 
