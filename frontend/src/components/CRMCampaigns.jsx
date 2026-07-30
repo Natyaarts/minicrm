@@ -300,9 +300,12 @@ const CRMCampaigns = () => {
     );
 
     const sortedLeads = [...filteredLeads].sort((a, b) => {
-        const dateA = new Date(a.created_at || 0);
-        const dateB = new Date(b.created_at || 0);
-        return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
+        const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+        if (timeA === timeB || isNaN(timeA) || isNaN(timeB)) {
+            return sortOrder === 'asc' ? a.id - b.id : b.id - a.id;
+        }
+        return sortOrder === 'asc' ? timeA - timeB : timeB - timeA;
     });
 
     const handleExportCSV = () => {

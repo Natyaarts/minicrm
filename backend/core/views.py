@@ -576,6 +576,8 @@ class StudentViewSet(viewsets.ModelViewSet):
             if end_date:
                 qs = qs.filter(user__date_joined__date__lte=end_date)
 
+        if not self.request.query_params.get('ordering'):
+            return qs.order_by('-id')
         return qs
 
     def perform_destroy(self, instance):
