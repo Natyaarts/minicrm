@@ -36,7 +36,7 @@ class DashboardStatsView(APIView):
             if user_section != 'BOTH':
                 students = students.filter(
                     Q(assigned_to__sales_section=user_section) |
-                    (Q(assigned_to__isnull=True) & Q(sales_section__in=[user_section, 'BOTH']))
+                    Q(sales_section=user_section)
                 )
                 
             is_sales_manager = False
