@@ -881,7 +881,7 @@ const CRMCampaigns = () => {
 
                             <div className="flex items-center gap-2 self-start sm:self-auto">
                                 <div className="bg-indigo-50 border border-indigo-100 px-3 py-1 rounded-xl text-xs font-semibold text-indigo-900">
-                                    Total Assigned: <strong className="text-indigo-600 text-sm ml-1">{assignedStats?.assigned_leads ?? totalLeadsCount}</strong> Leads
+                                    {selectedAssigneeFilter === 'unassigned' ? 'Total Unassigned' : 'Total Assigned'}: <strong className="text-indigo-600 text-sm ml-1">{assignedStats?.assigned_leads ?? totalLeadsCount}</strong> Leads
                                 </div>
                                 <button 
                                     onClick={() => { setLeadsStartDate(''); setLeadsEndDate(''); setSelectedAssigneeFilter(''); setSelectedStageFilter(''); setSearchTerm(''); setCurrentPage(1); }}

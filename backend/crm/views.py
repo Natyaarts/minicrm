@@ -83,20 +83,19 @@ class DashboardStatsView(APIView):
         except Exception:
             pass
 
-        # Converted Leads (Historical Success)
-        converted_leads = students.filter(lead_status__in=converted_stages).count()
+        # Total leads matching filters
+        total_leads = students.count()
         
-        # Active Workable Leads
-        active_students = students.exclude(lead_status__in=converted_stages)
-        total_leads = active_students.count()
+        # Assignment metrics
+        unassigned_leads = students.filter(assigned_to__isnull=True).count()
+        assigned_leads = students.filter(assigned_to__isnull=False).count()
         
-        # Assignment metrics (on active leads)
-        unassigned_leads = active_students.filter(assigned_to__isnull=True).count()
-        assigned_leads = total_leads - unassigned_leads
-        
-        # Contacted vs Pending (on active leads)
-        contacted_leads = active_students.filter(crm_interactions__isnull=False).distinct().count()
+        # Contacted vs Pending
+        contacted_leads = students.filter(crm_interactions__isnull=False).distinct().count()
         pending_leads = total_leads - contacted_leads
+
+        # Converted Leads
+        converted_leads = students.filter(lead_status__in=converted_stages).count()
         
         # Pipeline Stages Breakdown
         pipeline_stages_data = []
