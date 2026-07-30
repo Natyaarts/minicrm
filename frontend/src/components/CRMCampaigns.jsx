@@ -857,48 +857,94 @@ const CRMCampaigns = () => {
 
                 {/* Active Selection Status & Date Breakdown Banner */}
                 {(selectedAssigneeFilter || leadsStartDate || leadsEndDate || selectedStageFilter) && (
-                    <div className="bg-gradient-to-r from-indigo-900 via-indigo-800 to-slate-900 text-white p-4 rounded-2xl shadow-md border border-indigo-700/50">
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-indigo-700/50 pb-3 mb-3">
-                            <div className="flex items-center gap-2 flex-wrap">
-                                <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></div>
-                                <h4 className="font-bold text-sm text-indigo-100">
-                                    Assigned Summary: <span className="text-white underline decoration-indigo-400 underline-offset-4">{getAssigneeDisplayName()}</span>
-                                </h4>
-                                {(leadsStartDate || leadsEndDate) && (
-                                    <span className="text-xs bg-indigo-700/70 text-indigo-200 px-2.5 py-0.5 rounded-full font-medium border border-indigo-500/30">
-                                        📅 {leadsStartDate || 'Start'} → {leadsEndDate || 'Today'}
-                                    </span>
-                                )}
+                    <div className="bg-white p-4.5 rounded-2xl shadow-sm border border-slate-200/80 space-y-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                            <div className="flex items-center gap-2.5 flex-wrap">
+                                <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-xs border border-indigo-100">
+                                    <Users className="w-4 h-4" />
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <h4 className="font-bold text-slate-900 text-sm">
+                                            {getAssigneeDisplayName()}
+                                        </h4>
+                                        {(leadsStartDate || leadsEndDate) && (
+                                            <span className="text-xs bg-slate-100 text-slate-700 px-2.5 py-0.5 rounded-full font-medium border border-slate-200/60 flex items-center gap-1">
+                                                <Calendar className="w-3 h-3 text-slate-400" />
+                                                {leadsStartDate || 'Start'} → {leadsEndDate || 'Today'}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <p className="text-xs text-slate-500 mt-0.5 font-medium">Assigned Leads Overview for Selected Filter</p>
+                                </div>
                             </div>
-                            <div className="text-xs text-indigo-200 font-semibold bg-indigo-950/70 px-3 py-1 rounded-lg border border-indigo-700/50 self-start sm:self-auto">
-                                Total Assigned on Date Range: <strong className="text-white text-sm ml-1">{leads.length}</strong> Leads
+
+                            <div className="flex items-center gap-2 self-start sm:self-auto">
+                                <div className="bg-indigo-50 border border-indigo-100 px-3 py-1 rounded-xl text-xs font-semibold text-indigo-900">
+                                    Total Assigned: <strong className="text-indigo-600 text-sm ml-1">{leads.length}</strong> Leads
+                                </div>
+                                <button 
+                                    onClick={() => { setLeadsStartDate(''); setLeadsEndDate(''); setSelectedAssigneeFilter(''); setSelectedStageFilter(''); setSearchTerm(''); setCurrentPage(1); }}
+                                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                                    title="Reset filters"
+                                >
+                                    <X className="w-4 h-4" />
+                                </button>
                             </div>
                         </div>
 
-                        {/* Status-wise Pills Breakdown */}
-                        <div>
-                            <p className="text-[11px] font-semibold text-indigo-300 uppercase tracking-wider mb-2">Status-wise Breakdown for this selection (click any status to filter):</p>
+                        {/* Status Breakdown Pills */}
+                        <div className="pt-1">
+                            <div className="flex items-center justify-between mb-2">
+                                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Status Breakdown</span>
+                                {selectedStageFilter && (
+                                    <button 
+                                        onClick={() => setSelectedStageFilter('')}
+                                        className="text-[11px] text-indigo-600 hover:underline font-semibold"
+                                    >
+                                        Show All Statuses
+                                    </button>
+                                )}
+                            </div>
+
                             <div className="flex flex-wrap items-center gap-2">
                                 {Object.keys(statusCounts).map((statusName) => {
                                     const count = statusCounts[statusName];
-                                    const isSelected = selectedStageFilter === statusName || selectedStageFilter === (Object.keys(pipelineStages).find(key => pipelineStages[key] === statusName));
+                                    const stageId = Object.keys(pipelineStages).find(key => pipelineStages[key] === statusName) || statusName;
+                                    const isSelected = selectedStageFilter === stageId || selectedStageFilter === statusName;
+
+                                    const sLower = statusName.toLowerCase();
+                                    let badgeStyle = "bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200";
+                                    let countBg = "bg-slate-200 text-slate-800";
+
+                                    if (sLower.includes('positive') || sLower.includes('enrolled') || sLower.includes('converted')) {
+                                        badgeStyle = isSelected ? "bg-emerald-600 text-white border-emerald-600 shadow-sm" : "bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100";
+                                        countBg = isSelected ? "bg-white/20 text-white" : "bg-emerald-200/80 text-emerald-900";
+                                    } else if (sLower.includes('follow') || sLower.includes('pending') || sLower.includes('trial')) {
+                                        badgeStyle = isSelected ? "bg-amber-600 text-white border-amber-600 shadow-sm" : "bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100";
+                                        countBg = isSelected ? "bg-white/20 text-white" : "bg-amber-200/80 text-amber-900";
+                                    } else if (sLower.includes('not answer') || sLower.includes('dropped') || sLower.includes('busy')) {
+                                        badgeStyle = isSelected ? "bg-rose-600 text-white border-rose-600 shadow-sm" : "bg-rose-50 text-rose-800 border-rose-200 hover:bg-rose-100";
+                                        countBg = isSelected ? "bg-white/20 text-white" : "bg-rose-200/80 text-rose-900";
+                                    } else if (sLower.includes('new')) {
+                                        badgeStyle = isSelected ? "bg-indigo-600 text-white border-indigo-600 shadow-sm" : "bg-indigo-50 text-indigo-800 border-indigo-200 hover:bg-indigo-100";
+                                        countBg = isSelected ? "bg-white/20 text-white" : "bg-indigo-200/80 text-indigo-900";
+                                    }
+
                                     return (
                                         <button
                                             key={statusName}
                                             onClick={() => {
-                                                const stageId = Object.keys(pipelineStages).find(key => pipelineStages[key] === statusName) || statusName;
-                                                if (selectedStageFilter === stageId) setSelectedStageFilter('');
+                                                if (isSelected) setSelectedStageFilter('');
                                                 else setSelectedStageFilter(stageId);
                                                 setCurrentPage(1);
                                             }}
-                                            className={`text-xs font-bold px-3 py-1 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
-                                                isSelected 
-                                                    ? 'bg-white text-indigo-950 shadow-md ring-2 ring-emerald-400 font-extrabold scale-105' 
-                                                    : 'bg-indigo-800/80 hover:bg-indigo-700 text-indigo-100 border border-indigo-600/50'
+                                            className={`text-xs font-semibold px-3 py-1.5 rounded-xl border transition-all flex items-center gap-1.5 cursor-pointer ${badgeStyle} ${
+                                                isSelected ? 'scale-105 shadow-sm font-bold ring-2 ring-indigo-500/20' : ''
                                             }`}
                                         >
                                             <span>{statusName}</span>
-                                            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-extrabold ${isSelected ? 'bg-indigo-900 text-white' : 'bg-indigo-950 text-emerald-300'}`}>
+                                            <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-md ${countBg}`}>
                                                 {count}
                                             </span>
                                         </button>
