@@ -911,11 +911,24 @@ class MarketingDashboardView(APIView):
             except ValueError:
                 pass
 
+        # Dynamically determine all converted/enrolled pipeline stage values
+        converted_stage_values = set(['ENROLLED', 'CONVERTED', '4', 'converted', 'enrolled', 'Converted', 'Enrolled', 'POSITIVE', 'positive'])
+        try:
+            from .models import PipelineStage
+            for stage in PipelineStage.objects.all():
+                s_name = (stage.name or '').lower()
+                if any(kw in s_name for kw in ['convert', 'enroll', 'positive', 'paid', 'join']):
+                    converted_stage_values.add(str(stage.id))
+                    converted_stage_values.add(stage.name)
+                    converted_stage_values.add(stage.name.lower())
+                    converted_stage_values.add(stage.name.upper())
+        except Exception:
+            pass
+        converted_stages_list = list(converted_stage_values)
+
         total_spend = campaigns.aggregate(total=Sum('budget'))['total'] or 0
         total_leads = students.count()
-        
-        # Assuming ENROLLED (id 4 or name Enrolled) is converted.
-        total_converted = students.filter(lead_status__in=['ENROLLED', '4', 'Converted']).count()
+        total_converted = students.filter(lead_status__in=converted_stages_list).count()
 
         # Chart Data
         from django.db.models.functions import TruncDate
@@ -930,7 +943,6 @@ class MarketingDashboardView(APIView):
         
         chart_data = []
         for d in daily_leads:
-            # d['date'] is a datetime.date object
             chart_data.append({
                 'date': str(d['date']),
                 'leads': d['count']
@@ -938,17 +950,34 @@ class MarketingDashboardView(APIView):
 
         # Sales Team Report
         sales_reps = User.objects.filter(role='SALES')
+        if request.user.role == 'SALES' and getattr(request.user, 'sales_section', 'BOTH') != 'BOTH':
+            from django.db.models import Q
+            sales_reps = sales_reps.filter(Q(sales_section=request.user.sales_section) | Q(sales_section='BOTH'))
+
         sales_report = []
         for rep in sales_reps:
             rep_leads = Student.objects.filter(assigned_to=rep)
+            if start_date_str:
+                try:
+                    p_start = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+                    rep_leads = rep_leads.filter(Q(created_at__date__gte=p_start) | Q(user__date_joined__date__gte=p_start))
+                except ValueError:
+                    pass
+            if end_date_str:
+                try:
+                    p_end = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+                    rep_leads = rep_leads.filter(Q(created_at__date__lte=p_end) | Q(user__date_joined__date__lte=p_end))
+                except ValueError:
+                    pass
+
             assigned = rep_leads.count()
             contacted = rep_leads.filter(crm_interactions__isnull=False).distinct().count()
-            converted = rep_leads.filter(lead_status__in=['ENROLLED', '4', 'Converted']).count()
+            converted = rep_leads.filter(lead_status__in=converted_stages_list).count()
             conversion_rate = round((converted / assigned * 100), 2) if assigned > 0 else 0
             
             sales_report.append({
                 'id': rep.id,
-                'name': f"{rep.first_name} {rep.last_name}".strip() or rep.username,
+                'name': rep.get_full_name() or rep.username,
                 'assigned': assigned,
                 'contacted': contacted,
                 'converted': converted,
