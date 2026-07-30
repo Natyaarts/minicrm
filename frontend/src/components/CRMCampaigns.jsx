@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api/axios';
 import { motion } from 'framer-motion';
-import { Plus, X, Search, BarChart, Calendar, DollarSign, Users, ExternalLink, Edit2, Link, Upload, TrendingUp, CheckCircle, Clock, Download, ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, X, Search, BarChart, Calendar, DollarSign, Users, ExternalLink, Edit2, Link, Upload, TrendingUp, CheckCircle, Clock, Download, ArrowUpDown, ChevronLeft, ChevronRight, Phone } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 
@@ -30,6 +30,10 @@ const CRMCampaigns = () => {
     const [dashboardStartDate, setDashboardStartDate] = useState('');
     const [dashboardEndDate, setDashboardEndDate] = useState('');
     
+    // Assigned Dashboard Data
+    const [assignedStats, setAssignedStats] = useState(null);
+    const [assignedStatsLoading, setAssignedStatsLoading] = useState(false);
+
     // Leads Data
     const [leads, setLeads] = useState([]);
     const [leadsLoading, setLeadsLoading] = useState(true);
@@ -624,6 +628,136 @@ const CRMCampaigns = () => {
     const renderLeadsTable = () => {
         return (
             <div className="space-y-6">
+                {/* Assigned Leads Performance Dashboard (Shown when Assigned Leads tab is active) */}
+                {activeTab === 'assigned' && (
+                    <div className="space-y-5">
+                        {/* KPI Summary Cards */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                            {/* Total Assigned */}
+                            <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
+                                <div>
+                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Assigned Leads</p>
+                                    <h3 className="text-2xl font-bold text-slate-900 mt-1">{assignedStats?.assigned_leads || 0}</h3>
+                                    <p className="text-[11px] text-blue-600 font-medium mt-1">Assigned to sales reps</p>
+                                </div>
+                                <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center font-bold">
+                                    <Users className="w-6 h-6" />
+                                </div>
+                            </div>
+
+                            {/* Contacted Leads */}
+                            <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
+                                <div>
+                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Contacted Leads</p>
+                                    <h3 className="text-2xl font-bold text-emerald-600 mt-1">{assignedStats?.contacted_leads || 0}</h3>
+                                    <p className="text-[11px] text-emerald-600 font-medium mt-1">
+                                        {assignedStats?.assigned_leads > 0 
+                                            ? `${Math.round((assignedStats.contacted_leads / assignedStats.assigned_leads) * 100)}% of assigned contacted` 
+                                            : '0% Contacted'}
+                                    </p>
+                                </div>
+                                <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center font-bold">
+                                    <Phone className="w-6 h-6" />
+                                </div>
+                            </div>
+
+                            {/* Pending Contact */}
+                            <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
+                                <div>
+                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Pending Initial Contact</p>
+                                    <h3 className="text-2xl font-bold text-amber-600 mt-1">{assignedStats?.pending_leads || 0}</h3>
+                                    <p className="text-[11px] text-amber-600 font-medium mt-1">Awaiting call / response</p>
+                                </div>
+                                <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center font-bold">
+                                    <Clock className="w-6 h-6" />
+                                </div>
+                            </div>
+
+                            {/* Converted */}
+                            <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
+                                <div>
+                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Converted / Enrolled</p>
+                                    <h3 className="text-2xl font-bold text-purple-600 mt-1">{assignedStats?.converted_leads || 0}</h3>
+                                    <p className="text-[11px] text-purple-600 font-medium mt-1">Successfully enrolled</p>
+                                </div>
+                                <div className="w-12 h-12 bg-purple-50 text-purple-600 rounded-2xl flex items-center justify-center font-bold">
+                                    <CheckCircle className="w-6 h-6" />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Agent Activity & Contact Progress Breakdown */}
+                        {assignedStats?.leaderboard?.length > 0 && (
+                            <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
+                                <div className="flex items-center justify-between mb-3">
+                                    <div>
+                                        <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wider">Agent Contact & Assignment Performance</h3>
+                                        <p className="text-xs text-slate-500 mt-0.5">Overview of assigned leads and contact progress per sales representative (click any agent to filter).</p>
+                                    </div>
+                                    {selectedAssigneeFilter && (
+                                        <button 
+                                            onClick={() => setSelectedAssigneeFilter('')}
+                                            className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-3 py-1 rounded-lg transition-colors"
+                                        >
+                                            Show All Agents
+                                        </button>
+                                    )}
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                    {assignedStats.leaderboard.map((rep) => {
+                                        const contactRate = rep.assigned > 0 ? Math.round((rep.contacted / rep.assigned) * 100) : 0;
+                                        const isSelected = selectedAssigneeFilter === rep.id.toString();
+                                        return (
+                                            <div 
+                                                key={rep.id} 
+                                                onClick={() => {
+                                                    if (isSelected) setSelectedAssigneeFilter('');
+                                                    else setSelectedAssigneeFilter(rep.id.toString());
+                                                    setCurrentPage(1);
+                                                }}
+                                                className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
+                                                    isSelected 
+                                                        ? 'bg-indigo-50/90 border-indigo-400 ring-2 ring-indigo-500/20 shadow-sm' 
+                                                        : 'bg-slate-50/70 border-slate-200 hover:border-indigo-300 hover:bg-white'
+                                                }`}
+                                            >
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <div className="flex items-center gap-2.5">
+                                                        <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs">
+                                                            {rep.name?.[0] || 'A'}
+                                                        </div>
+                                                        <div>
+                                                            <h4 className="font-bold text-slate-900 text-xs">{rep.name}</h4>
+                                                            <p className="text-[10px] text-slate-500 font-medium">{rep.assigned} Assigned Leads</p>
+                                                        </div>
+                                                    </div>
+                                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${contactRate >= 70 ? 'bg-emerald-100 text-emerald-700' : contactRate >= 40 ? 'bg-amber-100 text-amber-700' : 'bg-slate-200 text-slate-700'}`}>
+                                                        {contactRate}% Contacted
+                                                    </span>
+                                                </div>
+
+                                                <div className="space-y-1.5 mt-2">
+                                                    <div className="flex justify-between text-[11px] font-medium text-slate-600">
+                                                        <span>Contacted: <strong className="text-emerald-700">{rep.contacted}</strong></span>
+                                                        <span>Pending: <strong className="text-amber-700">{rep.assigned - rep.contacted}</strong></span>
+                                                    </div>
+                                                    <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                                                        <div 
+                                                            className="h-full bg-emerald-500 rounded-full transition-all duration-500" 
+                                                            style={{ width: `${contactRate}%` }}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+
                  {/* Filter & Action Bar */}
                  <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
                     <div className="flex flex-wrap items-center gap-3 flex-1">

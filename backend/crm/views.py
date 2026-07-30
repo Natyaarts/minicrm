@@ -52,12 +52,14 @@ class DashboardStatsView(APIView):
         if start_date:
             parsed_start = parse_date(start_date)
             if parsed_start:
-                students = students.filter(user__date_joined__date__gte=parsed_start)
+                from django.db.models import Q
+                students = students.filter(Q(created_at__date__gte=parsed_start) | Q(user__date_joined__date__gte=parsed_start))
         
         if end_date:
             parsed_end = parse_date(end_date)
             if parsed_end:
-                students = students.filter(user__date_joined__date__lte=parsed_end)
+                from django.db.models import Q
+                students = students.filter(Q(created_at__date__lte=parsed_end) | Q(user__date_joined__date__lte=parsed_end))
         
         # Identify converted/enrolled leads to exclude them from active totals
         converted_stages = ['ENROLLED', 'CONVERTED', '4']
