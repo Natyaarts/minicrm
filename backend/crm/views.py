@@ -473,38 +473,50 @@ class CampaignViewSet(viewsets.ModelViewSet):
 
 from django.shortcuts import get_object_or_404
 
+def format_duration_seconds(seconds):
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60
+    secs = seconds % 60
+    return f"{hours:02}:{minutes:02}:{secs:02}"
+
 class BDEReportView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, user_id):
         from django.utils.dateparse import parse_date
+        from datetime import timedelta
+        from django.utils import timezone
         
-        bde = get_object_or_404(User, id=user_id, role='SALES')
+        bde = get_object_or_404(User, id=user_id)
+        date_preset = request.query_params.get('date_preset')
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
+        sort_by = request.query_params.get('sort_by', 'newest')
+
+        today = timezone.now().date()
+        if date_preset == 'today':
+            start_date = str(today)
+            end_date = str(today)
+        elif date_preset == 'yesterday':
+            yesterday = today - timedelta(days=1)
+            start_date = str(yesterday)
+            end_date = str(yesterday)
+        elif date_preset == 'this_week':
+            start_date = str(today - timedelta(days=today.weekday()))
+            end_date = str(today)
+        elif date_preset == 'this_month':
+            start_date = str(today.replace(day=1))
+            end_date = str(today)
         
-        leads = Student.objects.filter(assigned_to=bde)
-        
+        leads = Student.objects.filter(assigned_to=bde, is_active=True)
         if start_date:
             parsed_start = parse_date(start_date)
             if parsed_start:
-                leads = leads.filter(user__date_joined__date__gte=parsed_start)
+                leads = leads.filter(created_at__date__gte=parsed_start)
         if end_date:
             parsed_end = parse_date(end_date)
             if parsed_end:
-                leads = leads.filter(user__date_joined__date__lte=parsed_end)
-                
-        leads = leads.order_by('-id')
-        
-        leads_data = []
-        for lead in leads:
-            leads_data.append({
-                'id': lead.id,
-                'name': f"{lead.first_name} {lead.last_name}",
-                'crm_id': lead.crm_student_id,
-                'status': lead.lead_status,
-                'mobile': lead.mobile
-            })
+                leads = leads.filter(created_at__date__lte=parsed_end)
 
         interactions = LeadInteraction.objects.filter(author=bde).select_related('student')
         if start_date:
@@ -516,7 +528,12 @@ class BDEReportView(APIView):
             if parsed_end:
                 interactions = interactions.filter(date__date__lte=parsed_end)
                 
-        interactions = interactions.order_by('-date')
+        if sort_by == 'oldest':
+            interactions = interactions.order_by('date')
+        elif sort_by == 'longest_call':
+            interactions = interactions.order_by('-call_duration', '-date')
+        else:
+            interactions = interactions.order_by('-date')
         
         page = request.query_params.get('page')
         has_more = False
@@ -538,13 +555,17 @@ class BDEReportView(APIView):
         for inter in interactions:
             timeline.append({
                 'id': inter.id,
-                'student_name': f"{inter.student.first_name} {inter.student.last_name}",
-                'student_id': inter.student.id,
-                'student_phone': inter.student.mobile,
-                'student_email': inter.student.email,
-                'student_crm_id': inter.student.crm_student_id,
-                'student_status': inter.student.lead_status,
+                'student_name': f"{inter.student.first_name} {inter.student.last_name}" if inter.student else 'Unknown',
+                'student_id': inter.student.id if inter.student else None,
+                'student_phone': inter.student.mobile if inter.student else '',
+                'student_email': inter.student.email if inter.student else '',
+                'student_crm_id': inter.student.crm_student_id if inter.student else '',
+                'student_status': inter.student.lead_status if inter.student else '',
                 'type': inter.interaction_type,
+                'call_duration': inter.call_duration or 0,
+                'formatted_call_duration': format_duration_seconds(inter.call_duration or 0),
+                'call_direction': inter.call_direction,
+                'call_status': inter.call_status,
                 'notes': inter.notes,
                 'date': inter.date,
                 'audio_url': request.build_absolute_uri(inter.audio_recording.url) if inter.audio_recording else None
@@ -560,16 +581,29 @@ class BDEReportView(APIView):
             if parsed_end:
                 pending_tasks = pending_tasks.filter(created_at__date__lte=parsed_end)
 
+        calls_qs = LeadInteraction.objects.filter(author=bde, interaction_type='CALL')
+        if start_date:
+            parsed_start = parse_date(start_date)
+            if parsed_start:
+                calls_qs = calls_qs.filter(date__date__gte=parsed_start)
+        if end_date:
+            parsed_end = parse_date(end_date)
+            if parsed_end:
+                calls_qs = calls_qs.filter(date__date__lte=parsed_end)
+
+        total_bde_duration_sec = calls_qs.aggregate(total_sec=Sum('call_duration'))['total_sec'] or 0
+
         metrics = {
             'total_assigned': leads.count(),
-            'total_interactions': LeadInteraction.objects.filter(author=bde).count(),
+            'total_interactions': calls_qs.count(),
+            'total_call_duration': total_bde_duration_sec,
+            'formatted_total_call_duration': format_duration_seconds(total_bde_duration_sec),
             'pending_tasks': pending_tasks.count()
         }
 
         return Response({
             'bde': {'id': bde.id, 'name': bde.get_full_name() or bde.username, 'email': bde.email},
             'metrics': metrics,
-            'leads': leads_data,
             'timeline': timeline,
             'has_more': has_more
         })

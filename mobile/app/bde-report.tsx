@@ -18,6 +18,7 @@ export default function BDEReportScreen() {
   const [sound, setSound] = useState<Audio.Sound | null>(null);
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
+  const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'longest_call'>('newest');
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
   const [page, setPage] = useState(1);
@@ -29,7 +30,7 @@ export default function BDEReportScreen() {
       setPage(1); // Reset page on filter change
       fetchReport(1);
     }
-  }, [bdeId, startDate, endDate]);
+  }, [bdeId, startDate, endDate, sortBy]);
 
   useEffect(() => {
     return sound
@@ -56,6 +57,7 @@ export default function BDEReportScreen() {
       const queryParams = [];
       if (startDate) queryParams.push(`start_date=${formatDateLocal(startDate)}`);
       if (endDate) queryParams.push(`end_date=${formatDateLocal(endDate)}`);
+      if (sortBy) queryParams.push(`sort_by=${sortBy}`);
       queryParams.push(`page=${pageNumber}`);
       
       if (queryParams.length > 0) {
@@ -141,32 +143,71 @@ export default function BDEReportScreen() {
         <View style={{width: 32}} />
       </View>
 
-      <View style={styles.dateFilterContainer}>
-        <TouchableOpacity 
-          style={[styles.dateButton, isDark && styles.darkCard]} 
-          onPress={() => setShowStartPicker(true)}
-        >
-          <FontAwesome5 name="calendar-alt" size={14} color="#6B7280" />
-          <Text style={[styles.dateButtonText, isDark && styles.darkText]}>
-            {startDate ? startDate.toLocaleDateString() : 'Start Date'}
-          </Text>
-        </TouchableOpacity>
-        <Text style={{color: '#9CA3AF'}}>-</Text>
-        <TouchableOpacity 
-          style={[styles.dateButton, isDark && styles.darkCard]} 
-          onPress={() => setShowEndPicker(true)}
-        >
-          <FontAwesome5 name="calendar-alt" size={14} color="#6B7280" />
-          <Text style={[styles.dateButtonText, isDark && styles.darkText]}>
-            {endDate ? endDate.toLocaleDateString() : 'End Date'}
-          </Text>
-        </TouchableOpacity>
-        
-        {(startDate || endDate) && (
-          <TouchableOpacity onPress={() => { setStartDate(null); setEndDate(null); }}>
-             <Text style={{color: '#EF4444', fontSize: 12, fontWeight: 'bold'}}>CLEAR</Text>
+      <View style={[styles.dateFilterContainer, isDark && styles.darkCard]}>
+        <View style={styles.presetButtonsRow}>
+          <TouchableOpacity 
+            style={styles.presetChip} 
+            onPress={() => {
+              const today = new Date();
+              setStartDate(today);
+              setEndDate(today);
+            }}
+          >
+            <Text style={styles.presetChipText}>Today</Text>
           </TouchableOpacity>
-        )}
+
+          <TouchableOpacity 
+            style={styles.presetChip} 
+            onPress={() => {
+              const yesterday = new Date();
+              yesterday.setDate(yesterday.getDate() - 1);
+              setStartDate(yesterday);
+              setEndDate(yesterday);
+            }}
+          >
+            <Text style={styles.presetChipText}>Yesterday</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.presetChip} 
+            onPress={() => {
+              const today = new Date();
+              const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+              setStartDate(firstDay);
+              setEndDate(today);
+            }}
+          >
+            <Text style={styles.presetChipText}>This Month</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={{flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4}}>
+          <TouchableOpacity 
+            style={[styles.dateButton, isDark && styles.darkCard]} 
+            onPress={() => setShowStartPicker(true)}
+          >
+            <FontAwesome5 name="calendar-alt" size={12} color="#6B7280" />
+            <Text style={[styles.dateButtonText, isDark && styles.darkText]}>
+              {startDate ? startDate.toLocaleDateString() : 'Start Date'}
+            </Text>
+          </TouchableOpacity>
+          <Text style={{color: '#9CA3AF'}}>-</Text>
+          <TouchableOpacity 
+            style={[styles.dateButton, isDark && styles.darkCard]} 
+            onPress={() => setShowEndPicker(true)}
+          >
+            <FontAwesome5 name="calendar-alt" size={12} color="#6B7280" />
+            <Text style={[styles.dateButtonText, isDark && styles.darkText]}>
+              {endDate ? endDate.toLocaleDateString() : 'End Date'}
+            </Text>
+          </TouchableOpacity>
+          
+          {(startDate || endDate) && (
+            <TouchableOpacity onPress={() => { setStartDate(null); setEndDate(null); }}>
+               <Text style={{color: '#EF4444', fontSize: 11, fontWeight: 'bold'}}>CLEAR</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       {showStartPicker && (
@@ -194,18 +235,43 @@ export default function BDEReportScreen() {
       )}
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+         {/* Sort Options Bar */}
+         <View style={styles.sortBarContainer}>
+           <Text style={styles.sortLabel}>SORT BY:</Text>
+           <TouchableOpacity 
+             style={[styles.sortChip, sortBy === 'newest' && styles.sortChipActive]}
+             onPress={() => setSortBy('newest')}
+           >
+             <Text style={[styles.sortChipText, sortBy === 'newest' && styles.sortChipTextActive]}>Newest</Text>
+           </TouchableOpacity>
+
+           <TouchableOpacity 
+             style={[styles.sortChip, sortBy === 'oldest' && styles.sortChipActive]}
+             onPress={() => setSortBy('oldest')}
+           >
+             <Text style={[styles.sortChipText, sortBy === 'oldest' && styles.sortChipTextActive]}>Oldest</Text>
+           </TouchableOpacity>
+
+           <TouchableOpacity 
+             style={[styles.sortChip, sortBy === 'longest_call' && styles.sortChipActive]}
+             onPress={() => setSortBy('longest_call')}
+           >
+             <Text style={[styles.sortChipText, sortBy === 'longest_call' && styles.sortChipTextActive]}>Longest Call</Text>
+           </TouchableOpacity>
+         </View>
+
          <View style={styles.metricsGrid}>
             <View style={[styles.metricCard, isDark && styles.darkCard]}>
                <Text style={styles.metricLabel}>ASSIGNED LEADS</Text>
                <Text style={[styles.metricValue, {color: '#3B82F6'}]}>{report.metrics.total_assigned}</Text>
             </View>
             <View style={[styles.metricCard, isDark && styles.darkCard]}>
-               <Text style={styles.metricLabel}>INTERACTIONS</Text>
-               <Text style={[styles.metricValue, {color: '#10B981'}]}>{report.metrics.total_interactions}</Text>
+               <Text style={styles.metricLabel}>TOTAL TALK TIME</Text>
+               <Text style={[styles.metricValue, {color: '#6366F1'}]}>{report.metrics.formatted_total_call_duration || '0s'}</Text>
             </View>
             <View style={[styles.metricCard, isDark && styles.darkCard]}>
-               <Text style={styles.metricLabel}>PENDING TASKS</Text>
-               <Text style={[styles.metricValue, {color: '#F59E0B'}]}>{report.metrics.pending_tasks}</Text>
+               <Text style={styles.metricLabel}>CALLS LOGGED</Text>
+               <Text style={[styles.metricValue, {color: '#10B981'}]}>{report.metrics.total_interactions}</Text>
             </View>
          </View>
 
@@ -225,6 +291,13 @@ export default function BDEReportScreen() {
                             item.type === 'EMAIL' ? 'Email to ' : 'Note on '}
                            <Text style={{color: '#3B82F6'}}>{item.student_name}</Text>
                         </Text>
+
+                        {item.type === 'CALL' && item.formatted_call_duration && (
+                           <View style={styles.durationBadge}>
+                              <FontAwesome5 name="clock" size={10} color="#6366F1" />
+                              <Text style={styles.durationBadgeText}>{item.formatted_call_duration}</Text>
+                           </View>
+                        )}
                      </View>
                      <Text style={styles.timelineDate}>{new Date(item.date).toLocaleString([], {dateStyle: 'medium', timeStyle: 'short'})}</Text>
                      <Text style={styles.timelineNotes}>{item.notes}</Text>
@@ -301,14 +374,82 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   dateFilterContainer: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 12,
+    padding: 10,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
+    gap: 6,
+  },
+  presetButtonsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
+    marginBottom: 2,
+  },
+  presetChip: {
+    backgroundColor: '#EEF2FF',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+  },
+  presetChipText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#4338CA',
+  },
+  sortBarContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 14,
+    gap: 6,
+  },
+  sortLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#6B7280',
+    marginRight: 4,
+  },
+  sortChip: {
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  sortChipActive: {
+    backgroundColor: '#3B82F6',
+    borderColor: '#2563EB',
+  },
+  sortChipText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#4B5563',
+  },
+  sortChipTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+  },
+  durationBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EEF2FF',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    gap: 4,
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+  },
+  durationBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#4338CA',
   },
   dateButton: {
     flexDirection: 'row',
