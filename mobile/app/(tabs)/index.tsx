@@ -28,6 +28,7 @@ export default function AttendanceScreen() {
   const [user, setUser] = useState<any>(null);
   const [festiveGreeting, setFestiveGreeting] = useState<any>(null);
   const [mobileWishInput, setMobileWishInput] = useState('');
+  const [showWishesModal, setShowWishesModal] = useState(false);
 
   const [showCamera, setShowCamera] = useState(false);
   const [facing, setFacing] = useState<CameraType>('front');
@@ -323,67 +324,189 @@ const welcomeName = user ? `${user.first_name || user.username}` : 'Member';
             <Image source={{ uri: festiveGreeting.banner_image }} style={styles.festiveBannerImage} resizeMode="cover" />
           ) : null}
           <View style={styles.festiveCardOverlay}>
-            <View style={styles.festiveBadge}>
-              <FontAwesome5 name={festiveGreeting.theme === 'CUSTOM' ? "bullhorn" : "star"} size={10} color="#F59E0B" />
-              <Text style={styles.festiveBadgeText}>{getFestiveBadgeText(festiveGreeting.theme)}</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <View style={styles.festiveBadge}>
+                <FontAwesome5 name={festiveGreeting.theme === 'CUSTOM' ? "bullhorn" : "star"} size={10} color="#D97706" />
+                <Text style={styles.festiveBadgeText}>{getFestiveBadgeText(festiveGreeting.theme)}</Text>
+              </View>
+              {festiveGreeting.comments && festiveGreeting.comments.length > 0 && (
+                <TouchableOpacity
+                  onPress={() => setShowWishesModal(true)}
+                  style={{
+                    backgroundColor: '#FEF3C7',
+                    paddingHorizontal: 8,
+                    paddingVertical: 3,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: '#FDE68A',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 4
+                  }}
+                >
+                  <FontAwesome5 name="comments" size={10} color="#B45309" />
+                  <Text style={{ fontSize: 10, fontWeight: '800', color: '#B45309' }}>
+                    {festiveGreeting.comments.length} Wishes
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
+
             <Text style={styles.festiveTitle}>{festiveGreeting.title}</Text>
             {festiveGreeting.sub_title ? (
               <Text style={styles.festiveSubTitle}>{festiveGreeting.sub_title}</Text>
             ) : null}
             <Text style={styles.festiveMessage}>"{festiveGreeting.message}"</Text>
 
-            {/* Mobile Wish Box */}
-            <View style={{ marginTop: 10, paddingTop: 8, borderTopWidth: 1, borderColor: '#FDE68A' }}>
-              <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
-                <TextInput
-                  style={{
-                    flex: 1,
-                    backgroundColor: '#FFF',
-                    borderRadius: 10,
-                    paddingHorizontal: 10,
-                    paddingVertical: 6,
-                    fontSize: 11,
-                    borderWidth: 1,
-                    borderColor: '#FCD34D',
-                    color: '#111827'
-                  }}
-                  placeholder="Type birthday wish or reply..."
-                  placeholderTextColor="#9CA3AF"
-                  value={mobileWishInput}
-                  onChangeText={setMobileWishInput}
-                />
-                <TouchableOpacity
-                  onPress={handleSendMobileWish}
-                  style={{
-                    backgroundColor: '#F59E0B',
-                    paddingHorizontal: 12,
-                    paddingVertical: 6,
-                    borderRadius: 10
-                  }}
-                >
-                  <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 11 }}>Wish 🎂</Text>
-                </TouchableOpacity>
-              </View>
+            {/* Quick Action Bar */}
+            <View style={{ marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderColor: '#FDE68A', flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+              <TextInput
+                style={{
+                  flex: 1,
+                  backgroundColor: '#FFFFFF',
+                  borderRadius: 12,
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                  fontSize: 12,
+                  borderWidth: 1,
+                  borderColor: '#FCD34D',
+                  color: '#111827'
+                }}
+                placeholder="Write a birthday wish..."
+                placeholderTextColor="#9CA3AF"
+                value={mobileWishInput}
+                onChangeText={setMobileWishInput}
+              />
+              <TouchableOpacity
+                onPress={handleSendMobileWish}
+                style={{
+                  backgroundColor: '#F59E0B',
+                  paddingHorizontal: 14,
+                  paddingVertical: 8,
+                  borderRadius: 12,
+                  elevation: 2
+                }}
+              >
+                <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 12 }}>Wish 🎂</Text>
+              </TouchableOpacity>
             </View>
 
-            {/* Team Wishes List on Mobile */}
+            {/* View All Wishes Trigger */}
             {festiveGreeting.comments && festiveGreeting.comments.length > 0 && (
-              <View style={{ marginTop: 8, backgroundColor: '#FEF3C7', borderRadius: 12, padding: 8, borderWidth: 1, borderColor: '#FDE68A' }}>
-                <Text style={{ fontSize: 10, fontWeight: '800', color: '#92400E', marginBottom: 4 }}>
-                  💬 Team Wishes ({festiveGreeting.comments.length}):
+              <TouchableOpacity
+                onPress={() => setShowWishesModal(true)}
+                style={{
+                  marginTop: 10,
+                  backgroundColor: '#FFFBEB',
+                  borderRadius: 10,
+                  padding: 8,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  borderWidth: 1,
+                  borderColor: '#FDE68A'
+                }}
+              >
+                <Text style={{ fontSize: 11, fontWeight: '700', color: '#92400E' }}>
+                  💬 {festiveGreeting.comments.length} team members wished!
                 </Text>
-                {festiveGreeting.comments.slice(-3).map((c: any, idx: number) => (
-                  <Text key={idx} style={{ fontSize: 10, color: '#78350F', marginBottom: 2 }}>
-                    <Text style={{ fontWeight: '800' }}>{c.author_name || 'Member'}: </Text>
-                    {c.content}
-                  </Text>
-                ))}
-              </View>
+                <Text style={{ fontSize: 11, fontWeight: '800', color: '#D97706' }}>View All ›</Text>
+              </TouchableOpacity>
             )}
           </View>
         </View>
       )}
+
+      {/* Full Wishes Bottom Sheet Modal */}
+      <Modal
+        visible={showWishesModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowWishesModal(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: '#FFFFFF', borderTopLeftRadius: 28, borderTopRightRadius: 28, height: '75%', padding: 20 }}>
+            {/* Modal Header */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, paddingBottom: 12, borderBottomWidth: 1, borderColor: '#F3F4F6' }}>
+              <View>
+                <Text style={{ fontSize: 18, fontWeight: '900', color: '#111827' }}>
+                  Team Birthday Wishes 🎂
+                </Text>
+                <Text style={{ fontSize: 12, color: '#6B7280', fontWeight: '500' }}>
+                  {festiveGreeting?.comments?.length || 0} messages from colleagues
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowWishesModal(false)}
+                style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center' }}
+              >
+                <Text style={{ fontSize: 16, fontWeight: '800', color: '#4B5563' }}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Scrollable Wishes Feed */}
+            <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+              {(!festiveGreeting?.comments || festiveGreeting.comments.length === 0) ? (
+                <View style={{ padding: 40, alignItems: 'center' }}>
+                  <Text style={{ fontSize: 14, color: '#9CA3AF', fontStyle: 'italic' }}>No wishes posted yet. Be the first to wish them!</Text>
+                </View>
+              ) : (
+                festiveGreeting.comments.map((c: any, idx: number) => {
+                  const initial = (c.author_name || 'U').charAt(0).toUpperCase();
+                  return (
+                    <View key={c.id || idx} style={{ flexDirection: 'row', gap: 10, marginBottom: 12, backgroundColor: '#FFFBEB', padding: 12, borderRadius: 16, borderWidth: 1, borderColor: '#FEF3C7' }}>
+                      <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#F59E0B', justifyContent: 'center', alignItems: 'center' }}>
+                        <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 14 }}>{initial}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+                          <Text style={{ fontSize: 12, fontWeight: '800', color: '#78350F' }}>{c.author_name || 'Team Member'}</Text>
+                          <Text style={{ fontSize: 10, color: '#B45309', fontWeight: '500' }}>
+                            {new Date(c.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </Text>
+                        </View>
+                        <Text style={{ fontSize: 12, color: '#451A03', lineHeight: 18, fontWeight: '500' }}>{c.content}</Text>
+                      </View>
+                    </View>
+                  );
+                })
+              )}
+            </ScrollView>
+
+            {/* Bottom Modal Input */}
+            <View style={{ paddingTop: 12, borderTopWidth: 1, borderColor: '#F3F4F6', flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+              <TextInput
+                style={{
+                  flex: 1,
+                  backgroundColor: '#F9FAFB',
+                  borderRadius: 14,
+                  paddingHorizontal: 14,
+                  paddingVertical: 10,
+                  fontSize: 13,
+                  borderWidth: 1,
+                  borderColor: '#E5E7EB',
+                  color: '#111827'
+                }}
+                placeholder="Write a birthday wish..."
+                placeholderTextColor="#9CA3AF"
+                value={mobileWishInput}
+                onChangeText={setMobileWishInput}
+              />
+              <TouchableOpacity
+                onPress={handleSendMobileWish}
+                style={{
+                  backgroundColor: '#F59E0B',
+                  paddingHorizontal: 16,
+                  paddingVertical: 10,
+                  borderRadius: 14
+                }}
+              >
+                <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 13 }}>Send 🎂</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Hero Header Clock Card */}
       <View style={styles.heroCard}>
