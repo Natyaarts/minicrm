@@ -26,8 +26,9 @@ export default function FestiveGreetingModal() {
   const fetchActiveGreeting = async () => {
     try {
       const res = await api.get('hrms/festive-greetings/active/');
-      if (res.data && res.data.length > 0) {
-        const activeItem = res.data[0];
+      const list = Array.isArray(res.data) ? res.data : (res.data?.results || []);
+      if (list.length > 0) {
+        const activeItem = list[0];
         // Check if user already dismissed this specific greeting today
         const dismissedId = localStorage.getItem(`festive_dismissed_${activeItem.id}`);
         if (!dismissedId) {

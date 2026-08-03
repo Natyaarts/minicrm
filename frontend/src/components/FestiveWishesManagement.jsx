@@ -42,9 +42,11 @@ export default function FestiveWishesManagement() {
     try {
       setLoading(true);
       const res = await api.get('hrms/festive-greetings/');
-      setGreetings(res.data || []);
+      const list = Array.isArray(res.data) ? res.data : (res.data?.results || []);
+      setGreetings(list);
     } catch (err) {
       console.error('Failed to fetch festive greetings:', err);
+      setGreetings([]);
     } finally {
       setLoading(false);
     }
