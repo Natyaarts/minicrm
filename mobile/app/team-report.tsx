@@ -51,6 +51,28 @@ export default function TeamReportScreen() {
     }
   };
 
+  const formatDurationSec = (seconds: number) => {
+    if (!seconds || seconds <= 0) return '0s';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    const parts = [];
+    if (h > 0) parts.push(`${h}h`);
+    if (m > 0 || h > 0) parts.push(`${m}m`);
+    parts.push(`${s}s`);
+    return parts.join(' ');
+  };
+
+  const getTotalTalkTimeDisplay = () => {
+    if (report?.leaderboard && report.leaderboard.length > 0) {
+      const sumSec = report.leaderboard.reduce((acc: number, rep: any) => acc + (rep.total_call_duration || 0), 0);
+      if (sumSec > 0) {
+        return formatDurationSec(sumSec);
+      }
+    }
+    return report?.formatted_total_call_duration || '0s';
+  };
+
   if (loading && !report) {
     return (
       <View style={[styles.center, isDark && styles.darkBg]}>
@@ -171,7 +193,7 @@ export default function TeamReportScreen() {
             </View>
             <View style={[styles.metricCard, isDark && styles.darkCard]}>
                 <Text style={styles.metricLabel}>TOTAL TALK TIME</Text>
-                <Text style={[styles.metricValue, {color: '#6366F1'}]}>{report.formatted_total_call_duration || '0s'}</Text>
+                <Text style={[styles.metricValue, {color: '#6366F1'}]}>{getTotalTalkTimeDisplay()}</Text>
             </View>
           </View>
           
