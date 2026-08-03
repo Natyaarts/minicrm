@@ -208,7 +208,7 @@ export default function TeamReportScreen() {
             </View>
             <View style={[styles.metricCard, isDark && styles.darkCard]}>
               <Text style={styles.metricLabel}>TOTAL TALK TIME</Text>
-              <Text style={[styles.metricValue, { color: '#6366F1' }]}>{report.formatted_total_call_duration || '0s'}</Text>
+              <Text style={[styles.metricValue, { color: '#6366F1' }]}>{getTotalTalkTimeDisplay()}</Text>
             </View>
           </View>
 
