@@ -178,7 +178,11 @@ const CRMCampaigns = () => {
             if (startDate) url += `&start_date=${startDate}`;
             if (endDate) url += `&end_date=${endDate}`;
             if (search) url += `&search=${encodeURIComponent(search)}`;
-            if (stage) url += `&lead_status=${encodeURIComponent(stage)}`;
+            if (stage) {
+                url += `&lead_status=${encodeURIComponent(stage)}`;
+            } else {
+                url += `&hide_converted=true`;
+            }
 
             console.log('[fetchLeads] URL:', url);
             const res = await api.get(url); 
