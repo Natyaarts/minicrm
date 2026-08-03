@@ -270,8 +270,12 @@ const welcomeName = user ? `${user.first_name || user.username}` : 'Member';
         greeting: festiveGreeting.id,
         content: mobileWishInput
       });
+      setFestiveGreeting((prev: any) => ({
+        ...prev,
+        comments: [...(prev?.comments || []), res.data]
+      }));
       setMobileWishInput('');
-      Alert.alert('Wish Posted! 🎉', 'Your wish has been posted to the team public thread.');
+      Alert.alert('Wish Posted! 🎉', 'Your wish has been posted live to the team thread.');
     } catch (err) {
       console.log('Failed to post wish:', err);
     }
@@ -362,6 +366,21 @@ const welcomeName = user ? `${user.first_name || user.username}` : 'Member';
                 </TouchableOpacity>
               </View>
             </View>
+
+            {/* Team Wishes List on Mobile */}
+            {festiveGreeting.comments && festiveGreeting.comments.length > 0 && (
+              <View style={{ marginTop: 8, backgroundColor: '#FEF3C7', borderRadius: 12, padding: 8, borderWidth: 1, borderColor: '#FDE68A' }}>
+                <Text style={{ fontSize: 10, fontWeight: '800', color: '#92400E', marginBottom: 4 }}>
+                  💬 Team Wishes ({festiveGreeting.comments.length}):
+                </Text>
+                {festiveGreeting.comments.slice(-3).map((c: any, idx: number) => (
+                  <Text key={idx} style={{ fontSize: 10, color: '#78350F', marginBottom: 2 }}>
+                    <Text style={{ fontWeight: '800' }}>{c.author_name || 'Member'}: </Text>
+                    {c.content}
+                  </Text>
+                ))}
+              </View>
+            )}
           </View>
         </View>
       )}
