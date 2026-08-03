@@ -216,10 +216,19 @@ class OffboardingSerializer(serializers.ModelSerializer):
         model = Offboarding
         fields = '__all__'
 
-from .models import FestiveGreeting
+from .models import FestiveGreeting, FestiveGreetingComment, CompanyPostComment
+
+class FestiveGreetingCommentSerializer(serializers.ModelSerializer):
+    author_name = serializers.ReadOnlyField(source='author.get_full_name')
+
+    class Meta:
+        model = FestiveGreetingComment
+        fields = ['id', 'greeting', 'author', 'author_name', 'content', 'created_at']
+        read_only_fields = ['author', 'created_at']
 
 class FestiveGreetingSerializer(serializers.ModelSerializer):
     created_by_name = serializers.ReadOnlyField(source='created_by.get_full_name')
+    comments = FestiveGreetingCommentSerializer(many=True, read_only=True)
 
     class Meta:
         model = FestiveGreeting

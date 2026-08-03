@@ -470,3 +470,19 @@ class FestiveGreetingViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(greetings, many=True)
         return Response(serializer.data)
+
+from .models import FestiveGreetingComment
+from .serializers import FestiveGreetingCommentSerializer
+
+class FestiveGreetingCommentViewSet(viewsets.ModelViewSet):
+    serializer_class = FestiveGreetingCommentSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        greeting_id = self.request.query_params.get('greeting_id')
+        if greeting_id:
+            return FestiveGreetingComment.objects.filter(greeting_id=greeting_id).order_by('created_at')
+        return FestiveGreetingComment.objects.all().order_by('created_at')
+
+    def perform_create(self, serializer):
+        serializer.save(author=self.request.user)

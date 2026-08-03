@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, X, Heart, PartyPopper } from 'lucide-react';
+import { Sparkles, X, Heart, PartyPopper, MessageSquare, Send } from 'lucide-react';
 import api from '../api/axios';
 
 const THEME_STYLES = {
@@ -17,7 +17,9 @@ const THEME_STYLES = {
 export default function FestiveGreetingModal() {
   const [greeting, setGreeting] = useState(null);
   const [visible, setVisible] = useState(false);
-  const [wished, setWished] = useState(false);
+  const [comments, setComments] = useState([]);
+  const [newComment, setNewComment] = useState('');
+  const [posting, setPosting] = useState(false);
 
   useEffect(() => {
     fetchActiveGreeting();
@@ -29,10 +31,10 @@ export default function FestiveGreetingModal() {
       const list = Array.isArray(res.data) ? res.data : (res.data?.results || []);
       if (list.length > 0) {
         const activeItem = list[0];
-        // Check if user already dismissed this specific greeting today
+        setGreeting(activeItem);
+        setComments(activeItem.comments || []);
         const dismissedId = localStorage.getItem(`festive_dismissed_${activeItem.id}`);
         if (!dismissedId) {
-          setGreeting(activeItem);
           setVisible(true);
         }
       }
@@ -48,11 +50,22 @@ export default function FestiveGreetingModal() {
     setVisible(false);
   };
 
-  const handleWishBack = () => {
-    setWished(true);
-    setTimeout(() => {
-      handleDismiss();
-    }, 2000);
+  const handlePostWish = async (e) => {
+    e.preventDefault();
+    if (!newComment.trim() || !greeting) return;
+    try {
+      setPosting(true);
+      const res = await api.post('hrms/festive-greeting-comments/', {
+        greeting: greeting.id,
+        content: newComment
+      });
+      setComments(prev => [...prev, res.data]);
+      setNewComment('');
+    } catch (err) {
+      console.error('Failed to post wish:', err);
+    } finally {
+      setPosting(false);
+    }
   };
 
   if (!visible || !greeting) return null;
@@ -61,7 +74,7 @@ export default function FestiveGreetingModal() {
 
   return (
     <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-300">
-      <div className="bg-white rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl border border-white/20 relative">
+      <div className="bg-white rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl border border-white/20 relative flex flex-col max-h-[90vh]">
         {/* Close Button */}
         <button
           onClick={handleDismiss}
@@ -71,7 +84,7 @@ export default function FestiveGreetingModal() {
         </button>
 
         {/* Banner Area */}
-        <div className={`h-64 bg-gradient-to-r ${style.bg} p-8 text-white relative flex flex-col justify-end overflow-hidden`}>
+        <div className={`h-52 bg-gradient-to-r ${style.bg} p-6 text-white relative flex flex-col justify-end overflow-hidden shrink-0`}>
           {greeting.banner_image ? (
             <img src={greeting.banner_image} alt={greeting.title} className="absolute inset-0 w-full h-full object-cover" />
           ) : (
@@ -79,48 +92,66 @@ export default function FestiveGreetingModal() {
           )}
 
           <div className="relative z-10">
-            <span className="inline-flex items-center gap-1.5 bg-white/20 backdrop-blur-md px-3.5 py-1 rounded-full text-xs font-black uppercase tracking-wider text-white mb-3">
+            <span className="inline-flex items-center gap-1.5 bg-white/20 backdrop-blur-md px-3.5 py-1 rounded-full text-xs font-black uppercase tracking-wider text-white mb-2">
               <Sparkles className="w-3.5 h-3.5 text-amber-300" />
               {style.badge}
             </span>
-            <h2 className="text-3xl font-black drop-shadow-md leading-tight">{greeting.title}</h2>
+            <h2 className="text-2xl font-black drop-shadow-md leading-tight">{greeting.title}</h2>
             {greeting.sub_title && (
-              <p className="text-sm text-white/90 font-medium drop-shadow mt-1">{greeting.sub_title}</p>
+              <p className="text-xs text-white/90 font-medium drop-shadow mt-0.5">{greeting.sub_title}</p>
             )}
           </div>
         </div>
 
-        {/* Content & Wishes */}
-        <div className="p-6">
-          <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 mb-6">
-            <p className="text-sm text-slate-700 leading-relaxed text-center font-medium">
+        {/* Content & Wishes Container */}
+        <div className="p-6 overflow-y-auto space-y-4 flex-1">
+          <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+            <p className="text-sm text-slate-700 leading-relaxed font-medium">
               "{greeting.message}"
             </p>
           </div>
 
-          {wished ? (
-            <div className="bg-emerald-50 text-emerald-800 font-bold p-4 rounded-2xl text-center border border-emerald-200 flex items-center justify-center gap-2 animate-bounce">
-              <PartyPopper className="w-5 h-5 text-emerald-600" />
-              <span>Thank you! Happy Celebrations to you too! 🎉🌸</span>
-            </div>
-          ) : (
-            <div className="flex gap-3">
-              <button
-                onClick={handleWishBack}
-                className="flex-1 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-black py-3 rounded-2xl shadow-lg shadow-amber-500/25 transition text-sm flex items-center justify-center gap-2"
-              >
-                <Heart className="w-4 h-4 fill-white" />
-                <span>Celebrate & Wish Back 🎉</span>
-              </button>
+          {/* Public Wishes Thread */}
+          <div>
+            <h4 className="text-xs font-black text-slate-400 uppercase tracking-wider mb-3">
+              Public Team Wishes & Messages ({comments.length})
+            </h4>
 
-              <button
-                onClick={handleDismiss}
-                className="px-4 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-3 rounded-2xl text-xs transition"
-              >
-                Dismiss
-              </button>
+            <div className="space-y-2 mb-4 max-h-40 overflow-y-auto pr-1">
+              {comments.length === 0 ? (
+                <p className="text-xs text-slate-400 italic">No wishes posted yet. Be the first to wish them!</p>
+              ) : (
+                comments.map((c, idx) => (
+                  <div key={c.id || idx} className="bg-amber-50/60 p-3 rounded-xl border border-amber-100/80">
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-xs font-bold text-amber-900">{c.author_name || 'Team Member'}</span>
+                      <span className="text-[10px] text-amber-600 font-medium">{new Date(c.created_at || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                    </div>
+                    <p className="text-xs text-slate-700 font-medium">{c.content}</p>
+                  </div>
+                ))
+              )}
             </div>
-          )}
+
+            {/* Send Wish Form */}
+            <form onSubmit={handlePostWish} className="flex gap-2">
+              <input
+                type="text"
+                value={newComment}
+                onChange={(e) => setNewComment(e.target.value)}
+                placeholder="Type your birthday wish or message..."
+                className="flex-1 bg-slate-100 border border-slate-200 rounded-xl px-3.5 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
+              />
+              <button
+                type="submit"
+                disabled={posting || !newComment.trim()}
+                className="bg-amber-500 hover:bg-amber-600 text-white font-bold px-4 py-2 rounded-xl text-xs transition disabled:opacity-50 flex items-center gap-1 shrink-0"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>Send Wish 🎂</span>
+              </button>
+            </form>
+          </div>
         </div>
       </div>
     </div>

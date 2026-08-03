@@ -261,6 +261,21 @@ export default function AttendanceScreen() {
   }
 const welcomeName = user ? `${user.first_name || user.username}` : 'Member';
   const roleName = user ? `${user.role || 'Staff'}`.replace('_', ' ') : 'MEMBER';
+  const [mobileWishInput, setMobileWishInput] = useState('');
+
+  const handleSendMobileWish = async () => {
+    if (!mobileWishInput.trim() || !festiveGreeting) return;
+    try {
+      const res = await client.post('/hrms/festive-greeting-comments/', {
+        greeting: festiveGreeting.id,
+        content: mobileWishInput
+      });
+      setMobileWishInput('');
+      Alert.alert('Wish Posted! 🎉', 'Your wish has been posted to the team public thread.');
+    } catch (err) {
+      console.log('Failed to post wish:', err);
+    }
+  };
 
   const getFestiveBadgeText = (theme?: string) => {
     switch (theme) {
@@ -313,6 +328,40 @@ const welcomeName = user ? `${user.first_name || user.username}` : 'Member';
               <Text style={styles.festiveSubTitle}>{festiveGreeting.sub_title}</Text>
             ) : null}
             <Text style={styles.festiveMessage}>"{festiveGreeting.message}"</Text>
+
+            {/* Mobile Wish Box */}
+            <View style={{ marginTop: 10, paddingTop: 8, borderTopWidth: 1, borderColor: '#FDE68A' }}>
+              <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+                <TextInput
+                  style={{
+                    flex: 1,
+                    backgroundColor: '#FFF',
+                    borderRadius: 10,
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                    fontSize: 11,
+                    borderWidth: 1,
+                    borderColor: '#FCD34D',
+                    color: '#111827'
+                  }}
+                  placeholder="Type birthday wish or reply..."
+                  placeholderTextColor="#9CA3AF"
+                  value={mobileWishInput}
+                  onChangeText={setMobileWishInput}
+                />
+                <TouchableOpacity
+                  onPress={handleSendMobileWish}
+                  style={{
+                    backgroundColor: '#F59E0B',
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
+                    borderRadius: 10
+                  }}
+                >
+                  <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 11 }}>Wish 🎂</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
           </View>
         </View>
       )}

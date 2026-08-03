@@ -345,3 +345,27 @@ class FestiveGreeting(models.Model):
     def __str__(self):
         return f"{self.title} ({self.theme})"
 
+class FestiveGreetingComment(models.Model):
+    greeting = models.ForeignKey(FestiveGreeting, on_delete=models.CASCADE, related_name='comments')
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    content = models.TextField(help_text="Birthday wish or comment text")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"Wish by {self.author.username} on {self.greeting.title}"
+
+class CompanyPostComment(models.Model):
+    post = models.ForeignKey(CompanyPost, on_delete=models.CASCADE, related_name='comments')
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"Comment by {self.author.username} on post {self.post.id}"
+
