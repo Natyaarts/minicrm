@@ -134,10 +134,10 @@ class DashboardStatsView(APIView):
         pending_leads = max(0, total_leads - contacted_leads)
         
         # Leaderboard & Call Duration per Sales Rep
-        sales_reps = User.objects.filter(Q(role='SALES') | Q(assigned_students__isnull=False), is_active=True).distinct()
-        if request.user.role == 'SALES':
+        sales_reps = User.objects.filter(Q(role__in=['SALES', 'SALES_HEAD', 'SALES_MANAGER', 'SALES_LEAD', 'MANAGER']) | Q(assigned_students__isnull=False), is_active=True).distinct()
+        if request.user.role in ['SALES', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD']:
             user_section = getattr(request.user, 'sales_section', 'BOTH')
-            if user_section != 'BOTH':
+            if user_section and user_section != 'BOTH':
                 sales_reps = sales_reps.filter(Q(sales_section=user_section) | Q(sales_section='BOTH'))
             if not is_sales_manager:
                 sales_reps = sales_reps.filter(id=request.user.id)
