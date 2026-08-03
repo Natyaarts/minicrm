@@ -124,8 +124,21 @@ class DashboardStatsView(APIView):
         # Converted Leads
         converted_leads = students.filter(lead_status__in=converted_stages).count()
         
-        # Call Duration Metrics for filtered department/leads
-        interactions_qs = LeadInteraction.objects.filter(student__in=students)
+        # Call Duration Metrics for filtered department/calls (filtered by call interaction date)
+        interactions_qs = LeadInteraction.objects.filter(interaction_type='CALL')
+        if request.user.role == 'SALES':
+            user_section = getattr(request.user, 'sales_section', 'BOTH')
+            if user_section != 'BOTH':
+                interactions_qs = interactions_qs.filter(
+                    Q(author__sales_section=user_section) | Q(student__sales_section=user_section)
+                )
+            if not is_sales_manager:
+                interactions_qs = interactions_qs.filter(author=request.user)
+        elif section_filter and request.user.role in ['SUPER_ADMIN', 'ADMIN']:
+            interactions_qs = interactions_qs.filter(
+                Q(author__sales_section=section_filter) | Q(student__sales_section=section_filter)
+            )
+
         if start_date:
             parsed_start = parse_date(start_date)
             if parsed_start:
@@ -174,8 +187,8 @@ class DashboardStatsView(APIView):
         for rep in sales_reps:
             rep_leads = students.filter(assigned_to=rep).count()
             
-            # Filter interactions by date for this rep
-            rep_interactions = LeadInteraction.objects.filter(author=rep)
+            # Filter interactions strictly by author (sales rep) and call date
+            rep_interactions = LeadInteraction.objects.filter(author=rep, interaction_type='CALL')
             if start_date:
                 parsed_start = parse_date(start_date)
                 if parsed_start:
@@ -187,7 +200,7 @@ class DashboardStatsView(APIView):
             
             rep_contacted = rep_interactions.values('student').distinct().count()
             rep_duration_sec = rep_interactions.aggregate(total_sec=Sum('call_duration'))['total_sec'] or 0
-            rep_call_count = rep_interactions.filter(interaction_type='CALL').count()
+            rep_call_count = rep_interactions.count()
             
             leaderboard.append({
                 "id": rep.id,
