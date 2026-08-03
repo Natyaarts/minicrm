@@ -101,8 +101,9 @@ export default function AttendanceScreen() {
       // Fetch active festive greeting
       try {
         const greetingRes = await client.get('/hrms/festive-greetings/active/');
-        if (greetingRes.data && greetingRes.data.length > 0) {
-          setFestiveGreeting(greetingRes.data[0]);
+        const list = Array.isArray(greetingRes.data) ? greetingRes.data : (greetingRes.data?.results || []);
+        if (list.length > 0) {
+          setFestiveGreeting(list[0]);
         }
       } catch (gErr) {
         console.log('No active festive greeting:', gErr);
