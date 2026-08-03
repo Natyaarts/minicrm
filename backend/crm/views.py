@@ -43,16 +43,20 @@ class DashboardStatsView(APIView):
         if section_filter and request.user.role in ['SUPER_ADMIN', 'ADMIN']:
             students = students.filter(Q(sales_section=section_filter) | Q(assigned_to__sales_section=section_filter))
 
-        if request.user.role == 'SALES':
+        if request.user.role in ['SALES', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD']:
             user_section = getattr(request.user, 'sales_section', 'BOTH')
-            if user_section != 'BOTH':
+            if user_section and user_section != 'BOTH':
                 students = students.filter(
                     Q(assigned_to__sales_section=user_section) |
                     Q(sales_section=user_section)
                 )
                 
             is_sales_manager = False
-            if hasattr(request.user, 'hrms_profile'):
+            if request.user.role in ['SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SUPER_ADMIN', 'ADMIN']:
+                is_sales_manager = True
+            elif getattr(request.user, 'is_manager', False):
+                is_sales_manager = True
+            elif hasattr(request.user, 'hrms_profile'):
                 profile = request.user.hrms_profile
                 if profile.subordinates.exists():
                     is_sales_manager = True

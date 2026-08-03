@@ -674,12 +674,12 @@ const welcomeName = user ? `${user.first_name || user.username}` : 'Member';
       )}
 
       {/* Sales CRM Hub Section */}
-      {(user?.role === 'SALES' || user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN') && (
+      {(['SALES', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD', 'SUPER_ADMIN', 'ADMIN'].includes(user?.role)) && (
         <View style={[styles.section]}>
           <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12}}>
             <Text style={[styles.sectionTitle, { color: '#4B5563', marginBottom: 0 }]}>SALES CRM HUB</Text>
             
-            {(user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || user?.is_manager) ? (
+            {(['SUPER_ADMIN', 'ADMIN', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD'].includes(user?.role) || user?.is_manager) ? (
               <TouchableOpacity onPress={() => router.push('/team-report' as any)}>
                  <Text style={{color: '#FFB800', fontSize: 12, fontWeight: '800'}}>TEAM REPORT &gt;</Text>
               </TouchableOpacity>
