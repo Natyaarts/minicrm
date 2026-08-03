@@ -71,31 +71,70 @@ export default function TeamReportScreen() {
       </View>
 
       <View style={[styles.dateFilterContainer, isDark && styles.darkCard]}>
-        <TouchableOpacity 
-          style={[styles.dateButton, isDark && styles.darkCard]} 
-          onPress={() => setShowStartPicker(true)}
-        >
-          <FontAwesome5 name="calendar-alt" size={14} color="#6B7280" />
-          <Text style={[styles.dateButtonText, isDark && styles.darkText]}>
-            {startDate ? startDate.toLocaleDateString() : 'Start Date'}
-          </Text>
-        </TouchableOpacity>
-        <Text style={{color: '#9CA3AF'}}>-</Text>
-        <TouchableOpacity 
-          style={[styles.dateButton, isDark && styles.darkCard]} 
-          onPress={() => setShowEndPicker(true)}
-        >
-          <FontAwesome5 name="calendar-alt" size={14} color="#6B7280" />
-          <Text style={[styles.dateButtonText, isDark && styles.darkText]}>
-            {endDate ? endDate.toLocaleDateString() : 'End Date'}
-          </Text>
-        </TouchableOpacity>
-        
-        {(startDate || endDate) && (
-          <TouchableOpacity onPress={() => { setStartDate(null); setEndDate(null); }}>
-             <Text style={{color: '#EF4444', fontSize: 12, fontWeight: 'bold'}}>CLEAR</Text>
+        <View style={styles.presetButtonsRow}>
+          <TouchableOpacity 
+            style={styles.presetChip} 
+            onPress={() => {
+              const today = new Date();
+              setStartDate(today);
+              setEndDate(today);
+            }}
+          >
+            <Text style={styles.presetChipText}>Today</Text>
           </TouchableOpacity>
-        )}
+
+          <TouchableOpacity 
+            style={styles.presetChip} 
+            onPress={() => {
+              const yesterday = new Date();
+              yesterday.setDate(yesterday.getDate() - 1);
+              setStartDate(yesterday);
+              setEndDate(yesterday);
+            }}
+          >
+            <Text style={styles.presetChipText}>Yesterday</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.presetChip} 
+            onPress={() => {
+              const today = new Date();
+              const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+              setStartDate(firstDay);
+              setEndDate(today);
+            }}
+          >
+            <Text style={styles.presetChipText}>This Month</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={{flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4}}>
+          <TouchableOpacity 
+            style={[styles.dateButton, isDark && styles.darkCard]} 
+            onPress={() => setShowStartPicker(true)}
+          >
+            <FontAwesome5 name="calendar-alt" size={12} color="#6B7280" />
+            <Text style={[styles.dateButtonText, isDark && styles.darkText]}>
+              {startDate ? startDate.toLocaleDateString() : 'Start Date'}
+            </Text>
+          </TouchableOpacity>
+          <Text style={{color: '#9CA3AF'}}>-</Text>
+          <TouchableOpacity 
+            style={[styles.dateButton, isDark && styles.darkCard]} 
+            onPress={() => setShowEndPicker(true)}
+          >
+            <FontAwesome5 name="calendar-alt" size={12} color="#6B7280" />
+            <Text style={[styles.dateButtonText, isDark && styles.darkText]}>
+              {endDate ? endDate.toLocaleDateString() : 'End Date'}
+            </Text>
+          </TouchableOpacity>
+          
+          {(startDate || endDate) && (
+            <TouchableOpacity onPress={() => { setStartDate(null); setEndDate(null); }}>
+               <Text style={{color: '#EF4444', fontSize: 11, fontWeight: 'bold'}}>CLEAR</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       {showStartPicker && (
@@ -131,8 +170,8 @@ export default function TeamReportScreen() {
                 <Text style={[styles.metricValue, {color: '#4F46E5'}]}>{report.total_leads}</Text>
             </View>
             <View style={[styles.metricCard, isDark && styles.darkCard]}>
-                <Text style={styles.metricLabel}>UNASSIGNED</Text>
-                <Text style={[styles.metricValue, {color: '#F43F5E'}]}>{report.unassigned_leads}</Text>
+                <Text style={styles.metricLabel}>TOTAL TALK TIME</Text>
+                <Text style={[styles.metricValue, {color: '#6366F1'}]}>{report.formatted_total_call_duration || '0s'}</Text>
             </View>
           </View>
           
@@ -162,7 +201,7 @@ export default function TeamReportScreen() {
                         <Text style={[styles.repName, isDark && styles.darkText]}>{rep.name}</Text>
                         <View style={styles.repStats}>
                             <Text style={styles.repStatText}><FontAwesome5 name="users" size={10} color="#6B7280" /> {rep.assigned} Assigned</Text>
-                            <Text style={[styles.repStatText, { marginLeft: 12, color: '#10B981' }]}><FontAwesome5 name="phone-alt" size={10} color="#10B981" /> {rep.contacted} Contacted</Text>
+                            <Text style={[styles.repStatText, { marginLeft: 10, color: '#6366F1', fontWeight: '700' }]}><FontAwesome5 name="clock" size={10} color="#6366F1" /> {rep.formatted_call_duration || '0s'}</Text>
                         </View>
                     </View>
                     <FontAwesome5 name="chevron-right" size={14} color="#9CA3AF" />
@@ -221,14 +260,33 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   dateFilterContainer: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 12,
+    padding: 10,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
+    gap: 6,
+  },
+  presetButtonsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
+    marginBottom: 2,
+  },
+  presetChip: {
+    backgroundColor: '#EEF2FF',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+  },
+  presetChipText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#4338CA',
   },
   dateButton: {
     flexDirection: 'row',
