@@ -262,6 +262,20 @@ export default function AttendanceScreen() {
 const welcomeName = user ? `${user.first_name || user.username}` : 'Member';
   const roleName = user ? `${user.role || 'Staff'}`.replace('_', ' ') : 'MEMBER';
 
+  const getFestiveBadgeText = (theme?: string) => {
+    switch (theme) {
+      case 'ONAM': return 'ONAM FESTIVAL';
+      case 'DIWALI': return 'DIWALI FESTIVAL';
+      case 'NEW_YEAR': return 'NEW YEAR CELEBRATION';
+      case 'CHRISTMAS': return 'CHRISTMAS GREETINGS';
+      case 'EID': return 'EID MUBARAK';
+      case 'BIRTHDAY': return 'BIRTHDAY WISH';
+      case 'HOLI': return 'HOLI FESTIVAL';
+      case 'COMPANY_MILESTONE': return 'COMPANY MILESTONE';
+      default: return 'HR ANNOUNCEMENT & ALERT';
+    }
+  };
+
   return (
     <>
     <ScrollView 
@@ -291,8 +305,8 @@ const welcomeName = user ? `${user.first_name || user.username}` : 'Member';
           ) : null}
           <View style={styles.festiveCardOverlay}>
             <View style={styles.festiveBadge}>
-              <FontAwesome5 name="star" size={10} color="#F59E0B" />
-              <Text style={styles.festiveBadgeText}>CELEBRATION & WISHES</Text>
+              <FontAwesome5 name={festiveGreeting.theme === 'CUSTOM' ? "bullhorn" : "star"} size={10} color="#F59E0B" />
+              <Text style={styles.festiveBadgeText}>{getFestiveBadgeText(festiveGreeting.theme)}</Text>
             </View>
             <Text style={styles.festiveTitle}>{festiveGreeting.title}</Text>
             {festiveGreeting.sub_title ? (
