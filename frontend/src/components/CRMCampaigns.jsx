@@ -514,6 +514,7 @@ const CRMCampaigns = () => {
                                     <th className="px-6 py-4 font-semibold">Sales Representative</th>
                                     <th className="px-6 py-4 font-semibold text-center">Assigned Leads</th>
                                     <th className="px-6 py-4 font-semibold text-center">Contacted</th>
+                                    <th className="px-6 py-4 font-semibold text-center">Total Talk Time</th>
                                     <th className="px-6 py-4 font-semibold text-center">Converted</th>
                                     <th className="px-6 py-4 font-semibold text-right">Conversion Rate</th>
                                 </tr>
@@ -530,6 +531,11 @@ const CRMCampaigns = () => {
                                         <td className="px-6 py-4 whitespace-nowrap text-center text-slate-600">
                                             {rep.contacted}
                                         </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-center font-bold text-indigo-700">
+                                            <span className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-lg text-xs border border-indigo-100">
+                                                ⏱️ {rep.formatted_call_duration || '0s'}
+                                            </span>
+                                        </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-center font-medium text-green-600">
                                             {rep.converted}
                                         </td>
@@ -539,7 +545,7 @@ const CRMCampaigns = () => {
                                     </tr>
                                 ))}
                                 {sales_report.length === 0 && (
-                                    <tr><td colSpan="5" className="px-6 py-8 text-center text-slate-500">No sales team data available</td></tr>
+                                    <tr><td colSpan="6" className="px-6 py-8 text-center text-slate-500">No sales team data available</td></tr>
                                 )}
                             </tbody>
                         </table>
@@ -677,56 +683,68 @@ const CRMCampaigns = () => {
                 {activeTab === 'assigned' && (
                     <div className="space-y-5">
                         {/* KPI Summary Cards */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
                             {/* Total Assigned */}
-                            <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
+                            <div className="bg-white p-4.5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
                                 <div>
-                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Assigned Leads</p>
-                                    <h3 className="text-2xl font-bold text-slate-900 mt-1">{assignedStats?.assigned_leads || 0}</h3>
-                                    <p className="text-[11px] text-blue-600 font-medium mt-1">Assigned to sales reps</p>
+                                    <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Total Assigned Leads</p>
+                                    <h3 className="text-xl font-bold text-slate-900 mt-1">{assignedStats?.assigned_leads || 0}</h3>
+                                    <p className="text-[10px] text-blue-600 font-medium mt-0.5">Assigned to sales reps</p>
                                 </div>
-                                <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center font-bold">
-                                    <Users className="w-6 h-6" />
+                                <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center font-bold">
+                                    <Users className="w-5 h-5" />
                                 </div>
                             </div>
 
                             {/* Contacted Leads */}
-                            <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
+                            <div className="bg-white p-4.5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
                                 <div>
-                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Contacted Leads</p>
-                                    <h3 className="text-2xl font-bold text-emerald-600 mt-1">{assignedStats?.contacted_leads || 0}</h3>
-                                    <p className="text-[11px] text-emerald-600 font-medium mt-1">
+                                    <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Contacted Leads</p>
+                                    <h3 className="text-xl font-bold text-emerald-600 mt-1">{assignedStats?.contacted_leads || 0}</h3>
+                                    <p className="text-[10px] text-emerald-600 font-medium mt-0.5">
                                         {assignedStats?.assigned_leads > 0 
-                                            ? `${Math.round((assignedStats.contacted_leads / assignedStats.assigned_leads) * 100)}% of assigned contacted` 
+                                            ? `${Math.round((assignedStats.contacted_leads / assignedStats.assigned_leads) * 100)}% Contacted` 
                                             : '0% Contacted'}
                                     </p>
                                 </div>
-                                <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center font-bold">
-                                    <Phone className="w-6 h-6" />
+                                <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center font-bold">
+                                    <Phone className="w-5 h-5" />
+                                </div>
+                            </div>
+
+                            {/* Total Call Duration / Talk Time */}
+                            <div className="bg-white p-4.5 rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50/30 to-white shadow-sm flex items-center justify-between">
+                                <div>
+                                    <p className="text-[11px] font-semibold text-indigo-900 uppercase tracking-wider">Total Talk Time</p>
+                                    <h3 className="text-xl font-bold text-indigo-700 mt-1">{assignedStats?.formatted_total_call_duration || '0s'}</h3>
+                                    <p className="text-[10px] text-indigo-600 font-medium mt-0.5">Calls logged by team</p>
+                                </div>
+                                <div className="w-10 h-10 bg-indigo-100 text-indigo-700 rounded-xl flex items-center justify-center font-bold shadow-xs">
+                                    <Clock className="w-5 h-5" />
                                 </div>
                             </div>
 
                             {/* Pending Contact */}
-                            <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
+                            <div className="bg-white p-4.5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
                                 <div>
-                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Pending Initial Contact</p>
-                                    <h3 className="text-2xl font-bold text-amber-600 mt-1">{assignedStats?.pending_leads || 0}</h3>
-                                    <p className="text-[11px] text-amber-600 font-medium mt-1">Awaiting call / response</p>
+                                    <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Pending Contact</p>
+                                    <h3 className="text-xl font-bold text-amber-600 mt-1">{assignedStats?.pending_leads || 0}</h3>
+                                    <p className="text-[10px] text-amber-600 font-medium mt-0.5">Awaiting initial call</p>
                                 </div>
-                                <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center font-bold">
-                                    <Clock className="w-6 h-6" />
+                                <div className="w-10 h-10 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center font-bold">
+                                    <Clock className="w-5 h-5" />
                                 </div>
                             </div>
 
                             {/* Converted */}
-                            <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
+                            <div className="bg-white p-4.5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
                                 <div>
-                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Converted / Enrolled</p>
-                                    <h3 className="text-2xl font-bold text-purple-600 mt-1">{assignedStats?.converted_leads || 0}</h3>
-                                    <p className="text-[11px] text-purple-600 font-medium mt-1">Successfully enrolled</p>
+                                    <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Converted / Enrolled</p>
+                                    <h3 className="text-xl font-bold text-purple-600 mt-1">{assignedStats?.converted_leads || 0}</h3>
+                                    <p className="text-[10px] text-purple-600 font-medium mt-0.5">Successfully enrolled</p>
                                 </div>
-                                <div className="w-12 h-12 bg-purple-50 text-purple-600 rounded-2xl flex items-center justify-center font-bold">
-                                    <CheckCircle className="w-6 h-6" />
+                                <div className="w-10 h-10 bg-purple-50 text-purple-600 rounded-xl flex items-center justify-center font-bold">
+                                    <CheckCircle className="w-5 h-5" />
                                 </div>
                             </div>
                         </div>
@@ -838,9 +856,11 @@ const CRMCampaigns = () => {
                                                 </div>
 
                                                 <div className="space-y-1.5 mt-2">
-                                                    <div className="flex justify-between text-[11px] font-medium text-slate-600">
+                                                    <div className="flex items-center justify-between text-[11px] font-medium text-slate-600">
                                                         <span>Contacted: <strong className="text-emerald-700">{rep.contacted}</strong></span>
-                                                        <span>Pending: <strong className="text-amber-700">{rep.assigned - rep.contacted}</strong></span>
+                                                        <span className="flex items-center gap-1 bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md font-bold text-[10px] border border-indigo-100">
+                                                            ⏱️ {rep.formatted_call_duration || '0s'} ({rep.total_calls || 0} calls)
+                                                        </span>
                                                     </div>
                                                     <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
                                                         <div 
@@ -1015,9 +1035,63 @@ const CRMCampaigns = () => {
                                 </select>
                             </div>
 
+                            {/* Quick Date Presets */}
+                            <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-xl border border-slate-200/80">
+                                <button 
+                                    onClick={() => {
+                                        const today = new Date().toISOString().split('T')[0];
+                                        setLeadsStartDate(today);
+                                        setLeadsEndDate(today);
+                                        setCurrentPage(1);
+                                    }}
+                                    className="px-2 py-1 text-[11px] font-semibold text-slate-700 hover:text-indigo-600 hover:bg-white rounded-lg transition-all"
+                                >
+                                    Today
+                                </button>
+                                <button 
+                                    onClick={() => {
+                                        const y = new Date();
+                                        y.setDate(y.getDate() - 1);
+                                        const str = y.toISOString().split('T')[0];
+                                        setLeadsStartDate(str);
+                                        setLeadsEndDate(str);
+                                        setCurrentPage(1);
+                                    }}
+                                    className="px-2 py-1 text-[11px] font-semibold text-slate-700 hover:text-indigo-600 hover:bg-white rounded-lg transition-all"
+                                >
+                                    Yesterday
+                                </button>
+                                <button 
+                                    onClick={() => {
+                                        const today = new Date();
+                                        const firstDay = new Date(today);
+                                        const day = today.getDay() || 7;
+                                        if (day !== 1) firstDay.setDate(today.getDate() - (day - 1));
+                                        setLeadsStartDate(firstDay.toISOString().split('T')[0]);
+                                        setLeadsEndDate(today.toISOString().split('T')[0]);
+                                        setCurrentPage(1);
+                                    }}
+                                    className="px-2 py-1 text-[11px] font-semibold text-slate-700 hover:text-indigo-600 hover:bg-white rounded-lg transition-all"
+                                >
+                                    This Week
+                                </button>
+                                <button 
+                                    onClick={() => {
+                                        const today = new Date();
+                                        const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+                                        setLeadsStartDate(firstDay.toISOString().split('T')[0]);
+                                        setLeadsEndDate(today.toISOString().split('T')[0]);
+                                        setCurrentPage(1);
+                                    }}
+                                    className="px-2 py-1 text-[11px] font-semibold text-slate-700 hover:text-indigo-600 hover:bg-white rounded-lg transition-all"
+                                >
+                                    This Month
+                                </button>
+                            </div>
+
                             {/* Creation Date Filter */}
                             <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 focus-within:ring-2 focus-within:ring-indigo-500/20">
-                                <span className="text-xs font-semibold text-slate-500 whitespace-nowrap">Created Date:</span>
+                                <span className="text-xs font-semibold text-slate-500 whitespace-nowrap">Date:</span>
                                 <input 
                                     type="date" 
                                     value={leadsStartDate} 

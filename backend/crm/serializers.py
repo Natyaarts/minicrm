@@ -11,6 +11,7 @@ class LeadInteractionSerializer(serializers.ModelSerializer):
     author_last_name = serializers.CharField(source='author.last_name', read_only=True)
     student_name = serializers.SerializerMethodField()
     student_phone = serializers.CharField(source='student.mobile', read_only=True)
+    formatted_call_duration = serializers.SerializerMethodField()
 
     class Meta:
         model = LeadInteraction
@@ -20,6 +21,21 @@ class LeadInteractionSerializer(serializers.ModelSerializer):
         if obj.student:
             return f"{obj.student.first_name} {obj.student.last_name}".strip()
         return None
+
+    def get_formatted_call_duration(self, obj):
+        sec = obj.call_duration or 0
+        if sec <= 0:
+            return "0s"
+        h = sec // 3600
+        m = (sec % 3600) // 60
+        s = sec % 60
+        parts = []
+        if h > 0:
+            parts.append(f"{h}h")
+        if m > 0 or h > 0:
+            parts.append(f"{m}m")
+        parts.append(f"{s}s")
+        return " ".join(parts)
 
 class CampaignSerializer(serializers.ModelSerializer):
     lead_count = serializers.SerializerMethodField()

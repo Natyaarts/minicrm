@@ -12,13 +12,28 @@ from .serializers import PipelineStageSerializer, LeadInteractionSerializer, Cam
 
 User = get_user_model()
 
+def format_duration_seconds(seconds):
+    if not seconds or seconds <= 0:
+        return "0s"
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60
+    secs = seconds % 60
+    parts = []
+    if hours > 0:
+        parts.append(f"{hours}h")
+    if minutes > 0 or hours > 0:
+        parts.append(f"{minutes}m")
+    parts.append(f"{secs}s")
+    return " ".join(parts)
+
 class DashboardStatsView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        from django.db.models import Count
+        from django.db.models import Count, Sum, Q
         from django.utils.dateparse import parse_date
         import datetime
+        from datetime import timedelta
         from django.utils import timezone
         
         students = Student.objects.filter(is_active=True)
@@ -26,12 +41,9 @@ class DashboardStatsView(APIView):
         # Super Admin / Admin section filter (optional, if they want to drill down)
         section_filter = request.query_params.get('sales_section')
         if section_filter and request.user.role in ['SUPER_ADMIN', 'ADMIN']:
-            from django.db.models import Q
-            # Strictly filter by lead's sales_section OR the assigned user's sales_section
             students = students.filter(Q(sales_section=section_filter) | Q(assigned_to__sales_section=section_filter))
 
         if request.user.role == 'SALES':
-            from django.db.models import Q
             user_section = getattr(request.user, 'sales_section', 'BOTH')
             if user_section != 'BOTH':
                 students = students.filter(
@@ -59,19 +71,34 @@ class DashboardStatsView(APIView):
             else:
                 students = students.filter(assigned_to__isnull=False)
 
+        # Date Presets (today, yesterday, this_week, this_month, custom)
+        date_preset = request.query_params.get('date_preset')
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
+        
+        today = timezone.now().date()
+        if date_preset == 'today':
+            start_date = str(today)
+            end_date = str(today)
+        elif date_preset == 'yesterday':
+            yesterday = today - timedelta(days=1)
+            start_date = str(yesterday)
+            end_date = str(yesterday)
+        elif date_preset == 'this_week':
+            start_date = str(today - timedelta(days=today.weekday()))
+            end_date = str(today)
+        elif date_preset == 'this_month':
+            start_date = str(today.replace(day=1))
+            end_date = str(today)
         
         if start_date:
             parsed_start = parse_date(start_date)
             if parsed_start:
-                from django.db.models import Q
                 students = students.filter(Q(created_at__date__gte=parsed_start) | Q(user__date_joined__date__gte=parsed_start))
         
         if end_date:
             parsed_end = parse_date(end_date)
             if parsed_end:
-                from django.db.models import Q
                 students = students.filter(Q(created_at__date__lte=parsed_end) | Q(user__date_joined__date__lte=parsed_end))
         
         # Identify converted/enrolled leads to exclude them from active totals
@@ -97,6 +124,20 @@ class DashboardStatsView(APIView):
         # Converted Leads
         converted_leads = students.filter(lead_status__in=converted_stages).count()
         
+        # Call Duration Metrics for filtered department/leads
+        interactions_qs = LeadInteraction.objects.filter(student__in=students)
+        if start_date:
+            parsed_start = parse_date(start_date)
+            if parsed_start:
+                interactions_qs = interactions_qs.filter(date__date__gte=parsed_start)
+        if end_date:
+            parsed_end = parse_date(end_date)
+            if parsed_end:
+                interactions_qs = interactions_qs.filter(date__date__lte=parsed_end)
+
+        total_call_duration_sec = interactions_qs.aggregate(total_sec=Sum('call_duration'))['total_sec'] or 0
+        formatted_total_call_duration = format_duration_seconds(total_call_duration_sec)
+
         # Pipeline Stages Breakdown
         pipeline_stages_data = []
         standard_mapping = {
@@ -125,17 +166,16 @@ class DashboardStatsView(APIView):
                 "count": count
             })
             
-        # Leaderboard
+        # Leaderboard with Call Duration per Sales Rep
         sales_reps = User.objects.filter(role='SALES')
         if request.user.role == 'SALES' and getattr(request.user, 'sales_section', 'BOTH') != 'BOTH':
-            from django.db.models import Q
             sales_reps = sales_reps.filter(Q(sales_section=request.user.sales_section) | Q(sales_section='BOTH'))
         leaderboard = []
         for rep in sales_reps:
             rep_leads = students.filter(assigned_to=rep).count()
             
-            # Filter interactions by date as well
-            rep_interactions = LeadInteraction.objects.filter(author=rep, student__in=students)
+            # Filter interactions by date for this rep
+            rep_interactions = LeadInteraction.objects.filter(author=rep)
             if start_date:
                 parsed_start = parse_date(start_date)
                 if parsed_start:
@@ -146,20 +186,25 @@ class DashboardStatsView(APIView):
                     rep_interactions = rep_interactions.filter(date__date__lte=parsed_end)
             
             rep_contacted = rep_interactions.values('student').distinct().count()
+            rep_duration_sec = rep_interactions.aggregate(total_sec=Sum('call_duration'))['total_sec'] or 0
+            rep_call_count = rep_interactions.filter(interaction_type='CALL').count()
             
             leaderboard.append({
                 "id": rep.id,
                 "name": rep.get_full_name() or rep.username,
                 "assigned": rep_leads,
-                "contacted": rep_contacted
+                "contacted": rep_contacted,
+                "total_calls": rep_call_count,
+                "total_call_duration": rep_duration_sec,
+                "formatted_call_duration": format_duration_seconds(rep_duration_sec)
             })
-        leaderboard.sort(key=lambda x: x['assigned'], reverse=True)
+        leaderboard.sort(key=lambda x: x['total_call_duration'], reverse=True)
         
         revenue_qs = Transaction.objects.all()
         if start_date:
             parsed_start = parse_date(start_date)
             if parsed_start:
-                revenue_qs = revenue_qs.filter(date__date__gte=parsed_start) # assuming Transaction has date
+                revenue_qs = revenue_qs.filter(date__date__gte=parsed_start)
         if end_date:
             parsed_end = parse_date(end_date)
             if parsed_end:
@@ -175,6 +220,8 @@ class DashboardStatsView(APIView):
             "contacted_leads": contacted_leads,
             "pending_leads": pending_leads,
             "converted_leads": converted_leads,
+            "total_call_duration": total_call_duration_sec,
+            "formatted_total_call_duration": formatted_total_call_duration,
             "pipeline_stages": pipeline_stages_data,
             "leaderboard": leaderboard,
             "revenue": revenue
