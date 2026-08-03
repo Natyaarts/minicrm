@@ -18,9 +18,17 @@ const client = axios.create({
   },
 });
 
-// Interceptor to add token to every request
+// Interceptor to add token and fix relative URLs
 client.interceptors.request.use(
   async (config) => {
+    if (
+      typeof config.url === 'string' &&
+      config.url.startsWith('/') &&
+      !/^https?:\/\//i.test(config.url)
+    ) {
+      config.url = config.url.slice(1);
+    }
+
     const token = await AsyncStorage.getItem('userToken');
     if (token) {
       config.headers.Authorization = `Token ${token}`;

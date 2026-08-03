@@ -32,7 +32,7 @@ export default function TeamReportScreen() {
   const fetchReport = async () => {
     try {
       setLoading(true);
-      let url = `/crm/dashboard-stats/`;
+      let url = `crm/dashboard-stats/`;
 
       const queryParams = [];
       if (startDate) queryParams.push(`start_date=${formatDateLocal(startDate)}`);
@@ -43,9 +43,10 @@ export default function TeamReportScreen() {
       }
 
       const res = await client.get(url);
-      setReport(res.data);
-    } catch (err) {
+      setReport(res.data || {});
+    } catch (err: any) {
       console.log('Failed to fetch Team report:', err);
+      console.log('Team report error details:', err?.response?.data || err?.message);
     } finally {
       setLoading(false);
     }
