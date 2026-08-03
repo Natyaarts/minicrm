@@ -27,6 +27,7 @@ export default function AttendanceScreen() {
   const [tasks, setTasks] = useState<any[]>([]);
   const [user, setUser] = useState<any>(null);
   const [festiveGreeting, setFestiveGreeting] = useState<any>(null);
+  const [mobileWishInput, setMobileWishInput] = useState('');
 
   const [showCamera, setShowCamera] = useState(false);
   const [facing, setFacing] = useState<CameraType>('front');
@@ -261,7 +262,6 @@ export default function AttendanceScreen() {
   }
 const welcomeName = user ? `${user.first_name || user.username}` : 'Member';
   const roleName = user ? `${user.role || 'Staff'}`.replace('_', ' ') : 'MEMBER';
-  const [mobileWishInput, setMobileWishInput] = useState('');
 
   const handleSendMobileWish = async () => {
     if (!mobileWishInput.trim() || !festiveGreeting) return;
