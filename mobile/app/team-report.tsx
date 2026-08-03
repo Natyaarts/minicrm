@@ -33,15 +33,15 @@ export default function TeamReportScreen() {
     try {
       setLoading(true);
       let url = `/crm/dashboard-stats/`;
-      
+
       const queryParams = [];
       if (startDate) queryParams.push(`start_date=${formatDateLocal(startDate)}`);
       if (endDate) queryParams.push(`end_date=${formatDateLocal(endDate)}`);
-      
+
       if (queryParams.length > 0) {
-          url += `?${queryParams.join('&')}`;
+        url += `?${queryParams.join('&')}`;
       }
-      
+
       const res = await client.get(url);
       setReport(res.data);
     } catch (err) {
@@ -49,6 +49,18 @@ export default function TeamReportScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const parseFormattedDuration = (str?: string): number => {
+    if (!str) return 0;
+    let sec = 0;
+    const hoursMatch = str.match(/(\d+)\s*h/i);
+    const minsMatch = str.match(/(\d+)\s*m/i);
+    const secsMatch = str.match(/(\d+)\s*s/i);
+    if (hoursMatch) sec += parseInt(hoursMatch[1], 10) * 3600;
+    if (minsMatch) sec += parseInt(minsMatch[1], 10) * 60;
+    if (secsMatch) sec += parseInt(secsMatch[1], 10);
+    return sec;
   };
 
   const formatDurationSec = (seconds: number) => {
@@ -65,7 +77,10 @@ export default function TeamReportScreen() {
 
   const getTotalTalkTimeDisplay = () => {
     if (report?.leaderboard && report.leaderboard.length > 0) {
-      const sumSec = report.leaderboard.reduce((acc: number, rep: any) => acc + (rep.total_call_duration || 0), 0);
+      const sumSec = report.leaderboard.reduce((acc: number, rep: any) => {
+        const repSec = rep.total_call_duration !== undefined ? rep.total_call_duration : parseFormattedDuration(rep.formatted_call_duration);
+        return acc + repSec;
+      }, 0);
       if (sumSec > 0) {
         return formatDurationSec(sumSec);
       }
@@ -77,7 +92,7 @@ export default function TeamReportScreen() {
     return (
       <View style={[styles.center, isDark && styles.darkBg]}>
         <ActivityIndicator size="large" color="#3B82F6" />
-        <Text style={{marginTop: 12, color: isDark ? '#9CA3AF' : '#4B5563'}}>Loading team report...</Text>
+        <Text style={{ marginTop: 12, color: isDark ? '#9CA3AF' : '#4B5563' }}>Loading team report...</Text>
       </View>
     );
   }
@@ -86,16 +101,16 @@ export default function TeamReportScreen() {
     <SafeAreaView style={[styles.container, isDark && styles.darkBg]}>
       <View style={[styles.header, isDark && styles.darkHeader]}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-           <FontAwesome5 name="chevron-left" size={18} color="#FFFFFF" />
+          <FontAwesome5 name="chevron-left" size={18} color="#FFFFFF" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>TEAM REPORT</Text>
-        <View style={{width: 32}} />
+        <View style={{ width: 32 }} />
       </View>
 
       <View style={[styles.dateFilterContainer, isDark && styles.darkCard]}>
         <View style={styles.presetButtonsRow}>
-          <TouchableOpacity 
-            style={styles.presetChip} 
+          <TouchableOpacity
+            style={styles.presetChip}
             onPress={() => {
               const today = new Date();
               setStartDate(today);
@@ -105,8 +120,8 @@ export default function TeamReportScreen() {
             <Text style={styles.presetChipText}>Today</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity 
-            style={styles.presetChip} 
+          <TouchableOpacity
+            style={styles.presetChip}
             onPress={() => {
               const yesterday = new Date();
               yesterday.setDate(yesterday.getDate() - 1);
@@ -117,8 +132,8 @@ export default function TeamReportScreen() {
             <Text style={styles.presetChipText}>Yesterday</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity 
-            style={styles.presetChip} 
+          <TouchableOpacity
+            style={styles.presetChip}
             onPress={() => {
               const today = new Date();
               const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -130,9 +145,9 @@ export default function TeamReportScreen() {
           </TouchableOpacity>
         </View>
 
-        <View style={{flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4}}>
-          <TouchableOpacity 
-            style={[styles.dateButton, isDark && styles.darkCard]} 
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
+          <TouchableOpacity
+            style={[styles.dateButton, isDark && styles.darkCard]}
             onPress={() => setShowStartPicker(true)}
           >
             <FontAwesome5 name="calendar-alt" size={12} color="#6B7280" />
@@ -140,9 +155,9 @@ export default function TeamReportScreen() {
               {startDate ? startDate.toLocaleDateString() : 'Start Date'}
             </Text>
           </TouchableOpacity>
-          <Text style={{color: '#9CA3AF'}}>-</Text>
-          <TouchableOpacity 
-            style={[styles.dateButton, isDark && styles.darkCard]} 
+          <Text style={{ color: '#9CA3AF' }}>-</Text>
+          <TouchableOpacity
+            style={[styles.dateButton, isDark && styles.darkCard]}
             onPress={() => setShowEndPicker(true)}
           >
             <FontAwesome5 name="calendar-alt" size={12} color="#6B7280" />
@@ -150,10 +165,10 @@ export default function TeamReportScreen() {
               {endDate ? endDate.toLocaleDateString() : 'End Date'}
             </Text>
           </TouchableOpacity>
-          
+
           {(startDate || endDate) && (
             <TouchableOpacity onPress={() => { setStartDate(null); setEndDate(null); }}>
-               <Text style={{color: '#EF4444', fontSize: 11, fontWeight: 'bold'}}>CLEAR</Text>
+              <Text style={{ color: '#EF4444', fontSize: 11, fontWeight: 'bold' }}>CLEAR</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -185,53 +200,53 @@ export default function TeamReportScreen() {
 
       {report && (
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          
+
           <View style={styles.metricsGrid}>
             <View style={[styles.metricCard, isDark && styles.darkCard]}>
-                <Text style={styles.metricLabel}>TOTAL LEADS</Text>
-                <Text style={[styles.metricValue, {color: '#4F46E5'}]}>{report.total_leads}</Text>
+              <Text style={styles.metricLabel}>TOTAL LEADS</Text>
+              <Text style={[styles.metricValue, { color: '#4F46E5' }]}>{report.total_leads}</Text>
             </View>
             <View style={[styles.metricCard, isDark && styles.darkCard]}>
-                <Text style={styles.metricLabel}>TOTAL TALK TIME</Text>
-                <Text style={[styles.metricValue, {color: '#6366F1'}]}>{getTotalTalkTimeDisplay()}</Text>
-            </View>
-          </View>
-          
-          <View style={styles.metricsGrid}>
-            <View style={[styles.metricCard, isDark && styles.darkCard]}>
-                <Text style={styles.metricLabel}>CONTACTED</Text>
-                <Text style={[styles.metricValue, {color: '#10B981'}]}>{report.contacted_leads}</Text>
-            </View>
-            <View style={[styles.metricCard, isDark && styles.darkCard]}>
-                <Text style={styles.metricLabel}>REVENUE</Text>
-                <Text style={[styles.metricValue, {color: '#F59E0B'}]}>₹{report.revenue ? report.revenue.toLocaleString('en-IN') : '0'}</Text>
+              <Text style={styles.metricLabel}>TOTAL TALK TIME</Text>
+              <Text style={[styles.metricValue, { color: '#6366F1' }]}>{report.formatted_total_call_duration || '0s'}</Text>
             </View>
           </View>
 
-          <Text style={[styles.sectionTitle, {color: isDark ? '#9CA3AF' : '#4B5563', marginTop: 8}]}>TEAM LEADERBOARD</Text>
+          <View style={styles.metricsGrid}>
+            <View style={[styles.metricCard, isDark && styles.darkCard]}>
+              <Text style={styles.metricLabel}>CONTACTED</Text>
+              <Text style={[styles.metricValue, { color: '#10B981' }]}>{report.contacted_leads}</Text>
+            </View>
+            <View style={[styles.metricCard, isDark && styles.darkCard]}>
+              <Text style={styles.metricLabel}>REVENUE</Text>
+              <Text style={[styles.metricValue, { color: '#F59E0B' }]}>₹{report.revenue ? report.revenue.toLocaleString('en-IN') : '0'}</Text>
+            </View>
+          </View>
+
+          <Text style={[styles.sectionTitle, { color: isDark ? '#9CA3AF' : '#4B5563', marginTop: 8 }]}>TEAM LEADERBOARD</Text>
           <View style={[styles.listContainer, isDark && styles.darkCard]}>
-              {report.leaderboard?.map((rep: any, idx: number) => (
-                <TouchableOpacity 
-                    key={rep.id} 
-                    style={[styles.listItem, idx < report.leaderboard.length - 1 && styles.borderBottom, isDark && { borderBottomColor: '#374151' }]}
-                    onPress={() => router.push(`/bde-report?bdeId=${rep.id}` as any)}
-                >
-                    <View style={styles.repAvatar}>
-                        <Text style={styles.repAvatarText}>{rep.name.charAt(0).toUpperCase()}</Text>
-                    </View>
-                    <View style={styles.repInfo}>
-                        <Text style={[styles.repName, isDark && styles.darkText]}>{rep.name}</Text>
-                        <View style={styles.repStats}>
-                            <Text style={styles.repStatText}><FontAwesome5 name="users" size={10} color="#6B7280" /> {rep.assigned} Assigned</Text>
-                            <Text style={[styles.repStatText, { marginLeft: 10, color: '#6366F1', fontWeight: '700' }]}><FontAwesome5 name="clock" size={10} color="#6366F1" /> {rep.formatted_call_duration || '0s'}</Text>
-                        </View>
-                    </View>
-                    <FontAwesome5 name="chevron-right" size={14} color="#9CA3AF" />
-                </TouchableOpacity>
-              ))}
-              {(!report.leaderboard || report.leaderboard.length === 0) && (
-                <Text style={styles.emptyText}>No sales representatives found.</Text>
-              )}
+            {report.leaderboard?.map((rep: any, idx: number) => (
+              <TouchableOpacity
+                key={rep.id}
+                style={[styles.listItem, idx < report.leaderboard.length - 1 && styles.borderBottom, isDark && { borderBottomColor: '#374151' }]}
+                onPress={() => router.push(`/bde-report?bdeId=${rep.id}` as any)}
+              >
+                <View style={styles.repAvatar}>
+                  <Text style={styles.repAvatarText}>{rep.name.charAt(0).toUpperCase()}</Text>
+                </View>
+                <View style={styles.repInfo}>
+                  <Text style={[styles.repName, isDark && styles.darkText]}>{rep.name}</Text>
+                  <View style={styles.repStats}>
+                    <Text style={styles.repStatText}><FontAwesome5 name="users" size={10} color="#6B7280" /> {rep.assigned} Assigned</Text>
+                    <Text style={[styles.repStatText, { marginLeft: 10, color: '#6366F1', fontWeight: '700' }]}><FontAwesome5 name="clock" size={10} color="#6366F1" /> {rep.formatted_call_duration || '0s'}</Text>
+                  </View>
+                </View>
+                <FontAwesome5 name="chevron-right" size={14} color="#9CA3AF" />
+              </TouchableOpacity>
+            ))}
+            {(!report.leaderboard || report.leaderboard.length === 0) && (
+              <Text style={styles.emptyText}>No sales representatives found.</Text>
+            )}
           </View>
 
         </ScrollView>
