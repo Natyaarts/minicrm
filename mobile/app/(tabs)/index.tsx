@@ -26,6 +26,7 @@ export default function AttendanceScreen() {
   const [stats, setStats] = useState<any>(null);
   const [tasks, setTasks] = useState<any[]>([]);
   const [user, setUser] = useState<any>(null);
+  const [festiveGreeting, setFestiveGreeting] = useState<any>(null);
 
   const [showCamera, setShowCamera] = useState(false);
   const [facing, setFacing] = useState<CameraType>('front');
@@ -96,6 +97,16 @@ export default function AttendanceScreen() {
       });
       const tasksData = tasksRes.data?.results || tasksRes.data || [];
       setTasks(tasksData.slice(0, 10)); // show up to 10
+
+      // Fetch active festive greeting
+      try {
+        const greetingRes = await client.get('/hrms/festive-greetings/active/');
+        if (greetingRes.data && greetingRes.data.length > 0) {
+          setFestiveGreeting(greetingRes.data[0]);
+        }
+      } catch (gErr) {
+        console.log('No active festive greeting:', gErr);
+      }
     } catch (e) {
       console.log('Failed to fetch dashboard stats', e);
     }
@@ -270,7 +281,25 @@ const welcomeName = user ? `${user.first_name || user.username}` : 'Member';
         <View style={styles.roleBadge}>
           <Text style={styles.roleBadgeText}>{roleName}</Text>
         </View>
-      </View>
+      {/* Festive Greeting Banner Card */}
+      {festiveGreeting && (
+        <View style={styles.festiveCard}>
+          {festiveGreeting.banner_image ? (
+            <Image source={{ uri: festiveGreeting.banner_image }} style={styles.festiveBannerImage} resizeMode="cover" />
+          ) : null}
+          <View style={styles.festiveCardOverlay}>
+            <View style={styles.festiveBadge}>
+              <FontAwesome5 name="star" size={10} color="#F59E0B" />
+              <Text style={styles.festiveBadgeText}>CELEBRATION & WISHES</Text>
+            </View>
+            <Text style={styles.festiveTitle}>{festiveGreeting.title}</Text>
+            {festiveGreeting.sub_title ? (
+              <Text style={styles.festiveSubTitle}>{festiveGreeting.sub_title}</Text>
+            ) : null}
+            <Text style={styles.festiveMessage}>"{festiveGreeting.message}"</Text>
+          </View>
+        </View>
+      )}
 
       {/* Hero Header Clock Card */}
       <View style={styles.heroCard}>
@@ -771,6 +800,59 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: 'white',
+    backgroundColor: '#FFF',
+  },
+  festiveCard: {
+    backgroundColor: '#FEF3C7',
+    borderRadius: 20,
+    overflow: 'hidden',
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  festiveBannerImage: {
+    width: '100%',
+    height: 140,
+  },
+  festiveCardOverlay: {
+    padding: 16,
+    backgroundColor: '#FFFBEB',
+  },
+  festiveBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    gap: 4,
+    marginBottom: 6,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  festiveBadgeText: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: '#92400E',
+    letterSpacing: 0.5,
+  },
+  festiveTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#78350F',
+    marginBottom: 2,
+  },
+  festiveSubTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#92400E',
+    marginBottom: 6,
+  },
+  festiveMessage: {
+    fontSize: 12,
+    color: '#78350F',
+    fontStyle: 'italic',
+    lineHeight: 18,
   },
 });

@@ -429,3 +429,44 @@ class OffboardingViewSet(viewsets.ModelViewSet):
         if user.role in ['SUPER_ADMIN', 'ADMIN'] or user.is_superuser:
             return Offboarding.objects.all().order_by('-last_working_day')
         return Offboarding.objects.filter(employee__user=user).order_by('-last_working_day')
+
+from .models import FestiveGreeting
+from .serializers import FestiveGreetingSerializer
+from rest_framework.decorators import action
+from django.utils import timezone
+from django.db.models import Q
+
+class FestiveGreetingViewSet(viewsets.ModelViewSet):
+    serializer_class = FestiveGreetingSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return FestiveGreeting.objects.all().order_by('-start_date', '-created_at')
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+    @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
+    def active(self, request):
+        today = timezone.now().date()
+        user_role = getattr(request.user, 'role', 'STUDENT')
+        
+        audience_q = Q(target_audience='ALL')
+        if user_role in ['SUPER_ADMIN', 'ADMIN', 'SALES', 'MENTOR', 'ACADEMIC', 'ACADEMIC_COORDINATOR', 'TEACHER', 'EMPLOYEE']:
+            audience_q |= Q(target_audience='EMPLOYEES')
+        if user_role == 'SALES':
+            audience_q |= Q(target_audience='SALES')
+        elif user_role in ['MENTOR', 'ACADEMIC']:
+            audience_q |= Q(target_audience='MENTORS')
+        elif user_role == 'STUDENT':
+            audience_q |= Q(target_audience='STUDENTS')
+
+        greetings = FestiveGreeting.objects.filter(
+            is_active=True,
+            start_date__lte=today
+        ).filter(
+            Q(end_date__isnull=True) | Q(end_date__gte=today)
+        ).filter(audience_q).order_by('-start_date', '-created_at')
+
+        serializer = self.get_serializer(greetings, many=True)
+        return Response(serializer.data)

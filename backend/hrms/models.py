@@ -304,3 +304,44 @@ def create_employee_profile(sender, instance, created, **kwargs):
                 status='ACTIVE'
             )
 
+class FestiveGreeting(models.Model):
+    THEME_CHOICES = (
+        ('ONAM', 'Onam Festival 🌾🌸'),
+        ('DIWALI', 'Diwali Festival 🪔✨'),
+        ('NEW_YEAR', 'New Year 🎉🥂'),
+        ('CHRISTMAS', 'Christmas 🎄⭐'),
+        ('EID', 'Eid Mubarak 🌙✨'),
+        ('BIRTHDAY', 'Birthday Wish 🎂🎈'),
+        ('HOLI', 'Holi Colors 🎨✨'),
+        ('COMPANY_MILESTONE', 'Company Milestone 🏆🚀'),
+        ('CUSTOM', 'Custom Festival / Announcement 🌟'),
+    )
+    TARGET_ROLE_CHOICES = (
+        ('ALL', 'All Users & Students'),
+        ('EMPLOYEES', 'All Staff & Employees'),
+        ('SALES', 'Sales Team'),
+        ('MENTORS', 'Mentors & Academic Staff'),
+        ('STUDENTS', 'Students Only'),
+    )
+
+    title = models.CharField(max_length=200, help_text="e.g. Happy Onam! 🌸")
+    sub_title = models.CharField(max_length=255, blank=True, null=True, help_text="e.g. Wishing you abundance and joy!")
+    message = models.TextField(help_text="Detailed wish or greeting message")
+    banner_image = models.ImageField(upload_to='festive_greetings/', null=True, blank=True, help_text="Upload custom festive banner image")
+    theme = models.CharField(max_length=30, choices=THEME_CHOICES, default='ONAM')
+    target_audience = models.CharField(max_length=30, choices=TARGET_ROLE_CHOICES, default='ALL')
+    
+    start_date = models.DateField(default=timezone.now)
+    end_date = models.DateField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='created_greetings')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-start_date', '-created_at']
+
+    def __str__(self):
+        return f"{self.title} ({self.theme})"
+

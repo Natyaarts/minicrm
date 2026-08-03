@@ -215,3 +215,13 @@ class OffboardingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Offboarding
         fields = '__all__'
+
+from .models import FestiveGreeting
+
+class FestiveGreetingSerializer(serializers.ModelSerializer):
+    created_by_name = serializers.ReadOnlyField(source='created_by.get_full_name')
+
+    class Meta:
+        model = FestiveGreeting
+        fields = '__all__'
+        read_only_fields = ['created_by', 'created_at', 'updated_at']

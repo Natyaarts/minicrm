@@ -72,6 +72,7 @@ const sidebarSections = [
             { icon: CheckSquare, label: 'Tasks', path: '/hrms/tasks', module: 'WORKFORCE' },
             { icon: Star, label: 'Performance Reviews', path: '/hrms/performance', module: 'WORKFORCE' },
             { icon: UserSquare2, label: 'Employee Lifecycle', path: '/hrms/lifecycle', module: 'WORKFORCE' },
+            { icon: Sparkles, label: 'Festive Wishes & Greetings', path: '/hrms/festive-wishes', module: 'WORKFORCE' },
         ]
     },
     {

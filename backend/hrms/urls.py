@@ -4,7 +4,8 @@ from .views import (
     DepartmentViewSet, DesignationViewSet, EmployeeProfileViewSet, 
     CustomFieldViewSet, AttendanceViewSet, ShiftSettingViewSet, TaskViewSet,
     TaskCommentViewSet, CompanyPostViewSet, EmployeeDocumentViewSet,
-    AssetViewSet, ExpenseViewSet, PerformanceReviewViewSet, OffboardingViewSet
+    AssetViewSet, ExpenseViewSet, PerformanceReviewViewSet, OffboardingViewSet,
+    FestiveGreetingViewSet
 )
 
 router = DefaultRouter()
@@ -22,6 +23,7 @@ router.register(r'assets', AssetViewSet, basename='hrms-asset')
 router.register(r'expenses', ExpenseViewSet, basename='hrms-expense')
 router.register(r'reviews', PerformanceReviewViewSet, basename='hrms-review')
 router.register(r'offboarding', OffboardingViewSet, basename='hrms-offboarding')
+router.register(r'festive-greetings', FestiveGreetingViewSet, basename='hrms-festive-greeting')
 urlpatterns = [
     path('', include(router.urls)),
 ]

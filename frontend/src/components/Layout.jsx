@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import Navbar from './Navbar';
 import Sidebar from './Sidebar';
+import FestiveGreetingModal from './FestiveGreetingModal';
 
 function Layout() {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -15,6 +16,7 @@ function Layout() {
                     <Outlet />
                 </main>
             </div>
+            <FestiveGreetingModal />
         </div>
     );
 }

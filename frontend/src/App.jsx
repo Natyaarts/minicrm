@@ -26,6 +26,8 @@ import CalendarModule from './pages/CalendarModule';
 import Login from './pages/Login';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 
+import FestiveWishesManagement from './components/FestiveWishesManagement';
+
 function App() {
   return (
     <Router>
@@ -50,6 +52,7 @@ function App() {
           <Route path="/hrms/assets" element={<AssetModule />} />
           <Route path="/hrms/performance" element={<PerformanceReviewModule />} />
           <Route path="/hrms/lifecycle" element={<EmployeeLifecycleModule />} />
+          <Route path="/hrms/festive-wishes" element={<FestiveWishesManagement />} />
           <Route path="/sales" element={<SalesModule />} /> {/* Fallback/Legacy Route */}
           <Route path="/crm/dashboard" element={<SalesModule />} />
           <Route path="/crm/pipeline" element={<SalesModule />} />
