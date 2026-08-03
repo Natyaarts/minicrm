@@ -30,218 +30,222 @@ class DashboardStatsView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        from django.db.models import Count, Sum, Q
-        from django.utils.dateparse import parse_date
-        import datetime
-        from datetime import timedelta
-        from django.utils import timezone
-        
-        students = Student.objects.filter(is_active=True)
-        
-        # Super Admin / Admin section filter (optional, if they want to drill down)
-        section_filter = request.query_params.get('sales_section')
-        if section_filter and request.user.role in ['SUPER_ADMIN', 'ADMIN']:
-            students = students.filter(Q(sales_section=section_filter) | Q(assigned_to__sales_section=section_filter))
-
-        if request.user.role in ['SALES', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD']:
-            user_section = getattr(request.user, 'sales_section', 'BOTH')
-            if user_section and user_section != 'BOTH':
-                students = students.filter(
-                    Q(assigned_to__sales_section=user_section) |
-                    Q(sales_section=user_section)
-                )
-                
-            is_sales_manager = False
-            if request.user.role in ['SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SUPER_ADMIN', 'ADMIN']:
-                is_sales_manager = True
-            elif getattr(request.user, 'is_manager', False):
-                is_sales_manager = True
-            elif hasattr(request.user, 'hrms_profile'):
-                profile = request.user.hrms_profile
-                if profile.subordinates.exists():
-                    is_sales_manager = True
-                elif profile.designation and any(kw in profile.designation.name.lower() for kw in ['lead', 'manager', 'vp', 'head', 'director']):
-                    is_sales_manager = True
-            
-            if not is_sales_manager:
-                students = students.filter(assigned_to=request.user)
-        
-        assigned_to_param = request.query_params.get('assigned_to')
-        if assigned_to_param:
-            if assigned_to_param == 'unassigned':
-                students = students.filter(assigned_to__isnull=True)
-            elif assigned_to_param != 'assigned':
-                students = students.filter(assigned_to_id=assigned_to_param)
-            else:
-                students = students.filter(assigned_to__isnull=False)
-
-        # Date Presets (today, yesterday, this_week, this_month, custom)
-        date_preset = request.query_params.get('date_preset')
-        start_date = request.query_params.get('start_date')
-        end_date = request.query_params.get('end_date')
-        
-        today = timezone.now().date()
-        if date_preset == 'today':
-            start_date = str(today)
-            end_date = str(today)
-        elif date_preset == 'yesterday':
-            yesterday = today - timedelta(days=1)
-            start_date = str(yesterday)
-            end_date = str(yesterday)
-        elif date_preset == 'this_week':
-            start_date = str(today - timedelta(days=today.weekday()))
-            end_date = str(today)
-        elif date_preset == 'this_month':
-            start_date = str(today.replace(day=1))
-            end_date = str(today)
-        
-        if start_date:
-            parsed_start = parse_date(start_date)
-            if parsed_start:
-                students = students.filter(Q(created_at__date__gte=parsed_start) | Q(user__date_joined__date__gte=parsed_start))
-        
-        if end_date:
-            parsed_end = parse_date(end_date)
-            if parsed_end:
-                students = students.filter(Q(created_at__date__lte=parsed_end) | Q(user__date_joined__date__lte=parsed_end))
-        
-        # Identify converted/enrolled leads to exclude them from active totals
-        converted_stages = ['ENROLLED', 'CONVERTED', '4', 'enrolled', 'converted', 'Enrolled', 'Converted']
         try:
-            from .models import PipelineStage
-            for stage in PipelineStage.objects.filter(name__icontains='convert') | PipelineStage.objects.filter(name__icontains='enroll'):
-                converted_stages.append(str(stage.id))
-                if stage.name:
-                    converted_stages.append(stage.name)
-        except Exception:
-            pass
+            from django.db.models import Count, Sum, Q
+            from django.utils.dateparse import parse_date
+            import datetime
+            from datetime import timedelta
+            from django.utils import timezone
+            
+            students = Student.objects.filter(is_active=True)
+            
+            # Super Admin / Admin section filter (optional, if they want to drill down)
+            section_filter = request.query_params.get('sales_section')
+            if section_filter and request.user.role in ['SUPER_ADMIN', 'ADMIN']:
+                students = students.filter(Q(sales_section=section_filter) | Q(assigned_to__sales_section=section_filter))
 
-        # Converted Leads count
-        converted_leads = students.filter(lead_status__in=converted_stages).count()
-
-        # Exclude converted leads from active pool so Total Leads excludes Converted Leads
-        active_students = students.exclude(lead_status__in=converted_stages)
-
-        # Active lead totals matching filters (excluding converted)
-        total_leads = active_students.count()
-        
-        # Assignment metrics (excluding converted)
-        unassigned_leads = active_students.filter(assigned_to__isnull=True).count()
-        assigned_leads = active_students.filter(assigned_to__isnull=False).count()
-        
-        # Contacted vs Pending (excluding converted)
-        contacted_leads = active_students.filter(crm_interactions__isnull=False).distinct().count()
-        pending_leads = max(0, total_leads - contacted_leads)
-        
-        # Leaderboard & Call Duration per Sales Rep
-        sales_reps = User.objects.filter(Q(role__in=['SALES', 'SALES_HEAD', 'SALES_MANAGER', 'SALES_LEAD', 'MANAGER']) | Q(assigned_students__isnull=False), is_active=True).distinct()
-        if request.user.role in ['SALES', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD']:
-            user_section = getattr(request.user, 'sales_section', 'BOTH')
-            if user_section and user_section != 'BOTH':
-                sales_reps = sales_reps.filter(Q(sales_section=user_section) | Q(sales_section='BOTH'))
-            if not is_sales_manager:
-                sales_reps = sales_reps.filter(id=request.user.id)
-        elif section_filter and request.user.role in ['SUPER_ADMIN', 'ADMIN']:
-            sales_reps = sales_reps.filter(Q(sales_section=section_filter) | Q(sales_section='BOTH'))
-
-        # Call Duration Metrics for department calls (strictly matching the sales reps in the leaderboard)
-        interactions_qs = LeadInteraction.objects.filter(author__in=sales_reps, interaction_type='CALL')
-        if start_date:
-            parsed_start = parse_date(start_date)
-            if parsed_start:
-                interactions_qs = interactions_qs.filter(date__date__gte=parsed_start)
-        if end_date:
-            parsed_end = parse_date(end_date)
-            if parsed_end:
-                interactions_qs = interactions_qs.filter(date__date__lte=parsed_end)
-
-        total_call_duration_sec = interactions_qs.aggregate(total_sec=Sum('call_duration'))['total_sec'] or 0
-        formatted_total_call_duration = format_duration_seconds(total_call_duration_sec)
-
-        # Pipeline Stages Breakdown
-        pipeline_stages_data = []
-        standard_mapping = {
-            'NEW': 'New Lead',
-            'FOLLOW_UP': 'Follow-up',
-            'PAYMENT_PENDING': 'Payment Pending',
-            'ENROLLED': 'Enrolled',
-            'DROPPED': 'Dropped'
-        }
-        status_counts = students.values('lead_status').annotate(count=Count('id'))
-        dynamic_stages = {str(stage.id): stage.name for stage in PipelineStage.objects.all()}
-        
-        for item in status_counts:
-            status_val = str(item['lead_status'])
-            count = item['count']
-            if status_val in standard_mapping:
-                name = standard_mapping[status_val]
-            elif status_val in dynamic_stages:
-                name = dynamic_stages[status_val]
-            else:
-                name = status_val
+            if request.user.role in ['SALES', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD']:
+                user_section = getattr(request.user, 'sales_section', 'BOTH')
+                if user_section and user_section != 'BOTH':
+                    students = students.filter(
+                        Q(assigned_to__sales_section=user_section) |
+                        Q(sales_section=user_section)
+                    )
+                    
+                is_sales_manager = False
+                if request.user.role in ['SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SUPER_ADMIN', 'ADMIN']:
+                    is_sales_manager = True
+                elif getattr(request.user, 'is_manager', False):
+                    is_sales_manager = True
+                elif hasattr(request.user, 'hrms_profile'):
+                    profile = request.user.hrms_profile
+                    if profile.subordinates.exists():
+                        is_sales_manager = True
+                    elif profile.designation and any(kw in profile.designation.name.lower() for kw in ['lead', 'manager', 'vp', 'head', 'director']):
+                        is_sales_manager = True
                 
-            pipeline_stages_data.append({
-                "id": status_val,
-                "name": name,
-                "count": count
-            })
+                if not is_sales_manager:
+                    students = students.filter(assigned_to=request.user)
             
-        leaderboard = []
-        for rep in sales_reps:
-            rep_leads = students.filter(assigned_to=rep).count()
+            assigned_to_param = request.query_params.get('assigned_to')
+            if assigned_to_param:
+                if assigned_to_param == 'unassigned':
+                    students = students.filter(assigned_to__isnull=True)
+                elif assigned_to_param != 'assigned':
+                    students = students.filter(assigned_to_id=assigned_to_param)
+                else:
+                    students = students.filter(assigned_to__isnull=False)
+
+            # Date Presets (today, yesterday, this_week, this_month, custom)
+            date_preset = request.query_params.get('date_preset')
+            start_date = request.query_params.get('start_date')
+            end_date = request.query_params.get('end_date')
             
-            # Filter interactions strictly by author (sales rep) and call date
-            rep_interactions = LeadInteraction.objects.filter(author=rep, interaction_type='CALL')
+            today = timezone.now().date()
+            if date_preset == 'today':
+                start_date = str(today)
+                end_date = str(today)
+            elif date_preset == 'yesterday':
+                yesterday = today - timedelta(days=1)
+                start_date = str(yesterday)
+                end_date = str(yesterday)
+            elif date_preset == 'this_week':
+                start_date = str(today - timedelta(days=today.weekday()))
+                end_date = str(today)
+            elif date_preset == 'this_month':
+                start_date = str(today.replace(day=1))
+                end_date = str(today)
+            
             if start_date:
                 parsed_start = parse_date(start_date)
                 if parsed_start:
-                    rep_interactions = rep_interactions.filter(date__date__gte=parsed_start)
+                    students = students.filter(Q(created_at__date__gte=parsed_start) | Q(user__date_joined__date__gte=parsed_start))
+            
             if end_date:
                 parsed_end = parse_date(end_date)
                 if parsed_end:
-                    rep_interactions = rep_interactions.filter(date__date__lte=parsed_end)
+                    students = students.filter(Q(created_at__date__lte=parsed_end) | Q(user__date_joined__date__lte=parsed_end))
             
-            rep_contacted = rep_interactions.values('student').distinct().count()
-            rep_duration_sec = rep_interactions.aggregate(total_sec=Sum('call_duration'))['total_sec'] or 0
-            rep_call_count = rep_interactions.count()
+            # Identify converted/enrolled leads to exclude them from active totals
+            converted_stages = ['ENROLLED', 'CONVERTED', '4', 'enrolled', 'converted', 'Enrolled', 'Converted']
+            try:
+                from .models import PipelineStage
+                for stage in PipelineStage.objects.filter(name__icontains='convert') | PipelineStage.objects.filter(name__icontains='enroll'):
+                    converted_stages.append(str(stage.id))
+                    if stage.name:
+                        converted_stages.append(stage.name)
+            except Exception:
+                pass
+
+            # Converted Leads count
+            converted_leads = students.filter(lead_status__in=converted_stages).count()
+
+            # Exclude converted leads from active pool so Total Leads excludes Converted Leads
+            active_students = students.exclude(lead_status__in=converted_stages)
+
+            # Active lead totals matching filters (excluding converted)
+            total_leads = active_students.count()
             
-            leaderboard.append({
-                "id": rep.id,
-                "name": rep.get_full_name() or rep.username,
-                "assigned": rep_leads,
-                "contacted": rep_contacted,
-                "total_calls": rep_call_count,
-                "total_call_duration": rep_duration_sec,
-                "formatted_call_duration": format_duration_seconds(rep_duration_sec)
-            })
-        leaderboard.sort(key=lambda x: x['total_call_duration'], reverse=True)
-        
-        revenue_qs = Transaction.objects.all()
-        if start_date:
-            parsed_start = parse_date(start_date)
-            if parsed_start:
-                revenue_qs = revenue_qs.filter(date__date__gte=parsed_start)
-        if end_date:
-            parsed_end = parse_date(end_date)
-            if parsed_end:
-                revenue_qs = revenue_qs.filter(date__date__lte=parsed_end)
+            # Assignment metrics (excluding converted)
+            unassigned_leads = active_students.filter(assigned_to__isnull=True).count()
+            assigned_leads = active_students.filter(assigned_to__isnull=False).count()
+            
+            # Contacted vs Pending (excluding converted)
+            contacted_leads = active_students.filter(crm_interactions__isnull=False).distinct().count()
+            pending_leads = max(0, total_leads - contacted_leads)
+            
+            # Leaderboard & Call Duration per Sales Rep
+            sales_reps = User.objects.filter(Q(role__in=['SALES', 'SALES_HEAD', 'SALES_MANAGER', 'SALES_LEAD', 'MANAGER']) | Q(assigned_students__isnull=False), is_active=True).distinct()
+            if request.user.role in ['SALES', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD']:
+                user_section = getattr(request.user, 'sales_section', 'BOTH')
+                if user_section and user_section != 'BOTH':
+                    sales_reps = sales_reps.filter(Q(sales_section=user_section) | Q(sales_section='BOTH'))
+                if not is_sales_manager:
+                    sales_reps = sales_reps.filter(id=request.user.id)
+            elif section_filter and request.user.role in ['SUPER_ADMIN', 'ADMIN']:
+                sales_reps = sales_reps.filter(Q(sales_section=section_filter) | Q(sales_section='BOTH'))
+
+            # Call Duration Metrics for department calls (strictly matching the sales reps in the leaderboard)
+            interactions_qs = LeadInteraction.objects.filter(author__in=sales_reps, interaction_type='CALL')
+            if start_date:
+                parsed_start = parse_date(start_date)
+                if parsed_start:
+                    interactions_qs = interactions_qs.filter(date__date__gte=parsed_start)
+            if end_date:
+                parsed_end = parse_date(end_date)
+                if parsed_end:
+                    interactions_qs = interactions_qs.filter(date__date__lte=parsed_end)
+
+            total_call_duration_sec = interactions_qs.aggregate(total_sec=Sum('call_duration'))['total_sec'] or 0
+            formatted_total_call_duration = format_duration_seconds(total_call_duration_sec)
+
+            # Pipeline Stages Breakdown
+            pipeline_stages_data = []
+            standard_mapping = {
+                'NEW': 'New Lead',
+                'FOLLOW_UP': 'Follow-up',
+                'PAYMENT_PENDING': 'Payment Pending',
+                'ENROLLED': 'Enrolled',
+                'DROPPED': 'Dropped'
+            }
+            status_counts = students.values('lead_status').annotate(count=Count('id'))
+            dynamic_stages = {str(stage.id): stage.name for stage in PipelineStage.objects.all()}
+            
+            for item in status_counts:
+                status_val = str(item['lead_status'])
+                count = item['count']
+                if status_val in standard_mapping:
+                    name = standard_mapping[status_val]
+                elif status_val in dynamic_stages:
+                    name = dynamic_stages[status_val]
+                else:
+                    name = status_val
+                    
+                pipeline_stages_data.append({
+                    "id": status_val,
+                    "name": name,
+                    "count": count
+                })
                 
-        revenue_agg = revenue_qs.aggregate(total_revenue=Sum('amount'))
-        revenue = revenue_agg.get('total_revenue') or 0
-        
-        return Response({
-            "total_leads": total_leads,
-            "unassigned_leads": unassigned_leads,
-            "assigned_leads": assigned_leads,
-            "contacted_leads": contacted_leads,
-            "pending_leads": pending_leads,
-            "converted_leads": converted_leads,
-            "total_call_duration": total_call_duration_sec,
-            "formatted_total_call_duration": formatted_total_call_duration,
-            "pipeline_stages": pipeline_stages_data,
-            "leaderboard": leaderboard,
-            "revenue": revenue
-        })
+            leaderboard = []
+            for rep in sales_reps:
+                rep_leads = students.filter(assigned_to=rep).count()
+                
+                # Filter interactions strictly by author (sales rep) and call date
+                rep_interactions = LeadInteraction.objects.filter(author=rep, interaction_type='CALL')
+                if start_date:
+                    parsed_start = parse_date(start_date)
+                    if parsed_start:
+                        rep_interactions = rep_interactions.filter(date__date__gte=parsed_start)
+                if end_date:
+                    parsed_end = parse_date(end_date)
+                    if parsed_end:
+                        rep_interactions = rep_interactions.filter(date__date__lte=parsed_end)
+                
+                rep_contacted = rep_interactions.values('student').distinct().count()
+                rep_duration_sec = rep_interactions.aggregate(total_sec=Sum('call_duration'))['total_sec'] or 0
+                rep_call_count = rep_interactions.count()
+                
+                leaderboard.append({
+                    "id": rep.id,
+                    "name": rep.get_full_name() or rep.username,
+                    "assigned": rep_leads,
+                    "contacted": rep_contacted,
+                    "total_calls": rep_call_count,
+                    "total_call_duration": rep_duration_sec,
+                    "formatted_call_duration": format_duration_seconds(rep_duration_sec)
+                })
+            leaderboard.sort(key=lambda x: x['total_call_duration'], reverse=True)
+            
+            revenue_qs = Transaction.objects.all()
+            if start_date:
+                parsed_start = parse_date(start_date)
+                if parsed_start:
+                    revenue_qs = revenue_qs.filter(date__date__gte=parsed_start)
+            if end_date:
+                parsed_end = parse_date(end_date)
+                if parsed_end:
+                    revenue_qs = revenue_qs.filter(date__date__lte=parsed_end)
+                    
+            revenue_agg = revenue_qs.aggregate(total_revenue=Sum('amount'))
+            revenue = float(revenue_agg.get('total_revenue') or 0)
+            
+            return Response({
+                "total_leads": total_leads,
+                "unassigned_leads": unassigned_leads,
+                "assigned_leads": assigned_leads,
+                "contacted_leads": contacted_leads,
+                "pending_leads": pending_leads,
+                "converted_leads": converted_leads,
+                "total_call_duration": total_call_duration_sec,
+                "formatted_total_call_duration": formatted_total_call_duration,
+                "pipeline_stages": pipeline_stages_data,
+                "leaderboard": leaderboard,
+                "revenue": revenue
+            })
+        except Exception as e:
+            traceback.print_exc()
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class MentorDashboardStatsView(APIView):
     permission_classes = [permissions.IsAuthenticated]
