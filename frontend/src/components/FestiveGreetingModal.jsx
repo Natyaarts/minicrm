@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Sparkles, X, Heart, PartyPopper } from 'lucide-react';
-import api from '../api';
+import api from '../api/axios';
 
 const THEME_STYLES = {
   ONAM: { bg: 'from-amber-500 via-orange-500 to-yellow-400', badge: 'Onam Wishes 🌾🌸', icon: '🌸', accent: 'bg-amber-500' },
