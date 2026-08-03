@@ -7,6 +7,7 @@ import { startNativeRecording, stopNativeRecording, listenToCallEvents, requestC
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
+import { Audio } from 'expo-av';
 import client from '../src/api/client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -193,6 +194,28 @@ const Dialpad = () => {
     requestPermissions();
   }, [authLoading, hasDialerAccess]);
 
+  const extractDurationFromAudio = async (fileUri: string): Promise<number | null> => {
+    try {
+      let uri = fileUri;
+      if (!uri.startsWith('file://') && !uri.startsWith('content://') && !uri.startsWith('http')) {
+        uri = `file://${uri}`;
+      }
+      const { sound, status } = await Audio.Sound.createAsync(
+        { uri },
+        { shouldPlay: false }
+      );
+      if (status.isLoaded && status.durationMillis && status.durationMillis > 0) {
+        const durationSec = Math.round(status.durationMillis / 1000);
+        console.log('[extractDurationFromAudio] Extracted exact audio duration:', durationSec, 'seconds');
+        await sound.unloadAsync();
+        return durationSec;
+      }
+    } catch (err) {
+      console.log('[extractDurationFromAudio] Failed to read audio file duration:', err);
+    }
+    return null;
+  };
+
   useEffect(() => {
     if (authLoading || !hasDialerAccess) return;
 
@@ -201,6 +224,10 @@ const Dialpad = () => {
       console.log("Recording saved at:", path);
       if (path) {
         setRecordedFilePath(path);
+        const exactDuration = await extractDurationFromAudio(path);
+        if (exactDuration && exactDuration > 0) {
+          setCallDuration(exactDuration);
+        }
       }
     });
 
@@ -232,6 +259,10 @@ const Dialpad = () => {
           if (filePath) {
             console.log("Call auto-stopped recording. Path:", filePath);
             setRecordedFilePath(filePath);
+            const exactDuration = await extractDurationFromAudio(filePath);
+            if (exactDuration && exactDuration > 0) {
+              setCallDuration(exactDuration);
+            }
           }
           setIsProcessingRecording(false);
         }
@@ -338,8 +369,17 @@ const Dialpad = () => {
         copyToCacheDirectory: true,
       });
       if (!result.canceled && result.assets && result.assets[0]) {
-        setManualRecordingFile(result.assets[0]);
-        Alert.alert('Recording Selected', `File: ${result.assets[0].name}`);
+        const asset = result.assets[0];
+        setManualRecordingFile(asset);
+        if (asset.uri) {
+          const exactDuration = await extractDurationFromAudio(asset.uri);
+          if (exactDuration && exactDuration > 0) {
+            setCallDuration(exactDuration);
+            Alert.alert('Recording Selected', `File: ${asset.name}\nDuration: ${formatDuration(exactDuration)}`);
+          } else {
+            Alert.alert('Recording Selected', `File: ${asset.name}`);
+          }
+        }
       }
     } catch (err) {
       console.log('Failed to pick recording:', err);
