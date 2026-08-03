@@ -129,21 +129,19 @@ class DashboardStatsView(APIView):
         contacted_leads = active_students.filter(crm_interactions__isnull=False).distinct().count()
         pending_leads = max(0, total_leads - contacted_leads)
         
-        # Call Duration Metrics for filtered department/calls (filtered by call interaction date)
-        interactions_qs = LeadInteraction.objects.filter(interaction_type='CALL')
+        # Leaderboard & Call Duration per Sales Rep
+        sales_reps = User.objects.filter(Q(role='SALES') | Q(assigned_students__isnull=False), is_active=True).distinct()
         if request.user.role == 'SALES':
             user_section = getattr(request.user, 'sales_section', 'BOTH')
             if user_section != 'BOTH':
-                interactions_qs = interactions_qs.filter(
-                    Q(author__sales_section=user_section) | Q(student__sales_section=user_section)
-                )
+                sales_reps = sales_reps.filter(Q(sales_section=user_section) | Q(sales_section='BOTH'))
             if not is_sales_manager:
-                interactions_qs = interactions_qs.filter(author=request.user)
+                sales_reps = sales_reps.filter(id=request.user.id)
         elif section_filter and request.user.role in ['SUPER_ADMIN', 'ADMIN']:
-            interactions_qs = interactions_qs.filter(
-                Q(author__sales_section=section_filter) | Q(student__sales_section=section_filter)
-            )
+            sales_reps = sales_reps.filter(Q(sales_section=section_filter) | Q(sales_section='BOTH'))
 
+        # Call Duration Metrics for department calls (strictly matching the sales reps in the leaderboard)
+        interactions_qs = LeadInteraction.objects.filter(author__in=sales_reps, interaction_type='CALL')
         if start_date:
             parsed_start = parse_date(start_date)
             if parsed_start:
@@ -184,14 +182,6 @@ class DashboardStatsView(APIView):
                 "count": count
             })
             
-        # Leaderboard with Call Duration per Sales Rep
-        sales_reps = User.objects.filter(Q(role='SALES') | Q(assigned_students__isnull=False), is_active=True).distinct()
-        if request.user.role == 'SALES':
-            user_section = getattr(request.user, 'sales_section', 'BOTH')
-            if user_section != 'BOTH':
-                sales_reps = sales_reps.filter(Q(sales_section=user_section) | Q(sales_section='BOTH'))
-        elif section_filter and request.user.role in ['SUPER_ADMIN', 'ADMIN']:
-            sales_reps = sales_reps.filter(Q(sales_section=section_filter) | Q(sales_section='BOTH'))
         leaderboard = []
         for rep in sales_reps:
             rep_leads = students.filter(assigned_to=rep).count()
