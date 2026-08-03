@@ -13,6 +13,7 @@ export default function TeamReportScreen() {
 
   const [loading, setLoading] = useState(true);
   const [report, setReport] = useState<any>(null);
+  const [errorMsg, setErrorMsg] = useState<string>('');
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
   const [showStartPicker, setShowStartPicker] = useState(false);
@@ -32,6 +33,7 @@ export default function TeamReportScreen() {
   const fetchReport = async () => {
     try {
       setLoading(true);
+      setErrorMsg('');
       let url = `crm/dashboard-stats/`;
 
       const queryParams = [];
@@ -46,7 +48,8 @@ export default function TeamReportScreen() {
       setReport(res.data || {});
     } catch (err: any) {
       console.log('Failed to fetch Team report:', err);
-      console.log('Team report error details:', err?.response?.data || err?.message);
+      const details = err?.response?.data ? JSON.stringify(err.response.data) : (err?.message || 'Network error');
+      setErrorMsg(details);
     } finally {
       setLoading(false);
     }
@@ -248,9 +251,14 @@ export default function TeamReportScreen() {
 
         </ScrollView>
       ) : (
-        <View style={[styles.center, isDark && styles.darkBg]}>
-          <Text style={{ color: isDark ? '#9CA3AF' : '#4B5563', marginBottom: 12 }}>Unable to load team report.</Text>
-          <TouchableOpacity onPress={fetchReport} style={{ backgroundColor: '#3B82F6', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 }}>
+        <View style={[styles.center, isDark && styles.darkBg, { paddingHorizontal: 24 }]}>
+          <Text style={{ color: '#EF4444', marginBottom: 8, fontWeight: '700', fontSize: 14 }}>Unable to load team report.</Text>
+          {errorMsg ? (
+            <Text style={{ color: isDark ? '#9CA3AF' : '#6B7280', fontSize: 11, marginBottom: 16, textAlign: 'center' }}>
+              {errorMsg}
+            </Text>
+          ) : null}
+          <TouchableOpacity onPress={fetchReport} style={{ backgroundColor: '#3B82F6', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 }}>
             <Text style={{ color: '#FFF', fontWeight: 'bold' }}>Retry</Text>
           </TouchableOpacity>
         </View>
