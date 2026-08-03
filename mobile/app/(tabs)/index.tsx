@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, TouchableOpacity, ScrollView, Alert, ActivityIndicator, Image, Modal, Button, Text, View } from 'react-native';
+import { StyleSheet, TouchableOpacity, ScrollView, Alert, ActivityIndicator, Image, Modal, Button, Text, View, TextInput } from 'react-native';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
