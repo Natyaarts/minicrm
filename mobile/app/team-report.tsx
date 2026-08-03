@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, ActivityIndicator } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { FontAwesome5 } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import client from '../src/api/client';
@@ -88,6 +88,107 @@ export default function TeamReportScreen() {
     return report?.formatted_total_call_duration || '0s';
   };
 
+  return (
+    <SafeAreaView style={[styles.container, isDark && styles.darkBg]}>
+      <View style={[styles.header, isDark && styles.darkHeader]}>
+        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+          <FontAwesome5 name="chevron-left" size={18} color="#FFFFFF" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>TEAM REPORT</Text>
+        <View style={{ width: 32 }} />
+      </View>
+
+      <View style={[styles.dateFilterContainer, isDark && styles.darkCard]}>
+        <View style={styles.presetButtonsRow}>
+          <TouchableOpacity
+            style={styles.presetChip}
+            onPress={() => {
+              const today = new Date();
+              setStartDate(today);
+              setEndDate(today);
+            }}
+          >
+            <Text style={styles.presetChipText}>Today</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.presetChip}
+            onPress={() => {
+              const yesterday = new Date();
+              yesterday.setDate(yesterday.getDate() - 1);
+              setStartDate(yesterday);
+              setEndDate(yesterday);
+            }}
+          >
+            <Text style={styles.presetChipText}>Yesterday</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.presetChip}
+            onPress={() => {
+              const today = new Date();
+              const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+              setStartDate(firstDay);
+              setEndDate(today);
+            }}
+          >
+            <Text style={styles.presetChipText}>This Month</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
+          <TouchableOpacity
+            style={[styles.dateButton, isDark && styles.darkCard]}
+            onPress={() => setShowStartPicker(true)}
+          >
+            <FontAwesome5 name="calendar-alt" size={12} color="#6B7280" />
+            <Text style={[styles.dateButtonText, isDark && styles.darkText]}>
+              {startDate ? startDate.toLocaleDateString() : 'Start Date'}
+            </Text>
+          </TouchableOpacity>
+          <Text style={{ color: '#9CA3AF' }}>-</Text>
+          <TouchableOpacity
+            style={[styles.dateButton, isDark && styles.darkCard]}
+            onPress={() => setShowEndPicker(true)}
+          >
+            <FontAwesome5 name="calendar-alt" size={12} color="#6B7280" />
+            <Text style={[styles.dateButtonText, isDark && styles.darkText]}>
+              {endDate ? endDate.toLocaleDateString() : 'End Date'}
+            </Text>
+          </TouchableOpacity>
+
+          {(startDate || endDate) && (
+            <TouchableOpacity onPress={() => { setStartDate(null); setEndDate(null); }}>
+              <Text style={{ color: '#EF4444', fontSize: 11, fontWeight: 'bold' }}>CLEAR</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
+      {showStartPicker && (
+        <DateTimePicker
+          value={startDate || new Date()}
+          mode="date"
+          display="default"
+          onChange={(event, date) => {
+            setShowStartPicker(false);
+            if (date) setStartDate(date);
+          }}
+        />
+      )}
+
+      {showEndPicker && (
+        <DateTimePicker
+          value={endDate || new Date()}
+          mode="date"
+          display="default"
+          onChange={(event, date) => {
+            setShowEndPicker(false);
+            if (date) setEndDate(date);
+          }}
+        />
+      )}
+
       {loading ? (
         <View style={[styles.center, isDark && styles.darkBg]}>
           <ActivityIndicator size="large" color="#3B82F6" />
@@ -127,7 +228,7 @@ export default function TeamReportScreen() {
                 onPress={() => router.push(`/bde-report?bdeId=${rep.id}` as any)}
               >
                 <View style={styles.repAvatar}>
-                  <Text style={styles.repAvatarText}>{rep.name.charAt(0).toUpperCase()}</Text>
+                  <Text style={styles.repAvatarText}>{rep.name ? rep.name.charAt(0).toUpperCase() : 'U'}</Text>
                 </View>
                 <View style={styles.repInfo}>
                   <Text style={[styles.repName, isDark && styles.darkText]}>{rep.name}</Text>
