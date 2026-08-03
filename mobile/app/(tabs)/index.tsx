@@ -281,6 +281,7 @@ const welcomeName = user ? `${user.first_name || user.username}` : 'Member';
         <View style={styles.roleBadge}>
           <Text style={styles.roleBadgeText}>{roleName}</Text>
         </View>
+      </View>
       {/* Festive Greeting Banner Card */}
       {festiveGreeting && (
         <View style={styles.festiveCard}>
