@@ -473,6 +473,22 @@ class CampaignViewSet(viewsets.ModelViewSet):
 
 from django.shortcuts import get_object_or_404
 
+import re
+
+def parse_duration_sec(call_duration, notes):
+    if call_duration and call_duration > 0:
+        return call_duration
+    if notes:
+        match = re.search(r'(?:Duration:\s*)?(\d+):(\d{2})(?::(\d{2}))?', str(notes), re.IGNORECASE)
+        if match:
+            if match.group(3):
+                h, m, s = int(match.group(1)), int(match.group(2)), int(match.group(3))
+                return h * 3600 + m * 60 + s
+            else:
+                m, s = int(match.group(1)), int(match.group(2))
+                return m * 60 + s
+    return 0
+
 class BDEReportView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -547,6 +563,7 @@ class BDEReportView(APIView):
         
         timeline = []
         for inter in interactions:
+            dur_sec = parse_duration_sec(inter.call_duration, inter.notes)
             timeline.append({
                 'id': inter.id,
                 'student_name': f"{inter.student.first_name} {inter.student.last_name}" if inter.student else 'Unknown',
@@ -556,8 +573,8 @@ class BDEReportView(APIView):
                 'student_crm_id': inter.student.crm_student_id if inter.student else '',
                 'student_status': inter.student.lead_status if inter.student else '',
                 'type': inter.interaction_type,
-                'call_duration': inter.call_duration or 0,
-                'formatted_call_duration': format_duration_seconds(inter.call_duration or 0),
+                'call_duration': dur_sec,
+                'formatted_call_duration': format_duration_seconds(dur_sec),
                 'call_direction': inter.call_direction,
                 'call_status': inter.call_status,
                 'notes': inter.notes,
@@ -585,7 +602,7 @@ class BDEReportView(APIView):
             if parsed_end:
                 calls_qs = calls_qs.filter(date__date__lte=parsed_end)
 
-        total_bde_duration_sec = calls_qs.aggregate(total_sec=Sum('call_duration'))['total_sec'] or 0
+        total_bde_duration_sec = sum(parse_duration_sec(c.call_duration, c.notes) for c in calls_qs)
 
         metrics = {
             'total_assigned': leads.count(),

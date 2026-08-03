@@ -116,12 +116,28 @@ export default function BDEReportScreen() {
     }
   };
 
-  const parseFormattedDuration = (str?: string): number => {
-    if (!str) return 0;
+  const parseDurationFromItem = (item: any): number => {
+    if (item.call_duration && Number(item.call_duration) > 0) {
+      return Number(item.call_duration);
+    }
+    const textToSearch = `${item.notes || ''} ${item.formatted_call_duration || ''}`;
+    const colonMatch = textToSearch.match(/(?:Duration:\s*)?(\d+):(\d{2})(?::(\d{2}))?/i);
+    if (colonMatch) {
+      if (colonMatch[3] !== undefined) {
+        const h = parseInt(colonMatch[1], 10);
+        const m = parseInt(colonMatch[2], 10);
+        const s = parseInt(colonMatch[3], 10);
+        return h * 3600 + m * 60 + s;
+      } else {
+        const m = parseInt(colonMatch[1], 10);
+        const s = parseInt(colonMatch[2], 10);
+        return m * 60 + s;
+      }
+    }
     let sec = 0;
-    const hoursMatch = str.match(/(\d+)\s*h/i);
-    const minsMatch = str.match(/(\d+)\s*m/i);
-    const secsMatch = str.match(/(\d+)\s*s/i);
+    const hoursMatch = textToSearch.match(/(\d+)\s*h/i);
+    const minsMatch = textToSearch.match(/(\d+)\s*m/i);
+    const secsMatch = textToSearch.match(/(\d+)\s*s/i);
     if (hoursMatch) sec += parseInt(hoursMatch[1], 10) * 3600;
     if (minsMatch) sec += parseInt(minsMatch[1], 10) * 60;
     if (secsMatch) sec += parseInt(secsMatch[1], 10);
@@ -141,15 +157,14 @@ export default function BDEReportScreen() {
   };
 
   const getTotalBdeTalkTime = () => {
-    if (report?.metrics?.formatted_total_call_duration) {
-      return report.metrics.formatted_total_call_duration;
-    }
     if (report?.timeline && report.timeline.length > 0) {
       const sumSec = report.timeline.reduce((acc: number, item: any) => {
-        const duration = item.call_duration || parseFormattedDuration(item.formatted_call_duration);
-        return acc + duration;
+        return acc + parseDurationFromItem(item);
       }, 0);
       if (sumSec > 0) return formatDurationSec(sumSec);
+    }
+    if (report?.metrics?.formatted_total_call_duration && report.metrics.formatted_total_call_duration !== '0s' && report.metrics.formatted_total_call_duration !== '00:00:00') {
+      return report.metrics.formatted_total_call_duration;
     }
     return '0s';
   };
@@ -158,12 +173,8 @@ export default function BDEReportScreen() {
     if (!report?.timeline) return [];
     let items = [...report.timeline];
     if (sortBy === 'longest_call') {
-      items = items.filter((item: any) => item.type === 'CALL' || item.call_duration > 0 || item.formatted_call_duration);
-      items.sort((a: any, b: any) => {
-        const durA = a.call_duration || parseFormattedDuration(a.formatted_call_duration);
-        const durB = b.call_duration || parseFormattedDuration(b.formatted_call_duration);
-        return durB - durA;
-      });
+      items = items.filter((item: any) => item.type === 'CALL' || parseDurationFromItem(item) > 0);
+      items.sort((a: any, b: any) => parseDurationFromItem(b) - parseDurationFromItem(a));
     } else if (sortBy === 'oldest') {
       items.sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
     } else {
