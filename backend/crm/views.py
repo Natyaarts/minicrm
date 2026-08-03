@@ -185,9 +185,13 @@ class DashboardStatsView(APIView):
             })
             
         # Leaderboard with Call Duration per Sales Rep
-        sales_reps = User.objects.filter(role='SALES')
-        if request.user.role == 'SALES' and getattr(request.user, 'sales_section', 'BOTH') != 'BOTH':
-            sales_reps = sales_reps.filter(Q(sales_section=request.user.sales_section) | Q(sales_section='BOTH'))
+        sales_reps = User.objects.filter(Q(role='SALES') | Q(assigned_students__isnull=False), is_active=True).distinct()
+        if request.user.role == 'SALES':
+            user_section = getattr(request.user, 'sales_section', 'BOTH')
+            if user_section != 'BOTH':
+                sales_reps = sales_reps.filter(Q(sales_section=user_section) | Q(sales_section='BOTH'))
+        elif section_filter and request.user.role in ['SUPER_ADMIN', 'ADMIN']:
+            sales_reps = sales_reps.filter(Q(sales_section=section_filter) | Q(sales_section='BOTH'))
         leaderboard = []
         for rep in sales_reps:
             rep_leads = students.filter(assigned_to=rep).count()
@@ -303,11 +307,19 @@ class SalesUserListView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     
     def get(self, request):
-        users = User.objects.filter(role='SALES')
-        if request.user.role == 'SALES' and getattr(request.user, 'sales_section', 'BOTH') != 'BOTH':
-            from django.db.models import Q
-            users = users.filter(Q(sales_section=request.user.sales_section) | Q(sales_section='BOTH'))
-        data = [{'id': u.id, 'name': u.get_full_name() or u.username} for u in users]
+        from django.db.models import Q
+        users = User.objects.filter(Q(role='SALES') | Q(assigned_students__isnull=False), is_active=True).distinct()
+        
+        if request.user.role == 'SALES':
+            user_section = getattr(request.user, 'sales_section', 'BOTH')
+            if user_section != 'BOTH':
+                users = users.filter(Q(sales_section=user_section) | Q(sales_section='BOTH'))
+
+        section_filter = request.query_params.get('sales_section')
+        if section_filter and request.user.role in ['SUPER_ADMIN', 'ADMIN']:
+            users = users.filter(Q(sales_section=section_filter) | Q(sales_section='BOTH'))
+
+        data = [{'id': u.id, 'name': u.get_full_name() or u.username, 'sales_section': getattr(u, 'sales_section', 'BOTH')} for u in users]
         return Response(data)
 
 class PipelineStageViewSet(viewsets.ModelViewSet):
