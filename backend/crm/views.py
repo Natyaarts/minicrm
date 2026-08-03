@@ -473,12 +473,6 @@ class CampaignViewSet(viewsets.ModelViewSet):
 
 from django.shortcuts import get_object_or_404
 
-def format_duration_seconds(seconds):
-    hours = seconds // 3600
-    minutes = (seconds % 3600) // 60
-    secs = seconds % 60
-    return f"{hours:02}:{minutes:02}:{secs:02}"
-
 class BDEReportView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -531,7 +525,7 @@ class BDEReportView(APIView):
         if sort_by == 'oldest':
             interactions = interactions.order_by('date')
         elif sort_by == 'longest_call':
-            interactions = interactions.order_by('-call_duration', '-date')
+            interactions = interactions.filter(interaction_type='CALL').order_by('-call_duration', '-date')
         else:
             interactions = interactions.order_by('-date')
         

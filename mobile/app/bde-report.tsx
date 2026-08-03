@@ -116,6 +116,62 @@ export default function BDEReportScreen() {
     }
   };
 
+  const parseFormattedDuration = (str?: string): number => {
+    if (!str) return 0;
+    let sec = 0;
+    const hoursMatch = str.match(/(\d+)\s*h/i);
+    const minsMatch = str.match(/(\d+)\s*m/i);
+    const secsMatch = str.match(/(\d+)\s*s/i);
+    if (hoursMatch) sec += parseInt(hoursMatch[1], 10) * 3600;
+    if (minsMatch) sec += parseInt(minsMatch[1], 10) * 60;
+    if (secsMatch) sec += parseInt(secsMatch[1], 10);
+    return sec;
+  };
+
+  const formatDurationSec = (seconds: number) => {
+    if (!seconds || seconds <= 0) return '0s';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    const parts = [];
+    if (h > 0) parts.push(`${h}h`);
+    if (m > 0 || h > 0) parts.push(`${m}m`);
+    parts.push(`${s}s`);
+    return parts.join(' ');
+  };
+
+  const getTotalBdeTalkTime = () => {
+    if (report?.metrics?.formatted_total_call_duration) {
+      return report.metrics.formatted_total_call_duration;
+    }
+    if (report?.timeline && report.timeline.length > 0) {
+      const sumSec = report.timeline.reduce((acc: number, item: any) => {
+        const duration = item.call_duration || parseFormattedDuration(item.formatted_call_duration);
+        return acc + duration;
+      }, 0);
+      if (sumSec > 0) return formatDurationSec(sumSec);
+    }
+    return '0s';
+  };
+
+  const getSortedTimeline = () => {
+    if (!report?.timeline) return [];
+    let items = [...report.timeline];
+    if (sortBy === 'longest_call') {
+      items = items.filter((item: any) => item.type === 'CALL' || item.call_duration > 0 || item.formatted_call_duration);
+      items.sort((a: any, b: any) => {
+        const durA = a.call_duration || parseFormattedDuration(a.formatted_call_duration);
+        const durB = b.call_duration || parseFormattedDuration(b.formatted_call_duration);
+        return durB - durA;
+      });
+    } else if (sortBy === 'oldest') {
+      items.sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    } else {
+      items.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }
+    return items;
+  };
+
   if (loading) {
     return (
       <View style={[styles.center, isDark && styles.darkBg]}>
@@ -267,7 +323,7 @@ export default function BDEReportScreen() {
             </View>
             <View style={[styles.metricCard, isDark && styles.darkCard]}>
                <Text style={styles.metricLabel}>TOTAL TALK TIME</Text>
-               <Text style={[styles.metricValue, {color: '#6366F1'}]}>{report.metrics.formatted_total_call_duration || '0s'}</Text>
+               <Text style={[styles.metricValue, {color: '#6366F1'}]}>{getTotalBdeTalkTime()}</Text>
             </View>
             <View style={[styles.metricCard, isDark && styles.darkCard]}>
                <Text style={styles.metricLabel}>CALLS LOGGED</Text>
@@ -277,7 +333,7 @@ export default function BDEReportScreen() {
 
          <Text style={[styles.sectionTitle, {color: isDark ? '#9CA3AF' : '#4B5563'}]}>MASTER ACTIVITY TIMELINE</Text>
          <View style={[styles.timelineContainer, isDark && styles.darkCard]}>
-            {report.timeline.map((item: any, idx: number) => (
+            {getSortedTimeline().map((item: any, idx: number) => (
                <View key={item.id} style={styles.timelineItem}>
                   <View style={styles.timelineLeft}>
                      <View style={styles.timelineDot} />
