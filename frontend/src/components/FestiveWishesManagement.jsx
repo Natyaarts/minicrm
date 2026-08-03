@@ -211,6 +211,25 @@ export default function FestiveWishesManagement() {
                     </div>
                   </div>
 
+                  {/* Comments Summary */}
+                  {g.comments && g.comments.length > 0 && (
+                    <div className="mb-3 bg-amber-50/70 p-2.5 rounded-xl border border-amber-200/60">
+                      <div className="flex items-center justify-between text-xs font-bold text-amber-900 mb-1">
+                        <span className="flex items-center gap-1">
+                          <MessageSquare className="w-3.5 h-3.5 text-amber-600" />
+                          Team Wishes ({g.comments.length})
+                        </span>
+                      </div>
+                      <div className="space-y-1 max-h-24 overflow-y-auto">
+                        {g.comments.map((c, cIdx) => (
+                          <div key={c.id || cIdx} className="text-[11px] text-slate-700 bg-white/80 px-2 py-1 rounded-md border border-amber-100 flex justify-between">
+                            <span className="font-semibold">{c.author_name}: <span className="font-normal">{c.content}</span></span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Actions */}
                   <div className="flex items-center justify-between pt-3 border-t border-slate-100">
                     <button
@@ -226,10 +245,11 @@ export default function FestiveWishesManagement() {
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => setPreviewGreeting(g)}
-                        className="p-1.5 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition"
+                        className="p-1.5 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition flex items-center gap-1 text-xs font-bold"
                         title="Preview"
                       >
                         <Eye className="w-4 h-4" />
+                        <span>Preview</span>
                       </button>
                       <button
                         onClick={() => handleDelete(g.id)}
