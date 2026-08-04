@@ -1,6 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import PipelineStageViewSet, LeadInteractionViewSet, CampaignViewSet, WebhookReceiveView, WebhookEndpointViewSet, SalesUserListView, DashboardStatsView, MentorDashboardStatsView, TaskViewSet, BDEReportView, CallAnalyticsView, MarketingDashboardView, BulkAssignLeadsView
+from .views_meta import MetaLeadWebhookView, LeadQualityFeedbackView
 
 router = DefaultRouter()
 router.register(r'stages', PipelineStageViewSet)
@@ -18,5 +19,8 @@ urlpatterns = [
     path('sales-users/', SalesUserListView.as_view(), name='sales_users'),
     path('bde-report/<int:user_id>/', BDEReportView.as_view(), name='bde_report'),
     path('call-analytics/', CallAnalyticsView.as_view(), name='call_analytics'),
+    # Meta Facebook Lead Ads Integration
+    path('meta/webhook/', MetaLeadWebhookView.as_view(), name='meta_lead_webhook'),
+    path('leads/<int:student_id>/quality/', LeadQualityFeedbackView.as_view(), name='lead_quality_feedback'),
     path('', include(router.urls)),
 ]

@@ -67,6 +67,14 @@ class Campaign(models.Model):
     )
     section = models.CharField(max_length=20, choices=SECTION_CHOICES, default='BOTH')
     
+    # Meta Facebook Lead Ads Integration
+    meta_page_id = models.CharField(max_length=100, null=True, blank=True, help_text='Facebook Page ID that this campaign belongs to')
+    meta_form_id = models.CharField(max_length=100, null=True, blank=True, help_text='Facebook Lead Ad Form ID for auto-matching incoming leads')
+    meta_ad_id = models.CharField(max_length=100, null=True, blank=True, help_text='Facebook Ad ID (optional, for more precise matching)')
+    meta_pixel_id = models.CharField(max_length=100, null=True, blank=True, help_text='Facebook Pixel ID for Conversions API')
+    meta_access_token = models.TextField(null=True, blank=True, help_text='Meta Page Access Token for Conversions API - keep this secret!')
+    meta_auto_import = models.BooleanField(default=False, help_text='If enabled, leads from this Meta form auto-import into CRM')
+    
     created_at = models.DateTimeField(auto_now_add=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
 

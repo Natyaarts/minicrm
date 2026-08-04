@@ -261,3 +261,14 @@ LOGGING = {
         },
     },
 }
+
+# -----------------------------------------------------------------------
+# Meta Facebook Lead Ads Integration
+# -----------------------------------------------------------------------
+# Set these in your .env or production environment variables
+# META_WEBHOOK_VERIFY_TOKEN: A secret string you choose when setting up
+#   the webhook in Meta App Dashboard > Webhooks
+# META_APP_SECRET: Your Meta App Secret (from Meta App Dashboard > Settings > Basic)
+import os
+META_WEBHOOK_VERIFY_TOKEN = os.environ.get('META_WEBHOOK_VERIFY_TOKEN', 'natyaarts_meta_webhook_2024')
+META_APP_SECRET = os.environ.get('META_APP_SECRET', None)

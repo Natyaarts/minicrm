@@ -85,6 +85,15 @@ class Student(models.Model):
     )
     sales_section = models.CharField(max_length=20, choices=SALES_SECTION_CHOICES, default='BOTH')
 
+    # Meta Facebook Lead Ads Integration
+    meta_lead_id = models.CharField(max_length=200, null=True, blank=True, unique=True, help_text='Facebook Lead Ad lead_id for Conversions API feedback')
+    LEAD_QUALITY_CHOICES = [
+        ('UNKNOWN', 'Not Reviewed'),
+        ('QUALITY', 'Quality Lead'),
+        ('FAKE', 'Fake / Junk Lead'),
+    ]
+    lead_quality = models.CharField(max_length=20, choices=LEAD_QUALITY_CHOICES, default='UNKNOWN', help_text='Sales rep feedback sent back to Meta for ad optimization')
+
     # Personal Info - Minimal required for system, others optional
     first_name = models.CharField(max_length=50, blank=True, null=True)
     last_name = models.CharField(max_length=50, blank=True, null=True)
