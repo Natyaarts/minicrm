@@ -22,8 +22,13 @@ class LeadInteractionAdmin(admin.ModelAdmin):
 
 @admin.register(Campaign)
 class CampaignAdmin(admin.ModelAdmin):
-    list_display = ('name', 'platform', 'status', 'budget', 'start_date')
-    list_filter = ('platform', 'status')
+    list_display = ('name', 'platform', 'status', 'section', 'budget', 'start_date', 'get_leads_count')
+    list_filter = ('platform', 'status', 'section')
+    search_fields = ('name', 'description')
+
+    def get_leads_count(self, obj):
+        return obj.leads.count()
+    get_leads_count.short_description = "Total Leads"
 
 @admin.register(WebhookEndpoint)
 class WebhookEndpointAdmin(admin.ModelAdmin):

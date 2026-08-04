@@ -26,9 +26,11 @@ class BatchAdmin(admin.ModelAdmin):
 
 @admin.register(Student)
 class StudentAdmin(admin.ModelAdmin):
-    list_display = ('first_name', 'last_name', 'crm_student_id', 'program_type', 'is_active')
-    list_filter = ('program_type', 'sub_program', 'course', 'is_active')
+    list_display = ('first_name', 'last_name', 'crm_student_id', 'assigned_to', 'lead_status', 'sales_section', 'campaign', 'program_type', 'is_active')
+    list_filter = ('lead_status', 'assigned_to', 'sales_section', 'campaign', 'program_type', 'sub_program', 'course', 'is_active')
+    list_editable = ('assigned_to', 'lead_status', 'sales_section')
     search_fields = ('first_name', 'last_name', 'crm_student_id', 'email', 'mobile')
+    raw_id_fields = ('user',)
 
 @admin.register(Transaction)
 class TransactionAdmin(admin.ModelAdmin):
