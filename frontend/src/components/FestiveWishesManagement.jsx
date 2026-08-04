@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Calendar, Image as ImageIcon, Send, Trash2, CheckCircle2, AlertCircle, Eye, RefreshCw, Layers } from 'lucide-react';
+import { Sparkles, Calendar, Image as ImageIcon, Send, Trash2, CheckCircle2, AlertCircle, Eye, RefreshCw, Layers, MessageSquare } from 'lucide-react';
 import api from '../api/axios';
 
 const THEME_PRESETS = [
