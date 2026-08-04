@@ -159,6 +159,11 @@ class DashboardStatsView(APIView):
             total_call_duration_sec = interactions_qs.aggregate(total_sec=Sum('call_duration'))['total_sec'] or 0
             formatted_total_call_duration = format_duration_seconds(total_call_duration_sec)
 
+            connected_calls = interactions_qs.filter(Q(call_status='CONNECTED') | Q(call_duration__gt=0)).count()
+            missed_calls = interactions_qs.filter(Q(call_status='MISSED') | Q(call_duration=0, call_status__isnull=True)).count()
+            incoming_calls = interactions_qs.filter(call_direction='INCOMING').count()
+            outgoing_calls = interactions_qs.filter(call_direction='OUTGOING').count()
+
             # Pipeline Stages Breakdown
             pipeline_stages_data = []
             standard_mapping = {
@@ -205,6 +210,8 @@ class DashboardStatsView(APIView):
                 rep_contacted = rep_interactions.values('student').distinct().count()
                 rep_duration_sec = rep_interactions.aggregate(total_sec=Sum('call_duration'))['total_sec'] or 0
                 rep_call_count = rep_interactions.count()
+                rep_connected = rep_interactions.filter(Q(call_status='CONNECTED') | Q(call_duration__gt=0)).count()
+                rep_missed = rep_interactions.filter(Q(call_status='MISSED') | Q(call_duration=0, call_status__isnull=True)).count()
                 
                 leaderboard.append({
                     "id": rep.id,
@@ -212,6 +219,8 @@ class DashboardStatsView(APIView):
                     "assigned": rep_leads,
                     "contacted": rep_contacted,
                     "total_calls": rep_call_count,
+                    "connected_calls": rep_connected,
+                    "missed_calls": rep_missed,
                     "total_call_duration": rep_duration_sec,
                     "formatted_call_duration": format_duration_seconds(rep_duration_sec)
                 })
@@ -239,6 +248,10 @@ class DashboardStatsView(APIView):
                 "converted_leads": converted_leads,
                 "total_call_duration": total_call_duration_sec,
                 "formatted_total_call_duration": formatted_total_call_duration,
+                "connected_calls": connected_calls,
+                "missed_calls": missed_calls,
+                "incoming_calls": incoming_calls,
+                "outgoing_calls": outgoing_calls,
                 "pipeline_stages": pipeline_stages_data,
                 "leaderboard": leaderboard,
                 "revenue": revenue

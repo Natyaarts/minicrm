@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, TextInput, Platform, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { listenToCallState, startNativeRecording, stopNativeRecording } from '../utils/CallManager';
+import { listenToCallState, listenToMissedCalls, startNativeRecording, stopNativeRecording } from '../utils/CallManager';
 import client from '../api/client';
 import * as DocumentPicker from 'expo-document-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -31,6 +31,45 @@ export default function GlobalCallListener() {
 
   useEffect(() => {
     fetchPipelineStages();
+
+    const unsubscribeMissed = listenToMissedCalls(async (event) => {
+      console.log('GlobalCallListener Missed Call Event:', event);
+      const phone = event.phoneNumber;
+      if (!phone) return;
+
+      try {
+        // Attempt to find student / lead
+        const res = await client.get(`/students/?search=${encodeURIComponent(phone)}`);
+        const results = res.data.results || res.data || [];
+        const student = results[0];
+
+        if (student) {
+          const payload = new FormData();
+          payload.append('student', student.id);
+          payload.append('interaction_type', 'CALL');
+          payload.append('call_direction', 'INCOMING');
+          payload.append('call_status', 'MISSED');
+          payload.append('call_duration', '0');
+          payload.append('notes', `Missed incoming call from ${phone}`);
+
+          await client.post('/crm/interactions/', payload, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+          });
+
+          Alert.alert(
+            '🚨 Missed Call Alert',
+            `Missed call from ${student.first_name || ''} ${student.last_name || ''} (${phone}). Added to CRM interactions.`
+          );
+        } else {
+          Alert.alert(
+            '🚨 Missed Call Alert',
+            `Missed call from unknown number (${phone}).`
+          );
+        }
+      } catch (err) {
+        console.error('Failed to log missed call automatically:', err);
+      }
+    });
 
     const unsubscribe = listenToCallState(async (event) => {
       console.log('GlobalCallListener State Event:', event);
@@ -82,6 +121,7 @@ export default function GlobalCallListener() {
 
     return () => {
       unsubscribe();
+      unsubscribeMissed();
       stopTimer();
     };
   }, []);

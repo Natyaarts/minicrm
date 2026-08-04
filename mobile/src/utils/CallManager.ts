@@ -50,6 +50,20 @@ export const listenToCallState = (onStateChanged: (event: { state: string; phone
     };
 };
 
+export const listenToMissedCalls = (onMissedCall: (event: { phoneNumber: string; timestamp: number }) => void) => {
+    if (!callRecordingEmitter) return () => {};
+    
+    const sub = callRecordingEmitter.addListener('onMissedCall', (event) => {
+        console.log('Missed call event received:', event);
+        onMissedCall(event);
+    });
+    
+    return () => {
+        sub.remove();
+    };
+};
+
+
 export const requestDefaultDialerRole = async () => {
     if (Platform.OS !== 'android') {
         Alert.alert('Not Supported', 'Call recording is only supported on Android devices.');

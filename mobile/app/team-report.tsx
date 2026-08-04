@@ -223,6 +223,17 @@ export default function TeamReportScreen() {
             </View>
           </View>
 
+          <View style={styles.metricsGrid}>
+            <View style={[styles.metricCard, isDark && styles.darkCard]}>
+              <Text style={styles.metricLabel}>CONNECTED CALLS</Text>
+              <Text style={[styles.metricValue, { color: '#059669' }]}>{report.connected_calls ?? 0}</Text>
+            </View>
+            <View style={[styles.metricCard, isDark && styles.darkCard]}>
+              <Text style={styles.metricLabel}>MISSED CALLS</Text>
+              <Text style={[styles.metricValue, { color: '#DC2626' }]}>{report.missed_calls ?? 0}</Text>
+            </View>
+          </View>
+
           <Text style={[styles.sectionTitle, { color: isDark ? '#9CA3AF' : '#4B5563', marginTop: 8 }]}>TEAM LEADERBOARD</Text>
           <View style={[styles.listContainer, isDark && styles.darkCard]}>
             {report.leaderboard?.map((rep: any, idx: number) => (
@@ -239,6 +250,10 @@ export default function TeamReportScreen() {
                   <View style={styles.repStats}>
                     <Text style={styles.repStatText}><FontAwesome5 name="users" size={10} color="#6B7280" /> {rep.assigned} Assigned</Text>
                     <Text style={[styles.repStatText, { marginLeft: 10, color: '#6366F1', fontWeight: '700' }]}><FontAwesome5 name="clock" size={10} color="#6366F1" /> {rep.formatted_call_duration || '0s'}</Text>
+                  </View>
+                  <View style={[styles.repStats, { marginTop: 3 }]}>
+                    <Text style={[styles.repStatText, { color: '#059669', fontSize: 10 }]}><FontAwesome5 name="phone-alt" size={9} color="#059669" /> {rep.connected_calls ?? 0} Connected</Text>
+                    <Text style={[styles.repStatText, { marginLeft: 10, color: '#DC2626', fontSize: 10 }]}><FontAwesome5 name="phone-slash" size={9} color="#DC2626" /> {rep.missed_calls ?? 0} Missed</Text>
                   </View>
                 </View>
                 <FontAwesome5 name="chevron-right" size={14} color="#9CA3AF" />
