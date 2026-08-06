@@ -453,21 +453,38 @@ class CampaignViewSet(viewsets.ModelViewSet):
                     base_username = mobile if mobile else email if email else first_name
                     username = f"{base_username}_{str(uuid.uuid4())[:8]}" if base_username else f"lead_{str(uuid.uuid4())[:8]}"
                     
+                    # Duplicate check
+                    is_duplicate = False
+                    duplicate_reason = ""
+                    if mobile and Student.objects.filter(mobile=mobile).exists():
+                        is_duplicate = True
+                        dup = Student.objects.filter(mobile=mobile).first()
+                        duplicate_reason = f"Duplicate mobile: {mobile} (Original CRM ID: {dup.crm_student_id})"
+                    elif email and Student.objects.filter(email=email).exists():
+                        is_duplicate = True
+                        dup = Student.objects.filter(email=email).first()
+                        duplicate_reason = f"Duplicate email: {email} (Original CRM ID: {dup.crm_student_id})"
+
                     User = get_user_model()
-                    user = User.objects.create_user(
-                        username=username,
-                        email=email,
-                        first_name=first_name,
-                        last_name=last_name,
-                        role='STUDENT',
-                        password='Password@123'
-                    )
+                    # Only create User if not a duplicate, otherwise use existing user username if it exists or fallback
+                    if is_duplicate:
+                        dup = Student.objects.filter(mobile=mobile).first() or Student.objects.filter(email=email).first()
+                        user = dup.user
+                    else:
+                        user = User.objects.create_user(
+                            username=username,
+                            email=email,
+                            first_name=first_name,
+                            last_name=last_name,
+                            role='STUDENT',
+                            password='Password@123'
+                        )
                     
                     # Generate unique CRM Student ID
                     import uuid
                     crm_id = f"LEAD-{str(uuid.uuid4())[:8].upper()}"
                     
-                    Student.objects.create(
+                    student = Student.objects.create(
                         user=user,
                         crm_student_id=crm_id,
                         first_name=first_name,
@@ -479,8 +496,16 @@ class CampaignViewSet(viewsets.ModelViewSet):
                         campaign=campaign,
                         sales_section=campaign.section,
                         program_type=default_program,
-                        lead_status='2' # Assuming '2' is NEW status, or we can look it up. Let's look it up.
+                        lead_status='DUPLICATE' if is_duplicate else '2' # Default to '2' (unconverted new)
                     )
+
+                    if is_duplicate and duplicate_reason:
+                        from .models import LeadInteraction
+                        LeadInteraction.objects.create(
+                            student=student,
+                            notes=f"SYSTEM NOTICE (Bulk CSV Upload): This lead is registered as DUPLICATE. {duplicate_reason}",
+                            interaction_type='NOTE'
+                        )
                     leads_created += 1
                     
             # Actually, let's make sure lead_status uses the pipeline stage ID for NEW

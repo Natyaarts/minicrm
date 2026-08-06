@@ -75,7 +75,10 @@ const CRMCampaigns = () => {
     // Form state
     const [formData, setFormData] = useState({
         name: '', platform: 'OTHER', status: 'ACTIVE', 
-        budget: '', start_date: '', end_date: '', description: '', section: 'BOTH'
+        budget: '', start_date: '', end_date: '', description: '', section: 'BOTH',
+        // Meta Facebook Lead Ads fields
+        meta_page_id: '', meta_form_id: '', meta_ad_id: '',
+        meta_pixel_id: '', meta_access_token: '', meta_auto_import: false
     });
 
     // Bulk Assignment state
@@ -248,7 +251,9 @@ const CRMCampaigns = () => {
             setEditingCampaign(null);
             setFormData({
                 name: '', platform: 'OTHER', status: 'ACTIVE', 
-                budget: '', start_date: '', end_date: '', description: '', section: 'BOTH'
+                budget: '', start_date: '', end_date: '', description: '', section: 'BOTH',
+                meta_page_id: '', meta_form_id: '', meta_ad_id: '',
+                meta_pixel_id: '', meta_access_token: '', meta_auto_import: false
             });
             fetchCampaigns();
         } catch (error) {
@@ -632,12 +637,26 @@ const CRMCampaigns = () => {
                                         }`}>
                                             {campaign.status}
                                         </span>
+                                        {campaign.meta_auto_import && (
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold bg-blue-600 text-white rounded-md" title="Meta Lead Ads Auto-Import Active">
+                                                <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+                                                META
+                                            </span>
+                                        )}
                                         <button 
                                             onClick={() => {
                                                 setEditingCampaign(campaign);
                                                 setFormData({
                                                     name: campaign.name, platform: campaign.platform, status: campaign.status,
-                                                    budget: campaign.budget, start_date: campaign.start_date || '', end_date: campaign.end_date || '', description: campaign.description || '', section: campaign.section || 'BOTH'
+                                                    budget: campaign.budget, start_date: campaign.start_date || '', end_date: campaign.end_date || '',
+                                                    description: campaign.description || '', section: campaign.section || 'BOTH',
+                                                    // Meta fields
+                                                    meta_page_id: campaign.meta_page_id || '',
+                                                    meta_form_id: campaign.meta_form_id || '',
+                                                    meta_ad_id: campaign.meta_ad_id || '',
+                                                    meta_pixel_id: campaign.meta_pixel_id || '',
+                                                    meta_access_token: campaign.meta_access_token || '',
+                                                    meta_auto_import: campaign.meta_auto_import || false,
                                                 });
                                                 setIsCreateModalOpen(true);
                                             }}

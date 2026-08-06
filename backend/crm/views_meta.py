@@ -187,14 +187,31 @@ class MetaLeadWebhookView(APIView):
                         username = f"meta_{lead_id}"[:150]
 
                         with transaction.atomic():
-                            user = User.objects.create_user(
-                                username=username,
-                                first_name=first_name,
-                                last_name=last_name,
-                                email=email or "",
-                                password=get_random_string(20),
-                                role="STUDENT",
-                            )
+                            # Duplicate check
+                            is_duplicate = False
+                            duplicate_reason = ""
+                            if phone and Student.objects.filter(mobile=phone).exists():
+                                is_duplicate = True
+                                dup = Student.objects.filter(mobile=phone).first()
+                                duplicate_reason = f"Duplicate mobile: {phone} (Original CRM ID: {dup.crm_student_id})"
+                            elif email and Student.objects.filter(email=email).exists():
+                                is_duplicate = True
+                                dup = Student.objects.filter(email=email).first()
+                                duplicate_reason = f"Duplicate email: {email} (Original CRM ID: {dup.crm_student_id})"
+
+                            if is_duplicate:
+                                # Bind to existing user if duplicate
+                                dup = Student.objects.filter(mobile=phone).first() or Student.objects.filter(email=email).first()
+                                user = dup.user
+                            else:
+                                user = User.objects.create_user(
+                                    username=username,
+                                    first_name=first_name,
+                                    last_name=last_name,
+                                    email=email or "",
+                                    password=get_random_string(20),
+                                    role="STUDENT",
+                                )
 
                             today = datetime.date.today()
                             count = Student.objects.filter(user__date_joined__date=today).count() + 1
@@ -209,11 +226,19 @@ class MetaLeadWebhookView(APIView):
                                 last_name=last_name,
                                 email=email or None,
                                 mobile=phone or None,
-                                lead_status="NEW",
+                                lead_status="DUPLICATE" if is_duplicate else "NEW",
                                 meta_lead_id=str(lead_id),
                                 campaign=campaign,
                                 sales_section=campaign.section if campaign else "BOTH",
                             )
+
+                            if is_duplicate and duplicate_reason:
+                                from crm.models import LeadInteraction
+                                LeadInteraction.objects.create(
+                                    student=student,
+                                    notes=f"SYSTEM NOTICE (Meta Ad Webhook): This lead is registered as DUPLICATE. {duplicate_reason}",
+                                    interaction_type='NOTE'
+                                )
 
                             leads_created += 1
                             logger.info(f"Created new Meta lead: {student.crm_student_id} - {name} ({phone})")

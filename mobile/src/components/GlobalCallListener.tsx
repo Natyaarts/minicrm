@@ -1,13 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal, TextInput, Platform, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, TextInput, Platform, ScrollView, Alert, ActivityIndicator, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { listenToCallState, listenToMissedCalls, startNativeRecording, stopNativeRecording } from '../utils/CallManager';
 import client from '../api/client';
 import * as DocumentPicker from 'expo-document-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import * as Notifications from 'expo-notifications';
 
 export default function GlobalCallListener() {
   const [isModalVisible, setIsModalVisible] = useState(false);
+  // ── Bug 1 Fix: Live ringing banner state ──
+  const [showRingingBanner, setShowRingingBanner] = useState(false);
+  const [ringingPhone, setRingingPhone] = useState('');
+  const [ringingLeadInfo, setRingingLeadInfo] = useState<any>(null);
+  const [loadingRingingLead, setLoadingRingingLead] = useState(false);
+  const bannerAnim = useRef(new Animated.Value(-120)).current;
+
   const [displayPhone, setDisplayPhone] = useState('');
   const [callDuration, setCallDuration] = useState(0);
   const [recordedFilePath, setRecordedFilePath] = useState<string | null>(null);
@@ -76,19 +84,45 @@ export default function GlobalCallListener() {
       const { state, phoneNumber } = event;
 
       if (state === 'RINGING') {
-        // Strictly an incoming call
+        // ── Bug 1 Fix: Show live ringing banner immediately ──
         isIncomingRef.current = true;
         incomingPhoneRef.current = phoneNumber;
         setDisplayPhone(phoneNumber);
-        
-        // Pre-fetch lead info if we have a number
+        setRingingPhone(phoneNumber || 'Unknown Number');
+        setRingingLeadInfo(null);
+        setShowRingingBanner(true);
+        // Animate banner sliding in from top
+        Animated.spring(bannerAnim, {
+          toValue: 0,
+          useNativeDriver: true,
+          tension: 80,
+          friction: 10,
+        }).start();
+
+        // Pre-fetch CRM lead info while phone is ringing
         if (phoneNumber) {
           fetchLeadInfo(phoneNumber);
+          // Also update the ringing banner's lead lookup
+          setLoadingRingingLead(true);
+          try {
+            const cleanPhone = phoneNumber.replace(/\D/g, '').slice(-10);
+            const res = await client.get('/core/students/', { params: { search: cleanPhone } });
+            const data = res.data?.results || res.data || [];
+            if (data.length > 0) setRingingLeadInfo(data[0]);
+          } catch (_) {}
+          finally { setLoadingRingingLead(false); }
         }
       } 
       else if (state === 'OFFHOOK') {
-        // Did an incoming call just get answered?
+        // Incoming call was answered — hide banner, start timer
         if (isIncomingRef.current) {
+          // Slide banner out
+          Animated.timing(bannerAnim, {
+            toValue: -120,
+            duration: 250,
+            useNativeDriver: true,
+          }).start(() => setShowRingingBanner(false));
+
           callStartTimeRef.current = Date.now();
           startTimer();
           
@@ -99,7 +133,13 @@ export default function GlobalCallListener() {
         }
       } 
       else if (state === 'IDLE') {
-        // If an incoming call just ended (either answered or missed)
+        // Call ended (answered or missed) — hide banner, show post-call modal
+        Animated.timing(bannerAnim, {
+          toValue: -120,
+          duration: 250,
+          useNativeDriver: true,
+        }).start(() => setShowRingingBanner(false));
+
         if (isIncomingRef.current) {
           stopTimer();
           
@@ -108,11 +148,11 @@ export default function GlobalCallListener() {
             if (path) setRecordedFilePath(path);
           }
           
-          // Show the popup
+          // Show post-call review modal
           setIsModalVisible(true);
         }
         
-        // Reset tracking refs (except displayPhone which the modal needs)
+        // Reset tracking refs
         isIncomingRef.current = false;
         callStartTimeRef.current = null;
         incomingPhoneRef.current = null;
@@ -239,6 +279,34 @@ export default function GlobalCallListener() {
       await client.post('/crm/interactions/', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
+
+      // ── Bug 2 Fix: Schedule device alarm for follow-up reminder ──
+      if (nextFollowupDate) {
+        const msUntilFollowup = nextFollowupDate.getTime() - Date.now();
+        if (msUntilFollowup > 0) {
+          const leadName = leadInfo
+            ? `${leadInfo.first_name || ''} ${leadInfo.last_name || ''}`.trim()
+            : displayPhone;
+          try {
+            await Notifications.scheduleNotificationAsync({
+              content: {
+                title: '📞 Follow-up Reminder',
+                body: `Time to call back ${leadName} (${displayPhone})`,
+                sound: true,
+                data: { studentId: leadInfo?.id, phone: displayPhone },
+              },
+              trigger: {
+                type: Notifications.SchedulableTriggerInputTypes.DATE,
+                date: nextFollowupDate,
+                channelId: 'default',
+              },
+            });
+            console.log('[GlobalCallListener] Follow-up reminder scheduled for', nextFollowupDate.toISOString());
+          } catch (notifErr) {
+            console.warn('[GlobalCallListener] Failed to schedule reminder:', notifErr);
+          }
+        }
+      }
       
       Alert.alert('✅ Saved', 'Incoming call logged successfully.');
       resetModal();
@@ -282,13 +350,62 @@ export default function GlobalCallListener() {
     return `${m}:${s}`;
   };
 
-  if (!isModalVisible) return null;
+  // ── Bug 1 Fix: Always render so ringing banner and modal can both appear ──
 
   return (
-    <Modal visible={isModalVisible} animationType="slide" transparent={false} presentationStyle="pageSheet">
-      <View style={styles.header}>
-        <Text style={styles.headerText}>Incoming Call Review</Text>
-      </View>
+    <>
+      {/* ── Bug 1 Fix: Live Ringing Banner (appears during RINGING state) ── */}
+      {showRingingBanner && (
+        <Animated.View
+          style={[
+            styles.ringingBanner,
+            { transform: [{ translateY: bannerAnim }] }
+          ]}
+        >
+          <View style={styles.ringingBannerLeft}>
+            <View style={styles.ringingIconCircle}>
+              <Ionicons name="call" size={22} color="#fff" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.ringingLabel}>Incoming Call</Text>
+              {loadingRingingLead ? (
+                <ActivityIndicator size="small" color="#fff" style={{ marginTop: 2 }} />
+              ) : ringingLeadInfo ? (
+                <Text style={styles.ringingName}>
+                  {ringingLeadInfo.first_name} {ringingLeadInfo.last_name}
+                </Text>
+              ) : (
+                <Text style={styles.ringingName}>{ringingPhone || 'Unknown'}</Text>
+              )}
+              <Text style={styles.ringingNumber}>{ringingPhone}</Text>
+              {ringingLeadInfo && (
+                <View style={styles.ringingCrmBadge}>
+                  <Ionicons name="person-circle-outline" size={12} color="#90CDF4" />
+                  <Text style={styles.ringingCrmText}>CRM Match Found</Text>
+                </View>
+              )}
+            </View>
+          </View>
+          <TouchableOpacity
+            style={styles.ringingDismissBtn}
+            onPress={() => {
+              Animated.timing(bannerAnim, {
+                toValue: -120,
+                duration: 250,
+                useNativeDriver: true,
+              }).start(() => setShowRingingBanner(false));
+            }}
+          >
+            <Text style={styles.ringingDismissText}>Dismiss</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      )}
+
+      {/* ── Post-Call Review Modal ── */}
+      <Modal visible={isModalVisible} animationType="slide" transparent={false} presentationStyle="pageSheet">
+        <View style={styles.header}>
+          <Text style={styles.headerText}>Incoming Call Review</Text>
+        </View>
       
       <ScrollView style={styles.content}>
         {loadingLead ? (
@@ -410,10 +527,87 @@ export default function GlobalCallListener() {
         <View style={{height: 60}} />
       </ScrollView>
     </Modal>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
+  // ── Bug 1: Ringing banner styles ──
+  ringingBanner: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 44 : 0,
+    left: 0,
+    right: 0,
+    zIndex: 9999,
+    backgroundColor: '#1A365D',
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    paddingTop: Platform.OS === 'ios' ? 16 : 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  ringingBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  ringingIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#38A169',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ringingLabel: {
+    color: '#90CDF4',
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  ringingName: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginTop: 1,
+  },
+  ringingNumber: {
+    color: '#BEE3F8',
+    fontSize: 12,
+    marginTop: 1,
+  },
+  ringingCrmBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+  },
+  ringingCrmText: {
+    color: '#90CDF4',
+    fontSize: 11,
+  },
+  ringingDismissBtn: {
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginLeft: 8,
+  },
+  ringingDismissText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
   header: {
     paddingTop: Platform.OS === 'ios' ? 60 : 20,
     paddingBottom: 20,

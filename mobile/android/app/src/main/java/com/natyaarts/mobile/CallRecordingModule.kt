@@ -163,14 +163,16 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
             try {
                 var systemRecordingPath: String? = null
                 
-                // 1. Scan MediaStore and SAF for native call recording file (Retry up to 10 times, 1s apart)
-                for (i in 1..10) {
-                    Thread.sleep(1000)
-                    systemRecordingPath = findRecentSystemRecording(targetPhoneNumber, callStartTime)
-                    if (systemRecordingPath != null) {
-                        break
-                    }
-                }
+        // 1. Scan MediaStore and SAF for native call recording file
+        //    Bug 3 Fix: Retry up to 30 times (30s) — long calls produce large files
+        //    that may take >10s to flush to MediaStore on some devices.
+        for (i in 1..30) {
+            Thread.sleep(1000)
+            systemRecordingPath = findRecentSystemRecording(targetPhoneNumber, callStartTime)
+            if (systemRecordingPath != null) {
+                break
+            }
+        }
                 
                 // Stop fallback recorder (and delete the fallback file if we successfully found the native one)
                 val fallbackPath = stopRecordingInternal(systemRecordingPath != null)
@@ -294,7 +296,8 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
             MediaStore.Audio.Media.DATE_ADDED
         )
         
-        val startTimeSeconds = startTimeMs / 1000 - 30
+        // Bug 3 Fix: Extend window to -60s to account for large file write delays on long calls
+        val startTimeSeconds = startTimeMs / 1000 - 60
         val selection = "${MediaStore.Audio.Media.DATE_ADDED} >= ?"
         val selectionArgs = arrayOf(startTimeSeconds.toString())
         val sortOrder = "${MediaStore.Audio.Media.DATE_ADDED} DESC"

@@ -43,6 +43,10 @@ const Dialpad = () => {
   const [activeTab, setActiveTab] = useState<'dialer' | 'history'>('dialer');
   const [recentCalls, setRecentCalls] = useState<any[]>([]);
   const [loadingCalls, setLoadingCalls] = useState(false);
+  // Bug 3 Fix: Pagination state for call history
+  const [callsPage, setCallsPage] = useState(1);
+  const [hasMoreCalls, setHasMoreCalls] = useState(false);
+  const [loadingMoreCalls, setLoadingMoreCalls] = useState(false);
 
   // Use refs to keep track of current state for asynchronous listeners
   const phoneRef = useRef(phoneNumber);
@@ -93,19 +97,34 @@ const Dialpad = () => {
     }
   };
 
-  const fetchRecentCalls = async () => {
-    setLoadingCalls(true);
+  // Bug 3 Fix: fetchRecentCalls supports pagination — page 1 resets list, higher pages append
+  const fetchRecentCalls = async (page = 1) => {
+    if (page === 1) {
+      setLoadingCalls(true);
+      setRecentCalls([]);
+    } else {
+      setLoadingMoreCalls(true);
+    }
     try {
       const res = await client.get('/crm/interactions/', {
-        params: { interaction_type: 'CALL' }
+        params: { interaction_type: 'CALL', page }
       });
-      const data = res.data?.results || res.data || [];
+      const raw = res.data;
+      const data = raw?.results || (Array.isArray(raw) ? raw : []);
       const filtered = data.filter((item: any) => item.interaction_type === 'CALL');
-      setRecentCalls(filtered);
+      if (page === 1) {
+        setRecentCalls(filtered);
+      } else {
+        setRecentCalls(prev => [...prev, ...filtered]);
+      }
+      // Check if there is a next page
+      setHasMoreCalls(!!(raw?.next));
+      setCallsPage(page);
     } catch (err) {
       console.log('Failed to fetch recent calls:', err);
     } finally {
       setLoadingCalls(false);
+      setLoadingMoreCalls(false);
     }
   };
 
@@ -827,6 +846,36 @@ const Dialpad = () => {
             </TouchableOpacity>
           );
         })}
+
+        {/* Bug 3 Fix: Load More button for call history pagination */}
+        {hasMoreCalls && (
+          <TouchableOpacity
+            onPress={() => fetchRecentCalls(callsPage + 1)}
+            disabled={loadingMoreCalls}
+            style={{
+              marginVertical: 16,
+              backgroundColor: '#EBF8FF',
+              borderWidth: 1,
+              borderColor: '#BEE3F8',
+              borderRadius: 10,
+              padding: 14,
+              alignItems: 'center',
+              flexDirection: 'row',
+              justifyContent: 'center',
+              gap: 8,
+            }}
+          >
+            {loadingMoreCalls ? (
+              <ActivityIndicator size="small" color="#3182CE" />
+            ) : (
+              <Ionicons name="chevron-down-circle-outline" size={20} color="#3182CE" />
+            )}
+            <Text style={{ color: '#3182CE', fontWeight: '700', fontSize: 14 }}>
+              {loadingMoreCalls ? 'Loading...' : 'Load More Calls'}
+            </Text>
+          </TouchableOpacity>
+        )}
+        <View style={{ height: 40 }} />
       </ScrollView>
     );
   };

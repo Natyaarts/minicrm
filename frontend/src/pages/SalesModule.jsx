@@ -1995,6 +1995,60 @@ const SalesModule = () => {
                                 </div>
                             </div>
 
+                            {/* Meta Lead Quality Feedback Section */}
+                            {selectedStudentProfile.meta_lead_id && (
+                                <div className="md:col-span-2 text-left bg-blue-50/50 border border-blue-200 rounded-xl p-4 mt-2">
+                                    <div className="flex items-center gap-1.5 mb-2">
+                                        <svg className="w-4 h-4 text-blue-600" fill="currentColor" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+                                        <h3 className="text-xs font-bold text-blue-900 uppercase tracking-wider">Meta Conversions Feedback</h3>
+                                    </div>
+                                    <p className="text-[11px] text-blue-800 mb-3">Marking this lead helps Meta optimize your ads for higher quality leads.</p>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={async () => {
+                                                try {
+                                                    const res = await api.patch(`crm/leads/${selectedStudentProfile.id}/quality/`, { lead_quality: 'QUALITY' });
+                                                    setSelectedStudentProfile(prev => ({ ...prev, lead_quality: 'QUALITY' }));
+                                                    alert(res.data?.message || 'Feedback sent to Meta.');
+                                                } catch (e) {
+                                                    alert('Failed to send feedback.');
+                                                }
+                                            }}
+                                            className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold border flex items-center justify-center gap-1.5 transition-colors ${
+                                                selectedStudentProfile.lead_quality === 'QUALITY'
+                                                    ? 'bg-emerald-600 border-emerald-600 text-white'
+                                                    : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                                            }`}
+                                        >
+                                            ✅ Quality Lead
+                                        </button>
+                                        <button
+                                            onClick={async () => {
+                                                try {
+                                                    const res = await api.patch(`crm/leads/${selectedStudentProfile.id}/quality/`, { lead_quality: 'FAKE' });
+                                                    setSelectedStudentProfile(prev => ({ ...prev, lead_quality: 'FAKE' }));
+                                                    alert(res.data?.message || 'Feedback sent to Meta.');
+                                                } catch (e) {
+                                                    alert('Failed to send feedback.');
+                                                }
+                                            }}
+                                            className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold border flex items-center justify-center gap-1.5 transition-colors ${
+                                                selectedStudentProfile.lead_quality === 'FAKE'
+                                                    ? 'bg-rose-600 border-rose-600 text-white'
+                                                    : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                                            }`}
+                                        >
+                                            ❌ Fake / Junk Lead
+                                        </button>
+                                    </div>
+                                    {selectedStudentProfile.lead_quality && selectedStudentProfile.lead_quality !== 'UNKNOWN' && (
+                                        <p className="text-[10px] text-slate-500 mt-2 text-center">
+                                            Status: <span className="font-semibold">{selectedStudentProfile.lead_quality}</span>
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+
                             {/* Activity Log / Interactions */}
                             <div className="md:col-span-2 text-left bg-slate-50 border border-slate-200 rounded-xl p-4 mt-2">
                                 <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Activity Timeline</h3>

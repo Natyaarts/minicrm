@@ -62,6 +62,7 @@ class Student(models.Model):
         ('PAYMENT_PENDING', 'Payment Pending'),
         ('ENROLLED', 'Enrolled'),
         ('DROPPED', 'Dropped'),
+        ('DUPLICATE', 'Duplicate Lead'),
     ]
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='student_profile')
     crm_student_id = models.CharField(max_length=50, unique=True)
