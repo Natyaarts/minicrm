@@ -199,19 +199,14 @@ class MetaLeadWebhookView(APIView):
                                 dup = Student.objects.filter(email=email).first()
                                 duplicate_reason = f"Duplicate email: {email} (Original CRM ID: {dup.crm_student_id})"
 
-                            if is_duplicate:
-                                # Bind to existing user if duplicate
-                                dup = Student.objects.filter(mobile=phone).first() or Student.objects.filter(email=email).first()
-                                user = dup.user
-                            else:
-                                user = User.objects.create_user(
-                                    username=username,
-                                    first_name=first_name,
-                                    last_name=last_name,
-                                    email=email or "",
-                                    password=get_random_string(20),
-                                    role="STUDENT",
-                                )
+                            user = User.objects.create_user(
+                                username=username,
+                                first_name=first_name,
+                                last_name=last_name,
+                                email=email or "",
+                                password=get_random_string(20),
+                                role="STUDENT",
+                            )
 
                             today = datetime.date.today()
                             count = Student.objects.filter(user__date_joined__date=today).count() + 1

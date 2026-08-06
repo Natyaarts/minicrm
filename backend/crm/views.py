@@ -466,19 +466,14 @@ class CampaignViewSet(viewsets.ModelViewSet):
                         duplicate_reason = f"Duplicate email: {email} (Original CRM ID: {dup.crm_student_id})"
 
                     User = get_user_model()
-                    # Only create User if not a duplicate, otherwise use existing user username if it exists or fallback
-                    if is_duplicate:
-                        dup = Student.objects.filter(mobile=mobile).first() or Student.objects.filter(email=email).first()
-                        user = dup.user
-                    else:
-                        user = User.objects.create_user(
-                            username=username,
-                            email=email,
-                            first_name=first_name,
-                            last_name=last_name,
-                            role='STUDENT',
-                            password='Password@123'
-                        )
+                    user = User.objects.create_user(
+                        username=username,
+                        email=email,
+                        first_name=first_name,
+                        last_name=last_name,
+                        role='STUDENT',
+                        password='Password@123'
+                    )
                     
                     # Generate unique CRM Student ID
                     import uuid
