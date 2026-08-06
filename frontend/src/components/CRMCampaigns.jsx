@@ -173,10 +173,12 @@ const CRMCampaigns = () => {
             if (activeTab === 'leads') {
                 url += `&campaign_only=true`;
             }
-            if (activeTab === 'assigned' && !assignee) {
-                url += `&assigned_to=assigned`;
-            } else if (assignee) {
-                url += `&assigned_to=${assignee}`;
+            if (stage !== 'DUPLICATE') {
+                if (activeTab === 'assigned' && !assignee) {
+                    url += `&assigned_to=assigned`;
+                } else if (assignee) {
+                    url += `&assigned_to=${assignee}`;
+                }
             }
             if (startDate) url += `&start_date=${startDate}`;
             if (endDate) url += `&end_date=${endDate}`;
