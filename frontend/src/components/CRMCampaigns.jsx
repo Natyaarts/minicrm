@@ -674,7 +674,7 @@ const CRMCampaigns = () => {
                                                 });
                                                 setIsCreateModalOpen(true);
                                             }}
-                                            className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                                            className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors border border-slate-100 hover:border-indigo-100 shadow-2xs"
                                         >
                                             <Edit2 className="w-4 h-4" />
                                         </button>
