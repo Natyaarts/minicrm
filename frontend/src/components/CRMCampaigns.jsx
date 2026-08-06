@@ -186,6 +186,10 @@ const CRMCampaigns = () => {
             } else {
                 url += `&hide_converted=true`;
             }
+            if (stage === 'DUPLICATE') {
+                // Ensure hide_converted is not passed in url params
+                url = url.replace('&hide_converted=true', '');
+            }
 
             console.log('[fetchLeads] URL:', url);
             const res = await api.get(url); 
