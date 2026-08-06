@@ -389,7 +389,21 @@ class StudentViewSet(viewsets.ModelViewSet):
             pass
 
         if user.role in ['ADMIN', 'SUPER_ADMIN']:
-            pass 
+            # Restrict duplicate leads access to SUPER_ADMIN only
+            lead_status_param = self.request.query_params.get('lead_status', '')
+            if lead_status_param.upper() == 'DUPLICATE':
+                if user.role != 'SUPER_ADMIN':
+                    # Exclude duplicates for normal Admins
+                    qs = qs.exclude(lead_status='DUPLICATE')
+                else:
+                    # Let Super Admin view duplicates
+                    pass
+            else:
+                # Exclude duplicates from normal views even for Admins/Super Admins
+                qs = qs.exclude(lead_status='DUPLICATE')
+        else:
+            # Exclude duplicates for all non-admin roles
+            qs = qs.exclude(lead_status='DUPLICATE')
         elif user.role == 'SALES':
             user_section = getattr(user, 'sales_section', 'BOTH')
             if user_section != 'BOTH':

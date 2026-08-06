@@ -1123,6 +1123,69 @@ const SalesModule = () => {
                                     >
                                         {hideConverted ? 'Enrolled Hidden' : 'Hide Enrolled'}
                                     </button>
+                                    {(authUser?.role === 'SUPER_ADMIN' || authUser?.is_superuser) && (
+                                        <select 
+                                            value={selectedStageFilter}
+                                            onChange={(e) => {
+                                                if (e.target.value === 'DUPLICATE') {
+                                                    setHideConverted(false);
+                                                }
+                                                setSelectedStageFilter(e.target.value);
+                                            }}
+                                            className="bg-rose-50 border border-rose-200 rounded-lg text-xs font-bold text-rose-700 px-3 py-1.5 outline-none flex-1 sm:flex-initial shadow-sm"
+                                        >
+                                            <option value="">Normal Pipeline View</option>
+                                            <option value="DUPLICATE">⚠️ View Duplicate Leads</option>
+                                        </select>
+                                    )}
+                                    {selectedStageFilter === 'DUPLICATE' && (
+                                        <div className="flex items-center gap-1.5 bg-rose-50/50 border border-rose-100 rounded-lg p-1">
+                                            <input 
+                                                type="date" 
+                                                title="Filter From Date"
+                                                className="bg-transparent text-[10px] text-rose-700 font-semibold outline-none"
+                                                value={searchParams.get('start_date') || ''}
+                                                onChange={(e) => {
+                                                    const newParams = new URLSearchParams(searchParams);
+                                                    if (e.target.value) newParams.set('start_date', e.target.value);
+                                                    else newParams.delete('start_date');
+                                                    setSearchParams(newParams);
+                                                    setStudentPage(1);
+                                                    setTimeout(() => fetchStudents(), 50);
+                                                }}
+                                            />
+                                            <span className="text-[10px] text-rose-400 font-bold">to</span>
+                                            <input 
+                                                type="date" 
+                                                title="Filter To Date"
+                                                className="bg-transparent text-[10px] text-rose-700 font-semibold outline-none"
+                                                value={searchParams.get('end_date') || ''}
+                                                onChange={(e) => {
+                                                    const newParams = new URLSearchParams(searchParams);
+                                                    if (e.target.value) newParams.set('end_date', e.target.value);
+                                                    else newParams.delete('end_date');
+                                                    setSearchParams(newParams);
+                                                    setStudentPage(1);
+                                                    setTimeout(() => fetchStudents(), 50);
+                                                }}
+                                            />
+                                            {(searchParams.get('start_date') || searchParams.get('end_date')) && (
+                                                <button 
+                                                    onClick={() => {
+                                                        const newParams = new URLSearchParams(searchParams);
+                                                        newParams.delete('start_date');
+                                                        newParams.delete('end_date');
+                                                        setSearchParams(newParams);
+                                                        setStudentPage(1);
+                                                        setTimeout(() => fetchStudents(), 50);
+                                                    }}
+                                                    className="text-rose-400 hover:text-rose-600 p-0.5"
+                                                >
+                                                    <X size={10} />
+                                                </button>
+                                            )}
+                                        </div>
+                                    )}
                                     <select 
                                         value={salesSectionFilter}
                                         onChange={(e) => setSalesSectionFilter(e.target.value)}
