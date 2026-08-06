@@ -445,8 +445,10 @@ class StudentViewSet(viewsets.ModelViewSet):
             qs = Student.objects.filter(user=user)
         
         # Apply Filters
-        is_active = self.request.query_params.get('is_active', 'true').lower() == 'true'
-        qs = qs.filter(is_active=is_active)
+        lead_status_param = self.request.query_params.get('lead_status', '')
+        if lead_status_param.upper() != 'DUPLICATE':
+            is_active = self.request.query_params.get('is_active', 'true').lower() == 'true'
+            qs = qs.filter(is_active=is_active)
         
         hide_converted = self.request.query_params.get('hide_converted')
         if hide_converted == 'true':
