@@ -325,8 +325,12 @@ const CRMCampaigns = () => {
         );
     };
     const selectAllLeads = (e) => {
-        if (e.target.checked) setSelectedLeads(leads.map(l => l.id));
-        else setSelectedLeads([]);
+        if (e.target.checked) {
+            // Only select leads that are not duplicates
+            setSelectedLeads(leads.filter(l => l.lead_status !== 'DUPLICATE').map(l => l.id));
+        } else {
+            setSelectedLeads([]);
+        }
     };
 
     const filteredCampaigns = campaigns.filter(c => 
@@ -1219,7 +1223,7 @@ const CRMCampaigns = () => {
                                     {sortedLeads.map((lead) => {
                                         const isDuplicate = lead.lead_status === 'DUPLICATE';
                                         return (
-                                            <tr key={lead.id} className={`hover:bg-slate-50/50 transition-colors ${isDuplicate ? 'bg-red-50/50 hover:bg-red-50' : ''}`}>
+                                            <tr key={lead.id} className={`transition-colors ${isDuplicate ? 'bg-red-50 text-red-900 font-medium border-l-4 border-red-500 hover:bg-red-100/75' : 'hover:bg-slate-50/50'}`}>
                                                 <td className="px-6 py-4">
                                                     <input 
                                                         type="checkbox" 
@@ -1231,12 +1235,12 @@ const CRMCampaigns = () => {
                                                     />
                                                 </td>
                                                 <td className="px-6 py-4">
-                                                    <div className="font-medium text-slate-800">{lead.first_name} {lead.last_name}</div>
-                                                    <div className="text-xs text-slate-400 font-mono mt-0.5">{lead.crm_student_id}</div>
+                                                    <div className={`font-medium ${isDuplicate ? 'text-red-950 font-bold' : 'text-slate-800'}`}>{lead.first_name} {lead.last_name}</div>
+                                                    <div className={`text-xs font-mono mt-0.5 ${isDuplicate ? 'text-red-700/80' : 'text-slate-400'}`}>{lead.crm_student_id}</div>
                                                 </td>
                                                 <td className="px-6 py-4">
-                                                    <div className="text-sm text-slate-700">{lead.mobile || '—'}</div>
-                                                    <div className="text-xs text-slate-500 mt-0.5">{lead.email || ''}</div>
+                                                    <div className={`text-sm ${isDuplicate ? 'text-red-900 font-semibold' : 'text-slate-700'}`}>{lead.mobile || '—'}</div>
+                                                    <div className={`text-xs mt-0.5 ${isDuplicate ? 'text-red-700/80' : 'text-slate-500'}`}>{lead.email || ''}</div>
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     {lead.assigned_to_name ? (
@@ -1244,12 +1248,12 @@ const CRMCampaigns = () => {
                                                             {lead.assigned_to_name}
                                                         </span>
                                                     ) : (
-                                                        <span className="text-xs text-slate-400 italic">Unassigned</span>
+                                                        <span className={`text-xs italic ${isDuplicate ? 'text-red-600/70 font-semibold' : 'text-slate-400'}`}>Unassigned</span>
                                                     )}
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     <span className={`px-2.5 py-1 text-[10px] font-bold rounded-md uppercase tracking-wide ${
-                                                        isDuplicate ? 'bg-red-100 text-red-700 border border-red-200' :
+                                                        isDuplicate ? 'bg-red-200 text-red-900 border border-red-300' :
                                                         lead.lead_status === 'Pending' || lead.lead_status === 'NEW' ? 'bg-amber-50 text-amber-600' :
                                                         lead.lead_status === 'Enrolled' || lead.lead_status === '4' ? 'bg-green-50 text-green-600' :
                                                         'bg-slate-100 text-slate-600'
@@ -1257,13 +1261,13 @@ const CRMCampaigns = () => {
                                                         {isDuplicate ? '⚠️ DUPLICATE' : (pipelineStages[lead.lead_status] || lead.lead_status || 'Pending')}
                                                     </span>
                                                 </td>
-                                                <td className="px-6 py-4 text-sm text-slate-500">
+                                                <td className={`px-6 py-4 text-sm ${isDuplicate ? 'text-red-800' : 'text-slate-500'}`}>
                                                     {lead.created_at ? new Date(lead.created_at).toLocaleDateString() : '—'}
                                                 </td>
                                                 <td className="px-6 py-4 text-right">
                                                     <button 
                                                         onClick={() => handleEditLeadClick(lead)}
-                                                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors border border-transparent hover:border-indigo-100"
+                                                        className={`p-1.5 rounded-lg transition-colors border border-transparent ${isDuplicate ? 'text-red-500 hover:text-red-850 hover:bg-red-200/50' : 'text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 hover:border-indigo-100'}`}
                                                         title="Edit Lead"
                                                     >
                                                         <Edit2 className="w-4 h-4" />
