@@ -1050,6 +1050,7 @@ const CRMCampaigns = () => {
                                     className="bg-transparent text-xs font-semibold text-indigo-700 outline-none cursor-pointer"
                                 >
                                     <option value="" className="text-slate-900 bg-white">All Statuses</option>
+                                    <option value="DUPLICATE" className="text-red-700 bg-rose-50 font-bold">⚠️ DUPLICATE LEADS</option>
                                     {Object.keys(pipelineStages).map(stageId => (
                                         <option key={stageId} value={stageId} className="text-slate-900 bg-white">
                                             {pipelineStages[stageId]}
@@ -1209,56 +1210,62 @@ const CRMCampaigns = () => {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
-                                    {sortedLeads.map((lead) => (
-                                        <tr key={lead.id} className="hover:bg-slate-50/50 transition-colors">
-                                            <td className="px-6 py-4">
-                                                <input 
-                                                    type="checkbox" 
-                                                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                                                    checked={selectedLeads.includes(lead.id)}
-                                                    onChange={() => toggleLeadSelection(lead.id)}
-                                                />
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <div className="font-medium text-slate-800">{lead.first_name} {lead.last_name}</div>
-                                                <div className="text-xs text-slate-400 font-mono mt-0.5">{lead.crm_student_id}</div>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <div className="text-sm text-slate-700">{lead.mobile || '—'}</div>
-                                                <div className="text-xs text-slate-500 mt-0.5">{lead.email || ''}</div>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                {lead.assigned_to_name ? (
-                                                    <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100">
-                                                        {lead.assigned_to_name}
+                                    {sortedLeads.map((lead) => {
+                                        const isDuplicate = lead.lead_status === 'DUPLICATE';
+                                        return (
+                                            <tr key={lead.id} className={`hover:bg-slate-50/50 transition-colors ${isDuplicate ? 'bg-red-50/50 hover:bg-red-50' : ''}`}>
+                                                <td className="px-6 py-4">
+                                                    <input 
+                                                        type="checkbox" 
+                                                        disabled={isDuplicate}
+                                                        title={isDuplicate ? "Duplicate leads cannot be assigned" : "Select lead for assignment"}
+                                                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed"
+                                                        checked={selectedLeads.includes(lead.id)}
+                                                        onChange={() => toggleLeadSelection(lead.id)}
+                                                    />
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <div className="font-medium text-slate-800">{lead.first_name} {lead.last_name}</div>
+                                                    <div className="text-xs text-slate-400 font-mono mt-0.5">{lead.crm_student_id}</div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <div className="text-sm text-slate-700">{lead.mobile || '—'}</div>
+                                                    <div className="text-xs text-slate-500 mt-0.5">{lead.email || ''}</div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    {lead.assigned_to_name ? (
+                                                        <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100">
+                                                            {lead.assigned_to_name}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-xs text-slate-400 italic">Unassigned</span>
+                                                    )}
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <span className={`px-2.5 py-1 text-[10px] font-bold rounded-md uppercase tracking-wide ${
+                                                        isDuplicate ? 'bg-red-100 text-red-700 border border-red-200' :
+                                                        lead.lead_status === 'Pending' || lead.lead_status === 'NEW' ? 'bg-amber-50 text-amber-600' :
+                                                        lead.lead_status === 'Enrolled' || lead.lead_status === '4' ? 'bg-green-50 text-green-600' :
+                                                        'bg-slate-100 text-slate-600'
+                                                    }`}>
+                                                        {isDuplicate ? '⚠️ DUPLICATE' : (pipelineStages[lead.lead_status] || lead.lead_status || 'Pending')}
                                                     </span>
-                                                ) : (
-                                                    <span className="text-xs text-slate-400 italic">Unassigned</span>
-                                                )}
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <span className={`px-2.5 py-1 text-[10px] font-bold rounded-md uppercase tracking-wide ${
-                                                    lead.lead_status === 'Pending' || lead.lead_status === 'NEW' ? 'bg-amber-50 text-amber-600' :
-                                                    lead.lead_status === 'Enrolled' || lead.lead_status === '4' ? 'bg-green-50 text-green-600' :
-                                                    'bg-slate-100 text-slate-600'
-                                                }`}>
-                                                    {pipelineStages[lead.lead_status] || lead.lead_status || 'Pending'}
-                                                </span>
-                                            </td>
-                                            <td className="px-6 py-4 text-sm text-slate-500">
-                                                {lead.created_at ? new Date(lead.created_at).toLocaleDateString() : '—'}
-                                            </td>
-                                            <td className="px-6 py-4 text-right">
-                                                <button 
-                                                    onClick={() => handleEditLeadClick(lead)}
-                                                    className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors border border-transparent hover:border-indigo-100"
-                                                    title="Edit Lead"
-                                                >
-                                                    <Edit2 className="w-4 h-4" />
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    ))}
+                                                </td>
+                                                <td className="px-6 py-4 text-sm text-slate-500">
+                                                    {lead.created_at ? new Date(lead.created_at).toLocaleDateString() : '—'}
+                                                </td>
+                                                <td className="px-6 py-4 text-right">
+                                                    <button 
+                                                        onClick={() => handleEditLeadClick(lead)}
+                                                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors border border-transparent hover:border-indigo-100"
+                                                        title="Edit Lead"
+                                                    >
+                                                        <Edit2 className="w-4 h-4" />
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
                                     {sortedLeads.length === 0 && (
                                         <tr><td colSpan="6" className="px-6 py-8 text-center text-slate-500">No leads found</td></tr>
                                     )}
