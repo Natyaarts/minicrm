@@ -78,7 +78,8 @@ const CRMCampaigns = () => {
         budget: '', start_date: '', end_date: '', description: '', section: 'BOTH',
         // Meta Facebook Lead Ads fields
         meta_page_id: '', meta_form_id: '', meta_ad_id: '',
-        meta_pixel_id: '', meta_access_token: '', meta_auto_import: false
+        meta_pixel_id: '', meta_access_token: '', meta_auto_import: false,
+        auto_assign_to: []
     });
 
     // Bulk Assignment state
@@ -93,6 +94,7 @@ const CRMCampaigns = () => {
             fetchCampaigns();
             fetchWebhooks();
             fetchPrograms();
+            fetchSalesUsers();
         } else if (activeTab === 'leads' || activeTab === 'assigned') {
             fetchSalesUsers();
             fetchPipelineStages();
@@ -259,7 +261,8 @@ const CRMCampaigns = () => {
                 name: '', platform: 'OTHER', status: 'ACTIVE', 
                 budget: '', start_date: '', end_date: '', description: '', section: 'BOTH',
                 meta_page_id: '', meta_form_id: '', meta_ad_id: '',
-                meta_pixel_id: '', meta_access_token: '', meta_auto_import: false
+                meta_pixel_id: '', meta_access_token: '', meta_auto_import: false,
+                auto_assign_to: []
             });
             fetchCampaigns();
         } catch (error) {
@@ -667,6 +670,7 @@ const CRMCampaigns = () => {
                                                     meta_pixel_id: campaign.meta_pixel_id || '',
                                                     meta_access_token: campaign.meta_access_token || '',
                                                     meta_auto_import: campaign.meta_auto_import || false,
+                                                    auto_assign_to: campaign.auto_assign_to || []
                                                 });
                                                 setIsCreateModalOpen(true);
                                             }}
@@ -1518,6 +1522,39 @@ const CRMCampaigns = () => {
                                             <div className="w-10 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-5 peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
                                         </label>
                                         <span className="text-sm text-slate-700 font-medium">Enable Auto-Import for this Campaign</span>
+                                    </div>
+
+                                    {/* Auto-Assignment Checklist */}
+                                    <div className="border-t border-blue-100/50 pt-3 mt-2">
+                                        <label className="block text-xs font-semibold text-slate-700 mb-2">Auto-Assign Incoming Leads To (Round-Robin):</label>
+                                        <div className="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto bg-white p-2.5 rounded-lg border border-blue-100">
+                                            {salesUsers.map(user => {
+                                                const userId = user.id;
+                                                const isChecked = formData.auto_assign_to?.includes(userId);
+                                                const displayName = user.name || (user.first_name ? `${user.first_name} ${user.last_name || ''}`.trim() : user.username || `User #${userId}`);
+                                                return (
+                                                    <label key={userId} className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 rounded-md cursor-pointer text-xs font-medium text-slate-700">
+                                                        <input 
+                                                            type="checkbox"
+                                                            checked={isChecked}
+                                                            className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                                            onChange={(e) => {
+                                                                const list = formData.auto_assign_to || [];
+                                                                if (e.target.checked) {
+                                                                    setFormData({ ...formData, auto_assign_to: [...list, userId] });
+                                                                } else {
+                                                                    setFormData({ ...formData, auto_assign_to: list.filter(id => id !== userId) });
+                                                                }
+                                                            }}
+                                                        />
+                                                        {displayName}
+                                                    </label>
+                                                );
+                                            })}
+                                            {salesUsers.length === 0 && (
+                                                <span className="text-slate-400 italic text-xs col-span-2">No active sales representatives found.</span>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             )}

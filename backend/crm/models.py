@@ -75,6 +75,9 @@ class Campaign(models.Model):
     meta_access_token = models.TextField(null=True, blank=True, help_text='Meta Page Access Token for Conversions API - keep this secret!')
     meta_auto_import = models.BooleanField(default=False, help_text='If enabled, leads from this Meta form auto-import into CRM')
     
+    # Auto-Assignment to selected Sales Representatives
+    auto_assign_to = models.ManyToManyField(settings.AUTH_USER_MODEL, blank=True, related_name='assigned_meta_campaigns', help_text='Sales representatives to auto-assign incoming leads to (Round-Robin)')
+    
     created_at = models.DateTimeField(auto_now_add=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
 

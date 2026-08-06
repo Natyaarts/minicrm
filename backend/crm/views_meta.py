@@ -213,6 +213,28 @@ class MetaLeadWebhookView(APIView):
                             crm_id = f"LLAD-{today.strftime('%d%m%y')}{count:03d}"
                             program = Program.objects.first()
 
+                            # Auto-assign lead to active sales rep using round-robin logic on the campaign's auto_assign_to list
+                            assigned_to_user = None
+                            if not is_duplicate and campaign and campaign.auto_assign_to.exists():
+                                try:
+                                    # Get list of selected sales reps sorted by ID
+                                    reps = list(campaign.auto_assign_to.filter(is_active=True).order_by('id'))
+                                    if reps:
+                                        # Find the last assigned student for this campaign who has an assigned sales rep
+                                        last_assigned_student = Student.objects.filter(
+                                            campaign=campaign, 
+                                            assigned_to__isnull=False
+                                        ).order_by('-id').first()
+                                        
+                                        next_index = 0
+                                        if last_assigned_student and last_assigned_student.assigned_to in reps:
+                                            last_index = reps.index(last_assigned_student.assigned_to)
+                                            next_index = (last_index + 1) % len(reps)
+                                        
+                                        assigned_to_user = reps[next_index]
+                                except Exception as assign_err:
+                                    logger.error(f"Error calculating round-robin assignment: {assign_err}")
+
                             student = Student.objects.create(
                                 user=user,
                                 crm_student_id=crm_id,
@@ -225,6 +247,7 @@ class MetaLeadWebhookView(APIView):
                                 meta_lead_id=str(lead_id),
                                 campaign=campaign,
                                 sales_section=campaign.section if campaign else "BOTH",
+                                assigned_to=assigned_to_user,
                             )
 
                             if is_duplicate and duplicate_reason:

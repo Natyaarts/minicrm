@@ -41,6 +41,14 @@ class CampaignSerializer(serializers.ModelSerializer):
     lead_count = serializers.SerializerMethodField()
     cost_per_lead = serializers.SerializerMethodField()
     created_by_name = serializers.SerializerMethodField()
+    auto_assign_to = serializers.PrimaryKeyRelatedField(
+        many=True, queryset=Campaign.objects.none(), required=False
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from django.contrib.auth import get_user_model
+        self.fields['auto_assign_to'].queryset = get_user_model().objects.all()
 
     class Meta:
         model = Campaign
