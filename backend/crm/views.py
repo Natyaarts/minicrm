@@ -37,7 +37,7 @@ class DashboardStatsView(APIView):
             from datetime import timedelta
             from django.utils import timezone
             
-            students = Student.objects.filter(is_active=True)
+            students = Student.objects.filter(is_active=True).exclude(lead_status='DUPLICATE')
             
             # Super Admin / Admin section filter (optional, if they want to drill down)
             section_filter = request.query_params.get('sales_section')
@@ -575,7 +575,7 @@ class BDEReportView(APIView):
             start_date = str(today.replace(day=1))
             end_date = str(today)
         
-        leads = Student.objects.filter(assigned_to=bde, is_active=True)
+        leads = Student.objects.filter(assigned_to=bde, is_active=True).exclude(lead_status='DUPLICATE')
         if start_date:
             parsed_start = parse_date(start_date)
             if parsed_start:
