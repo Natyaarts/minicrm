@@ -404,7 +404,8 @@ class StudentViewSet(viewsets.ModelViewSet):
         else:
             # Exclude duplicates for all non-admin roles
             qs = qs.exclude(lead_status='DUPLICATE')
-        elif user.role == 'SALES':
+
+        if user.role == 'SALES':
             user_section = getattr(user, 'sales_section', 'BOTH')
             if user_section != 'BOTH':
                 from django.db.models import Q
