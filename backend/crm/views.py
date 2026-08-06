@@ -432,7 +432,18 @@ class CampaignViewSet(viewsets.ModelViewSet):
             reader = csv.DictReader(io_string)
             
             leads_created = 0
+            duplicates_created = 0
+            skipped_leads = 0
+            total_rows = 0
+            
+            # Reset reader pointer by reading from file again if we want to run loop correctly
+            file.seek(0)
+            decoded_file = file.read().decode('utf-8-sig')
+            io_string = io.StringIO(decoded_file)
+            reader = csv.DictReader(io_string)
+
             for row in reader:
+                total_rows += 1
                 # Clean up column headers (lowercase, strip whitespace)
                 clean_row = {str(k).strip().lower(): v for k, v in row.items() if k}
                 
@@ -494,25 +505,30 @@ class CampaignViewSet(viewsets.ModelViewSet):
                         lead_status='DUPLICATE' if is_duplicate else '2' # Default to '2' (unconverted new)
                     )
 
-                    if is_duplicate and duplicate_reason:
-                        from .models import LeadInteraction
-                        LeadInteraction.objects.create(
-                            student=student,
-                            notes=f"SYSTEM NOTICE (Bulk CSV Upload): This lead is registered as DUPLICATE. {duplicate_reason}",
-                            interaction_type='NOTE'
-                        )
-                    leads_created += 1
+                    if is_duplicate:
+                        duplicates_created += 1
+                        if duplicate_reason:
+                            from .models import LeadInteraction
+                            LeadInteraction.objects.create(
+                                student=student,
+                                notes=f"SYSTEM NOTICE (Bulk CSV Upload): This lead is registered as DUPLICATE. {duplicate_reason}",
+                                interaction_type='NOTE'
+                            )
+                    else:
+                        leads_created += 1
+                else:
+                    skipped_leads += 1
                     
             # Actually, let's make sure lead_status uses the pipeline stage ID for NEW
             stage = PipelineStage.objects.filter(name__iexact='New').first()
             stage_id = str(stage.id) if stage else '2'
             Student.objects.filter(campaign=campaign, lead_status='2').update(lead_status=stage_id)
 
-            return Response({'message': f'Successfully uploaded {leads_created} leads'})
+            return Response({
+                'message': f'CSV upload processed. Total rows: {total_rows}. Successful additions: {leads_created}. Duplicates flagged: {duplicates_created}. Skipped: {skipped_leads}.'
+            })
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
-from django.shortcuts import get_object_or_404
 
 import re
 
