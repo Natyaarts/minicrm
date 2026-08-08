@@ -1324,7 +1324,7 @@ const CRMCampaigns = () => {
                                                      >
                                                          <Edit2 className="w-4 h-4" />
                                                      </button>
-                                                     {(authUser?.role === 'SUPER_ADMIN' || authUser?.role === 'ADMIN') && (
+                                                     {authUser?.role === 'SUPER_ADMIN' && (
                                                          <button 
                                                              onClick={() => handleDeleteLead(lead.id)}
                                                              className={`p-1.5 rounded-lg transition-colors border border-transparent ${isDuplicate ? 'text-red-500 hover:text-red-850 hover:bg-red-200/50' : 'text-slate-400 hover:text-red-600 hover:bg-red-50 hover:border-red-100'}`}
