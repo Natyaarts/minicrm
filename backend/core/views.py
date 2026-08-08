@@ -606,14 +606,46 @@ class StudentViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_destroy(self, instance):
-        user = self.request.user
-        user_role = str(user.role).upper().strip() if hasattr(user, 'role') else 'STUDENT'
-        if user_role != 'SUPER_ADMIN' and not user.is_superuser:
-            from rest_framework.exceptions import PermissionDenied
-            raise PermissionDenied("Only Super Admins can delete leads.")
+        import traceback
+        debug_info = []
+        try:
+            user = self.request.user
+            debug_info.append(f"User: {user} (Authenticated: {user.is_authenticated})")
+            user_role = str(user.role).upper().strip() if hasattr(user, 'role') else 'STUDENT'
+            debug_info.append(f"User Role: {user_role}")
+            debug_info.append(f"User is_superuser: {user.is_superuser}")
+            debug_info.append(f"User is_staff: {user.is_staff}")
+            debug_info.append(f"Instance: {instance.id} (Name: {instance.first_name} {instance.last_name}, Status: {instance.lead_status})")
             
-        instance.is_active = False
-        instance.save()
+            if user_role != 'SUPER_ADMIN' and not user.is_superuser:
+                debug_info.append("Check failed: User is not SUPER_ADMIN or superuser!")
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied("Only Super Admins can delete leads.")
+                
+            instance.is_active = False
+            instance.save()
+            debug_info.append("Soft-deletion successful!")
+        except Exception as e:
+            debug_info.append(f"Error occurred: {str(e)}")
+            debug_info.append(f"Traceback: {traceback.format_exc()}")
+            raise e
+        finally:
+            try:
+                import os
+                # Write log file to base directory
+                with open('/tmp/delete_lead_debug.log', 'w') as f:
+                    f.write("\n".join(debug_info))
+            except Exception:
+                pass
+
+    @action(detail=False, methods=['get'], permission_classes=[permissions.AllowAny])
+    def delete_log(self, request):
+        try:
+            with open('/tmp/delete_lead_debug.log', 'r') as f:
+                content = f.read()
+            return Response({'log': content})
+        except Exception as e:
+            return Response({'error': str(e)})
 
     @action(detail=False, methods=['get'])
     def export_csv(self, request):
