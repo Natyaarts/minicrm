@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api/axios';
 import { motion } from 'framer-motion';
-import { Plus, X, Search, BarChart, Calendar, DollarSign, Users, ExternalLink, Edit2, Link, Upload, TrendingUp, CheckCircle, Clock, Download, ArrowUpDown, ChevronLeft, ChevronRight, Phone } from 'lucide-react';
+import { Plus, X, Search, BarChart, Calendar, DollarSign, Users, ExternalLink, Edit2, Trash2, Link, Upload, TrendingUp, CheckCircle, Clock, Download, ArrowUpDown, ChevronLeft, ChevronRight, Phone } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 
@@ -229,6 +229,23 @@ const CRMCampaigns = () => {
             setPipelineStages(stageMap);
         } catch(err) {
             console.error('Error fetching pipeline stages:', err);
+        }
+    };
+    const handleDeleteLead = async (leadId) => {
+        if (!window.confirm("Are you sure you want to permanently delete this lead?")) {
+            return;
+        }
+        try {
+            await api.delete(`students/${leadId}/`);
+            // Refresh leads list
+            fetchLeads(startDate, endDate, selectedRep, searchInput, selectedStatus);
+            // Refresh dashboard data as well
+            if (authUser?.role === 'SUPER_ADMIN' || authUser?.role === 'ADMIN') {
+                fetchDashboardData(dashboardStartDate, dashboardEndDate);
+            }
+        } catch (error) {
+            console.error('Error deleting lead:', error);
+            alert('Failed to delete lead. Check your permissions.');
         }
     };
 
@@ -1299,15 +1316,24 @@ const CRMCampaigns = () => {
                                                 <td className={`px-6 py-4 text-sm ${isDuplicate ? 'text-red-800' : 'text-slate-500'}`}>
                                                     {lead.created_at ? new Date(lead.created_at).toLocaleDateString() : '—'}
                                                 </td>
-                                                <td className="px-6 py-4 text-right">
-                                                    <button 
-                                                        onClick={() => handleEditLeadClick(lead)}
-                                                        className={`p-1.5 rounded-lg transition-colors border border-transparent ${isDuplicate ? 'text-red-500 hover:text-red-850 hover:bg-red-200/50' : 'text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 hover:border-indigo-100'}`}
-                                                        title="Edit Lead"
-                                                    >
-                                                        <Edit2 className="w-4 h-4" />
-                                                    </button>
-                                                </td>
+                                                <td className="px-6 py-4 text-right flex justify-end gap-1.5">
+                                                     <button 
+                                                         onClick={() => handleEditLeadClick(lead)}
+                                                         className={`p-1.5 rounded-lg transition-colors border border-transparent ${isDuplicate ? 'text-red-500 hover:text-red-850 hover:bg-red-200/50' : 'text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 hover:border-indigo-100'}`}
+                                                         title="Edit Lead"
+                                                     >
+                                                         <Edit2 className="w-4 h-4" />
+                                                     </button>
+                                                     {(authUser?.role === 'SUPER_ADMIN' || authUser?.role === 'ADMIN') && (
+                                                         <button 
+                                                             onClick={() => handleDeleteLead(lead.id)}
+                                                             className={`p-1.5 rounded-lg transition-colors border border-transparent ${isDuplicate ? 'text-red-500 hover:text-red-850 hover:bg-red-200/50' : 'text-slate-400 hover:text-red-600 hover:bg-red-50 hover:border-red-100'}`}
+                                                             title="Delete Lead"
+                                                         >
+                                                             <Trash2 className="w-4 h-4" />
+                                                         </button>
+                                                     )}
+                                                 </td>
                                             </tr>
                                         );
                                     })}
