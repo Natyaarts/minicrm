@@ -1562,29 +1562,45 @@ const CRMCampaigns = () => {
                                 <label className="block text-sm font-semibold text-slate-700">Auto-Assign Incoming Leads To (Round-Robin):</label>
                                 <p className="text-[11px] text-slate-500">Selected active reps will receive new leads from this campaign sequentially.</p>
                                 <div className="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto bg-white p-2.5 rounded-lg border border-slate-200">
-                                    {salesUsers.map(user => {
-                                        const userId = user.id;
-                                        const isChecked = formData.auto_assign_to?.includes(userId);
-                                        const displayName = user.name || (user.first_name ? `${user.first_name} ${user.last_name || ''}`.trim() : user.username || `User #${userId}`);
-                                        return (
-                                            <label key={userId} className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 rounded-md cursor-pointer text-xs font-medium text-slate-700">
-                                                <input 
-                                                    type="checkbox"
-                                                    checked={isChecked}
-                                                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                                                    onChange={(e) => {
-                                                        const list = formData.auto_assign_to || [];
-                                                        if (e.target.checked) {
-                                                            setFormData({ ...formData, auto_assign_to: [...list, userId] });
-                                                        } else {
-                                                            setFormData({ ...formData, auto_assign_to: list.filter(id => id !== userId) });
-                                                        }
-                                                    }}
-                                                />
-                                                {displayName}
-                                            </label>
-                                        );
-                                    })}
+                                     {salesUsers
+                                         .filter(user => {
+                                             // If Campaign section is CAREER_ACADEMY, only show reps in CAREER_ACADEMY or BOTH
+                                             if (formData.section === 'CAREER_ACADEMY') {
+                                                 return user.sales_section === 'CAREER_ACADEMY' || user.sales_section === 'BOTH';
+                                             }
+                                             // If Campaign section is REGULAR, only show reps in REGULAR or BOTH
+                                             if (formData.section === 'REGULAR') {
+                                                 return user.sales_section === 'REGULAR' || user.sales_section === 'BOTH';
+                                             }
+                                             // Otherwise show all
+                                             return true;
+                                         })
+                                         .map(user => {
+                                             const userId = user.id;
+                                             const isChecked = formData.auto_assign_to?.includes(userId);
+                                             const displayName = user.name || (user.first_name ? `${user.first_name} ${user.last_name || ''}`.trim() : user.username || `User #${userId}`);
+                                             return (
+                                                 <label key={userId} className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 rounded-md cursor-pointer text-xs font-medium text-slate-700">
+                                                     <input 
+                                                         type="checkbox"
+                                                         checked={isChecked}
+                                                         className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                                         onChange={(e) => {
+                                                             const list = formData.auto_assign_to || [];
+                                                             if (e.target.checked) {
+                                                                 setFormData({ ...formData, auto_assign_to: [...list, userId] });
+                                                             } else {
+                                                                 setFormData({ ...formData, auto_assign_to: list.filter(id => id !== userId) });
+                                                             }
+                                                         }}
+                                                     />
+                                                     {displayName}
+                                                     <span className="text-[9px] bg-slate-100 text-slate-500 px-1 py-0.25 rounded-md ml-auto whitespace-nowrap">
+                                                         {user.sales_section === 'BOTH' ? 'Both' : user.sales_section === 'CAREER_ACADEMY' ? 'Career' : 'Regular'}
+                                                     </span>
+                                                 </label>
+                                             );
+                                         })}
                                     {salesUsers.length === 0 && (
                                         <span className="text-slate-400 italic text-xs col-span-2">No active sales representatives found.</span>
                                     )}
