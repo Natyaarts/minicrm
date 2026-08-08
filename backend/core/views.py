@@ -321,13 +321,14 @@ class StudentViewSet(viewsets.ModelViewSet):
             return [permissions.AllowAny()]
         # Allow students, mentors, teachers, and academic staff to view relevant profiles/lists and perform fee/handover actions; delete is SUPER_ADMIN only
         if self.request.user.is_authenticated:
+            user_role = str(self.request.user.role).upper().strip()
             if self.action == 'destroy':
-                if self.request.user.role == 'SUPER_ADMIN':
+                if user_role == 'SUPER_ADMIN' or self.request.user.is_superuser:
                     return [permissions.IsAuthenticated()]
                 else:
                     return [permissions.IsAdminUser()] # Force failure/block for non-SUPER_ADMIN
             elif self.action in ['list', 'retrieve', 'fee_defaulters', 'collected_fees', 'break_metrics', 'record_payment', 'update_fee', 'handover_teacher', 'fee_logs', 'payment_records', 'edit_payment', 'delete_payment']:
-                if self.request.user.role in ['STUDENT', 'MENTOR', 'TEACHER', 'ACADEMIC', 'ACADEMIC_COORDINATOR', 'ADMIN', 'SUPER_ADMIN']:
+                if user_role in ['STUDENT', 'MENTOR', 'TEACHER', 'ACADEMIC', 'ACADEMIC_COORDINATOR', 'ADMIN', 'SUPER_ADMIN']:
                     return [permissions.IsAuthenticated()]
         return super().get_permissions()
 
