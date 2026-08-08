@@ -1554,41 +1554,42 @@ const CRMCampaigns = () => {
                                         </label>
                                         <span className="text-sm text-slate-700 font-medium">Enable Auto-Import for this Campaign</span>
                                     </div>
-
-                                    {/* Auto-Assignment Checklist */}
-                                    <div className="border-t border-blue-100/50 pt-3 mt-2">
-                                        <label className="block text-xs font-semibold text-slate-700 mb-2">Auto-Assign Incoming Leads To (Round-Robin):</label>
-                                        <div className="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto bg-white p-2.5 rounded-lg border border-blue-100">
-                                            {salesUsers.map(user => {
-                                                const userId = user.id;
-                                                const isChecked = formData.auto_assign_to?.includes(userId);
-                                                const displayName = user.name || (user.first_name ? `${user.first_name} ${user.last_name || ''}`.trim() : user.username || `User #${userId}`);
-                                                return (
-                                                    <label key={userId} className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 rounded-md cursor-pointer text-xs font-medium text-slate-700">
-                                                        <input 
-                                                            type="checkbox"
-                                                            checked={isChecked}
-                                                            className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                                                            onChange={(e) => {
-                                                                const list = formData.auto_assign_to || [];
-                                                                if (e.target.checked) {
-                                                                    setFormData({ ...formData, auto_assign_to: [...list, userId] });
-                                                                } else {
-                                                                    setFormData({ ...formData, auto_assign_to: list.filter(id => id !== userId) });
-                                                                }
-                                                            }}
-                                                        />
-                                                        {displayName}
-                                                    </label>
-                                                );
-                                            })}
-                                            {salesUsers.length === 0 && (
-                                                <span className="text-slate-400 italic text-xs col-span-2">No active sales representatives found.</span>
-                                            )}
-                                        </div>
-                                    </div>
                                 </div>
                             )}
+
+                            {/* Auto-Assignment Checklist (Permanently Visible) */}
+                            <div className="border border-slate-100 rounded-xl p-4 bg-slate-50/50 space-y-3">
+                                <label className="block text-sm font-semibold text-slate-700">Auto-Assign Incoming Leads To (Round-Robin):</label>
+                                <p className="text-[11px] text-slate-500">Selected active reps will receive new leads from this campaign sequentially.</p>
+                                <div className="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto bg-white p-2.5 rounded-lg border border-slate-200">
+                                    {salesUsers.map(user => {
+                                        const userId = user.id;
+                                        const isChecked = formData.auto_assign_to?.includes(userId);
+                                        const displayName = user.name || (user.first_name ? `${user.first_name} ${user.last_name || ''}`.trim() : user.username || `User #${userId}`);
+                                        return (
+                                            <label key={userId} className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 rounded-md cursor-pointer text-xs font-medium text-slate-700">
+                                                <input 
+                                                    type="checkbox"
+                                                    checked={isChecked}
+                                                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                                    onChange={(e) => {
+                                                        const list = formData.auto_assign_to || [];
+                                                        if (e.target.checked) {
+                                                            setFormData({ ...formData, auto_assign_to: [...list, userId] });
+                                                        } else {
+                                                            setFormData({ ...formData, auto_assign_to: list.filter(id => id !== userId) });
+                                                        }
+                                                    }}
+                                                />
+                                                {displayName}
+                                            </label>
+                                        );
+                                    })}
+                                    {salesUsers.length === 0 && (
+                                        <span className="text-slate-400 italic text-xs col-span-2">No active sales representatives found.</span>
+                                    )}
+                                </div>
+                            </div>
 
                             <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
                                 <button type="button" onClick={() => { setIsCreateModalOpen(false); setEditingCampaign(null); }} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 rounded-xl">Cancel</button>
