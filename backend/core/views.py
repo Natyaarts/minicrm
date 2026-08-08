@@ -340,58 +340,6 @@ class StudentViewSet(viewsets.ModelViewSet):
         
         student = None
         if sid:
-    
-    @action(detail=False, methods=['get'], permission_classes=[permissions.AllowAny])
-    def test_delete(self, request):
-        try:
-            target_id = request.query_params.get('id')
-            if not target_id:
-                # Find any duplicate student to try to soft-delete
-                dup_student = Student.objects.filter(lead_status='DUPLICATE').first()
-                if not dup_student:
-                    return Response({'error': 'No duplicate student found in DB to test deletion.'})
-                target_id = dup_student.id
-            
-            # Simulate DRF get_object lookup
-            # 1. Check get_queryset
-            qs = self.get_queryset()
-            student_obj = qs.filter(id=target_id).first()
-            if not student_obj:
-                # Try raw lookup to see if get_queryset is filtering it out
-                raw_student = Student.objects.filter(id=target_id).first()
-                if raw_student:
-                    return Response({
-                        'error': 'Lead found in DB but hidden by get_queryset filter.',
-                        'lead_id': target_id,
-                        'lead_name': f"{raw_student.first_name} {raw_student.last_name}",
-                        'lead_status': raw_student.lead_status,
-                        'is_active': raw_student.is_active
-                    })
-                return Response({'error': f'Lead ID {target_id} not found in DB at all.'})
-                
-            # 2. Check permission class checks
-            user_role = str(request.user.role).upper().strip() if request.user.is_authenticated else 'ANONYMOUS'
-            
-            # 3. Simulate perform_destroy
-            student_obj.is_active = False
-            student_obj.save()
-            
-            return Response({
-                'success': True,
-                'message': f'Successfully soft-deleted student ID {target_id}',
-                'user_role_in_request': user_role,
-                'is_authenticated': request.user.is_authenticated
-            })
-        except Exception as e:
-            import traceback
-            return Response({
-                'success': False,
-                'error': str(e),
-                'traceback': traceback.format_exc()
-            })
-
-        student = None
-        if sid:
             student = Student.objects.filter(id=sid, is_active=True).first()
         elif mobile:
             student = Student.objects.filter(mobile=mobile, is_active=True).first()
