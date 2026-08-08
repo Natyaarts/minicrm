@@ -692,6 +692,7 @@ const CRMCampaigns = () => {
                                         <div className="flex items-center gap-1.5 text-slate-500 mb-1">
                                             <DollarSign className="w-3.5 h-3.5" />
                                             <span className="text-xs">Cost Per Lead</span>
+                                        </div>
                                         <p className="font-semibold text-emerald-600">
                                             ₹{campaign.lead_count > 0 ? (campaign.budget / campaign.lead_count).toFixed(2) : '0.00'}
                                         </p>
