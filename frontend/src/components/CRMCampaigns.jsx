@@ -245,7 +245,9 @@ const CRMCampaigns = () => {
             }
         } catch (error) {
             console.error('Error deleting lead:', error);
-            alert('Failed to delete lead. Check your permissions.');
+            const statusText = error.response ? ` (Status: ${error.response.status})` : '';
+            const detailMsg = error.response?.data?.detail || error.response?.data?.error || error.message;
+            alert(`Failed to delete lead${statusText}: ${detailMsg}`);
         }
     };
 
