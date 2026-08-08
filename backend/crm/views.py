@@ -498,6 +498,15 @@ class CampaignViewSet(viewsets.ModelViewSet):
                     import uuid
                     crm_id = f"LEAD-{str(uuid.uuid4())[:8].upper()}"
                     
+                    # Handle Auto-Assignment Round Robin for bulk uploaded non-duplicate leads
+                    assigned_to_user = None
+                    if not is_duplicate:
+                        reps = list(campaign.auto_assign_to.all().order_by('id'))
+                        if reps:
+                            # Count leads created for this campaign to determine round robin index
+                            leads_count = Student.objects.filter(campaign=campaign, is_active=True).exclude(lead_status='DUPLICATE').count()
+                            assigned_to_user = reps[leads_count % len(reps)]
+
                     student = Student.objects.create(
                         user=user,
                         crm_student_id=crm_id,
@@ -510,6 +519,7 @@ class CampaignViewSet(viewsets.ModelViewSet):
                         campaign=campaign,
                         sales_section=campaign.section,
                         program_type=default_program,
+                        assigned_to=assigned_to_user,
                         lead_status='DUPLICATE' if is_duplicate else '2' # Default to '2' (unconverted new)
                     )
 
