@@ -1259,9 +1259,20 @@ const CRMCampaigns = () => {
                                                     />
                                                 </td>
                                                 <td className="px-6 py-4">
-                                                    <div className={`font-medium ${isDuplicate ? 'text-red-950 font-bold' : 'text-slate-800'}`}>{lead.first_name} {lead.last_name}</div>
-                                                    <div className={`text-xs font-mono mt-0.5 ${isDuplicate ? 'text-red-700/80' : 'text-slate-400'}`}>{lead.crm_student_id}</div>
-                                                </td>
+                                                     <div className={`font-medium ${isDuplicate ? 'text-red-950 font-bold' : 'text-slate-800'}`}>{lead.first_name} {lead.last_name}</div>
+                                                     <div className="flex items-center gap-2 mt-0.5">
+                                                         <span className={`text-[10px] font-mono ${isDuplicate ? 'text-red-700/80' : 'text-slate-400'}`}>{lead.crm_student_id}</span>
+                                                         {lead.campaign_name && (
+                                                             <span className={`text-[9px] font-bold px-1.5 py-0.25 rounded-md ${
+                                                                 isDuplicate 
+                                                                     ? 'bg-red-200/60 text-red-800 border border-red-300/40' 
+                                                                     : 'bg-indigo-50 text-indigo-700 border border-indigo-100/50'
+                                                             }`}>
+                                                                 📢 {lead.campaign_name}
+                                                             </span>
+                                                         )}
+                                                     </div>
+                                                 </td>
                                                 <td className="px-6 py-4">
                                                     <div className={`text-sm ${isDuplicate ? 'text-red-900 font-semibold' : 'text-slate-700'}`}>{lead.mobile || '—'}</div>
                                                     <div className={`text-xs mt-0.5 ${isDuplicate ? 'text-red-700/80' : 'text-slate-500'}`}>{lead.email || ''}</div>
