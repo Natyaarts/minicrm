@@ -692,19 +692,38 @@ const CRMCampaigns = () => {
                                         <div className="flex items-center gap-1.5 text-slate-500 mb-1">
                                             <DollarSign className="w-3.5 h-3.5" />
                                             <span className="text-xs">Cost Per Lead</span>
-                                        </div>
                                         <p className="font-semibold text-emerald-600">
                                             ₹{campaign.lead_count > 0 ? (campaign.budget / campaign.lead_count).toFixed(2) : '0.00'}
                                         </p>
                                     </div>
                                 </div>
-                                <div className="flex items-center justify-between text-xs text-slate-500">
+                                <div className="flex items-center justify-between text-xs text-slate-500 mb-3">
                                     <div className="flex items-center gap-1.5">
                                         <Calendar className="w-3.5 h-3.5" />
                                         <span>{new Date(campaign.created_at).toLocaleDateString()}</span>
                                     </div>
                                     <span>Budget: ₹{parseFloat(campaign.budget).toLocaleString()}</span>
                                 </div>
+
+                                {/* Campaign Webhook URL copy link section */}
+                                {campaign.webhook_url && (
+                                    <div className="mt-3 pt-3 border-t border-slate-50 flex items-center justify-between bg-slate-50/50 p-2 rounded-xl border border-slate-100">
+                                        <div className="truncate pr-2">
+                                            <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-400">Google Sheet API URL</span>
+                                            <span className="text-[10px] font-mono text-slate-600 truncate block">{campaign.webhook_url}</span>
+                                        </div>
+                                        <button 
+                                            onClick={() => {
+                                                navigator.clipboard.writeText(campaign.webhook_url);
+                                                alert("Campaign Webhook URL copied! Paste this into your Google Sheet settings.");
+                                            }}
+                                            className="px-2 py-1 text-[10px] font-semibold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg border border-indigo-100 transition-colors whitespace-nowrap"
+                                            title="Copy URL to Clipboard"
+                                        >
+                                            Copy URL
+                                        </button>
+                                    </div>
+                                )}
                             </motion.div>
                         ))}
                     </div>

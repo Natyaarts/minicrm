@@ -1,3 +1,4 @@
+import uuid
 from django.db import models
 from django.conf import settings
 from core.models import Student
@@ -77,6 +78,9 @@ class Campaign(models.Model):
     
     # Auto-Assignment to selected Sales Representatives
     auto_assign_to = models.ManyToManyField(settings.AUTH_USER_MODEL, blank=True, related_name='assigned_meta_campaigns', help_text='Sales representatives to auto-assign incoming leads to (Round-Robin)')
+    
+    # Campaign-wise Webhook Integration (e.g. Google Sheets)
+    secret_token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, null=True, help_text='Secret token for Campaign-linked webhooks')
     
     created_at = models.DateTimeField(auto_now_add=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)

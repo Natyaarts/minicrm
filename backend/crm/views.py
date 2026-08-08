@@ -820,6 +820,147 @@ class WebhookReceiveView(APIView):
             )
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
+class CampaignWebhookReceiveView(APIView):
+    permission_classes = [permissions.AllowAny] # Authenticated via campaign secret_token in URL
+
+    def post(self, request, secret_token):
+        try:
+            campaign = Campaign.objects.get(secret_token=secret_token)
+        except Campaign.DoesNotExist:
+            return Response({"error": "Invalid campaign webhook token."}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        payload = request.data
+        try:
+            with transaction.atomic():
+                # Extract fields with safe fallbacks
+                first_name = payload.get('first_name') or payload.get('name', 'Unknown')
+                last_name = payload.get('last_name', '')
+                email = payload.get('email', '')
+                mobile = payload.get('mobile') or payload.get('phone', '')
+                program_id = payload.get('program_id')
+
+                # Create or get User
+                username = email if email else f"lead_{mobile}"
+                if not username:
+                    raise ValueError("At least email or mobile is required to create a lead.")
+                
+                if not email:
+                    email = f"{username}@webhook.temp"
+                
+                user, created = User.objects.get_or_create(
+                    username=username,
+                    defaults={'email': email, 'role': 'STUDENT'}
+                )
+                if created:
+                    user.set_password('welcome123')
+                    user.save()
+
+                # Generate CRM ID
+                count = Student.objects.filter(crm_student_id__startswith="NATYA-").count() + 1
+                crm_id = f"NATYA-{count:04d}"
+
+                # Assign Program (fallback to first available)
+                program = None
+                if program_id:
+                    program = Program.objects.filter(id=program_id).first()
+                if not program:
+                    program = Program.objects.first()
+
+                # Duplicate Check
+                is_duplicate = False
+                duplicate_reason = ""
+                if mobile and Student.objects.filter(mobile=mobile).exists():
+                    is_duplicate = True
+                    dup = Student.objects.filter(mobile=mobile).first()
+                    duplicate_reason = f"Duplicate mobile: {mobile} (Original CRM ID: {dup.crm_student_id})"
+                elif email and "@webhook.temp" not in email and Student.objects.filter(email=email).exists():
+                    is_duplicate = True
+                    dup = Student.objects.filter(email=email).first()
+                    duplicate_reason = f"Duplicate email: {email} (Original CRM ID: {dup.crm_student_id})"
+
+                # Auto-assign lead using round-robin logic on the campaign's auto_assign_to list
+                assigned_to_user = None
+                if not is_duplicate and campaign.auto_assign_to.exists():
+                    try:
+                        reps = list(campaign.auto_assign_to.filter(is_active=True).order_by('id'))
+                        if reps:
+                            # Find the last assigned student for this campaign who has an assigned sales rep
+                            last_assigned_student = Student.objects.filter(
+                                campaign=campaign, 
+                                assigned_to__isnull=False
+                            ).order_by('-id').first()
+                            
+                            next_index = 0
+                            if last_assigned_student and last_assigned_student.assigned_to in reps:
+                                last_index = reps.index(last_assigned_student.assigned_to)
+                                next_index = (last_index + 1) % len(reps)
+                            
+                            assigned_to_user = reps[next_index]
+                    except Exception as assign_err:
+                        logger.error(f"Error calculating webhook round-robin assignment: {assign_err}")
+
+                # Check if Student profile already exists
+                student = Student.objects.filter(user=user).first()
+                if student:
+                    student.first_name = first_name
+                    student.last_name = last_name
+                    if email and "@webhook.temp" not in email:
+                        student.email = email
+                    if mobile:
+                        student.mobile = mobile
+                    if program:
+                        student.program_type = program
+                    student.campaign = campaign
+                    student.sales_section = campaign.section
+                    if not is_duplicate and assigned_to_user:
+                        student.assigned_to = assigned_to_user
+                    if is_duplicate:
+                        student.lead_status = "DUPLICATE"
+                    student.save()
+                    
+                    # Log system interaction
+                    LeadInteraction.objects.create(
+                        student=student,
+                        author=None,
+                        interaction_type='NOTE',
+                        notes=f"Re-engaged lead from Campaign Webhook: {campaign.name}. " + (duplicate_reason if is_duplicate else "")
+                    )
+                else:
+                    # Create Student Lead
+                    student = Student.objects.create(
+                        user=user,
+                        crm_student_id=crm_id,
+                        first_name=first_name,
+                        last_name=last_name,
+                        email=email if "@webhook.temp" not in email else '',
+                        mobile=mobile,
+                        program_type=program,
+                        campaign=campaign,
+                        sales_section=campaign.section,
+                        lead_status="DUPLICATE" if is_duplicate else "NEW",
+                        assigned_to=assigned_to_user,
+                        is_active=True
+                    )
+                    
+                    if is_duplicate and duplicate_reason:
+                        LeadInteraction.objects.create(
+                            student=student,
+                            author=None,
+                            interaction_type='NOTE',
+                            notes=f"SYSTEM NOTICE (Campaign Webhook): This lead is registered as DUPLICATE. {duplicate_reason}"
+                        )
+
+                return Response({
+                    "message": "Lead processed successfully.",
+                    "student_id": student.id,
+                    "crm_id": student.crm_student_id,
+                    "assigned_to": student.assigned_to.username if student.assigned_to else "Unassigned",
+                    "status": student.lead_status
+                }, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
 
 
 

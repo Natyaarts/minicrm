@@ -45,6 +45,8 @@ class CampaignSerializer(serializers.ModelSerializer):
         many=True, queryset=Campaign.objects.none(), required=False
     )
 
+    webhook_url = serializers.SerializerMethodField()
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         from django.contrib.auth import get_user_model
@@ -68,6 +70,14 @@ class CampaignSerializer(serializers.ModelSerializer):
         if obj.created_by:
             return f"{obj.created_by.first_name} {obj.created_by.last_name}".strip() or obj.created_by.username
         return None
+
+    def get_webhook_url(self, obj):
+        if not obj.secret_token:
+            return None
+        request = self.context.get('request')
+        if request:
+            return request.build_absolute_uri(f'/api/crm/webhooks/campaign/{obj.secret_token}/lead/')
+        return f'/api/crm/webhooks/campaign/{obj.secret_token}/lead/'
 
 class TaskSerializer(serializers.ModelSerializer):
     student_name = serializers.SerializerMethodField()
