@@ -238,7 +238,7 @@ const CRMCampaigns = () => {
         try {
             await api.delete(`students/${leadId}/`);
             // Refresh leads list
-            fetchLeads(startDate, endDate, selectedRep, searchInput, selectedStatus);
+            fetchLeads(leadsStartDate, leadsEndDate, selectedAssigneeFilter, searchTerm, selectedStageFilter);
             // Refresh dashboard data as well
             if (authUser?.role === 'SUPER_ADMIN' || authUser?.role === 'ADMIN') {
                 fetchDashboardData(dashboardStartDate, dashboardEndDate);
