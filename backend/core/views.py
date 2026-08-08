@@ -319,10 +319,14 @@ class StudentViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ['create', 'public_lookup', 'partial_update']:
             return [permissions.AllowAny()]
-        # Allow students, mentors, teachers, and academic staff to view relevant profiles/lists and perform fee/handover/delete actions
-        if self.request.user.is_authenticated and self.action in ['list', 'retrieve', 'destroy', 'fee_defaulters', 'collected_fees', 'break_metrics', 'record_payment', 'update_fee', 'handover_teacher', 'fee_logs', 'payment_records', 'edit_payment', 'delete_payment']:
-            if self.request.user.role in ['STUDENT', 'MENTOR', 'TEACHER', 'ACADEMIC', 'ACADEMIC_COORDINATOR', 'ADMIN', 'SUPER_ADMIN']:
-                return [permissions.IsAuthenticated()]
+        # Allow students, mentors, teachers, and academic staff to view relevant profiles/lists and perform fee/handover actions; delete is SUPER_ADMIN only
+        if self.request.user.is_authenticated:
+            if self.action == 'destroy':
+                if self.request.user.role == 'SUPER_ADMIN':
+                    return [permissions.IsAuthenticated()]
+            elif self.action in ['list', 'retrieve', 'fee_defaulters', 'collected_fees', 'break_metrics', 'record_payment', 'update_fee', 'handover_teacher', 'fee_logs', 'payment_records', 'edit_payment', 'delete_payment']:
+                if self.request.user.role in ['STUDENT', 'MENTOR', 'TEACHER', 'ACADEMIC', 'ACADEMIC_COORDINATOR', 'ADMIN', 'SUPER_ADMIN']:
+                    return [permissions.IsAuthenticated()]
         return super().get_permissions()
 
 
