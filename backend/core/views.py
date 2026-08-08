@@ -324,6 +324,8 @@ class StudentViewSet(viewsets.ModelViewSet):
             if self.action == 'destroy':
                 if self.request.user.role == 'SUPER_ADMIN':
                     return [permissions.IsAuthenticated()]
+                else:
+                    return [permissions.IsAdminUser()] # Force failure/block for non-SUPER_ADMIN
             elif self.action in ['list', 'retrieve', 'fee_defaulters', 'collected_fees', 'break_metrics', 'record_payment', 'update_fee', 'handover_teacher', 'fee_logs', 'payment_records', 'edit_payment', 'delete_payment']:
                 if self.request.user.role in ['STUDENT', 'MENTOR', 'TEACHER', 'ACADEMIC', 'ACADEMIC_COORDINATOR', 'ADMIN', 'SUPER_ADMIN']:
                     return [permissions.IsAuthenticated()]
