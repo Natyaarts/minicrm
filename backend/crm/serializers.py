@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.contrib.auth import get_user_model
 from .models import PipelineStage, LeadInteraction, Campaign, Task
 
 class PipelineStageSerializer(serializers.ModelSerializer):
@@ -42,7 +43,7 @@ class CampaignSerializer(serializers.ModelSerializer):
     cost_per_lead = serializers.SerializerMethodField()
     created_by_name = serializers.SerializerMethodField()
     auto_assign_to = serializers.PrimaryKeyRelatedField(
-        many=True, queryset=Campaign.objects.none(), required=False
+        many=True, queryset=get_user_model().objects.all(), required=False
     )
 
     webhook_url = serializers.SerializerMethodField()
