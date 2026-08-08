@@ -472,17 +472,21 @@ class CampaignViewSet(viewsets.ModelViewSet):
                     base_username = mobile if mobile else email if email else first_name
                     username = f"{base_username}_{str(uuid.uuid4())[:8]}" if base_username else f"lead_{str(uuid.uuid4())[:8]}"
                     
-                    # Duplicate check
+                    # Clean placeholders (treat NA, N/A, NIL, NONE, etc. as empty)
+                    check_mobile = mobile if mobile and mobile.upper() not in ['NA', 'N/A', 'NIL', 'NONE'] else None
+                    check_email = email if email and email.upper() not in ['NA', 'N/A', 'NIL', 'NONE'] else None
+
+                    # Duplicate check against active records
                     is_duplicate = False
                     duplicate_reason = ""
-                    if mobile and Student.objects.filter(mobile=mobile).exists():
+                    if check_mobile and Student.objects.filter(mobile=check_mobile, is_active=True).exists():
                         is_duplicate = True
-                        dup = Student.objects.filter(mobile=mobile).first()
-                        duplicate_reason = f"Duplicate mobile: {mobile} (Original CRM ID: {dup.crm_student_id})"
-                    elif email and Student.objects.filter(email=email).exists():
+                        dup = Student.objects.filter(mobile=check_mobile, is_active=True).first()
+                        duplicate_reason = f"Duplicate mobile: {check_mobile} (Original CRM ID: {dup.crm_student_id})"
+                    elif check_email and Student.objects.filter(email=check_email, is_active=True).exists():
                         is_duplicate = True
-                        dup = Student.objects.filter(email=email).first()
-                        duplicate_reason = f"Duplicate email: {email} (Original CRM ID: {dup.crm_student_id})"
+                        dup = Student.objects.filter(email=check_email, is_active=True).first()
+                        duplicate_reason = f"Duplicate email: {check_email} (Original CRM ID: {dup.crm_student_id})"
 
                     User = get_user_model()
                     user = User.objects.create_user(
