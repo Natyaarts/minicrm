@@ -446,7 +446,7 @@ class StudentViewSet(viewsets.ModelViewSet):
         
         # Apply Filters
         lead_status_param = self.request.query_params.get('lead_status', '')
-        if lead_status_param.upper() != 'DUPLICATE':
+        if lead_status_param.upper() != 'DUPLICATE' and self.action != 'destroy':
             is_active = self.request.query_params.get('is_active', 'true').lower() == 'true'
             qs = qs.filter(is_active=is_active)
         
