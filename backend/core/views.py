@@ -323,10 +323,7 @@ class StudentViewSet(viewsets.ModelViewSet):
         if self.request.user.is_authenticated:
             user_role = str(self.request.user.role).upper().strip()
             if self.action == 'destroy':
-                if user_role == 'SUPER_ADMIN' or self.request.user.is_superuser:
-                    return [permissions.IsAuthenticated()]
-                else:
-                    return [permissions.IsAdminUser()] # Force failure/block for non-SUPER_ADMIN
+                return [permissions.IsAuthenticated()]
             elif self.action in ['list', 'retrieve', 'fee_defaulters', 'collected_fees', 'break_metrics', 'record_payment', 'update_fee', 'handover_teacher', 'fee_logs', 'payment_records', 'edit_payment', 'delete_payment']:
                 if user_role in ['STUDENT', 'MENTOR', 'TEACHER', 'ACADEMIC', 'ACADEMIC_COORDINATOR', 'ADMIN', 'SUPER_ADMIN']:
                     return [permissions.IsAuthenticated()]
@@ -609,6 +606,12 @@ class StudentViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_destroy(self, instance):
+        user = self.request.user
+        user_role = str(user.role).upper().strip() if hasattr(user, 'role') else 'STUDENT'
+        if user_role != 'SUPER_ADMIN' and not user.is_superuser:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Only Super Admins can delete leads.")
+            
         instance.is_active = False
         instance.save()
 
