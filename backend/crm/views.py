@@ -455,6 +455,14 @@ class CampaignViewSet(viewsets.ModelViewSet):
                 
                 email = clean_row.get('email', '').strip()
                 mobile = clean_row.get('contact', clean_row.get('mobile', '')).strip()
+                
+                # Sanitize phone format (remove "p:" prefix if present, strip spaces)
+                if mobile.lower().startswith('p:'):
+                    mobile = mobile[2:].strip()
+                if mobile.lower().startswith('p;'):
+                    mobile = mobile[2:].strip()
+                mobile = mobile.replace(' ', '')
+                
                 place = clean_row.get('place', '').strip()
                 tag = clean_row.get('tag', '').strip()
                 
