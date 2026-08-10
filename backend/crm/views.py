@@ -739,11 +739,23 @@ class WebhookReceiveView(APIView):
         payload = request.data
         try:
             with transaction.atomic():
-                # Extract fields with safe fallbacks
-                first_name = payload.get('first_name') or payload.get('name', 'Unknown')
-                last_name = payload.get('last_name', '')
+                # Extract fields with safe fallbacks (supporting Google Sheet key names)
+                raw_name = payload.get('first_name') or payload.get('name') or payload.get('full_name') or 'Unknown'
+                name_parts = str(raw_name).strip().split(' ', 1)
+                first_name = name_parts[0]
+                last_name = name_parts[1] if len(name_parts) > 1 else payload.get('last_name', '')
+                
                 email = payload.get('email', '')
-                mobile = payload.get('mobile') or payload.get('phone', '')
+                mobile = payload.get('mobile') or payload.get('phone') or payload.get('phone_number') or ''
+                
+                # Sanitize phone format (remove "p:" prefix, strip spaces)
+                mobile = str(mobile).strip()
+                if mobile.lower().startswith('p:'):
+                    mobile = mobile[2:].strip()
+                elif mobile.lower().startswith('p;'):
+                    mobile = mobile[2:].strip()
+                mobile = mobile.replace(' ', '')
+
                 campaign_id = payload.get('campaign_id')
                 program_id = payload.get('program_id')
 
@@ -854,11 +866,23 @@ class CampaignWebhookReceiveView(APIView):
         payload = request.data
         try:
             with transaction.atomic():
-                # Extract fields with safe fallbacks
-                first_name = payload.get('first_name') or payload.get('name', 'Unknown')
-                last_name = payload.get('last_name', '')
+                # Extract fields with safe fallbacks (supporting Google Sheet key names)
+                raw_name = payload.get('first_name') or payload.get('name') or payload.get('full_name') or 'Unknown'
+                name_parts = str(raw_name).strip().split(' ', 1)
+                first_name = name_parts[0]
+                last_name = name_parts[1] if len(name_parts) > 1 else payload.get('last_name', '')
+                
                 email = payload.get('email', '')
-                mobile = payload.get('mobile') or payload.get('phone', '')
+                mobile = payload.get('mobile') or payload.get('phone') or payload.get('phone_number') or ''
+                
+                # Sanitize phone format (remove "p:" prefix, strip spaces)
+                mobile = str(mobile).strip()
+                if mobile.lower().startswith('p:'):
+                    mobile = mobile[2:].strip()
+                elif mobile.lower().startswith('p;'):
+                    mobile = mobile[2:].strip()
+                mobile = mobile.replace(' ', '')
+
                 program_id = payload.get('program_id')
 
                 # Create or get User
