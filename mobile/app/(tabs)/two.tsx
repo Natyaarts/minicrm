@@ -111,7 +111,11 @@ export default function SalesScreen() {
     else if (selectedFilter.type === 'upcoming_followups') params.upcoming_followups = 'true';
     if (startDate) params.start_date = startDate.toISOString().split('T')[0];
     if (endDate) params.end_date = endDate.toISOString().split('T')[0];
-    params.contacted = viewMode === 'NEW' ? 'false' : 'true';
+    if (viewMode === 'NEW') {
+      params.new_only = 'true';
+    } else {
+      params.pipeline_only = 'true';
+    }
 
     // Sales screen should NEVER show converted/enrolled leads, regardless of user role.
     // They belong to the Mentors view now.

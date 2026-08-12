@@ -490,6 +490,17 @@ class StudentViewSet(viewsets.ModelViewSet):
         elif contacted == 'false':
             qs = qs.filter(crm_interactions__isnull=True)
             
+        new_only = self.request.query_params.get('new_only')
+        if new_only == 'true':
+            # Strictly filter by the name 'New' or 'NEW'
+            from django.db.models import Q
+            qs = qs.filter(Q(lead_status__iexact='NEW') | Q(lead_status='2')) # fallback to 2
+        
+        pipeline_only = self.request.query_params.get('pipeline_only')
+        if pipeline_only == 'true':
+            from django.db.models import Q
+            qs = qs.exclude(Q(lead_status__iexact='NEW') | Q(lead_status='2'))
+            
         assigned_only = self.request.query_params.get('assigned_only')
         if assigned_only == 'true':
             qs = qs.filter(assigned_to=user)

@@ -142,6 +142,7 @@ export default function LeadDetailsScreen() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [followUpDate, setFollowUpDate] = useState<Date | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [selectedStageId, setSelectedStageId] = useState('');
 
   useEffect(() => {
     if (leadId) {
@@ -171,6 +172,9 @@ export default function LeadDetailsScreen() {
     try {
       const res = await client.get(`/students/${leadId}/`);
       setStudent(res.data);
+      if (res.data?.lead_status) {
+        setSelectedStageId(res.data.lead_status.toString());
+      }
     } catch (err) {
       console.log('Failed to fetch student details:', err);
       // Fallback dummy for design testing
@@ -244,11 +248,16 @@ export default function LeadDetailsScreen() {
         payload.next_followup_date = followUpDate.toISOString();
       }
 
+      if (selectedStageId) {
+        payload.pipeline_status = selectedStageId;
+      }
+
       await client.post('/crm/interactions/', payload);
       Alert.alert('Success', 'Activity logged successfully!');
       setNoteText('');
       setFollowUpDate(null);
       setShowAddForm(false);
+      fetchLeadDetails();
       fetchInteractions();
     } catch (err) {
       console.log('Failed to log interaction:', err);
@@ -503,6 +512,44 @@ export default function LeadDetailsScreen() {
                   </TouchableOpacity>
                 )}
               </View>
+            </View>
+
+            {/* Pipeline status picker section */}
+            <View style={{ marginTop: 12 }}>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: '#64748B', marginBottom: 8, letterSpacing: 0.5 }}>UPDATE PIPELINE STAGE</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
+                {pipelineStages
+                  .filter(stage => {
+                    const name = (stage.name || '').toUpperCase();
+                    const id = String(stage.id || '').toUpperCase();
+                    return !name.includes('ENROL') && !name.includes('CONVERT') && id !== 'ENROLLED' && id !== 'CONVERTED';
+                  })
+                  .map((stage) => {
+                    const isSelected = selectedStageId?.toString() === stage.id?.toString();
+                    return (
+                      <TouchableOpacity
+                        key={stage.id}
+                        onPress={() => setSelectedStageId(stage.id.toString())}
+                        style={{
+                          paddingHorizontal: 12,
+                          paddingVertical: 8,
+                          borderRadius: 8,
+                          borderWidth: 1,
+                          borderColor: isSelected ? '#FFB800' : '#E2E8F0',
+                          backgroundColor: isSelected ? 'rgba(251, 191, 36, 0.1)' : '#F8FAFC',
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 6
+                        }}
+                      >
+                        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: stage.color || '#64748B' }} />
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: isSelected ? '#D97706' : '#475569' }}>
+                          {stage.name}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+              </ScrollView>
             </View>
 
             {showDatePicker && Platform.OS === 'ios' && (
