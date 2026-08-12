@@ -1583,7 +1583,12 @@ const SalesModule = () => {
                         </div>
                     ) : activeTab === 'campaigns' && isAuthenticated ? (
                         <div className="bg-slate-50 min-h-[500px]">
-                            <CRMCampaigns />
+                            <CRMCampaigns 
+                                onLeadClick={(student) => {
+                                    setSelectedStudentProfile(student);
+                                    setActiveTab('list');
+                                }}
+                            />
                         </div>
                     ) : activeTab === 'reports' && isAuthenticated ? (
                         <div className="bg-slate-50 min-h-[500px]">

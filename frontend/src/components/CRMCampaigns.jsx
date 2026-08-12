@@ -5,7 +5,7 @@ import { Plus, X, Search, BarChart, Calendar, DollarSign, Users, ExternalLink, E
 import { useAuth } from '../context/AuthContext';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 
-const CRMCampaigns = () => {
+const CRMCampaigns = ({ onLeadClick }) => {
     const { user: authUser } = useAuth();
     
     // Tab State
@@ -1344,7 +1344,12 @@ const CRMCampaigns = () => {
                                                     />
                                                 </td>
                                                 <td className="px-6 py-4">
-                                                     <div className={`font-medium ${isDuplicate ? 'text-red-950 font-bold' : 'text-slate-800'}`}>{lead.first_name} {lead.last_name}</div>
+                                                     <div 
+                                                         onClick={() => onLeadClick && onLeadClick(lead)}
+                                                         className={`font-semibold cursor-pointer hover:text-indigo-600 transition-colors ${isDuplicate ? 'text-red-950 font-bold' : 'text-slate-800'}`}
+                                                     >
+                                                         {lead.first_name} {lead.last_name}
+                                                     </div>
                                                      <div className="flex items-center gap-2 mt-0.5">
                                                          <span className={`text-[10px] font-mono ${isDuplicate ? 'text-red-700/80' : 'text-slate-400'}`}>{lead.crm_student_id}</span>
                                                          {lead.campaign_name && (
