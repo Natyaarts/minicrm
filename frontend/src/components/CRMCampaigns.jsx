@@ -1822,7 +1822,9 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                                 <span className="text-[11px] text-slate-500">Redirects to Google OAuth verification</span>
                                             </div>
 
-                                            {googleSheets.length > 0 && (
+                                            {isLoadingSheets ? (
+                                                <p className="text-xs text-slate-500 animate-pulse">Loading spreadsheets from Google Drive...</p>
+                                            ) : (
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                                     <div>
                                                         <label className="block text-[11px] font-medium text-slate-600 mb-1">Select Spreadsheet</label>
@@ -1835,6 +1837,9 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                                             {googleSheets.map(sheet => (
                                                                 <option key={sheet.id} value={sheet.id}>{sheet.name}</option>
                                                             ))}
+                                                            {formData.google_spreadsheet_id && !googleSheets.some(s => s.id === formData.google_spreadsheet_id) && (
+                                                                <option value={formData.google_spreadsheet_id}>Connected Spreadsheet</option>
+                                                            )}
                                                         </select>
                                                     </div>
                                                     <div>
