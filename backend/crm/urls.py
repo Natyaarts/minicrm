@@ -2,6 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import PipelineStageViewSet, LeadInteractionViewSet, CampaignViewSet, WebhookReceiveView, WebhookEndpointViewSet, SalesUserListView, DashboardStatsView, MentorDashboardStatsView, TaskViewSet, BDEReportView, CallAnalyticsView, MarketingDashboardView, BulkAssignLeadsView, CampaignWebhookReceiveView
 from .views_meta import MetaLeadWebhookView, LeadQualityFeedbackView
+from . import views_google as google_views
 
 router = DefaultRouter()
 router.register(r'stages', PipelineStageViewSet)
@@ -23,5 +24,10 @@ urlpatterns = [
     # Meta Facebook Lead Ads Integration
     path('meta/webhook/', MetaLeadWebhookView.as_view(), name='meta_lead_webhook'),
     path('leads/<int:student_id>/quality/', LeadQualityFeedbackView.as_view(), name='lead_quality_feedback'),
+    # Google Sheets API OAuth Sync
+    path('google/auth-url/', google_views.GoogleAuthUrlView.as_view(), name='google_auth_url'),
+    path('google/callback/', google_views.GoogleCallbackView.as_view(), name='google_callback'),
+    path('google/spreadsheets/', google_views.GoogleSpreadsheetsListView.as_view(), name='google_spreadsheets'),
+    path('google/sync/', google_views.GoogleSheetSyncView.as_view(), name='google_sheet_sync'),
     path('', include(router.urls)),
 ]

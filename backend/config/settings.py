@@ -272,3 +272,8 @@ LOGGING = {
 import os
 META_WEBHOOK_VERIFY_TOKEN = os.environ.get('META_WEBHOOK_VERIFY_TOKEN', 'natyaarts_meta_webhook_2024')
 META_APP_SECRET = os.environ.get('META_APP_SECRET', None)
+
+# Google Sheets Integration
+GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '')
+GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', '')
+GOOGLE_REDIRECT_URI = os.environ.get('GOOGLE_REDIRECT_URI', 'https://natyaarts.org/api/crm/google/callback/')

@@ -82,6 +82,14 @@ class Campaign(models.Model):
     # Campaign-wise Webhook Integration (e.g. Google Sheets)
     secret_token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, null=True, help_text='Secret token for Campaign-linked webhooks')
     
+    # Google Sheets OAuth Direct Integration
+    google_spreadsheet_id = models.CharField(max_length=255, null=True, blank=True, help_text='Google Sheets Spreadsheet ID')
+    google_sheet_name = models.CharField(max_length=100, null=True, blank=True, help_text='Sheet Tab name (e.g., Sheet1)')
+    google_access_token = models.TextField(null=True, blank=True)
+    google_refresh_token = models.TextField(null=True, blank=True)
+    google_token_expiry = models.DateTimeField(null=True, blank=True)
+    google_last_synced_row = models.IntegerField(default=0, help_text='The last row index imported from this sheet')
+
     created_at = models.DateTimeField(auto_now_add=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
 

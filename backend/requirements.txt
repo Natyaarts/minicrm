@@ -14,3 +14,5 @@ fpdf2
 psycopg2-binary
 boto3
 django-storages
+google-api-python-client
+google-auth-oauthlib

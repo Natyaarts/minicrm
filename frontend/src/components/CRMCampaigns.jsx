@@ -79,6 +79,8 @@ const CRMCampaigns = ({ onLeadClick }) => {
         // Meta Facebook Lead Ads fields
         meta_page_id: '', meta_form_id: '', meta_ad_id: '',
         meta_pixel_id: '', meta_access_token: '', meta_auto_import: false,
+        // Google Sheets fields
+        google_spreadsheet_id: '', google_sheet_name: '',
         auto_assign_to: []
     });
 
@@ -86,6 +88,65 @@ const CRMCampaigns = ({ onLeadClick }) => {
     const [selectedLeads, setSelectedLeads] = useState([]);
     const [assignSalesUserId, setAssignSalesUserId] = useState('');
     const [isAssigning, setIsAssigning] = useState(false);
+
+    // Google Sheets integration state
+    const [googleSheets, setGoogleSheets] = useState([]);
+    const [isLoadingSheets, setIsLoadingSheets] = useState(false);
+    const [isSyncingSheets, setIsSyncingSheets] = useState(false);
+
+    const handleConnectGoogle = async () => {
+        if (!editingCampaign?.id) {
+            alert("Please save this campaign first before connecting to Google Sheets.");
+            return;
+        }
+        try {
+            const res = await api.get(`crm/google/auth-url/?campaign_id=${editingCampaign.id}`);
+            if (res.data?.url) {
+                window.location.href = res.data.url;
+            }
+        } catch (error) {
+            console.error("Failed to fetch Google auth URL", error);
+            alert("Failed to start Google authentication.");
+        }
+    };
+
+    const fetchGoogleSheetsList = async () => {
+        if (!editingCampaign?.id) return;
+        setIsLoadingSheets(true);
+        try {
+            const res = await api.get(`crm/google/spreadsheets/?campaign_id=${editingCampaign.id}`);
+            setGoogleSheets(res.data?.files || []);
+        } catch (error) {
+            console.error("Failed to list Google spreadsheets", error);
+        } finally {
+            setIsLoadingSheets(false);
+        }
+    };
+
+    const handleSyncGoogleSheet = async () => {
+        if (!editingCampaign?.id) return;
+        setIsSyncingSheets(true);
+        try {
+            const res = await api.post('crm/google/sync/', {
+                campaign_id: editingCampaign.id,
+                spreadsheet_id: formData.google_spreadsheet_id,
+                sheet_name: formData.google_sheet_name || 'Sheet1'
+            });
+            alert(`Sync complete! Imported: ${res.data?.imported || 0}, Skipped/Duplicates: ${res.data?.skipped || 0}`);
+            fetchLeads();
+        } catch (error) {
+            console.error("Failed to sync Google Sheets", error);
+            alert(error.response?.data?.error || "Failed to import rows from sheet.");
+        } finally {
+            setIsSyncingSheets(false);
+        }
+    };
+
+    useEffect(() => {
+        if (editingCampaign?.id && activeTab === 'campaigns') {
+            fetchGoogleSheetsList();
+        }
+    }, [editingCampaign?.id, activeTab]);
 
     useEffect(() => {
         if (activeTab === 'dashboard') {
@@ -281,6 +342,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
                 budget: '', start_date: '', end_date: '', description: '', section: 'BOTH',
                 meta_page_id: '', meta_form_id: '', meta_ad_id: '',
                 meta_pixel_id: '', meta_access_token: '', meta_auto_import: false,
+                google_spreadsheet_id: '', google_sheet_name: '',
                 auto_assign_to: []
             });
             fetchCampaigns();
@@ -755,6 +817,9 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                                     meta_pixel_id: campaign.meta_pixel_id || '',
                                                     meta_access_token: campaign.meta_access_token || '',
                                                     meta_auto_import: campaign.meta_auto_import || false,
+                                                    // Google Sheets
+                                                    google_spreadsheet_id: campaign.google_spreadsheet_id || '',
+                                                    google_sheet_name: campaign.google_sheet_name || '',
                                                     auto_assign_to: campaign.auto_assign_to || []
                                                 });
                                                 setIsCreateModalOpen(true);
@@ -1727,6 +1792,78 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                         </label>
                                         <span className="text-sm text-slate-700 font-medium">Enable Auto-Import for this Campaign</span>
                                     </div>
+                                </div>
+                            )}
+
+                            {/* Google Sheets API Direct Sync */}
+                            {formData.platform === 'OTHER' && (
+                                <div className="border border-emerald-100 rounded-xl p-4 bg-emerald-50/20 space-y-4">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-7 h-7 bg-emerald-600 rounded-lg flex items-center justify-center">
+                                            <Link className="w-3.5 h-3.5 text-white" />
+                                        </div>
+                                        <span className="text-sm font-semibold text-emerald-800">Google Sheets Direct Sync</span>
+                                        <span className="text-xs text-emerald-500 bg-emerald-100 px-2 py-0.5 rounded-full">New API</span>
+                                    </div>
+                                    <p className="text-xs text-emerald-600">Connect a Google Sheet directly using OAuth to automatically fetch student records.</p>
+                                    
+                                    {!editingCampaign ? (
+                                        <p className="text-xs text-slate-400 italic">Please save this campaign first to configure Google Sheets integration.</p>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            <div className="flex items-center gap-3">
+                                                <button
+                                                    type="button"
+                                                    onClick={handleConnectGoogle}
+                                                    className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-colors"
+                                                >
+                                                    🔑 Authenticate with Google
+                                                </button>
+                                                <span className="text-[11px] text-slate-500">Redirects to Google OAuth verification</span>
+                                            </div>
+
+                                            {googleSheets.length > 0 && (
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                    <div>
+                                                        <label className="block text-[11px] font-medium text-slate-600 mb-1">Select Spreadsheet</label>
+                                                        <select
+                                                            value={formData.google_spreadsheet_id || ''}
+                                                            onChange={(e) => setFormData({ ...formData, google_spreadsheet_id: e.target.value })}
+                                                            className="w-full px-3 py-1.5 bg-white border border-emerald-200 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500/20 outline-none"
+                                                        >
+                                                            <option value="">-- Choose Spreadsheet --</option>
+                                                            {googleSheets.map(sheet => (
+                                                                <option key={sheet.id} value={sheet.id}>{sheet.name}</option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-[11px] font-medium text-slate-600 mb-1">Sheet Tab Name</label>
+                                                        <input
+                                                            type="text"
+                                                            placeholder="e.g. Sheet1"
+                                                            value={formData.google_sheet_name || 'Sheet1'}
+                                                            onChange={(e) => setFormData({ ...formData, google_sheet_name: e.target.value })}
+                                                            className="w-full px-3 py-1.5 bg-white border border-emerald-200 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500/20 outline-none"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {formData.google_spreadsheet_id && (
+                                                <div className="pt-2">
+                                                    <button
+                                                        type="button"
+                                                        disabled={isSyncingSheets}
+                                                        onClick={handleSyncGoogleSheet}
+                                                        className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white rounded-lg text-xs font-semibold shadow-xs flex items-center gap-2 transition-colors"
+                                                    >
+                                                        {isSyncingSheets ? 'Syncing...' : '🔄 Sync Leads Now'}
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
