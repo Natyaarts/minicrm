@@ -290,6 +290,9 @@ const CRMCampaigns = () => {
         }
     };
 
+    // Progress stats state
+    const [uploadStats, setUploadStats] = useState(null);
+
     const handleBulkUpload = async (e) => {
         e.preventDefault();
         if (!uploadFile || !uploadCampaignId) {
@@ -297,27 +300,90 @@ const CRMCampaigns = () => {
             return;
         }
 
-        setIsUploading(true);
-        const formData = new FormData();
-        formData.append('file', uploadFile);
-        if (uploadProgramId) {
-            formData.append('program_id', uploadProgramId);
-        }
-
-        try {
-            const res = await api.post(`crm/campaigns/${uploadCampaignId}/bulk_upload/`, formData, {
-                headers: { 'Content-Type': 'multipart/form-data' }
+        import('papaparse').then((Papa) => {
+            setIsUploading(true);
+            setUploadStats({
+                total: 0,
+                processed: 0,
+                success: 0,
+                duplicates: 0,
+                failed: 0,
+                errors: []
             });
-            alert(res.data.message || 'Upload successful!');
-            setIsUploadModalOpen(false);
-            setUploadFile(null);
-            if(activeTab === 'dashboard') fetchDashboardData();
-        } catch (error) {
-            console.error('Error uploading CSV:', error);
-            alert(error.response?.data?.error || 'Failed to upload CSV. Please try again.');
-        } finally {
-            setIsUploading(false);
-        }
+
+            Papa.default.parse(uploadFile, {
+                header: true,
+                skipEmptyLines: true,
+                complete: async (results) => {
+                    const rows = results.data;
+                    const totalRows = rows.length;
+                    
+                    setUploadStats(prev => ({ ...prev, total: totalRows }));
+
+                    // Batch uploads in chunks of 10 rows
+                    const batchSize = 10;
+                    let localSuccess = 0;
+                    let localDuplicates = 0;
+                    let localFailed = 0;
+                    const localErrors = [];
+
+                    for (let i = 0; i < totalRows; i += batchSize) {
+                        const batch = rows.slice(i, i + batchSize);
+                        try {
+                            const res = await api.post(`crm/campaigns/${uploadCampaignId}/bulk_upload_batch/`, {
+                                rows: batch,
+                                program_id: uploadProgramId
+                            });
+
+                            const batchResults = res.data.results || [];
+                            batchResults.forEach((item, index) => {
+                                if (item.status === 'SUCCESS') {
+                                    localSuccess++;
+                                } else if (item.status === 'DUPLICATE') {
+                                    localDuplicates++;
+                                } else {
+                                    localFailed++;
+                                    localErrors.push({
+                                        rowNumber: i + index + 1,
+                                        name: item.name || 'Unknown',
+                                        error: item.message || 'Unknown validation error'
+                                    });
+                                }
+                            });
+                        } catch (err) {
+                            localFailed += batch.length;
+                            batch.forEach((row, index) => {
+                                localErrors.push({
+                                    rowNumber: i + index + 1,
+                                    name: row.Name || row.first_name || 'Row ' + (i + index + 1),
+                                    error: err.response?.data?.error || err.message || 'Batch network request failed'
+                                });
+                            });
+                        }
+
+                        // Update live progress in state
+                        setUploadStats(prev => ({
+                            ...prev,
+                            processed: Math.min(i + batch.length, totalRows),
+                            success: localSuccess,
+                            duplicates: localDuplicates,
+                            failed: localFailed,
+                            errors: [...localErrors]
+                        }));
+                    }
+
+                    setIsUploading(false);
+                    // Refresh dashboard stats or active campaigns view
+                    if (activeTab === 'dashboard') fetchDashboardData();
+                    fetchCampaigns();
+                },
+                error: (parseError) => {
+                    console.error('Error parsing CSV:', parseError);
+                    alert('Failed to parse CSV file: ' + parseError.message);
+                    setIsUploading(false);
+                }
+            });
+        });
     };
 
     const handleBulkAssign = async () => {
@@ -1426,52 +1492,126 @@ const CRMCampaigns = () => {
             {/* Bulk Upload Modal */}
             {isUploadModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                    <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
+                    <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[85vh]">
                         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                             <h2 className="text-lg font-bold text-slate-800">Bulk Upload Leads CSV</h2>
-                            <button onClick={() => setIsUploadModalOpen(false)} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100">
+                            <button onClick={() => { setIsUploadModalOpen(false); setUploadStats(null); }} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100">
                                 <X className="w-5 h-5" />
                             </button>
                         </div>
-                        <form onSubmit={handleBulkUpload} className="p-6 space-y-5">
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1.5">Select Campaign *</label>
-                                <select required value={uploadCampaignId} onChange={(e) => setUploadCampaignId(e.target.value)} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all">
-                                    <option value="">-- Choose a Campaign --</option>
-                                    {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1.5">Select Program</label>
-                                <select value={uploadProgramId} onChange={(e) => setUploadProgramId(e.target.value)} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all">
-                                    <option value="">-- Default Program --</option>
-                                    {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1.5">Upload CSV File *</label>
-                                <input required type="file" accept=".csv" onChange={(e) => setUploadFile(e.target.files[0])} className="w-full text-sm text-slate-500 file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
-                                <div className="flex items-center justify-between mt-2">
-                                    <p className="text-[10px] text-slate-500 leading-relaxed">
-                                        CSV must include columns: <b>Name</b>, <b>date</b>, <b>place</b>, <b>contact</b>, <b>email</b>, <b>tag</b>.
-                                    </p>
-                                    <a 
-                                        href="data:text/csv;charset=utf-8,Name,date,place,contact,email,tag%0A" 
-                                        download="leads_template.csv"
-                                        className="text-[11px] text-indigo-600 hover:text-indigo-800 font-semibold whitespace-nowrap flex items-center gap-1 bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded transition-colors"
-                                    >
-                                        <Download size={12} />
-                                        Template
-                                    </a>
+                        
+                        {uploadStats ? (
+                            <div className="p-6 flex-1 overflow-y-auto space-y-6">
+                                {/* Live Progress Bar */}
+                                <div>
+                                    <div className="flex justify-between text-sm font-semibold text-slate-700 mb-2">
+                                        <span>{isUploading ? 'Uploading leads...' : 'Upload Completed!'}</span>
+                                        <span>{uploadStats.processed} / {uploadStats.total} ({Math.round((uploadStats.processed / (uploadStats.total || 1)) * 100)}%)</span>
+                                    </div>
+                                    <div className="w-full bg-slate-100 rounded-full h-3.5 overflow-hidden">
+                                        <div 
+                                            className="bg-indigo-600 h-full rounded-full transition-all duration-300"
+                                            style={{ width: `${(uploadStats.processed / (uploadStats.total || 1)) * 100}%` }}
+                                        />
+                                    </div>
                                 </div>
+
+                                {/* Stats Grid */}
+                                <div className="grid grid-cols-3 gap-4 text-center">
+                                    <div className="bg-green-50 border border-green-100 p-3 rounded-xl">
+                                        <span className="block text-xs font-medium text-green-700">Added</span>
+                                        <span className="text-lg font-bold text-green-800">{uploadStats.success}</span>
+                                    </div>
+                                    <div className="bg-amber-50 border border-amber-100 p-3 rounded-xl">
+                                        <span className="block text-xs font-medium text-amber-700">Duplicates</span>
+                                        <span className="text-lg font-bold text-amber-800">{uploadStats.duplicates}</span>
+                                    </div>
+                                    <div className="bg-rose-50 border border-rose-100 p-3 rounded-xl">
+                                        <span className="block text-xs font-medium text-rose-700">Failed</span>
+                                        <span className="text-lg font-bold text-rose-800">{uploadStats.failed}</span>
+                                    </div>
+                                </div>
+
+                                {/* Failed Rows Log */}
+                                {uploadStats.errors.length > 0 && (
+                                    <div className="space-y-2">
+                                        <span className="text-sm font-bold text-slate-700 block">Failed Rows / Error Log</span>
+                                        <div className="border border-slate-100 rounded-xl overflow-hidden max-h-48 overflow-y-auto">
+                                            <table className="w-full text-left text-xs border-collapse">
+                                                <thead>
+                                                    <tr className="bg-slate-50 border-b border-slate-100 text-slate-600 font-semibold">
+                                                        <th className="px-3 py-2">Row</th>
+                                                        <th className="px-3 py-2">Name</th>
+                                                        <th className="px-3 py-2">Reason</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {uploadStats.errors.map((err, index) => (
+                                                        <tr key={index} className="border-b border-slate-100 hover:bg-slate-50/50 text-slate-700">
+                                                            <td className="px-3 py-2 font-medium text-rose-600">Row {err.rowNumber}</td>
+                                                            <td className="px-3 py-2 truncate max-w-[100px]">{err.name}</td>
+                                                            <td className="px-3 py-2 text-[11px] text-slate-500 font-mono break-all">{err.error}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {!isUploading && (
+                                    <div className="flex justify-end pt-4 border-t border-slate-100">
+                                        <button 
+                                            type="button" 
+                                            onClick={() => { setIsUploadModalOpen(false); setUploadStats(null); }}
+                                            className="px-6 py-2.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-sm"
+                                        >
+                                            Done
+                                        </button>
+                                    </div>
+                                )}
                             </div>
-                            <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
-                                <button type="button" onClick={() => setIsUploadModalOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 rounded-xl">Cancel</button>
-                                <button type="submit" disabled={isUploading} className="px-6 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl disabled:opacity-50 flex items-center gap-2">
-                                    {isUploading ? 'Uploading...' : 'Upload Leads'}
-                                </button>
-                            </div>
-                        </form>
+                        ) : (
+                            <form onSubmit={handleBulkUpload} className="p-6 space-y-5">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Select Campaign *</label>
+                                    <select required value={uploadCampaignId} onChange={(e) => setUploadCampaignId(e.target.value)} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all">
+                                        <option value="">-- Choose a Campaign --</option>
+                                        {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Select Program</label>
+                                    <select value={uploadProgramId} onChange={(e) => setUploadProgramId(e.target.value)} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all">
+                                        <option value="">-- Default Program --</option>
+                                        {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Upload CSV File *</label>
+                                    <input required type="file" accept=".csv" onChange={(e) => setUploadFile(e.target.files[0])} className="w-full text-sm text-slate-500 file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
+                                    <div className="flex items-center justify-between mt-2">
+                                        <p className="text-[10px] text-slate-500 leading-relaxed">
+                                            CSV must include columns: <b>Name</b>, <b>date</b>, <b>place</b>, <b>contact</b>, <b>email</b>, <b>tag</b>.
+                                        </p>
+                                        <a 
+                                            href="data:text/csv;charset=utf-8,Name,date,place,contact,email,tag%0A" 
+                                            download="leads_template.csv"
+                                            className="text-[11px] text-indigo-600 hover:text-indigo-800 font-semibold whitespace-nowrap flex items-center gap-1 bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded transition-colors"
+                                        >
+                                            <Download size={12} />
+                                            Template
+                                        </a>
+                                    </div>
+                                </div>
+                                <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                                    <button type="button" onClick={() => setIsUploadModalOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 rounded-xl">Cancel</button>
+                                    <button type="submit" disabled={isUploading} className="px-6 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl disabled:opacity-50 flex items-center gap-2">
+                                        Upload Leads
+                                    </button>
+                                </div>
+                            </form>
+                        )}
                     </motion.div>
                 </div>
             )}

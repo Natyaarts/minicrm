@@ -552,6 +552,138 @@ class CampaignViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
+    @action(detail=True, methods=['post'])
+    def bulk_upload_batch(self, request, pk=None):
+        campaign = self.get_object()
+        rows = request.data.get('rows', [])
+        program_id = request.data.get('program_id')
+
+        from core.models import Program
+        if program_id:
+            default_program = Program.objects.filter(id=program_id).first()
+        else:
+            default_program = Program.objects.first()
+
+        results = []
+        for i, row in enumerate(rows):
+            clean_row = {str(k).strip().lower(): v for k, v in row.items() if k}
+            
+            raw_name = clean_row.get('name', clean_row.get('first_name', '')).strip()
+            name_parts = raw_name.split(' ', 1)
+            first_name = name_parts[0] if name_parts[0] else 'Unknown'
+            last_name = name_parts[1] if len(name_parts) > 1 else clean_row.get('last_name', '').strip()
+
+            email = clean_row.get('email', '').strip()
+            mobile = clean_row.get('contact', clean_row.get('mobile', '')).strip()
+
+            # Sanitize phone
+            if mobile.lower().startswith('p:'):
+                mobile = mobile[2:].strip()
+            elif mobile.lower().startswith('p;'):
+                mobile = mobile[2:].strip()
+            mobile = mobile.replace(' ', '')
+
+            place = clean_row.get('place', '').strip()
+            tag = clean_row.get('tag', '').strip()
+
+            if not first_name and not mobile and not email:
+                results.append({
+                    'status': 'SKIPPED',
+                    'name': 'Row ' + str(i+1),
+                    'message': 'Empty name, mobile, and email'
+                })
+                continue
+
+            try:
+                with transaction.atomic():
+                    import uuid
+                    base_username = mobile if mobile else email if email else first_name
+                    username = f"{base_username}_{str(uuid.uuid4())[:8]}" if base_username else f"lead_{str(uuid.uuid4())[:8]}"
+                    # Sanitize username to prevent invalid character crashes (only letters, numbers, _, @, +, ., -)
+                    import re
+                    username = re.sub(r'[^\w@+\.-]', '_', username)
+
+                    check_mobile = mobile if mobile and mobile.upper() not in ['NA', 'N/A', 'NIL', 'NONE'] else None
+                    check_email = email if email and email.upper() not in ['NA', 'N/A', 'NIL', 'NONE'] else None
+
+                    is_duplicate = False
+                    duplicate_reason = ""
+                    if check_mobile and Student.objects.filter(mobile=check_mobile, is_active=True).exists():
+                        is_duplicate = True
+                        dup = Student.objects.filter(mobile=check_mobile, is_active=True).first()
+                        duplicate_reason = f"Duplicate mobile: {check_mobile} (Original CRM ID: {dup.crm_student_id})"
+                    elif check_email and Student.objects.filter(email=check_email, is_active=True).exists():
+                        is_duplicate = True
+                        dup = Student.objects.filter(email=check_email, is_active=True).first()
+                        duplicate_reason = f"Duplicate email: {check_email} (Original CRM ID: {dup.crm_student_id})"
+
+                    User = get_user_model()
+                    user = User.objects.create_user(
+                        username=username,
+                        email=email,
+                        first_name=first_name,
+                        last_name=last_name,
+                        role='STUDENT',
+                        password='Password@123'
+                    )
+
+                    crm_id = f"LEAD-{str(uuid.uuid4())[:8].upper()}"
+
+                    assigned_to_user = None
+                    if not is_duplicate:
+                        reps = list(campaign.auto_assign_to.all().order_by('id'))
+                        if reps:
+                            leads_count = Student.objects.filter(campaign=campaign, is_active=True).exclude(lead_status='DUPLICATE').count()
+                            assigned_to_user = reps[leads_count % len(reps)]
+
+                    stage = PipelineStage.objects.filter(name__iexact='New').first()
+                    stage_id = str(stage.id) if stage else '2'
+
+                    student = Student.objects.create(
+                        user=user,
+                        crm_student_id=crm_id,
+                        first_name=first_name,
+                        last_name=last_name,
+                        email=email,
+                        mobile=mobile,
+                        perm_city=place,
+                        lms_course_names=tag,
+                        campaign=campaign,
+                        sales_section=campaign.section,
+                        program_type=default_program,
+                        assigned_to=assigned_to_user,
+                        lead_status='DUPLICATE' if is_duplicate else stage_id
+                    )
+
+                    if is_duplicate:
+                        if duplicate_reason:
+                            from .models import LeadInteraction
+                            LeadInteraction.objects.create(
+                                student=student,
+                                notes=f"SYSTEM NOTICE (Bulk CSV Upload): This lead is registered as DUPLICATE. {duplicate_reason}",
+                                interaction_type='NOTE'
+                            )
+                        results.append({
+                            'status': 'DUPLICATE',
+                            'name': f"{first_name} {last_name}",
+                            'message': duplicate_reason or 'Duplicate lead'
+                        })
+                    else:
+                        results.append({
+                            'status': 'SUCCESS',
+                            'name': f"{first_name} {last_name}",
+                            'message': 'Successfully imported'
+                        })
+
+            except Exception as row_error:
+                results.append({
+                    'status': 'FAILED',
+                    'name': f"{first_name} {last_name}",
+                    'message': str(row_error)
+                })
+
+        return Response({'results': results})
+
 import re
 
 def parse_duration_sec(call_duration, notes):
