@@ -1381,13 +1381,13 @@ class MarketingDashboardView(APIView):
 
         # Summary Stats
         campaigns = Campaign.objects.all()
-        students = Student.objects.filter(is_active=True, campaign__isnull=False)
+        students = Student.objects.filter(is_active=True, campaign__isnull=False).exclude(lead_status='DUPLICATE')
 
         if start_date_str:
             try:
                 start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
                 campaigns = campaigns.filter(created_at__date__gte=start_date)
-                students = students.filter(user__date_joined__date__gte=start_date)
+                students = students.filter(created_at__date__gte=start_date)
             except ValueError:
                 pass
         
@@ -1395,7 +1395,7 @@ class MarketingDashboardView(APIView):
             try:
                 end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
                 campaigns = campaigns.filter(created_at__date__lte=end_date)
-                students = students.filter(user__date_joined__date__lte=end_date)
+                students = students.filter(created_at__date__lte=end_date)
             except ValueError:
                 pass
 
@@ -1444,17 +1444,17 @@ class MarketingDashboardView(APIView):
 
         sales_report = []
         for rep in sales_reps:
-            rep_leads = Student.objects.filter(assigned_to=rep)
+            rep_leads = Student.objects.filter(assigned_to=rep, is_active=True).exclude(lead_status='DUPLICATE')
             if start_date_str:
                 try:
                     p_start = datetime.strptime(start_date_str, '%Y-%m-%d').date()
-                    rep_leads = rep_leads.filter(Q(created_at__date__gte=p_start) | Q(user__date_joined__date__gte=p_start))
+                    rep_leads = rep_leads.filter(created_at__date__gte=p_start)
                 except ValueError:
                     pass
             if end_date_str:
                 try:
                     p_end = datetime.strptime(end_date_str, '%Y-%m-%d').date()
-                    rep_leads = rep_leads.filter(Q(created_at__date__lte=p_end) | Q(user__date_joined__date__lte=p_end))
+                    rep_leads = rep_leads.filter(created_at__date__lte=p_end)
                 except ValueError:
                     pass
 
