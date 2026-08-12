@@ -1807,7 +1807,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                     </div>
                                     <p className="text-xs text-emerald-600">Connect a Google Sheet directly using OAuth to automatically fetch student records.</p>
                                     
-                                    {!editingCampaign ? (
+                                    {!editingCampaign?.id ? (
                                         <p className="text-xs text-slate-400 italic">Please save this campaign first to configure Google Sheets integration.</p>
                                     ) : (
                                         <div className="space-y-3">
