@@ -19,6 +19,8 @@ print('Available sheets:')
 for sheet in meta_data.get('sheets', []):
     print(' - Name:', repr(sheet.get('properties', {}).get('title')))
 
+sheet_title = c.google_sheet_name or 'Sheet1'
+
 # Test 4: Single quotes around sheet name, unencoded verbatim
 url_unencoded_q = f"https://sheets.googleapis.com/v4/spreadsheets/{c.google_spreadsheet_id}/values/'{sheet_title}'!A:Z"
 res_unencoded_q = requests.get(url_unencoded_q, headers={'Authorization': f'Bearer {token}'})
