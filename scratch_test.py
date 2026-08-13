@@ -37,5 +37,13 @@ print('No Q Sep encode status:', res_no_q.status_code)
 if res_no_q.status_code == 200:
     print('SUCCESS 2!')
 
+# Test 3: Fetch LEADS REPORT sheet
+url_leads = f'https://sheets.googleapis.com/v4/spreadsheets/{c.google_spreadsheet_id}/values/LEADS%20REPORT!A:Z'
+res_leads = requests.get(url_leads, headers={'Authorization': f'Bearer {token}'})
+print('LEADS REPORT status:', res_leads.status_code)
+if res_leads.status_code == 200:
+    print('SUCCESS 3! LEADS REPORT working.')
+
+
 
 
