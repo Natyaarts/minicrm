@@ -577,7 +577,19 @@ class StudentViewSet(viewsets.ModelViewSet):
 
         academic_status = self.request.query_params.get('academic_status')
         if academic_status:
-            qs = qs.filter(academic_status=academic_status)
+            if academic_status.upper() == 'AVAILABLE':
+                qs = qs.filter(
+                    dynamic_values__field__field_group='ACADEMIC'
+                ).exclude(dynamic_values__value='').exclude(dynamic_values__value__isnull=True).distinct()
+            elif academic_status.upper() == 'WANTED':
+                # Filter to students who do NOT have any matching ACADEMIC values
+                # We can do this by excluding students who do have them
+                filled_ids = Student.objects.filter(
+                    dynamic_values__field__field_group='ACADEMIC'
+                ).exclude(dynamic_values__value='').exclude(dynamic_values__value__isnull=True).values_list('id', flat=True)
+                qs = qs.exclude(id__in=filled_ids)
+            else:
+                qs = qs.filter(academic_status=academic_status)
 
         status_category = self.request.query_params.get('status_category')
         if status_category:

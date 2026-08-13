@@ -323,14 +323,20 @@ const AcademicCoordinatorModule = () => {
 
                 {/* Dynamic Metrics Dashboard */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                    <div className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                    <div 
+                        onClick={() => setAcademicStatus('')}
+                        className={`bg-white p-4.5 rounded-2xl border shadow-sm flex flex-col justify-between cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.99] ${!academicStatus ? 'border-slate-400 ring-2 ring-slate-100' : 'border-slate-200'}`}
+                    >
                         <span className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">Total Students</span>
                         <div className="flex items-baseline gap-1.5 mt-2">
                             <span className="text-2xl font-bold text-slate-800">{studentPagination.academic_total}</span>
                             <span className="text-xs text-slate-500 font-semibold">total</span>
                         </div>
                     </div>
-                    <div className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                    <div 
+                        onClick={() => setAcademicStatus('AVAILABLE')}
+                        className={`bg-white p-4.5 rounded-2xl border shadow-sm flex flex-col justify-between cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.99] ${academicStatus === 'AVAILABLE' ? 'border-emerald-500 ring-2 ring-emerald-50' : 'border-slate-200'}`}
+                    >
                         <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Data Available</span>
                         <div className="flex items-baseline gap-1.5 mt-2">
                             <span className="text-2xl font-bold text-emerald-700">
@@ -339,7 +345,10 @@ const AcademicCoordinatorModule = () => {
                             <span className="text-xs text-emerald-500 font-semibold">completed</span>
                         </div>
                     </div>
-                    <div className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                    <div 
+                        onClick={() => setAcademicStatus('WANTED')}
+                        className={`bg-white p-4.5 rounded-2xl border shadow-sm flex flex-col justify-between cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.99] ${academicStatus === 'WANTED' ? 'border-amber-500 ring-2 ring-amber-50' : 'border-slate-200'}`}
+                    >
                         <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider">Data Pending</span>
                         <div className="flex items-baseline gap-1.5 mt-2">
                             <span className="text-2xl font-bold text-amber-700">
