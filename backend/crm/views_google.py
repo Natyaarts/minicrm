@@ -288,10 +288,13 @@ class GoogleSheetSyncView(APIView):
                         }
                     )
                     
+                    from core.models import Program
+                    program = Program.objects.first()
+                    
                     student = Student.objects.create(
                         user=user,
                         crm_student_id=crm_id,
-                        program_type=campaign.program,
+                        program_type=program,
                         first_name=first_name,
                         last_name=last_name,
                         email=email,
