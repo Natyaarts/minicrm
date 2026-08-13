@@ -81,6 +81,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
         meta_pixel_id: '', meta_access_token: '', meta_auto_import: false,
         // Google Sheets fields
         google_spreadsheet_id: '', google_sheet_name: '',
+        google_auto_sync: false,
         auto_assign_to: []
     });
 
@@ -343,6 +344,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
                 meta_page_id: '', meta_form_id: '', meta_ad_id: '',
                 meta_pixel_id: '', meta_access_token: '', meta_auto_import: false,
                 google_spreadsheet_id: '', google_sheet_name: '',
+                google_auto_sync: false,
                 auto_assign_to: []
             });
             fetchCampaigns();
@@ -820,6 +822,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                                     // Google Sheets
                                                     google_spreadsheet_id: campaign.google_spreadsheet_id || '',
                                                     google_sheet_name: campaign.google_sheet_name || '',
+                                                    google_auto_sync: campaign.google_auto_sync || false,
                                                     auto_assign_to: campaign.auto_assign_to || []
                                                 });
                                                 setIsCreateModalOpen(true);
@@ -1856,12 +1859,25 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                             )}
 
                                             {formData.google_spreadsheet_id && (
-                                                <div className="pt-2">
+                                                <div className="flex flex-col gap-3 pt-2">
+                                                    <div className="flex items-center gap-3">
+                                                        <label className="relative inline-flex items-center cursor-pointer">
+                                                            <input 
+                                                                type="checkbox" 
+                                                                checked={formData.google_auto_sync || false} 
+                                                                onChange={(e) => setFormData({...formData, google_auto_sync: e.target.checked})} 
+                                                                className="sr-only peer" 
+                                                            />
+                                                            <div className="w-10 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-5 peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+                                                        </label>
+                                                        <span className="text-xs text-slate-700 font-semibold">Enable Background Auto-Sync</span>
+                                                    </div>
+                                                    
                                                     <button
                                                         type="button"
                                                         disabled={isSyncingSheets}
                                                         onClick={handleSyncGoogleSheet}
-                                                        className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white rounded-lg text-xs font-semibold shadow-xs flex items-center gap-2 transition-colors"
+                                                        className="w-fit px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white rounded-lg text-xs font-semibold shadow-xs flex items-center gap-2 transition-colors"
                                                     >
                                                         {isSyncingSheets ? 'Syncing...' : '🔄 Sync Leads Now'}
                                                     </button>

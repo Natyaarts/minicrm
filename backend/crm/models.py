@@ -89,6 +89,7 @@ class Campaign(models.Model):
     google_refresh_token = models.TextField(null=True, blank=True)
     google_token_expiry = models.DateTimeField(null=True, blank=True)
     google_last_synced_row = models.IntegerField(default=0, help_text='The last row index imported from this sheet')
+    google_auto_sync = models.BooleanField(default=False, help_text='Automatically sync leads from this sheet in the background')
 
     created_at = models.DateTimeField(auto_now_add=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
