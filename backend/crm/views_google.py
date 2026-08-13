@@ -177,8 +177,9 @@ class GoogleSheetSyncView(APIView):
             
         # Get values from Sheet
         import urllib.parse
-        sheet_name_part = urllib.parse.quote(campaign.google_sheet_name or 'Sheet1')
-        sheets_url = f"https://sheets.googleapis.com/v4/spreadsheets/{campaign.google_spreadsheet_id}/values/{sheet_name_part}!A:Z"
+        quoted_sheet_name = f"'{campaign.google_sheet_name or 'Sheet1'}'"
+        encoded_range = urllib.parse.quote_plus(quoted_sheet_name)
+        sheets_url = f"https://sheets.googleapis.com/v4/spreadsheets/{campaign.google_spreadsheet_id}/values/{encoded_range}!A:Z"
         headers = {'Authorization': f'Bearer {access_token}'}
         
         res = requests.get(sheets_url, headers=headers)
