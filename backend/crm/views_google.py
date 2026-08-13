@@ -182,7 +182,11 @@ class GoogleSheetSyncView(APIView):
         
         res = requests.get(sheets_url, headers=headers)
         if res.status_code != 200:
-            return Response({'error': 'Failed to fetch sheet content', 'details': res.json()}, status=status.HTTP_400_BAD_REQUEST)
+            try:
+                err_details = res.json()
+            except Exception:
+                err_details = {'raw_content': res.text}
+            return Response({'error': 'Failed to fetch sheet content', 'details': err_details}, status=status.HTTP_400_BAD_REQUEST)
             
         sheet_data = res.json()
         rows = sheet_data.get('values', [])
