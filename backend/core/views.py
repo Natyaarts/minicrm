@@ -622,7 +622,6 @@ class StudentViewSet(viewsets.ModelViewSet):
         total_count = queryset.count()
         # Query matching database profiles with academic details filled
         # We check if student has any related values belonging to 'ACADEMIC' field group
-        from forms_builder.models import FormValue
         available_count = queryset.filter(
             dynamic_values__field__field_group='ACADEMIC'
         ).exclude(dynamic_values__value='').exclude(dynamic_values__value__isnull=True).distinct().count()
