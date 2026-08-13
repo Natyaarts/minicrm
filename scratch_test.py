@@ -19,17 +19,23 @@ print('Available sheets:')
 for sheet in meta_data.get('sheets', []):
     print(' - Name:', repr(sheet.get('properties', {}).get('title')))
 
-# Test quoting the sheet title in single quotes
+# Test 1: Quote sheet name separately, keep !A:Z literal, url-encode only the sheet name
 sheet_title = c.google_sheet_name or 'Sheet1'
-quoted_title = f"'{sheet_title}'!A:Z"
-import urllib.parse
-encoded_range = urllib.parse.quote(quoted_title)
-url_quoted = f'https://sheets.googleapis.com/v4/spreadsheets/{c.google_spreadsheet_id}/values/{encoded_range}'
-res_quoted = requests.get(url_quoted, headers={'Authorization': f'Bearer {token}'})
-print('Quoted sheet name status:', res_quoted.status_code)
-if res_quoted.status_code != 200:
-    print('Quoted response:', res_quoted.text[:200])
-else:
-    print('SUCCESS! Sample data:', res_quoted.json().get('values', [])[:2])
+quoted_title = f"'{sheet_title}'"
+encoded_sheet = urllib.parse.quote(quoted_title)
+url_separate = f'https://sheets.googleapis.com/v4/spreadsheets/{c.google_spreadsheet_id}/values/{encoded_sheet}!A:Z'
+res_separate = requests.get(url_separate, headers={'Authorization': f'Bearer {token}'})
+print('Sep encode status:', res_separate.status_code)
+if res_separate.status_code == 200:
+    print('SUCCESS 1!')
+
+# Test 2: Do not quote, url-encode only the sheet name
+encoded_sheet_no_q = urllib.parse.quote(sheet_title)
+url_no_q = f'https://sheets.googleapis.com/v4/spreadsheets/{c.google_spreadsheet_id}/values/{encoded_sheet_no_q}!A:Z'
+res_no_q = requests.get(url_no_q, headers={'Authorization': f'Bearer {token}'})
+print('No Q Sep encode status:', res_no_q.status_code)
+if res_no_q.status_code == 200:
+    print('SUCCESS 2!')
+
 
 
