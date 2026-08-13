@@ -305,6 +305,9 @@ class GoogleSheetSyncView(APIView):
                         
                 imported_count += 1
             except Exception as ex:
+                print("SYNC ROW ERROR:", str(ex))
+                import traceback
+                traceback.print_exc()
                 skipped_count += 1
                 continue
                 
