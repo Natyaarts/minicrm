@@ -304,6 +304,46 @@ const AcademicCoordinatorModule = () => {
                     )}
                 </AnimatePresence>
 
+                {/* Dynamic Metrics Dashboard */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                    <div className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                        <span className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">Total Students</span>
+                        <div className="flex items-baseline gap-1.5 mt-2">
+                            <span className="text-2xl font-bold text-slate-800">{students.length}</span>
+                            <span className="text-xs text-slate-500 font-semibold">in list</span>
+                        </div>
+                    </div>
+                    <div className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                        <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Data Available</span>
+                        <div className="flex items-baseline gap-1.5 mt-2">
+                            <span className="text-2xl font-bold text-emerald-700">
+                                {students.filter(s => s.dynamic_values_list?.some(v => v.field_group === 'ACADEMIC' && v.value && v.value.trim() !== '')).length}
+                            </span>
+                            <span className="text-xs text-emerald-500 font-semibold">completed</span>
+                        </div>
+                    </div>
+                    <div className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                        <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider">Data Pending</span>
+                        <div className="flex items-baseline gap-1.5 mt-2">
+                            <span className="text-2xl font-bold text-amber-700">
+                                {students.filter(s => !s.dynamic_values_list?.some(v => v.field_group === 'ACADEMIC' && v.value && v.value.trim() !== '')).length}
+                            </span>
+                            <span className="text-xs text-amber-500 font-semibold">pending</span>
+                        </div>
+                    </div>
+                    <div className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                        <span className="text-[10px] font-bold text-teal-600 uppercase tracking-wider">Completion Rate</span>
+                        <div className="flex items-baseline gap-1.5 mt-2">
+                            <span className="text-2xl font-bold text-teal-700">
+                                {students.length > 0 
+                                    ? Math.round((students.filter(s => s.dynamic_values_list?.some(v => v.field_group === 'ACADEMIC' && v.value && v.value.trim() !== '')).length / students.length) * 100) 
+                                    : 0}%
+                            </span>
+                            <span className="text-xs text-teal-500 font-semibold">rate</span>
+                        </div>
+                    </div>
+                </div>
+
                 <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden p-6 animate-fadeIn">
                     <div className="overflow-x-auto">
                         <table className="w-full text-left text-sm">
