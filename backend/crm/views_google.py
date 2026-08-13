@@ -262,9 +262,13 @@ class GoogleSheetSyncView(APIView):
                 skipped_count += 1
                 continue
                 
-            # Generate temporary username
+            # Generate temporary username and CRM ID
             from django.contrib.auth import get_user_model
             temp_username = f"st_{cleaned_phone}"
+            
+            # Generate CRM Student ID matching system count format
+            count = Student.objects.filter(crm_student_id__startswith="NATYA-").count() + 1
+            crm_id = f"NATYA-{1000 + count}"
             
             try:
                 with django_transaction():
@@ -280,6 +284,8 @@ class GoogleSheetSyncView(APIView):
                     
                     student = Student.objects.create(
                         user=user,
+                        crm_student_id=crm_id,
+                        program_type=campaign.program,
                         first_name=first_name,
                         last_name=last_name,
                         email=email,
