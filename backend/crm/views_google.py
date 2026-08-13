@@ -176,7 +176,7 @@ class GoogleSheetSyncView(APIView):
             return Response({'error': 'Google authentication token is missing or expired'}, status=status.HTTP_401_UNAUTHORIZED)
             
         # Get values from Sheet
-        sheet_range = f"{campaign.google_sheet_name or 'Sheet1'}!A:F"
+        sheet_range = f"{campaign.google_sheet_name or 'Sheet1'}!A:Z"
         sheets_url = f"https://sheets.googleapis.com/v4/spreadsheets/{campaign.google_spreadsheet_id}/values/{requests.utils.quote(sheet_range)}"
         headers = {'Authorization': f'Bearer {access_token}'}
         
@@ -200,9 +200,9 @@ class GoogleSheetSyncView(APIView):
                     return headers_row.index(name)
             return -1
             
-        first_name_idx = get_index(['first name', 'firstname', 'name', 'student name', 'student_name'])
+        first_name_idx = get_index(['first name', 'firstname', 'name', 'student name', 'student_name', 'full_name', 'fullname'])
         last_name_idx = get_index(['last name', 'lastname', 'surname'])
-        mobile_idx = get_index(['mobile', 'phone', 'contact', 'mobile number', 'phone number'])
+        mobile_idx = get_index(['mobile', 'phone', 'contact', 'mobile number', 'phone number', 'phone_number'])
         email_idx = get_index(['email', 'email address', 'mail'])
         
         if mobile_idx == -1 and first_name_idx == -1:
