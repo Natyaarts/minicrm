@@ -615,6 +615,32 @@ class StudentViewSet(viewsets.ModelViewSet):
             return qs.order_by('-id')
         return qs
 
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        
+        # Calculate full queryset stats before pagination
+        total_count = queryset.count()
+        # Query matching database profiles with academic details filled
+        # We check if student has any related values belonging to 'ACADEMIC' field group
+        from forms_builder.models import FormValue
+        available_count = queryset.filter(
+            dynamic_values__field__field_group='ACADEMIC'
+        ).exclude(dynamic_values__value='').exclude(dynamic_values__value__isnull=True).distinct().count()
+        wanted_count = max(0, total_count - available_count)
+
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            response = self.get_paginated_response(serializer.data)
+            # Inject stats into the paginated response object
+            response.data['academic_total'] = total_count
+            response.data['academic_available'] = available_count
+            response.data['academic_wanted'] = wanted_count
+            return response
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
     def perform_destroy(self, instance):
         user = self.request.user
         user_role = str(user.role).upper().strip() if hasattr(user, 'role') else 'STUDENT'

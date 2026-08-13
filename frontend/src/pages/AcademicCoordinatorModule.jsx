@@ -14,7 +14,14 @@ const AcademicCoordinatorModule = () => {
     const [programFilter, setProgramFilter] = useState('');
     const [programs, setPrograms] = useState([]);
     const [studentPage, setStudentPage] = useState(1);
-    const [studentPagination, setStudentPagination] = useState({ count: 0, next: null, previous: null });
+    const [studentPagination, setStudentPagination] = useState({ 
+        count: 0, 
+        next: null, 
+        previous: null,
+        academic_total: 0,
+        academic_available: 0,
+        academic_wanted: 0
+    });
     const [toast, setToast] = useState(null);
 
     // Profile Viewing State
@@ -53,11 +60,21 @@ const AcademicCoordinatorModule = () => {
                 setStudentPagination({
                     count: data.count,
                     next: data.next,
-                    previous: data.previous
+                    previous: data.previous,
+                    academic_total: data.academic_total || 0,
+                    academic_available: data.academic_available || 0,
+                    academic_wanted: data.academic_wanted || 0
                 });
             } else {
                 setStudents(Array.isArray(data) ? data : []);
-                setStudentPagination({ count: data.length, next: null, previous: null });
+                setStudentPagination({ 
+                    count: data.length, 
+                    next: null, 
+                    previous: null,
+                    academic_total: data.length,
+                    academic_available: 0,
+                    academic_wanted: data.length
+                });
             }
         } catch (err) {
             console.error("Failed to fetch students", err);
@@ -309,15 +326,15 @@ const AcademicCoordinatorModule = () => {
                     <div className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
                         <span className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">Total Students</span>
                         <div className="flex items-baseline gap-1.5 mt-2">
-                            <span className="text-2xl font-bold text-slate-800">{students.length}</span>
-                            <span className="text-xs text-slate-500 font-semibold">in list</span>
+                            <span className="text-2xl font-bold text-slate-800">{studentPagination.academic_total}</span>
+                            <span className="text-xs text-slate-500 font-semibold">total</span>
                         </div>
                     </div>
                     <div className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
                         <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Data Available</span>
                         <div className="flex items-baseline gap-1.5 mt-2">
                             <span className="text-2xl font-bold text-emerald-700">
-                                {students.filter(s => s.dynamic_values_list?.some(v => v.field_group === 'ACADEMIC' && v.value && v.value.trim() !== '')).length}
+                                {studentPagination.academic_available}
                             </span>
                             <span className="text-xs text-emerald-500 font-semibold">completed</span>
                         </div>
@@ -326,17 +343,17 @@ const AcademicCoordinatorModule = () => {
                         <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider">Data Pending</span>
                         <div className="flex items-baseline gap-1.5 mt-2">
                             <span className="text-2xl font-bold text-amber-700">
-                                {students.filter(s => !s.dynamic_values_list?.some(v => v.field_group === 'ACADEMIC' && v.value && v.value.trim() !== '')).length}
+                                {studentPagination.academic_wanted}
                             </span>
-                            <span className="text-xs text-amber-500 font-semibold">pending</span>
+                            <span className="text-xs text-amber-500 font-semibold">wanted</span>
                         </div>
                     </div>
                     <div className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
                         <span className="text-[10px] font-bold text-teal-600 uppercase tracking-wider">Completion Rate</span>
                         <div className="flex items-baseline gap-1.5 mt-2">
                             <span className="text-2xl font-bold text-teal-700">
-                                {students.length > 0 
-                                    ? Math.round((students.filter(s => s.dynamic_values_list?.some(v => v.field_group === 'ACADEMIC' && v.value && v.value.trim() !== '')).length / students.length) * 100) 
+                                {studentPagination.academic_total > 0 
+                                    ? Math.round((studentPagination.academic_available / studentPagination.academic_total) * 100) 
                                     : 0}%
                             </span>
                             <span className="text-xs text-teal-500 font-semibold">rate</span>
