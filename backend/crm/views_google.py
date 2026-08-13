@@ -176,8 +176,9 @@ class GoogleSheetSyncView(APIView):
             return Response({'error': 'Google authentication token is missing or expired'}, status=status.HTTP_401_UNAUTHORIZED)
             
         # Get values from Sheet
-        sheet_range = f"{campaign.google_sheet_name or 'Sheet1'}!A:Z"
-        sheets_url = f"https://sheets.googleapis.com/v4/spreadsheets/{campaign.google_spreadsheet_id}/values/{requests.utils.quote(sheet_range)}"
+        import urllib.parse
+        encoded_range = urllib.parse.quote(f"{campaign.google_sheet_name or 'Sheet1'}!A:Z")
+        sheets_url = f"https://sheets.googleapis.com/v4/spreadsheets/{campaign.google_spreadsheet_id}/values/{encoded_range}"
         headers = {'Authorization': f'Bearer {access_token}'}
         
         res = requests.get(sheets_url, headers=headers)
