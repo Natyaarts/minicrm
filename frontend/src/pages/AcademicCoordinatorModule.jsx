@@ -322,50 +322,70 @@ const AcademicCoordinatorModule = () => {
                 </AnimatePresence>
 
                 {/* Dynamic Metrics Dashboard */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-8">
                     <div 
                         onClick={() => setAcademicStatus('')}
-                        className={`bg-white p-4.5 rounded-2xl border shadow-sm flex flex-col justify-between cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.99] ${!academicStatus ? 'border-slate-400 ring-2 ring-slate-100' : 'border-slate-200'}`}
+                        className={`bg-white p-5 rounded-2xl border transition-all duration-300 hover:-translate-y-1 active:scale-[0.99] cursor-pointer shadow-sm hover:shadow-md flex flex-col justify-between relative overflow-hidden ${!academicStatus ? 'border-slate-350 ring-2 ring-slate-100/50' : 'border-slate-200'}`}
                     >
-                        <span className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">Total Students</span>
-                        <div className="flex items-baseline gap-1.5 mt-2">
-                            <span className="text-2xl font-bold text-slate-800">{studentPagination.academic_total}</span>
-                            <span className="text-xs text-slate-500 font-semibold">total</span>
+                        <div className="absolute top-0 right-0 w-24 h-24 bg-slate-50 rounded-full -mr-8 -mt-8 opacity-40 pointer-events-none" />
+                        <div>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Total Students</span>
+                            <span className="text-3xl font-extrabold text-slate-800 tracking-tight">{studentPagination.academic_total}</span>
+                        </div>
+                        <div className="mt-4 flex items-center justify-between text-slate-500">
+                            <span className="text-xs font-semibold">Registered Admissions</span>
+                            <span className="text-[10px] bg-slate-100 text-slate-650 px-2 py-0.5 rounded-full font-bold">All</span>
                         </div>
                     </div>
                     <div 
                         onClick={() => setAcademicStatus('AVAILABLE')}
-                        className={`bg-white p-4.5 rounded-2xl border shadow-sm flex flex-col justify-between cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.99] ${academicStatus === 'AVAILABLE' ? 'border-emerald-500 ring-2 ring-emerald-50' : 'border-slate-200'}`}
+                        className={`bg-white p-5 rounded-2xl border transition-all duration-300 hover:-translate-y-1 active:scale-[0.99] cursor-pointer shadow-sm hover:shadow-md flex flex-col justify-between relative overflow-hidden ${academicStatus === 'AVAILABLE' ? 'border-emerald-500 ring-2 ring-emerald-50' : 'border-slate-200'}`}
                     >
-                        <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Data Available</span>
-                        <div className="flex items-baseline gap-1.5 mt-2">
-                            <span className="text-2xl font-bold text-emerald-700">
-                                {studentPagination.academic_available}
-                            </span>
-                            <span className="text-xs text-emerald-500 font-semibold">completed</span>
+                        <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-50 rounded-full -mr-8 -mt-8 opacity-40 pointer-events-none" />
+                        <div>
+                            <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider block mb-1">Data Available</span>
+                            <span className="text-3xl font-extrabold text-emerald-700 tracking-tight">{studentPagination.academic_available}</span>
+                        </div>
+                        <div className="mt-4 flex items-center justify-between text-emerald-600">
+                            <span className="text-xs font-semibold">Completed Profiles</span>
+                            <span className="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full font-bold">Done</span>
                         </div>
                     </div>
                     <div 
                         onClick={() => setAcademicStatus('WANTED')}
-                        className={`bg-white p-4.5 rounded-2xl border shadow-sm flex flex-col justify-between cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.99] ${academicStatus === 'WANTED' ? 'border-amber-500 ring-2 ring-amber-50' : 'border-slate-200'}`}
+                        className={`bg-white p-5 rounded-2xl border transition-all duration-300 hover:-translate-y-1 active:scale-[0.99] cursor-pointer shadow-sm hover:shadow-md flex flex-col justify-between relative overflow-hidden ${academicStatus === 'WANTED' ? 'border-amber-500 ring-2 ring-amber-50' : 'border-slate-200'}`}
                     >
-                        <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider">Data Pending</span>
-                        <div className="flex items-baseline gap-1.5 mt-2">
-                            <span className="text-2xl font-bold text-amber-700">
-                                {studentPagination.academic_wanted}
-                            </span>
-                            <span className="text-xs text-amber-500 font-semibold">wanted</span>
+                        <div className="absolute top-0 right-0 w-24 h-24 bg-amber-50 rounded-full -mr-8 -mt-8 opacity-40 pointer-events-none" />
+                        <div>
+                            <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider block mb-1">Data Pending</span>
+                            <span className="text-3xl font-extrabold text-amber-700 tracking-tight">{studentPagination.academic_wanted}</span>
+                        </div>
+                        <div className="mt-4 flex items-center justify-between text-amber-600">
+                            <span className="text-xs font-semibold">Pending Profiles</span>
+                            <span className="text-[10px] bg-amber-50 text-amber-750 px-2 py-0.5 rounded-full font-bold">Wanted</span>
                         </div>
                     </div>
-                    <div className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-                        <span className="text-[10px] font-bold text-teal-600 uppercase tracking-wider">Completion Rate</span>
-                        <div className="flex items-baseline gap-1.5 mt-2">
-                            <span className="text-2xl font-bold text-teal-700">
+                    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between relative overflow-hidden">
+                        <div className="absolute top-0 right-0 w-24 h-24 bg-teal-50 rounded-full -mr-8 -mt-8 opacity-40 pointer-events-none" />
+                        <div>
+                            <span className="text-[10px] font-bold text-teal-650 uppercase tracking-wider block mb-1">Completion Rate</span>
+                            <span className="text-3xl font-extrabold text-teal-700 tracking-tight">
                                 {studentPagination.academic_total > 0 
                                     ? Math.round((studentPagination.academic_available / studentPagination.academic_total) * 100) 
                                     : 0}%
                             </span>
-                            <span className="text-xs text-teal-500 font-semibold">rate</span>
+                        </div>
+                        <div className="mt-4">
+                            <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                                <div 
+                                    className="bg-teal-500 h-1.5 rounded-full transition-all duration-500" 
+                                    style={{ 
+                                        width: `${studentPagination.academic_total > 0 
+                                            ? Math.round((studentPagination.academic_available / studentPagination.academic_total) * 100) 
+                                            : 0}%` 
+                                    }}
+                                />
+                            </div>
                         </div>
                     </div>
                 </div>
