@@ -1034,7 +1034,8 @@ const CRMCampaigns = ({ onLeadClick }) => {
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                                     {assignedStats.leaderboard.map((rep) => {
-                                        const contactRate = rep.assigned > 0 ? Math.round((rep.contacted / rep.assigned) * 100) : 0;
+                                        const denominator = Math.max(rep.assigned, rep.contacted, 1);
+                                        const contactRate = Math.round((rep.contacted / denominator) * 100);
                                         const isSelected = selectedAssigneeFilter === rep.id.toString();
                                         return (
                                             <div 

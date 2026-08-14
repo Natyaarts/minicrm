@@ -96,6 +96,9 @@ class DashboardStatsView(APIView):
                 start_date = str(today.replace(day=1))
                 end_date = str(today)
             
+            # Snapshot students BEFORE date filter for total assigned counts in leaderboard
+            all_time_students = students
+            
             if start_date:
                 parsed_start = parse_date(start_date)
                 if parsed_start:
@@ -194,7 +197,8 @@ class DashboardStatsView(APIView):
                 
             leaderboard = []
             for rep in sales_reps:
-                rep_leads = students.filter(assigned_to=rep).count()
+                # Use all_time_students (no date filter) so assigned count is total leads, not just within date window
+                rep_leads = all_time_students.filter(assigned_to=rep).count()
                 
                 # Filter interactions strictly by author (sales rep) and call date
                 rep_interactions = LeadInteraction.objects.filter(author=rep, interaction_type='CALL')
