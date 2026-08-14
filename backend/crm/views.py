@@ -197,8 +197,8 @@ class DashboardStatsView(APIView):
                 
             leaderboard = []
             for rep in sales_reps:
-                # Use all_time_students (no date filter) so assigned count is total leads, not just within date window
-                rep_leads = all_time_students.filter(assigned_to=rep).count()
+                # Count leads assigned to this rep within the selected date range
+                rep_leads = students.filter(assigned_to=rep).count()
                 
                 # Filter interactions strictly by author (sales rep) and call date
                 rep_interactions = LeadInteraction.objects.filter(author=rep, interaction_type='CALL')
