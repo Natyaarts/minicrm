@@ -447,11 +447,19 @@ class CampaignViewSet(viewsets.ModelViewSet):
                 # Clean up column headers (lowercase, strip whitespace)
                 clean_row = {str(k).strip().lower(): v for k, v in row.items() if k}
                 
-                # Extract Name
-                raw_name = clean_row.get('name', clean_row.get('first_name', '')).strip()
+                raw_name = (
+                    clean_row.get('full name') or 
+                    clean_row.get('fullname') or 
+                    clean_row.get('student name') or 
+                    clean_row.get('student_name') or 
+                    clean_row.get('name') or 
+                    clean_row.get('first name') or 
+                    clean_row.get('first_name') or 
+                    ''
+                ).strip()
                 name_parts = raw_name.split(' ', 1)
-                first_name = name_parts[0]
-                last_name = name_parts[1] if len(name_parts) > 1 else clean_row.get('last_name', '').strip()
+                first_name = name_parts[0] if name_parts[0] else 'Unknown'
+                last_name = name_parts[1] if len(name_parts) > 1 else (clean_row.get('last name') or clean_row.get('lastname') or clean_row.get('last_name', '')).strip()
                 
                 email = clean_row.get('email', '').strip()
                 mobile = clean_row.get('contact', clean_row.get('mobile', '')).strip()
@@ -568,10 +576,19 @@ class CampaignViewSet(viewsets.ModelViewSet):
         for i, row in enumerate(rows):
             clean_row = {str(k).strip().lower(): v for k, v in row.items() if k}
             
-            raw_name = clean_row.get('name', clean_row.get('first_name', '')).strip()
+            raw_name = (
+                clean_row.get('full name') or 
+                clean_row.get('fullname') or 
+                clean_row.get('student name') or 
+                clean_row.get('student_name') or 
+                clean_row.get('name') or 
+                clean_row.get('first name') or 
+                clean_row.get('first_name') or 
+                ''
+            ).strip()
             name_parts = raw_name.split(' ', 1)
             first_name = name_parts[0] if name_parts[0] else 'Unknown'
-            last_name = name_parts[1] if len(name_parts) > 1 else clean_row.get('last_name', '').strip()
+            last_name = name_parts[1] if len(name_parts) > 1 else (clean_row.get('last name') or clean_row.get('lastname') or clean_row.get('last_name', '')).strip()
 
             email = clean_row.get('email', '').strip()
             mobile = clean_row.get('contact', clean_row.get('mobile', '')).strip()
