@@ -609,6 +609,11 @@ class StudentViewSet(viewsets.ModelViewSet):
         if campaign_only == 'true':
             qs = qs.filter(campaign__isnull=False)
 
+        sales_section = self.request.query_params.get('sales_section')
+        if sales_section:
+            from django.db.models import Q
+            qs = qs.filter(Q(sales_section=sales_section) | Q(assigned_to__sales_section=sales_section))
+
         start_date_str = self.request.query_params.get('start_date')
         if start_date_str:
             from django.utils.dateparse import parse_date

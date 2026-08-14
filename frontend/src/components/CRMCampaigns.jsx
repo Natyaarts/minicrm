@@ -49,6 +49,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
     const [leadsEndDate, setLeadsEndDate] = useState('');
     const [selectedAssigneeFilter, setSelectedAssigneeFilter] = useState('');
     const [selectedStageFilter, setSelectedStageFilter] = useState('');
+    const [selectedSectionFilter, setSelectedSectionFilter] = useState(''); // '' = All, 'REGULAR' = Regular, 'CAREER_ACADEMY' = Career Academy
     
     // UI States for Campaigns
     const [searchTerm, setSearchTerm] = useState('');
@@ -166,10 +167,10 @@ const CRMCampaigns = ({ onLeadClick }) => {
 
     useEffect(() => {
         if (activeTab === 'leads' || activeTab === 'assigned') {
-            fetchLeads(leadsStartDate, leadsEndDate, selectedAssigneeFilter, searchTerm, selectedStageFilter);
-            fetchAssignedStats(leadsStartDate, leadsEndDate, selectedAssigneeFilter);
+            fetchLeads(leadsStartDate, leadsEndDate, selectedAssigneeFilter, searchTerm, selectedStageFilter, selectedSectionFilter);
+            fetchAssignedStats(leadsStartDate, leadsEndDate, selectedAssigneeFilter, selectedSectionFilter);
         }
-    }, [activeTab, currentPage, leadsStartDate, leadsEndDate, selectedAssigneeFilter, searchTerm, selectedStageFilter]);
+    }, [activeTab, currentPage, leadsStartDate, leadsEndDate, selectedAssigneeFilter, searchTerm, selectedStageFilter, selectedSectionFilter]);
 
     const fetchDashboardData = async () => {
         setDashboardLoading(true);
@@ -189,7 +190,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
         }
     };
 
-    const fetchAssignedStats = async (startDate, endDate, assignee) => {
+    const fetchAssignedStats = async (startDate, endDate, assignee, section) => {
         setAssignedStatsLoading(true);
         try {
             let url = 'crm/dashboard-stats/';
@@ -197,6 +198,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
             if (startDate) params.append('start_date', startDate);
             if (endDate) params.append('end_date', endDate);
             if (assignee) params.append('assigned_to', assignee);
+            if (section) params.append('sales_section', section);
             if (params.toString()) url += `?${params.toString()}`;
             
             const res = await api.get(url);
@@ -230,7 +232,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
         }
     };
     
-    const fetchLeads = async (startDate, endDate, assignee, search, stage) => {
+    const fetchLeads = async (startDate, endDate, assignee, search, stage, section) => {
         setLeadsLoading(true);
         try {
             let url = `students/?page=${currentPage}`;
@@ -247,6 +249,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
             if (startDate) url += `&start_date=${startDate}`;
             if (endDate) url += `&end_date=${endDate}`;
             if (search) url += `&search=${encodeURIComponent(search)}`;
+            if (section) url += `&sales_section=${encodeURIComponent(section)}`;
             if (stage) {
                 url += `&lead_status=${encodeURIComponent(stage)}`;
             } else {
@@ -1244,6 +1247,20 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                             {pipelineStages[stageId]}
                                         </option>
                                     ))}
+                                </select>
+                            </div>
+
+                            {/* Section Filter */}
+                            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 focus-within:ring-2 focus-within:ring-indigo-500/20">
+                                <span className="text-xs font-semibold text-slate-500 whitespace-nowrap">Section:</span>
+                                <select
+                                    value={selectedSectionFilter}
+                                    onChange={(e) => { setSelectedSectionFilter(e.target.value); setCurrentPage(1); }}
+                                    className="bg-transparent text-xs font-semibold text-indigo-700 outline-none cursor-pointer"
+                                >
+                                    <option value="" className="text-slate-900 bg-white">All Sections</option>
+                                    <option value="REGULAR" className="text-slate-900 bg-white">🎓 Regular</option>
+                                    <option value="CAREER_ACADEMY" className="text-slate-900 bg-white">🏫 Career Academy</option>
                                 </select>
                             </div>
 
