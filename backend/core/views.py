@@ -432,7 +432,7 @@ class StudentViewSet(viewsets.ModelViewSet):
             
             if not is_sales_manager:
                 qs = qs.filter(assigned_to=user)
-        elif user.role in ['ACADEMIC', 'ACADEMIC_COORDINATOR']:
+        elif user.role in ['ACADEMIC', 'ACADEMIC_COORDINATOR'] or self.request.query_params.get('group', '').upper() == 'ACADEMIC':
             qs = qs.filter(lead_status__in=converted_stage_ids)
         elif user.role in ['MENTOR', 'TEACHER']:
             subordinates = user.get_all_subordinates()

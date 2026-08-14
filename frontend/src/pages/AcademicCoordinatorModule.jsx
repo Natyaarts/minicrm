@@ -49,7 +49,7 @@ const AcademicCoordinatorModule = () => {
     const fetchStudents = async () => {
         setLoading(true);
         try {
-            let url = `students/?page=${studentPage}&search=${searchTerm}`;
+            let url = `students/?page=${studentPage}&search=${searchTerm}&group=ACADEMIC`;
             if (academicStatus) url += `&academic_status=${academicStatus}`;
             if (programFilter) url += `&program=${programFilter}`;
             
