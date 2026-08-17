@@ -20,6 +20,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { FontAwesome5 } from '@expo/vector-icons';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import client from '../src/api/client';
+import { Audio } from 'expo-av';
 
 interface InteractionItem {
   id: number;
@@ -40,6 +41,47 @@ export default function LeadDetailsScreen() {
   const [student, setStudent] = useState<any>(null);
   const [interactions, setInteractions] = useState<InteractionItem[]>([]);
   const [loadingInteractions, setLoadingInteractions] = useState(true);
+
+  // Audio Playback States
+  const [playingAudio, setPlayingAudio] = useState<string | null>(null);
+  const [sound, setSound] = useState<Audio.Sound | null>(null);
+
+  const playAudio = async (url: string, id: string) => {
+    if (playingAudio === id) {
+       if (sound) {
+          await sound.stopAsync();
+          setPlayingAudio(null);
+       }
+       return;
+    }
+    
+    try {
+      if (sound) {
+         await sound.unloadAsync();
+      }
+      const { sound: newSound } = await Audio.Sound.createAsync({ uri: url });
+      setSound(newSound);
+      setPlayingAudio(id);
+      
+      newSound.setOnPlaybackStatusUpdate((status) => {
+         if (status.isLoaded && status.didJustFinish) {
+            setPlayingAudio(null);
+         }
+      });
+      
+      await newSound.playAsync();
+    } catch (e) {
+      console.log('Audio playback error', e);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (sound) {
+        sound.unloadAsync();
+      }
+    };
+  }, [sound]);
 
   // Lead stage and date picker updates
   const [updatingStage, setUpdatingStage] = useState(false);
@@ -607,10 +649,13 @@ export default function LeadDetailsScreen() {
                     </View>
                     <Text style={styles.timelineNotes}>{item.notes}</Text>
                     {item.audio_recording && (
-                      <View style={styles.audioIndicator}>
-                        <FontAwesome5 name="volume-up" size={12} color="#10B981" />
-                        <Text style={styles.audioIndicatorText}>Audio recording saved on server</Text>
-                      </View>
+                      <TouchableOpacity 
+                        style={styles.audioPlayerMini} 
+                        onPress={() => playAudio(item.audio_recording!, item.id.toString())}
+                      >
+                        <FontAwesome5 name={playingAudio === item.id.toString() ? 'stop-circle' : 'play-circle'} size={14} color="#10B981" />
+                        <Text style={styles.audioTextMini}>{playingAudio === item.id.toString() ? 'Playing...' : 'Play Call Recording'}</Text>
+                      </TouchableOpacity>
                     )}
                     {item.author_name && (
                       <Text style={styles.timelineAuthor}>Logged by: {item.author_name}</Text>
@@ -1195,5 +1240,23 @@ const styles = StyleSheet.create({
   stageItemTextActive: {
     color: '#FFB800',
     fontWeight: '900',
+  },
+  audioPlayerMini: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 6,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    alignSelf: 'flex-start',
+  },
+  audioTextMini: {
+    marginLeft: 6,
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#1E40AF',
   },
 });
