@@ -1430,10 +1430,10 @@ const SalesModule = () => {
                                                                     )}
                                                                 </>
                                                             )}
-                                                        </div>
                                                     </td>
                                                 </tr>
-                                            }))
+                                            );
+                                        })
                                         ) : (
                                             <tr><td colSpan="8" className="px-6 py-8 text-center text-slate-400 font-medium">No applications found.</td></tr>
                                         )}
@@ -1575,7 +1575,7 @@ const SalesModule = () => {
                                                 )}
                                             </div>
                                         </div>
-                                    }))
+                                    ); })
                                 ) : (
                                     <div className="p-6 text-center text-slate-400 font-medium">No applications found.</div>
                                 )}
