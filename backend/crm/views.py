@@ -811,7 +811,10 @@ class BDEReportView(APIView):
                 'call_status': inter.call_status,
                 'notes': inter.notes,
                 'date': inter.date,
-                'audio_url': request.build_absolute_uri(inter.audio_recording.url) if inter.audio_recording else None
+                'audio_url': (
+                    inter.audio_recording.url if inter.audio_recording.url.startswith('http')
+                    else request.build_absolute_uri(inter.audio_recording.url)
+                ) if inter.audio_recording else None
             })
 
         pending_tasks = Task.objects.filter(assigned_to=bde, status='PENDING')
