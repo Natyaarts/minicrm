@@ -832,21 +832,23 @@ class BDEReportView(APIView):
             if parsed_end:
                 pending_tasks = pending_tasks.filter(created_at__date__lte=parsed_end)
 
-        calls_qs = LeadInteraction.objects.filter(author=bde, interaction_type='CALL')
-        if start_date:
-            parsed_start = parse_date(start_date)
-            if parsed_start:
-                calls_qs = calls_qs.filter(date__date__gte=parsed_start)
-        if end_date:
-            parsed_end = parse_date(end_date)
-            if parsed_end:
-                calls_qs = calls_qs.filter(date__date__lte=parsed_end)
+        total_calls = interactions.filter(interaction_type='CALL').count()
+        total_notes = interactions.filter(interaction_type='NOTE').count()
+        total_whatsapp = interactions.filter(interaction_type='WHATSAPP').count()
+        total_emails = interactions.filter(interaction_type='EMAIL').count()
+        total_meetings = interactions.filter(interaction_type='MEETING').count()
 
+        calls_qs = interactions.filter(interaction_type='CALL')
         total_bde_duration_sec = sum(parse_duration_sec(c.call_duration, c.notes) for c in calls_qs)
 
         metrics = {
             'total_assigned': leads.count(),
-            'total_interactions': calls_qs.count(),
+            'total_calls': total_calls,
+            'total_notes': total_notes,
+            'total_whatsapp': total_whatsapp,
+            'total_emails': total_emails,
+            'total_meetings': total_meetings,
+            'total_interactions': interactions.count(),
             'total_call_duration': total_bde_duration_sec,
             'formatted_total_call_duration': format_duration_seconds(total_bde_duration_sec),
             'pending_tasks': pending_tasks.count()

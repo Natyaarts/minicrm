@@ -131,6 +131,36 @@ const BDEReport = ({ bdeId, onClose, onLeadClick }) => {
                             </div>
                         </div>
 
+                        {/* Activity Breakdown */}
+                        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                            <p className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">Logged Activity Breakdown</p>
+                            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                                <div className="bg-blue-50/50 p-3 rounded-lg border border-blue-100 text-center">
+                                    <p className="text-[9px] font-bold text-blue-500 uppercase">📞 Calls</p>
+                                    <h4 className="text-lg font-black text-blue-700 mt-0.5">{report.metrics.total_calls || 0}</h4>
+                                    {report.metrics.total_call_duration > 0 && (
+                                        <p className="text-[8px] font-semibold text-blue-500/80 mt-0.5">{report.metrics.formatted_total_call_duration}</p>
+                                    )}
+                                </div>
+                                <div className="bg-indigo-50/50 p-3 rounded-lg border border-indigo-100 text-center">
+                                    <p className="text-[9px] font-bold text-indigo-500 uppercase">📝 Notes</p>
+                                    <h4 className="text-lg font-black text-indigo-700 mt-0.5">{report.metrics.total_notes || 0}</h4>
+                                </div>
+                                <div className="bg-emerald-50/50 p-3 rounded-lg border border-emerald-100 text-center">
+                                    <p className="text-[9px] font-bold text-emerald-500 uppercase">💬 WhatsApp</p>
+                                    <h4 className="text-lg font-black text-emerald-700 mt-0.5">{report.metrics.total_whatsapp || 0}</h4>
+                                </div>
+                                <div className="bg-purple-50/50 p-3 rounded-lg border border-purple-100 text-center">
+                                    <p className="text-[9px] font-bold text-purple-500 uppercase">✉️ Emails</p>
+                                    <h4 className="text-lg font-black text-purple-700 mt-0.5">{report.metrics.total_emails || 0}</h4>
+                                </div>
+                                <div className="bg-amber-50/50 p-3 rounded-lg border border-amber-100 text-center col-span-2 sm:col-span-1">
+                                    <p className="text-[9px] font-bold text-amber-600 uppercase">🤝 Meetings</p>
+                                    <h4 className="text-lg font-black text-amber-700 mt-0.5">{report.metrics.total_meetings || 0}</h4>
+                                </div>
+                            </div>
+                        </div>
+
                         {/* Split View: Leads & Timeline */}
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                             
