@@ -48,11 +48,11 @@ const CRMDashboard = ({ onStatClick, onBdeClick }) => {
     const fetchFollowups = async (page) => {
         setFollowupsLoading(true);
         try {
-            const res = await api.get(`/crm/tasks/?status=PENDING&page=${page}`);
+            const res = await api.get(`/crm/tasks/?status=PENDING&page=${page}&page_size=5`);
             setFollowups(res.data.results || res.data);
             if (res.data.count !== undefined) {
                 setTotalFollowupsCount(res.data.count);
-                setTotalFollowupsPages(Math.ceil(res.data.count / 20));
+                setTotalFollowupsPages(Math.ceil(res.data.count / 5));
             } else {
                 setTotalFollowupsCount(res.data.length || 0);
                 setTotalFollowupsPages(1);
@@ -335,11 +335,11 @@ const CRMDashboard = ({ onStatClick, onBdeClick }) => {
                         </div>
                         
                         {/* Pagination Controls */}
-                        {totalFollowupsPages > 1 && (
-                            <div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-100">
-                                <span className="text-xs font-semibold text-slate-500">
-                                    Showing page <strong className="text-slate-800">{followupsPage}</strong> of <strong className="text-slate-800">{totalFollowupsPages}</strong> ({totalFollowupsCount} total follow-ups)
-                                </span>
+                        <div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-100">
+                            <span className="text-xs font-semibold text-slate-500">
+                                Showing page <strong className="text-slate-800">{followupsPage}</strong> of <strong className="text-slate-800">{totalFollowupsPages}</strong> ({totalFollowupsCount} total follow-ups)
+                            </span>
+                            {totalFollowupsPages > 1 && (
                                 <div className="flex items-center gap-1.5">
                                     <button
                                         disabled={followupsPage === 1}
@@ -356,8 +356,8 @@ const CRMDashboard = ({ onStatClick, onBdeClick }) => {
                                         <ChevronRight size={16} />
                                     </button>
                                 </div>
-                            </div>
-                        )}
+                            )}
+                        </div>
                     </>
                 ) : (
                     <div className="p-4 bg-slate-50 rounded-xl text-center text-slate-500 text-sm italic">
