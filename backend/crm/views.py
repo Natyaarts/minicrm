@@ -752,7 +752,7 @@ class CampaignViewSet(viewsets.ModelViewSet):
             pass
             
         from django.db.models import Sum
-        revenue = students.aggregate(total_rev=Sum('total_paid'))['total_rev'] or 0
+        revenue = students.aggregate(total_rev=Sum('paid_fee'))['total_rev'] or 0
         
         return Response({
             'campaign_name': campaign.name,
