@@ -796,6 +796,13 @@ class BDEReportView(APIView):
         timeline = []
         for inter in interactions:
             dur_sec = parse_duration_sec(inter.call_duration, inter.notes)
+            try:
+                audio_url = inter.audio_recording.url if inter.audio_recording else None
+                if audio_url and not (audio_url.startswith('http://') or audio_url.startswith('https://')):
+                    audio_url = request.build_absolute_uri(audio_url)
+            except Exception:
+                audio_url = None
+
             timeline.append({
                 'id': inter.id,
                 'student_name': f"{inter.student.first_name} {inter.student.last_name}" if inter.student else 'Unknown',
@@ -811,10 +818,7 @@ class BDEReportView(APIView):
                 'call_status': inter.call_status,
                 'notes': inter.notes,
                 'date': inter.date,
-                'audio_url': (
-                    inter.audio_recording.url if inter.audio_recording.url.startswith('http')
-                    else request.build_absolute_uri(inter.audio_recording.url)
-                ) if inter.audio_recording else None
+                'audio_url': audio_url
             })
 
         pending_tasks = Task.objects.filter(assigned_to=bde, status='PENDING')
