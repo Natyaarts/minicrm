@@ -1289,16 +1289,29 @@ const SalesModule = () => {
                                         {loading ? (
                                             <tr><td colSpan="8" className="px-6 py-8 text-center text-slate-400 font-medium">Loading records...</td></tr>
                                         ) : filteredStudents.length > 0 ? (
-                                            filteredStudents.map((student) => (
-                                                <tr key={student.id} className={`hover:bg-slate-50/50 transition-colors ${selectedLeadIds.includes(student.id) ? 'bg-indigo-50/30' : ''}`}>
-                                                    <td className="px-6 py-3.5">
-                                                        <input 
-                                                            type="checkbox"
-                                                            checked={selectedLeadIds.includes(student.id)}
-                                                            onChange={() => toggleLeadSelection(student.id)}
-                                                            className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
-                                                        />
-                                                    </td>
+                                            filteredStudents.map((student) => {
+                                                const isDuplicate = student.lead_status === 'DUPLICATE';
+                                                return (
+                                                    <tr 
+                                                        key={student.id} 
+                                                        className={`transition-colors ${
+                                                            isDuplicate 
+                                                                ? 'bg-rose-50 text-rose-950 font-medium border-l-4 border-rose-500 hover:bg-rose-100/75' 
+                                                                : selectedLeadIds.includes(student.id) 
+                                                                    ? 'bg-indigo-50/30 hover:bg-slate-50/50' 
+                                                                    : 'hover:bg-slate-50/50'
+                                                        }`}
+                                                    >
+                                                        <td className="px-6 py-3.5">
+                                                            <input 
+                                                                type="checkbox"
+                                                                disabled={isDuplicate}
+                                                                title={isDuplicate ? "Duplicate leads cannot be assigned" : "Select lead"}
+                                                                checked={selectedLeadIds.includes(student.id)}
+                                                                onChange={() => toggleLeadSelection(student.id)}
+                                                                className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed"
+                                                            />
+                                                        </td>
                                                     <td className="px-6 py-3.5">
                                                         <div className="flex items-center gap-2">
                                                             <div className="w-7 h-7 shrink-0 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-700 font-semibold text-[10px]">
@@ -1420,7 +1433,7 @@ const SalesModule = () => {
                                                         </div>
                                                     </td>
                                                 </tr>
-                                            ))
+                                            }))
                                         ) : (
                                             <tr><td colSpan="8" className="px-6 py-8 text-center text-slate-400 font-medium">No applications found.</td></tr>
                                         )}
@@ -1433,8 +1446,10 @@ const SalesModule = () => {
                                 {loading ? (
                                     <div className="p-6 text-center text-slate-400 font-medium">Loading records...</div>
                                 ) : filteredStudents.length > 0 ? (
-                                    filteredStudents.map((student) => (
-                                        <div key={student.id} className="p-4 hover:bg-slate-50/50 transition-colors">
+                                    filteredStudents.map((student) => {
+                                        const isDuplicate = student.lead_status === 'DUPLICATE';
+                                        return (
+                                            <div key={student.id} className={`p-4 transition-colors ${isDuplicate ? 'bg-rose-50 hover:bg-rose-100/75 border-l-4 border-rose-500' : 'hover:bg-slate-50/50'}`}>
                                             {/* Top Header Row: Avatar, Name, Status */}
                                             <div className="flex items-start justify-between gap-3 mb-3">
                                                 <div className="flex items-center gap-2.5">
@@ -1560,7 +1575,7 @@ const SalesModule = () => {
                                                 )}
                                             </div>
                                         </div>
-                                    ))
+                                    }))
                                 ) : (
                                     <div className="p-6 text-center text-slate-400 font-medium">No applications found.</div>
                                 )}
