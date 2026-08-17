@@ -2,11 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { X, PhoneCall, Mail, MessageSquare, FileText, User, Headphones } from 'lucide-react';
 import api from '../api/axios';
 
-const BDEReport = ({ bdeId, onClose }) => {
+const BDEReport = ({ bdeId, onClose, onLeadClick }) => {
     const [report, setReport] = useState(null);
     const [loading, setLoading] = useState(true);
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
+    const [leadSearchTerm, setLeadSearchTerm] = useState('');
 
     useEffect(() => {
         if (!bdeId) return;
@@ -39,6 +40,12 @@ const BDEReport = ({ bdeId, onClose }) => {
     };
 
     if (!bdeId) return null;
+
+    // Filter leads based on search term
+    const filteredLeads = report?.leads?.filter(lead => 
+        lead.name?.toLowerCase().includes(leadSearchTerm.toLowerCase()) || 
+        lead.crm_id?.toLowerCase().includes(leadSearchTerm.toLowerCase())
+    ) || [];
 
     return (
         <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
@@ -129,21 +136,32 @@ const BDEReport = ({ bdeId, onClose }) => {
                             
                             {/* Assigned Leads Column */}
                             <div className="lg:col-span-1 bg-white border border-slate-200 rounded-xl flex flex-col">
-                                <div className="p-4 border-b border-slate-100 bg-slate-50/50 rounded-t-xl">
-                                    <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Assigned Leads ({report.leads.length})</h3>
+                                <div className="p-4 border-b border-slate-100 bg-slate-50/50 rounded-t-xl space-y-2.5">
+                                    <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Assigned Leads ({filteredLeads.length})</h3>
+                                    <input 
+                                        type="text"
+                                        placeholder="Search by name or ID..."
+                                        value={leadSearchTerm}
+                                        onChange={(e) => setLeadSearchTerm(e.target.value)}
+                                        className="w-full text-xs px-2.5 py-1.5 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 bg-white"
+                                    />
                                 </div>
                                 <div className="p-4 flex-1 overflow-y-auto max-h-[400px] space-y-3">
-                                    {report.leads.map(lead => (
-                                        <div key={lead.id} className="p-3 border border-slate-100 rounded-lg hover:border-indigo-200 transition-colors">
-                                            <p className="text-sm font-bold text-slate-800">{lead.name}</p>
+                                    {filteredLeads.map(lead => (
+                                        <div 
+                                            key={lead.id} 
+                                            onClick={() => onLeadClick && onLeadClick(lead.id)}
+                                            className="p-3 border border-slate-100 rounded-lg hover:border-indigo-300 hover:bg-indigo-50/10 transition-colors cursor-pointer"
+                                        >
+                                            <p className="text-sm font-bold text-slate-800 hover:text-indigo-600 transition-colors">{lead.name}</p>
                                             <div className="flex justify-between items-center mt-1">
                                                 <p className="text-[10px] font-medium text-slate-500">{lead.crm_id}</p>
                                                 <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{lead.status}</span>
                                             </div>
                                         </div>
                                     ))}
-                                    {report.leads.length === 0 && (
-                                        <p className="text-xs text-slate-400 italic text-center py-4">No leads assigned.</p>
+                                    {filteredLeads.length === 0 && (
+                                        <p className="text-xs text-slate-400 italic text-center py-4">No matching leads.</p>
                                     )}
                                 </div>
                             </div>
@@ -176,7 +194,13 @@ const BDEReport = ({ bdeId, onClose }) => {
                                                         <p className="text-sm font-bold text-slate-800">
                                                             {item.type === 'CALL' ? 'Phone Call with' : 
                                                              item.type === 'WHATSAPP' ? 'WhatsApp with' : 
-                                                             item.type === 'EMAIL' ? 'Email to' : 'Note on'} <span className="text-indigo-600">{item.student_name}</span>
+                                                             item.type === 'EMAIL' ? 'Email to' : 'Note on'}{' '}
+                                                            <button 
+                                                                onClick={() => item.student_id && onLeadClick && onLeadClick(item.student_id)} 
+                                                                className="text-indigo-600 hover:text-indigo-800 font-bold hover:underline"
+                                                            >
+                                                                {item.student_name}
+                                                            </button>
                                                         </p>
                                                         {(item.student_crm_id || item.student_phone) && (
                                                             <div className="flex flex-wrap items-center gap-2 mt-1 mb-1.5 text-[11px] text-slate-500 font-medium">

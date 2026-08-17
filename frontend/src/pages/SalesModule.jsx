@@ -106,6 +106,10 @@ const SalesModule = () => {
     const [nextFollowupDate, setNextFollowupDate] = useState('');
     const [loadingInteractions, setLoadingInteractions] = useState(false);
     
+    // Student Tasks State
+    const [studentTasks, setStudentTasks] = useState([]);
+    const [loadingTasks, setLoadingTasks] = useState(false);
+    
     const [selectedBdeId, setSelectedBdeId] = useState(null);
 
     useEffect(() => {
@@ -113,12 +117,42 @@ const SalesModule = () => {
             setPendingPipelineStatus(selectedStudentProfile.lead_status || 'NEW');
             fetchLiveWiseData(selectedStudentProfile.id);
             fetchInteractions(selectedStudentProfile.id);
+            fetchStudentTasks(selectedStudentProfile.id);
         } else {
             setPendingPipelineStatus('');
             setWiseData(null);
             setInteractions([]);
+            setStudentTasks([]);
         }
     }, [selectedStudentProfile?.id]);
+
+    const fetchStudentTasks = async (studentId) => {
+        setLoadingTasks(true);
+        try {
+            const res = await api.get(`/crm/tasks/?student_id=${studentId}`);
+            setStudentTasks(res.data?.results || res.data || []);
+        } catch (e) {
+            console.error("Failed to fetch student tasks:", e);
+        } finally {
+            setLoadingTasks(false);
+        }
+    };
+
+    const handleToggleTaskStatus = async (taskId, currentStatus) => {
+        const newStatus = currentStatus === 'COMPLETED' ? 'PENDING' : 'COMPLETED';
+        try {
+            await api.patch(`/crm/tasks/${taskId}/`, { status: newStatus });
+            if (selectedStudentProfile?.id) {
+                fetchStudentTasks(selectedStudentProfile.id);
+            }
+            setToast({ title: "Success", description: `Task marked as ${newStatus.toLowerCase()}.`, type: 'success' });
+            setTimeout(() => setToast(null), 3000);
+        } catch (e) {
+            console.error("Failed to toggle task status:", e);
+            setToast({ title: "Error", description: "Failed to update task status.", type: 'error' });
+            setTimeout(() => setToast(null), 3000);
+        }
+    };
 
     const fetchInteractions = async (studentId) => {
         setLoadingInteractions(true);
@@ -2207,6 +2241,52 @@ const SalesModule = () => {
                                 </div>
                             </div>
 
+                            {/* Scheduled Follow-up Tasks */}
+                            <div className="md:col-span-2 text-left bg-slate-50 border border-slate-200 rounded-xl p-4 mt-2">
+                                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Scheduled Follow-ups</h3>
+                                {loadingTasks ? (
+                                    <p className="text-slate-400 text-xs italic">Loading schedules...</p>
+                                ) : studentTasks.length > 0 ? (
+                                    <div className="space-y-2.5">
+                                        {studentTasks.map(task => (
+                                            <div key={task.id} className="bg-white p-3 rounded-lg border border-slate-100 shadow-sm flex items-center justify-between gap-3">
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
+                                                            task.status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
+                                                        }`}>
+                                                            {task.status}
+                                                        </span>
+                                                        <span className="text-[10px] text-slate-400 font-semibold uppercase">{task.task_type}</span>
+                                                    </div>
+                                                    <p className={`text-xs font-bold text-slate-800 ${task.status === 'COMPLETED' ? 'line-through text-slate-400' : ''}`}>
+                                                        {task.title}
+                                                    </p>
+                                                    {task.due_date && (
+                                                        <p className="text-[10px] text-slate-500 mt-0.5">
+                                                            Due: {new Date(task.due_date).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                                                        </p>
+                                                    )}
+                                                    {task.notes && <p className="text-[10px] text-slate-500 mt-1 italic truncate">{task.notes}</p>}
+                                                </div>
+                                                <button
+                                                    onClick={() => handleToggleTaskStatus(task.id, task.status)}
+                                                    className={`text-[10px] font-bold px-2.5 py-1.5 rounded transition-all whitespace-nowrap ${
+                                                        task.status === 'COMPLETED'
+                                                            ? 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                                                            : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-600'
+                                                    }`}
+                                                >
+                                                    {task.status === 'COMPLETED' ? 'Mark Pending' : 'Mark Completed'}
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="text-slate-400 text-xs italic text-center py-2">No scheduled follow-up tasks for this lead.</p>
+                                )}
+                            </div>
+
                             {/* Documents */}
                             <div className="md:col-span-2 text-left">
                                 <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Uploaded Documents</h3>
@@ -2476,7 +2556,18 @@ const SalesModule = () => {
                 </div>
             )}
             {/* BDE Report Modal */}
-            <BDEReport bdeId={selectedBdeId} onClose={() => setSelectedBdeId(null)} />
+            <BDEReport 
+                bdeId={selectedBdeId} 
+                onClose={() => setSelectedBdeId(null)} 
+                onLeadClick={async (id) => {
+                    try {
+                        const res = await api.get(`students/${id}/`);
+                        setSelectedStudentProfile(res.data);
+                    } catch(e) {
+                        console.error("Failed to load student profile", e);
+                    }
+                }}
+            />
             
             <StatLeadsModal 
                 config={statModalConfig} 
