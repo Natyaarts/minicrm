@@ -11,6 +11,7 @@ from .models import PipelineStage, LeadInteraction, Campaign, WebhookEndpoint, W
 from .serializers import PipelineStageSerializer, LeadInteractionSerializer, CampaignSerializer, TaskSerializer
 
 User = get_user_model()
+from django.shortcuts import get_object_or_404
 
 def format_duration_seconds(seconds):
     if not seconds or seconds <= 0:
