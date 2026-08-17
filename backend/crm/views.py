@@ -915,9 +915,13 @@ class BDEReportView(APIView):
 
         leads_list = []
         for lead in leads:
+            try:
+                username = lead.user.username if lead.user else 'Unknown'
+            except Exception:
+                username = 'Unknown'
             leads_list.append({
                 'id': lead.id,
-                'name': f"{lead.first_name or ''} {lead.last_name or ''}".strip() or lead.user.username,
+                'name': f"{lead.first_name or ''} {lead.last_name or ''}".strip() or username,
                 'crm_id': lead.crm_student_id,
                 'status': lead.lead_status
             })
