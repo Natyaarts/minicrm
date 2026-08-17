@@ -852,8 +852,18 @@ class BDEReportView(APIView):
             'pending_tasks': pending_tasks.count()
         }
 
+        leads_list = []
+        for lead in leads:
+            leads_list.append({
+                'id': lead.id,
+                'name': f"{lead.first_name or ''} {lead.last_name or ''}".strip() or lead.user.username,
+                'crm_id': lead.crm_student_id,
+                'status': lead.lead_status
+            })
+
         return Response({
             'bde': {'id': bde.id, 'name': bde.get_full_name() or bde.username, 'email': bde.email},
+            'leads': leads_list,
             'metrics': metrics,
             'timeline': timeline,
             'has_more': has_more
