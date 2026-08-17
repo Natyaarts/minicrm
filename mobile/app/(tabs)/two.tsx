@@ -49,7 +49,14 @@ export default function SalesScreen() {
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
   const [showPicker, setShowPicker] = useState<'start' | 'end' | null>(null);
-  const [viewMode, setViewMode] = useState<'NEW' | 'PIPELINE'>('NEW');
+  const [viewMode, setViewMode] = useState<'NEW' | 'PIPELINE' | 'CALLS'>('NEW');
+
+  // ── Recent Calls States ──
+  const [recentCalls, setRecentCalls] = useState<any[]>([]);
+  const [loadingCalls, setLoadingCalls] = useState(false);
+  const [loadingMoreCalls, setLoadingMoreCalls] = useState(false);
+  const [hasMoreCalls, setHasMoreCalls] = useState(false);
+  const [callsPage, setCallsPage] = useState(1);
 
   // ── Init ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -60,6 +67,10 @@ export default function SalesScreen() {
 
   useEffect(() => {
     if (authLoading) return;
+    if (viewMode === 'CALLS') {
+      fetchRecentCalls(1, true);
+      return;
+    }
     const t = setTimeout(() => {
       setLeads([]);
       setCurrentPage(1);
@@ -149,7 +160,98 @@ export default function SalesScreen() {
   };
 
   const handleLoadMore = () => {
-    if (!loadingMore && leads.length < totalLeads) fetchLeads(currentPage + 1);
+    if (viewMode === 'CALLS') {
+      if (!loadingMoreCalls && hasMoreCalls) fetchRecentCalls(callsPage + 1);
+    } else {
+      if (!loadingMore && leads.length < totalLeads) fetchLeads(currentPage + 1);
+    }
+  };
+
+  const fetchRecentCalls = async (page = 1, reset = false) => {
+    if (page === 1) {
+      setLoadingCalls(true);
+      if (reset) setRecentCalls([]);
+    } else {
+      setLoadingMoreCalls(true);
+    }
+    try {
+      const params: any = { interaction_type: 'CALL', page };
+      if (search) params.search = search;
+      if (startDate) params.start_date = startDate.toISOString().split('T')[0];
+      if (endDate) params.end_date = endDate.toISOString().split('T')[0];
+      
+      const res = await client.get('/crm/interactions/', { params });
+      const raw = res.data;
+      const data = raw?.results || (Array.isArray(raw) ? raw : []);
+      const filtered = data.filter((item: any) => item.interaction_type === 'CALL');
+      
+      if (page === 1 || reset) {
+        setRecentCalls(filtered);
+      } else {
+        setRecentCalls(prev => [...prev, ...filtered]);
+      }
+      setHasMoreCalls(!!(raw?.next));
+      setCallsPage(page);
+    } catch (err) {
+      console.log('Failed to fetch recent calls:', err);
+    } finally {
+      setLoadingCalls(false);
+      setLoadingMoreCalls(false);
+    }
+  };
+
+  const renderRecentCall = ({ item }: { item: any }) => {
+    const notesStr = item.notes || '';
+    let duration = '';
+    let cleanNote = notesStr;
+    
+    const durMatch = notesStr.match(/Duration:\s*(\d{2}:\d{2})/);
+    if (durMatch) {
+      duration = durMatch[1];
+      cleanNote = notesStr.replace(/Duration:\s*\d{2}:\d{2}\n?/, '').replace(/Notes:\s*/, '');
+    }
+
+    const formattedTime = new Date(item.date).toLocaleString([], {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    const displayName = item.student_name || `Student ID: ${item.student}`;
+    const displayPhone = item.student_phone || 'No Phone';
+
+    return (
+      <TouchableOpacity 
+        style={[styles.historyCard, isDark && styles.darkCard]}
+        onPress={() => {
+          if (item.student) {
+            router.push(`/lead-details?leadId=${item.student}` as any);
+          }
+        }}
+      >
+        <View style={styles.historyLeft}>
+          <View style={styles.historyIcon}>
+            <FontAwesome5 name="phone" size={14} color="#10B981" />
+          </View>
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <Text style={[styles.historyName, isDark && styles.darkText]}>{displayName}</Text>
+            <Text style={styles.historyPhone}>{displayPhone}</Text>
+            {cleanNote ? (
+              <Text style={styles.historyNotes} numberOfLines={2}>{cleanNote}</Text>
+            ) : null}
+          </View>
+        </View>
+        <View style={{ alignItems: 'flex-end', justifyContent: 'space-between', minHeight: 40 }}>
+          <Text style={styles.historyTime}>{formattedTime}</Text>
+          {duration ? (
+            <View style={styles.durationBadge}>
+              <Text style={styles.durationText}>{duration}</Text>
+            </View>
+          ) : null}
+        </View>
+      </TouchableOpacity>
+    );
   };
 
   // ── Helpers ───────────────────────────────────────────────────────────────
@@ -354,6 +456,12 @@ export default function SalesScreen() {
           >
             <Text style={[styles.tabTxt, viewMode === 'PIPELINE' && styles.tabTxtActive, isDark && viewMode === 'PIPELINE' && { color: '#0F172A' }, isDark && viewMode !== 'PIPELINE' && { color: '#94A3B8' }]}>My Pipeline</Text>
           </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.tabBtn, viewMode === 'CALLS' && styles.tabBtnActive]} 
+            onPress={() => { setViewMode('CALLS'); setCurrentPage(1); }}
+          >
+            <Text style={[styles.tabTxt, viewMode === 'CALLS' && styles.tabTxtActive, isDark && viewMode === 'CALLS' && { color: '#0F172A' }, isDark && viewMode !== 'CALLS' && { color: '#94A3B8' }]}>Recent Calls</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Filter controls row */}
@@ -446,42 +554,83 @@ export default function SalesScreen() {
         )}
       </View>
 
-      {/* ── LEADS LIST ── */}
-      {loading && !refreshing ? (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color="#3B82F6" />
-          <Text style={{ color: '#94A3B8', marginTop: 10, fontSize: 13 }}>Loading leads...</Text>
-        </View>
-      ) : (
-        <FlatList
-          data={leads}
-          renderItem={renderLead}
-          keyExtractor={(item, i) => item.id?.toString() || i.toString()}
-          contentContainerStyle={styles.listContent}
-          refreshing={refreshing}
-          onRefresh={handleRefresh}
-          onEndReached={handleLoadMore}
-          onEndReachedThreshold={0.4}
-          getItemLayout={(_, i) => ({ length: 55, offset: 55 * i, index: i })}
-          ListEmptyComponent={
-            <View style={styles.center}>
-              <FontAwesome5 name="inbox" size={36} color="#CBD5E1" />
-              <Text style={{ color: '#94A3B8', marginTop: 10, fontSize: 14, fontWeight: '600' }}>No leads found</Text>
-              {search ? <Text style={{ color: '#CBD5E1', fontSize: 12, marginTop: 4 }}>Try a different search</Text> : null}
-            </View>
-          }
-          ListFooterComponent={
-            loadingMore ? (
-              <View style={{ padding: 16, alignItems: 'center' }}>
-                <ActivityIndicator size="small" color="#3B82F6" />
+      {/* ── LEADS LIST or RECENT CALLS LIST ── */}
+      {viewMode === 'CALLS' ? (
+        loadingCalls && !refreshing ? (
+          <View style={styles.center}>
+            <ActivityIndicator size="large" color="#3B82F6" />
+            <Text style={{ color: '#94A3B8', marginTop: 10, fontSize: 13 }}>Loading recent calls...</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={recentCalls}
+            renderItem={renderRecentCall}
+            keyExtractor={(item) => item.id.toString()}
+            contentContainerStyle={styles.listContent}
+            refreshing={refreshing}
+            onRefresh={async () => {
+              setRefreshing(true);
+              await fetchRecentCalls(1, true);
+              setRefreshing(false);
+            }}
+            onEndReached={handleLoadMore}
+            onEndReachedThreshold={0.4}
+            ListEmptyComponent={
+              <View style={styles.center}>
+                <FontAwesome5 name="phone-slash" size={36} color="#CBD5E1" />
+                <Text style={{ color: '#94A3B8', marginTop: 10, fontSize: 14, fontWeight: '600' }}>No recent calls found</Text>
               </View>
-            ) : leads.length >= totalLeads && leads.length > 0 ? (
-              <Text style={{ textAlign: 'center', color: '#CBD5E1', fontSize: 12, padding: 16 }}>
-                All {totalLeads} leads loaded
-              </Text>
-            ) : null
-          }
-        />
+            }
+            ListFooterComponent={
+              loadingMoreCalls ? (
+                <View style={{ padding: 16, alignItems: 'center' }}>
+                  <ActivityIndicator size="small" color="#3B82F6" />
+                </View>
+              ) : recentCalls.length > 0 && !hasMoreCalls ? (
+                <Text style={{ textAlign: 'center', color: '#CBD5E1', fontSize: 12, padding: 16 }}>
+                  All recent calls loaded
+                </Text>
+              ) : null
+            }
+          />
+        )
+      ) : (
+        loading && !refreshing ? (
+          <View style={styles.center}>
+            <ActivityIndicator size="large" color="#3B82F6" />
+            <Text style={{ color: '#94A3B8', marginTop: 10, fontSize: 13 }}>Loading leads...</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={leads}
+            renderItem={renderLead}
+            keyExtractor={(item, i) => item.id?.toString() || i.toString()}
+            contentContainerStyle={styles.listContent}
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            onEndReached={handleLoadMore}
+            onEndReachedThreshold={0.4}
+            getItemLayout={(_, i) => ({ length: 55, offset: 55 * i, index: i })}
+            ListEmptyComponent={
+              <View style={styles.center}>
+                <FontAwesome5 name="inbox" size={36} color="#CBD5E1" />
+                <Text style={{ color: '#94A3B8', marginTop: 10, fontSize: 14, fontWeight: '600' }}>No leads found</Text>
+                {search ? <Text style={{ color: '#CBD5E1', fontSize: 12, marginTop: 4 }}>Try a different search</Text> : null}
+              </View>
+            }
+            ListFooterComponent={
+              loadingMore ? (
+                <View style={{ padding: 16, alignItems: 'center' }}>
+                  <ActivityIndicator size="small" color="#3B82F6" />
+                </View>
+              ) : leads.length >= totalLeads && leads.length > 0 ? (
+                <Text style={{ textAlign: 'center', color: '#CBD5E1', fontSize: 12, padding: 16 }}>
+                  All {totalLeads} leads loaded
+                </Text>
+              ) : null
+            }
+          />
+        )
       )}
     </View>
   );
@@ -618,5 +767,59 @@ const styles = StyleSheet.create({
   callBtn: {
     width: 36, height: 36, borderRadius: 12,
     alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  historyCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  historyLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 10,
+  },
+  historyIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#EBF8FF',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  historyName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+  historyPhone: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  historyNotes: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    marginTop: 4,
+  },
+  historyTime: {
+    fontSize: 11,
+    color: '#9CA3AF',
+  },
+  durationBadge: {
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    marginTop: 6,
+  },
+  durationText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#4B5563',
   },
 });
