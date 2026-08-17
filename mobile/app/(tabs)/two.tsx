@@ -244,10 +244,16 @@ export default function SalesScreen() {
     let duration = '';
     let cleanNote = notesStr;
     
-    const durMatch = notesStr.match(/Duration:\s*(\d{2}:\d{2})/);
+    const durMatch = notesStr.match(/Duration:\s*([^\n]+)/i);
     if (durMatch) {
-      duration = durMatch[1];
-      cleanNote = notesStr.replace(/Duration:\s*\d{2}:\d{2}\n?/, '').replace(/Notes:\s*/, '');
+      duration = durMatch[1].replace(/notes:.*$/gi, '').trim();
+    }
+    
+    const notesIndex = notesStr.toLowerCase().indexOf('notes:');
+    if (notesIndex !== -1) {
+      cleanNote = notesStr.substring(notesIndex + 6).trim();
+    } else {
+      cleanNote = notesStr.replace(/^(Incoming\s+)?Call\s*-\s*Duration:\s*[^\n]+\n?/i, '').trim();
     }
 
     const formattedTime = new Date(item.date).toLocaleString([], {
@@ -277,7 +283,9 @@ export default function SalesScreen() {
             <Text style={[styles.historyName, isDark && styles.darkText]}>{displayName}</Text>
             <Text style={styles.historyPhone}>{displayPhone}</Text>
             {cleanNote ? (
-              <Text style={styles.historyNotes} numberOfLines={2}>{cleanNote}</Text>
+              <Text style={[styles.historyNotes, { color: isDark ? '#94A3B8' : '#334155' }]} numberOfLines={4}>
+                {cleanNote}
+              </Text>
             ) : null}
             {item.audio_recording && (
               <TouchableOpacity 
