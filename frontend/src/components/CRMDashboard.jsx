@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, TrendingUp, DollarSign, Activity, UserMinus, UserCheck, PhoneCall, Clock } from 'lucide-react';
+import { Users, TrendingUp, DollarSign, Activity, UserMinus, UserCheck, PhoneCall, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from 'recharts';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
@@ -24,29 +24,53 @@ const CRMDashboard = ({ onStatClick, onBdeClick }) => {
     });
     const [followups, setFollowups] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [followupsLoading, setFollowupsLoading] = useState(false);
+    const [followupsPage, setFollowupsPage] = useState(1);
+    const [totalFollowupsPages, setTotalFollowupsPages] = useState(1);
+    const [totalFollowupsCount, setTotalFollowupsCount] = useState(0);
+
+    const fetchStats = async () => {
+        setLoading(true);
+        try {
+            let statsUrl = '/crm/dashboard-stats/';
+            if (isAdmin && sectionFilter) {
+                statsUrl += `?sales_section=${sectionFilter}`;
+            }
+            const res = await api.get(statsUrl);
+            setStats(res.data);
+        } catch (error) {
+            console.error("Failed to fetch dashboard stats", error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const fetchFollowups = async (page) => {
+        setFollowupsLoading(true);
+        try {
+            const res = await api.get(`/crm/tasks/?status=PENDING&page=${page}`);
+            setFollowups(res.data.results || res.data);
+            if (res.data.count !== undefined) {
+                setTotalFollowupsCount(res.data.count);
+                setTotalFollowupsPages(Math.ceil(res.data.count / 20));
+            } else {
+                setTotalFollowupsCount(res.data.length || 0);
+                setTotalFollowupsPages(1);
+            }
+        } catch (error) {
+            console.error("Failed to fetch dashboard tasks", error);
+        } finally {
+            setFollowupsLoading(false);
+        }
+    };
 
     useEffect(() => {
-        const fetchStats = async () => {
-            setLoading(true);
-            try {
-                let statsUrl = '/crm/dashboard-stats/';
-                if (isAdmin && sectionFilter) {
-                    statsUrl += `?sales_section=${sectionFilter}`;
-                }
-                const [statsRes, tasksRes] = await Promise.all([
-                    api.get(statsUrl),
-                    api.get('/crm/tasks/?status=PENDING')
-                ]);
-                setStats(statsRes.data);
-                setFollowups(tasksRes.data.results || tasksRes.data);
-            } catch (error) {
-                console.error("Failed to fetch dashboard data", error);
-            } finally {
-                setLoading(false);
-            }
-        };
         fetchStats();
     }, [sectionFilter, isAdmin]);
+
+    useEffect(() => {
+        fetchFollowups(followupsPage);
+    }, [followupsPage]);
 
     if (loading && !stats.total_leads) {
         return (
@@ -270,40 +294,71 @@ const CRMDashboard = ({ onStatClick, onBdeClick }) => {
                     <Clock className="text-rose-500" size={18} />
                     My Upcoming Follow-ups
                 </h3>
-                {followups && followups.length > 0 ? (
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
-                            <thead>
-                                <tr>
-                                    <th className="border-b border-slate-200 py-2 text-xs font-bold text-slate-500 uppercase">Title</th>
-                                    <th className="border-b border-slate-200 py-2 text-xs font-bold text-slate-500 uppercase">Due Date</th>
-                                    <th className="border-b border-slate-200 py-2 text-xs font-bold text-slate-500 uppercase">Notes</th>
-                                    <th className="border-b border-slate-200 py-2 text-xs font-bold text-slate-500 uppercase text-right">Action</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {followups.map(task => (
-                                    <tr key={task.id} className="hover:bg-slate-50 transition-colors">
-                                        <td className="border-b border-slate-100 py-3 text-sm font-semibold text-slate-800">{task.title}</td>
-                                        <td className="border-b border-slate-100 py-3 text-xs text-slate-600">
-                                            {new Date(task.due_date).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
-                                        </td>
-                                        <td className="border-b border-slate-100 py-3 text-xs text-slate-500 truncate max-w-[200px]">{task.notes}</td>
-                                        <td className="border-b border-slate-100 py-3 text-right">
-                                            {task.student && (
-                                                <button 
-                                                    onClick={() => onStatClick('single', task.student, 'Lead Details')}
-                                                    className="text-[10px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded transition-colors"
-                                                >
-                                                    View Lead
-                                                </button>
-                                            )}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                {followupsLoading ? (
+                    <div className="py-8 flex justify-center items-center">
+                        <div className="w-6 h-6 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
                     </div>
+                ) : followups && followups.length > 0 ? (
+                    <>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse">
+                                <thead>
+                                    <tr>
+                                        <th className="border-b border-slate-200 py-2 text-xs font-bold text-slate-500 uppercase">Title</th>
+                                        <th className="border-b border-slate-200 py-2 text-xs font-bold text-slate-500 uppercase">Due Date</th>
+                                        <th className="border-b border-slate-200 py-2 text-xs font-bold text-slate-500 uppercase">Notes</th>
+                                        <th className="border-b border-slate-200 py-2 text-xs font-bold text-slate-500 uppercase text-right">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {followups.map(task => (
+                                        <tr key={task.id} className="hover:bg-slate-50 transition-colors">
+                                            <td className="border-b border-slate-100 py-3 text-sm font-semibold text-slate-800">{task.title}</td>
+                                            <td className="border-b border-slate-100 py-3 text-xs text-slate-600">
+                                                {new Date(task.due_date).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                                            </td>
+                                            <td className="border-b border-slate-100 py-3 text-xs text-slate-500 truncate max-w-[200px]">{task.notes}</td>
+                                            <td className="border-b border-slate-100 py-3 text-right">
+                                                {task.student && (
+                                                    <button 
+                                                        onClick={() => onStatClick('single', task.student, 'Lead Details')}
+                                                        className="text-[10px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded transition-colors"
+                                                    >
+                                                        View Lead
+                                                    </button>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        {/* Pagination Controls */}
+                        {totalFollowupsPages > 1 && (
+                            <div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-100">
+                                <span className="text-xs font-semibold text-slate-500">
+                                    Showing page <strong className="text-slate-800">{followupsPage}</strong> of <strong className="text-slate-800">{totalFollowupsPages}</strong> ({totalFollowupsCount} total follow-ups)
+                                </span>
+                                <div className="flex items-center gap-1.5">
+                                    <button
+                                        disabled={followupsPage === 1}
+                                        onClick={() => setFollowupsPage(prev => Math.max(prev - 1, 1))}
+                                        className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 disabled:opacity-40 disabled:hover:bg-transparent transition-all"
+                                    >
+                                        <ChevronLeft size={16} />
+                                    </button>
+                                    <button
+                                        disabled={followupsPage === totalFollowupsPages}
+                                        onClick={() => setFollowupsPage(prev => Math.min(prev + 1, totalFollowupsPages))}
+                                        className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 disabled:opacity-40 disabled:hover:bg-transparent transition-all"
+                                    >
+                                        <ChevronRight size={16} />
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </>
                 ) : (
                     <div className="p-4 bg-slate-50 rounded-xl text-center text-slate-500 text-sm italic">
                         No pending follow-ups scheduled!
