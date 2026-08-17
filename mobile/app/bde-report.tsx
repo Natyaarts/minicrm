@@ -342,6 +342,15 @@ export default function BDEReportScreen() {
             </View>
          </View>
 
+         {report.timeline.some((item: any) => item.type === 'CALL' && !item.audio_url) && (
+            <View style={styles.warningAlertBox}>
+               <FontAwesome5 name="exclamation-circle" size={14} color="#EF4444" style={{marginRight: 8}} />
+               <Text style={styles.warningAlertText}>
+                 Warning: Some logged calls are missing call recordings. Audio uploads are mandatory.
+               </Text>
+            </View>
+         )}
+
          <Text style={[styles.sectionTitle, {color: isDark ? '#9CA3AF' : '#4B5563'}]}>MASTER ACTIVITY TIMELINE</Text>
          <View style={[styles.timelineContainer, isDark && styles.darkCard]}>
             {getSortedTimeline().map((item: any, idx: number) => (
@@ -374,6 +383,12 @@ export default function BDEReportScreen() {
                            <FontAwesome5 name={playingAudio === item.id ? 'stop-circle' : 'play-circle'} size={24} color="#3B82F6" />
                            <Text style={styles.audioText}>{playingAudio === item.id ? 'Playing...' : 'Play Call Recording'}</Text>
                         </TouchableOpacity>
+                     )}
+                     {item.type === 'CALL' && !item.audio_url && (
+                        <View style={styles.missingRecordingBanner}>
+                           <FontAwesome5 name="exclamation-triangle" size={13} color="#EF4444" style={{marginRight: 6}} />
+                           <Text style={styles.missingRecordingText}>No Recording Uploaded (Mandatory)</Text>
+                        </View>
                      )}
                   </View>
                </View>
@@ -645,5 +660,37 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     textAlign: 'center',
     padding: 20,
+  },
+  warningAlertBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FCA5A5',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 12,
+    marginBottom: 16,
+  },
+  warningAlertText: {
+    color: '#991B1B',
+    fontSize: 12,
+    fontWeight: '700',
+    flex: 1,
+  },
+  missingRecordingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF2F2',
+    padding: 8,
+    borderRadius: 8,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+  },
+  missingRecordingText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#991B1B',
   }
 });
