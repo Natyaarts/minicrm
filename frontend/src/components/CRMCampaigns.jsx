@@ -100,7 +100,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
         setCampaignReportLoading(true);
         setSelectedReportCampaign(campaignId);
         try {
-            const response = await api.get(`/api/campaigns/${campaignId}/report/`);
+            const response = await api.get(`crm/campaigns/${campaignId}/report/`);
             setCampaignReportData(response.data);
         } catch (error) {
             console.error("Error fetching campaign report:", error);
