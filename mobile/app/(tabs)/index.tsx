@@ -701,8 +701,8 @@ const welcomeName = user ? `${user.first_name || user.username}` : 'Member';
                   My Upcoming Follow-ups
                 </Text>
               </View>
-              <TouchableOpacity onPress={() => router.push('/(tabs)/two' as any)}>
-                <Text style={{ color: '#F59E0B', fontSize: 11, fontWeight: '800' }}>ALL LEADS &gt;</Text>
+              <TouchableOpacity onPress={() => router.push('/all-tasks' as any)}>
+                <Text style={{ color: '#F59E0B', fontSize: 11, fontWeight: '800' }}>VIEW ALL &gt;</Text>
               </TouchableOpacity>
             </View>
              {tasks.length > 0 ? tasks.map(task => (
