@@ -10,6 +10,7 @@ import { FontAwesome5 } from '@expo/vector-icons';
 import { clockIn, clockOut, getAttendanceStatus } from '../../src/api/attendance';
 import client from '../../src/api/client';
 import Colors from '@/constants/Colors';
+import { syncMissingRecordings } from '../../src/utils/SyncManager';
 
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useCallback } from 'react';
@@ -47,6 +48,7 @@ export default function AttendanceScreen() {
       fetchStatus();
       fetchStats();
       requestLocationPermission();
+      syncMissingRecordings();
     }, [])
   );
 
