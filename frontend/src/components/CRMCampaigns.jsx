@@ -91,6 +91,25 @@ const CRMCampaigns = ({ onLeadClick }) => {
     const [assignSalesUserId, setAssignSalesUserId] = useState('');
     const [isAssigning, setIsAssigning] = useState(false);
 
+    // Campaign Report States
+    const [selectedReportCampaign, setSelectedReportCampaign] = useState(null);
+    const [campaignReportData, setCampaignReportData] = useState(null);
+    const [campaignReportLoading, setCampaignReportLoading] = useState(false);
+
+    const fetchCampaignReport = async (campaignId) => {
+        setCampaignReportLoading(true);
+        setSelectedReportCampaign(campaignId);
+        try {
+            const response = await api.get(`/api/campaigns/${campaignId}/report/`);
+            setCampaignReportData(response.data);
+        } catch (error) {
+            console.error("Error fetching campaign report:", error);
+            alert("Could not fetch campaign report. Please try again.");
+        } finally {
+            setCampaignReportLoading(false);
+        }
+    };
+
     // Google Sheets integration state
     const [googleSheets, setGoogleSheets] = useState([]);
     const [isLoadingSheets, setIsLoadingSheets] = useState(false);
@@ -830,9 +849,16 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                                 });
                                                 setIsCreateModalOpen(true);
                                             }}
-                                            className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors border border-slate-100 hover:border-indigo-100 shadow-2xs"
+                                            className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors border border-slate-100 hover:border-indigo-100 shadow-2xs mr-1.5"
                                         >
                                             <Edit2 className="w-4 h-4" />
+                                        </button>
+                                        <button 
+                                            onClick={() => fetchCampaignReport(campaign.id)}
+                                            className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors border border-slate-100 hover:border-indigo-100 shadow-2xs"
+                                            title="View Report"
+                                        >
+                                            <BarChart className="w-4 h-4" />
                                         </button>
                                     </div>
                                 </div>
@@ -2150,6 +2176,122 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                 </button>
                             </div>
                         </form>
+                    </motion.div>
+                </div>
+            )}
+
+            {/* Campaign Report Modal */}
+            {selectedReportCampaign && (
+                <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                    <motion.div 
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="bg-white rounded-3xl shadow-xl w-full max-w-lg overflow-hidden border border-slate-100"
+                    >
+                        <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
+                            <div>
+                                <h3 className="font-bold text-slate-900 text-lg flex items-center gap-2">
+                                    <BarChart className="w-5 h-5 text-indigo-600" />
+                                    Campaign Report
+                                </h3>
+                                <p className="text-xs text-slate-500 mt-0.5 font-medium">{campaignReportData?.campaign_name || 'Loading details...'}</p>
+                            </div>
+                            <button onClick={() => { setSelectedReportCampaign(null); setCampaignReportData(null); }} className="text-slate-400 hover:text-red-500 transition-colors bg-slate-50 hover:bg-red-50 p-1.5 rounded-xl border border-slate-100">
+                                <X size={20} />
+                            </button>
+                        </div>
+                        
+                        {campaignReportLoading ? (
+                            <div className="p-12 text-center text-slate-500 font-semibold flex flex-col items-center justify-center gap-2">
+                                <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                                Loading campaign stats...
+                            </div>
+                        ) : campaignReportData ? (
+                            <div className="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
+                                {/* Total Metrics Grid */}
+                                <div className="grid grid-cols-3 gap-3">
+                                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 text-center">
+                                        <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block mb-1">Total Leads</span>
+                                        <span className="text-2xl font-black text-slate-800">{campaignReportData.total_leads}</span>
+                                    </div>
+                                    <div className="bg-emerald-50/50 p-4 rounded-2xl border border-emerald-100/50 text-center">
+                                        <span className="text-[10px] uppercase font-bold tracking-wider text-emerald-600 block mb-1">Converted</span>
+                                        <span className="text-2xl font-black text-emerald-700">{campaignReportData.converted_leads}</span>
+                                        <span className="text-[9px] block text-emerald-600 font-bold mt-0.5">
+                                            {campaignReportData.total_leads > 0 
+                                                ? `${Math.round((campaignReportData.converted_leads / campaignReportData.total_leads) * 100)}% Rate`
+                                                : '0% Rate'}
+                                        </span>
+                                    </div>
+                                    <div className="bg-rose-50/50 p-4 rounded-2xl border border-rose-100/50 text-center">
+                                        <span className="text-[10px] uppercase font-bold tracking-wider text-rose-600 block mb-1">Lost / Junk</span>
+                                        <span className="text-2xl font-black text-rose-700">{campaignReportData.lost_leads}</span>
+                                        <span className="text-[9px] block text-rose-600 font-bold mt-0.5">
+                                            {campaignReportData.total_leads > 0 
+                                                ? `${Math.round((campaignReportData.lost_leads / campaignReportData.total_leads) * 100)}% Rate`
+                                                : '0% Rate'}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {/* Active vs Revenue info */}
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="bg-indigo-50/30 p-4 rounded-2xl border border-indigo-100/50">
+                                        <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Revenue Generated</h4>
+                                        <p className="text-2xl font-extrabold text-indigo-700">₹{campaignReportData.revenue.toLocaleString('en-IN')}</p>
+                                        <p className="text-[10px] text-indigo-600 font-semibold mt-1">Based on student receipts</p>
+                                    </div>
+                                    <div className="bg-amber-50/30 p-4 rounded-2xl border border-amber-100/50">
+                                        <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Active Pipeline leads</h4>
+                                        <p className="text-2xl font-extrabold text-amber-700">{campaignReportData.active_leads}</p>
+                                        <p className="text-[10px] text-amber-600 font-semibold mt-1">Leads currently in follow-ups</p>
+                                    </div>
+                                </div>
+
+                                {/* Stage breakdown chart/bars */}
+                                <div className="space-y-3 pt-3 border-t border-slate-100">
+                                    <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">Pipeline Stages Distribution</h4>
+                                    {campaignReportData.stages_breakdown?.length > 0 ? (
+                                        <div className="space-y-2.5">
+                                            {campaignReportData.stages_breakdown.map((stage, idx) => {
+                                                const pct = campaignReportData.total_leads > 0 
+                                                    ? Math.round((stage.count / campaignReportData.total_leads) * 100)
+                                                    : 0;
+                                                return (
+                                                    <div key={idx} className="space-y-1">
+                                                        <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
+                                                            <span className="flex items-center gap-1.5">
+                                                                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                                                                {stage.name}
+                                                            </span>
+                                                            <span>{stage.count} leads ({pct})</span>
+                                                        </div>
+                                                        <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                                                            <div 
+                                                                className="h-full bg-indigo-500 rounded-full transition-all duration-500"
+                                                                style={{ width: `${pct}%` }}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    ) : (
+                                        <p className="text-xs text-slate-400 italic">No stage mapping records found.</p>
+                                    )}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="p-8 text-center text-slate-400">No report data returned.</div>
+                        )}
+                        <div className="p-5 border-t border-slate-100 bg-slate-50/50 flex justify-end">
+                            <button 
+                                onClick={() => { setSelectedReportCampaign(null); setCampaignReportData(null); }}
+                                className="px-5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-2xl text-xs transition-colors shadow-sm"
+                            >
+                                Close Report
+                            </button>
+                        </div>
                     </motion.div>
                 </div>
             )}

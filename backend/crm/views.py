@@ -703,6 +703,68 @@ class CampaignViewSet(viewsets.ModelViewSet):
 
         return Response({'results': results})
 
+    @action(detail=True, methods=['get'])
+    def report(self, request, pk=None):
+        campaign = self.get_object()
+        from .models import Student
+        students = Student.objects.filter(campaign=campaign, is_active=True)
+        
+        total_leads = students.count()
+        
+        converted_stages = ['ENROLLED', 'CONVERTED', '4', 'enrolled', 'converted', 'Enrolled', 'Converted']
+        try:
+            from .models import PipelineStage
+            for stage in PipelineStage.objects.filter(name__icontains='convert') | PipelineStage.objects.filter(name__icontains='enroll'):
+                converted_stages.append(str(stage.id))
+                if stage.name:
+                    converted_stages.append(stage.name)
+        except Exception:
+            pass
+            
+        lost_stages = ['DROPPED', 'dropped', 'Dropped', 'BUSY', 'busy', 'Busy', 'NOT_ANSWERING', 'not_answering', 'Not Answering', 'NOT ANSWERING', 'Not Answered', 'DUPLICATE', 'duplicate']
+        try:
+            from .models import PipelineStage
+            for stage in PipelineStage.objects.filter(name__icontains='drop') | PipelineStage.objects.filter(name__icontains='busy') | PipelineStage.objects.filter(name__icontains='not answer') | PipelineStage.objects.filter(name__icontains='lost'):
+                lost_stages.append(str(stage.id))
+                if stage.name:
+                    lost_stages.append(stage.name)
+        except Exception:
+            pass
+            
+        converted_leads = students.filter(lead_status__in=converted_stages).count()
+        lost_leads = students.filter(lead_status__in=lost_stages).count()
+        active_leads = max(0, total_leads - converted_leads - lost_leads)
+        
+        stages_data = []
+        try:
+            from django.db.models import Count
+            status_counts = students.values('lead_status').annotate(count=Count('id'))
+            stages_map = {str(stage.id): stage.name for stage in PipelineStage.objects.all()}
+            for item in status_counts:
+                status_id = str(item['lead_status'])
+                name = stages_map.get(status_id, status_id)
+                stages_data.append({
+                    'status': status_id,
+                    'name': name,
+                    'count': item['count']
+                })
+        except Exception:
+            pass
+            
+        from django.db.models import Sum
+        revenue = students.aggregate(total_rev=Sum('total_paid'))['total_rev'] or 0
+        
+        return Response({
+            'campaign_name': campaign.name,
+            'total_leads': total_leads,
+            'converted_leads': converted_leads,
+            'lost_leads': lost_leads,
+            'active_leads': active_leads,
+            'revenue': float(revenue),
+            'stages_breakdown': stages_data
+        })
+
+
 import re
 
 def parse_duration_sec(call_duration, notes):
