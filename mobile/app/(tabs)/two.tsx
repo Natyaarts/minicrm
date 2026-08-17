@@ -8,6 +8,7 @@ import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { getStudents } from '../../src/api/sales';
+import { Audio } from 'expo-av';
 import client from '../../src/api/client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -57,6 +58,8 @@ export default function SalesScreen() {
   const [loadingMoreCalls, setLoadingMoreCalls] = useState(false);
   const [hasMoreCalls, setHasMoreCalls] = useState(false);
   const [callsPage, setCallsPage] = useState(1);
+  const [playingAudio, setPlayingAudio] = useState<string | null>(null);
+  const [sound, setSound] = useState<Audio.Sound | null>(null);
 
   // ── Init ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -199,6 +202,42 @@ export default function SalesScreen() {
       setLoadingMoreCalls(false);
     }
   };
+  const playAudio = async (url: string, id: string) => {
+    if (playingAudio === id) {
+       if (sound) {
+          await sound.stopAsync();
+          setPlayingAudio(null);
+       }
+       return;
+    }
+    
+    try {
+      if (sound) {
+         await sound.unloadAsync();
+      }
+      const { sound: newSound } = await Audio.Sound.createAsync({ uri: url });
+      setSound(newSound);
+      setPlayingAudio(id);
+      
+      newSound.setOnPlaybackStatusUpdate((status) => {
+         if (status.isLoaded && status.didJustFinish) {
+            setPlayingAudio(null);
+         }
+      });
+      
+      await newSound.playAsync();
+    } catch (e) {
+      console.log('Audio playback error', e);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (sound) {
+        sound.unloadAsync();
+      }
+    };
+  }, [sound]);
 
   const renderRecentCall = ({ item }: { item: any }) => {
     const notesStr = item.notes || '';
@@ -240,6 +279,15 @@ export default function SalesScreen() {
             {cleanNote ? (
               <Text style={styles.historyNotes} numberOfLines={2}>{cleanNote}</Text>
             ) : null}
+            {item.audio_recording && (
+              <TouchableOpacity 
+                style={styles.audioPlayerMini} 
+                onPress={() => playAudio(item.audio_recording, item.id.toString())}
+              >
+                <FontAwesome5 name={playingAudio === item.id.toString() ? 'stop-circle' : 'play-circle'} size={14} color="#3B82F6" />
+                <Text style={styles.audioTextMini}>{playingAudio === item.id.toString() ? 'Playing...' : 'Play Recording'}</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
         <View style={{ alignItems: 'flex-end', justifyContent: 'space-between', minHeight: 40 }}>
@@ -821,5 +869,23 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '600',
     color: '#4B5563',
+  },
+  audioPlayerMini: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 6,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    alignSelf: 'flex-start',
+  },
+  audioTextMini: {
+    marginLeft: 6,
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#1E40AF',
   },
 });
