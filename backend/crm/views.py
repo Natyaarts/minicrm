@@ -121,21 +121,18 @@ class DashboardStatsView(APIView):
             except Exception:
                 pass
 
+            # Total leads matching filters (inclusive of all statuses)
+            total_leads = students.count()
+
             # Converted Leads count
             converted_leads = students.filter(lead_status__in=converted_stages).count()
 
-            # Exclude converted leads from active pool so Total Leads excludes Converted Leads
-            active_students = students.exclude(lead_status__in=converted_stages)
-
-            # Active lead totals matching filters (excluding converted)
-            total_leads = active_students.count()
+            # Assignment metrics
+            unassigned_leads = students.filter(assigned_to__isnull=True).count()
+            assigned_leads = students.filter(assigned_to__isnull=False).count()
             
-            # Assignment metrics (excluding converted)
-            unassigned_leads = active_students.filter(assigned_to__isnull=True).count()
-            assigned_leads = active_students.filter(assigned_to__isnull=False).count()
-            
-            # Contacted vs Pending (excluding converted)
-            contacted_leads = active_students.filter(crm_interactions__isnull=False).distinct().count()
+            # Contacted vs Pending
+            contacted_leads = students.filter(crm_interactions__isnull=False).distinct().count()
             pending_leads = max(0, total_leads - contacted_leads)
             
             # Leaderboard & Call Duration per Sales Rep

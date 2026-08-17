@@ -979,40 +979,43 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                         </button>
                                     )}
                                 </div>
-
+                                
                                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-3">
-                                    {assignedStats.pipeline_stages.map((stage) => {
-                                        const isSelected = selectedStageFilter === stage.id;
-                                        return (
-                                            <div 
-                                                key={stage.id}
-                                                onClick={() => {
-                                                    if (isSelected) setSelectedStageFilter('');
-                                                    else setSelectedStageFilter(stage.id);
-                                                    setCurrentPage(1);
-                                                }}
-                                                className={`p-3.5 rounded-xl border text-center transition-all cursor-pointer ${
-                                                    isSelected 
-                                                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-md ring-2 ring-indigo-300' 
-                                                        : 'bg-slate-50/80 text-slate-800 border-slate-200 hover:bg-white hover:border-indigo-300 hover:shadow-sm'
-                                                }`}
-                                            >
-                                                <p className={`text-[11px] font-semibold truncate ${isSelected ? 'text-indigo-100' : 'text-slate-500'}`}>
-                                                    {stage.name}
-                                                </p>
-                                                <h4 className={`text-xl font-bold mt-0.5 ${isSelected ? 'text-white' : 'text-slate-900'}`}>
-                                                    {stage.count}
-                                                </h4>
-                                                <span className={`text-[9px] font-bold inline-block mt-1 px-2 py-0.5 rounded-full ${
-                                                    isSelected ? 'bg-white/20 text-white' : 'bg-indigo-100 text-indigo-700'
-                                                }`}>
-                                                    {assignedStats.total_leads > 0 
-                                                        ? `${Math.round((stage.count / assignedStats.total_leads) * 100)}%` 
-                                                        : '0%'}
-                                                </span>
-                                            </div>
-                                        );
-                                    })}
+                                    {(() => {
+                                        const totalStageLeads = assignedStats.pipeline_stages.reduce((sum, s) => sum + (s.count || 0), 0) || 0;
+                                        return assignedStats.pipeline_stages.map((stage) => {
+                                            const isSelected = selectedStageFilter === stage.id;
+                                            return (
+                                                <div 
+                                                    key={stage.id}
+                                                    onClick={() => {
+                                                        if (isSelected) setSelectedStageFilter('');
+                                                        else setSelectedStageFilter(stage.id);
+                                                        setCurrentPage(1);
+                                                    }}
+                                                    className={`p-3.5 rounded-xl border text-center transition-all cursor-pointer ${
+                                                        isSelected 
+                                                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-md ring-2 ring-indigo-300' 
+                                                            : 'bg-slate-50/80 text-slate-800 border-slate-200 hover:bg-white hover:border-indigo-300 hover:shadow-sm'
+                                                    }`}
+                                                >
+                                                    <p className={`text-[11px] font-semibold truncate ${isSelected ? 'text-indigo-100' : 'text-slate-500'}`}>
+                                                        {stage.name}
+                                                    </p>
+                                                    <h4 className={`text-xl font-bold mt-0.5 ${isSelected ? 'text-white' : 'text-slate-900'}`}>
+                                                        {stage.count}
+                                                    </h4>
+                                                    <span className={`text-[9px] font-bold inline-block mt-1 px-2 py-0.5 rounded-full ${
+                                                        isSelected ? 'bg-white/20 text-white' : 'bg-indigo-100 text-indigo-700'
+                                                    }`}>
+                                                        {totalStageLeads > 0 
+                                                            ? `${Math.round((stage.count / totalStageLeads) * 100)}%` 
+                                                            : '0%'}
+                                                    </span>
+                                                </div>
+                                            );
+                                        });
+                                    })()}
                                 </div>
                             </div>
                         )}
