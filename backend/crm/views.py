@@ -789,7 +789,10 @@ class BDEReportView(APIView):
         from datetime import timedelta
         from django.utils import timezone
         
-        bde = get_object_or_404(User, id=user_id)
+        if user_id == 'me' or user_id == 'undefined' or not str(user_id).isdigit():
+            bde = request.user
+        else:
+            bde = get_object_or_404(User, id=int(user_id))
         date_preset = request.query_params.get('date_preset')
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')

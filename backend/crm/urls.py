@@ -19,7 +19,7 @@ urlpatterns = [
     path('webhooks/<uuid:secret_token>/lead/', WebhookReceiveView.as_view(), name='webhook_lead'),
     path('webhooks/campaign/<uuid:secret_token>/lead/', CampaignWebhookReceiveView.as_view(), name='campaign_webhook_lead'),
     path('sales-users/', SalesUserListView.as_view(), name='sales_users'),
-    path('bde-report/<int:user_id>/', BDEReportView.as_view(), name='bde_report'),
+    path('bde-report/<str:user_id>/', BDEReportView.as_view(), name='bde_report'),
     path('call-analytics/', CallAnalyticsView.as_view(), name='call_analytics'),
     # Meta Facebook Lead Ads Integration
     path('meta/webhook/', MetaLeadWebhookView.as_view(), name='meta_lead_webhook'),
