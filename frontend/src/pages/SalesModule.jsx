@@ -1430,6 +1430,7 @@ const SalesModule = () => {
                                                                     )}
                                                                 </>
                                                             )}
+                                                        </div>
                                                     </td>
                                                 </tr>
                                             );
