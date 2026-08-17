@@ -229,6 +229,18 @@ class DashboardStatsView(APIView):
             leaderboard.sort(key=lambda x: x['total_call_duration'], reverse=True)
             
             revenue_qs = Transaction.objects.all()
+            if request.user.role in ['SALES', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD']:
+                user_section = getattr(request.user, 'sales_section', 'BOTH')
+                if user_section and user_section != 'BOTH':
+                    revenue_qs = revenue_qs.filter(
+                        Q(student__assigned_to__sales_section=user_section) |
+                        Q(student__sales_section=user_section)
+                    )
+                if not is_sales_manager:
+                    revenue_qs = revenue_qs.filter(student__assigned_to=request.user)
+            elif section_filter and request.user.role in ['SUPER_ADMIN', 'ADMIN']:
+                revenue_qs = revenue_qs.filter(Q(student__sales_section=section_filter) | Q(student__assigned_to__sales_section=section_filter))
+
             if start_date:
                 parsed_start = parse_date(start_date)
                 if parsed_start:
