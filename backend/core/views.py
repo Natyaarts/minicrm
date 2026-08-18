@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from django.db.models import Q, Sum, Count, F
 from django.http import HttpResponse
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from decimal import Decimal, InvalidOperation
 import pandas as pd
 
@@ -732,6 +733,65 @@ class StudentViewSet(viewsets.ModelViewSet):
         response['Content-Disposition'] = 'attachment; filename="students.csv"'
         df.to_csv(path_or_buf=response, index=False)
         return response
+
+    @action(detail=False, methods=['get'])
+    def export_leads_csv(self, request):
+        """Export ALL filtered leads (no pagination) with required CRM columns + latest note."""
+        from crm.models import PipelineStage, LeadInteraction
+        import csv
+
+        # Reuse the same queryset filtering logic (get_queryset handles filters via query_params)
+        qs = self.filter_queryset(self.get_queryset())
+
+        # Build a dynamic stage name map
+        stage_map = {str(s.id): s.name for s in PipelineStage.objects.all()}
+        standard_map = {
+            'NEW': 'New Lead',
+            'FOLLOW_UP': 'Follow-up',
+            'PAYMENT_PENDING': 'Payment Pending',
+            'ENROLLED': 'Enrolled',
+            'DROPPED': 'Dropped',
+            'CONVERTED': 'Converted',
+            'DUPLICATE': 'Duplicate',
+        }
+
+        response = HttpResponse(content_type='text/csv; charset=utf-8')
+        response['Content-Disposition'] = f'attachment; filename="Leads_Export_{timezone.now().strftime("%Y-%m-%d")}.csv"'
+        # Write UTF-8 BOM so Excel opens it correctly
+        response.write('\ufeff')
+
+        writer = csv.writer(response)
+        writer.writerow(['Lead ID', 'Lead Name', 'Mobile', 'Email', 'Assigned To', 'Status', 'Date Created', 'Campaign', 'Note'])
+
+        for s in qs.select_related('assigned_to', 'campaign').prefetch_related('crm_interactions'):
+            # Resolve status name
+            status_raw = str(s.lead_status or '')
+            status_name = standard_map.get(status_raw) or stage_map.get(status_raw) or status_raw or 'New Lead'
+
+            assigned_name = ''
+            if s.assigned_to:
+                assigned_name = f"{s.assigned_to.first_name} {s.assigned_to.last_name}".strip() or s.assigned_to.username
+
+            campaign_name = s.campaign.name if s.campaign else ''
+
+            # Latest note from crm_interactions
+            latest_interaction = s.crm_interactions.order_by('-date').first()
+            note_text = latest_interaction.notes if latest_interaction and latest_interaction.notes else ''
+
+            writer.writerow([
+                s.crm_student_id or s.id,
+                f"{s.first_name or ''} {s.last_name or ''}".strip(),
+                s.mobile or '',
+                s.email or '',
+                assigned_name,
+                status_name,
+                s.created_at.strftime('%d/%m/%Y') if s.created_at else '',
+                campaign_name,
+                note_text,
+            ])
+
+        return response
+
 
     @action(detail=False, methods=['get'])
     def due_students(self, request):

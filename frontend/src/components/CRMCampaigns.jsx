@@ -547,30 +547,39 @@ const CRMCampaigns = ({ onLeadClick }) => {
         return acc;
     }, {});
 
-    const handleExportCSV = () => {
-        const headers = ["Lead ID", "First Name", "Last Name", "Email", "Mobile", "Status", "Date Created", "Assigned To"];
-        const csvContent = [
-            headers.join(","),
-            ...sortedLeads.map(lead => [
-                lead.crm_student_id,
-                lead.first_name,
-                lead.last_name,
-                lead.email,
-                lead.mobile,
-                pipelineStages[lead.lead_status] || lead.lead_status || 'Pending',
-                lead.created_at ? new Date(lead.created_at).toLocaleDateString() : '',
-                lead.assigned_to_name || 'Unassigned'
-            ].map(val => `"${(val || '').toString().replace(/"/g, '""')}"`).join(","))
-        ].join("\n");
+    const handleExportCSV = async () => {
+        try {
+            const params = new URLSearchParams();
+            if (activeTab === 'leads') params.append('campaign_only', 'true');
+            if (activeTab === 'assigned' && !selectedAssigneeFilter) params.append('assigned_to', 'assigned');
+            if (selectedAssigneeFilter) params.append('assigned_to', selectedAssigneeFilter);
+            if (leadsStartDate) params.append('start_date', leadsStartDate);
+            if (leadsEndDate) params.append('end_date', leadsEndDate);
+            if (selectedStageFilter) params.append('lead_status', selectedStageFilter);
+            else params.append('hide_converted', 'true');
+            if (selectedSectionFilter) params.append('sales_section', selectedSectionFilter);
+            if (selectedCampaignFilter) params.append('campaign_id', selectedCampaignFilter);
+            if (searchTerm) params.append('search', searchTerm);
 
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.setAttribute("href", url);
-        link.setAttribute("download", `Leads_Export_${new Date().toLocaleDateString().replace(/\//g, '-')}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+            const res = await api.get(`students/export_leads_csv/?${params.toString()}`, {
+                responseType: 'blob',
+            });
+
+            const url = URL.createObjectURL(new Blob([res.data], { type: 'text/csv;charset=utf-8;' }));
+            const link = document.createElement('a');
+            link.setAttribute('href', url);
+            const campaignLabel = selectedCampaignFilter
+                ? (campaigns.find(c => c.id.toString() === selectedCampaignFilter.toString())?.name || 'Campaign')
+                : 'All';
+            const today = new Date().toLocaleDateString('en-GB').replace(/\//g, '-');
+            link.setAttribute('download', `Leads_${campaignLabel}_${today}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } catch (error) {
+            console.error('Export failed:', error);
+            alert('Export failed. Please try again.');
+        }
     };
 
     const handleEditLeadClick = (lead) => {
