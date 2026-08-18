@@ -111,7 +111,7 @@ class DashboardStatsView(APIView):
                     students = students.filter(Q(created_at__date__lte=parsed_end) | Q(user__date_joined__date__lte=parsed_end))
             
             # Identify converted/enrolled leads to exclude them from active totals
-            converted_stages = ['ENROLLED', 'CONVERTED', '4', 'enrolled', 'converted', 'Enrolled', 'Converted']
+            converted_stages = ['ENROLLED', 'CONVERTED', 'enrolled', 'converted', 'Enrolled', 'Converted']
             try:
                 from .models import PipelineStage
                 for stage in PipelineStage.objects.filter(name__icontains='convert') | PipelineStage.objects.filter(name__icontains='enroll'):
@@ -723,7 +723,7 @@ class CampaignViewSet(viewsets.ModelViewSet):
         
         total_leads = students.count()
         
-        converted_stages = ['ENROLLED', 'CONVERTED', '4', 'enrolled', 'converted', 'Enrolled', 'Converted']
+        converted_stages = ['ENROLLED', 'CONVERTED', 'enrolled', 'converted', 'Enrolled', 'Converted']
         try:
             from .models import PipelineStage
             for stage in PipelineStage.objects.filter(name__icontains='convert') | PipelineStage.objects.filter(name__icontains='enroll'):
@@ -1520,7 +1520,7 @@ class MarketingDashboardView(APIView):
                 pass
 
         # Dynamically determine all converted/enrolled pipeline stage values
-        converted_stage_values = set(['ENROLLED', 'CONVERTED', '4', 'converted', 'enrolled', 'Converted', 'Enrolled', 'POSITIVE', 'positive'])
+        converted_stage_values = set(['ENROLLED', 'CONVERTED', 'converted', 'enrolled', 'Converted', 'Enrolled', 'POSITIVE', 'positive'])
         try:
             from .models import PipelineStage
             for stage in PipelineStage.objects.all():
