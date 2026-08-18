@@ -61,13 +61,13 @@ const EmployeeLifecycleModule = () => {
                 // For regular employees, set themselves as the only employee in the list
                 setEmployees([{
                     id: authUser?.hrms_profile_id || authUser?.id,
-                    user_name: authUser?.username || authUser?.first_name,
+                    full_name: authUser?.full_name || authUser?.first_name || authUser?.username,
                     designation_name: authUser?.role
                 }]);
                 // Auto-select themselves
                 setSelectedEmployee({
                     id: authUser?.hrms_profile_id || authUser?.id,
-                    user_name: authUser?.username || authUser?.first_name
+                    full_name: authUser?.full_name || authUser?.first_name || authUser?.username
                 });
             }
         } catch (error) {
@@ -159,10 +159,10 @@ const EmployeeLifecycleModule = () => {
                             className={`w-full text-left p-3 rounded-lg flex items-center gap-3 transition-colors ${selectedEmployee?.id === emp.id ? 'bg-indigo-50 border border-indigo-100' : 'hover:bg-slate-50 border border-transparent'}`}
                         >
                             <div className="w-8 h-8 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center text-xs font-bold shrink-0">
-                                {emp.user_name?.[0]}
+                                {(emp.full_name || emp.display_username || '?')[0]?.toUpperCase()}
                             </div>
                             <div className="flex-1 truncate">
-                                <p className={`text-sm font-semibold truncate ${selectedEmployee?.id === emp.id ? 'text-indigo-900' : 'text-slate-800'}`}>{emp.user_name}</p>
+                                <p className={`text-sm font-semibold truncate ${selectedEmployee?.id === emp.id ? 'text-indigo-900' : 'text-slate-800'}`}>{emp.full_name || emp.display_username}</p>
                                 <p className="text-[10px] font-medium text-slate-500 uppercase">{emp.designation_name}</p>
                             </div>
                             <ChevronRight size={16} className={selectedEmployee?.id === emp.id ? 'text-indigo-400' : 'text-slate-300'} />
@@ -177,7 +177,7 @@ const EmployeeLifecycleModule = () => {
                     <>
                         <div className="p-6 border-b border-slate-200 flex justify-between items-center bg-slate-50">
                             <div>
-                                <h3 className="text-xl font-bold text-slate-800">{selectedEmployee.user_name}'s Vault</h3>
+                                <h3 className="text-xl font-bold text-slate-800">{selectedEmployee.full_name || selectedEmployee.display_username}'s Vault</h3>
                                 <p className="text-xs text-slate-500 mt-1">Manage documents securely.</p>
                             </div>
                             <button onClick={() => setDocUploadModal(true)} className="flex items-center gap-2 bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-slate-900 transition-colors">
@@ -250,7 +250,7 @@ const EmployeeLifecycleModule = () => {
                                 <motion.div layout key={off.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 cursor-pointer hover:shadow-md transition-shadow">
                                     <div className="flex justify-between items-start mb-3">
                                         <div>
-                                            <h4 className="font-bold text-slate-800 text-sm">{employees.find(e => e.id === off.employee)?.user_name || 'Employee'}</h4>
+                                            <h4 className="font-bold text-slate-800 text-sm">{employees.find(e => e.id === off.employee)?.full_name || employees.find(e => e.id === off.employee)?.display_username || 'Employee'}</h4>
                                             <p className="text-[10px] font-semibold text-slate-500 uppercase">LWD: {new Date(off.last_working_day).toLocaleDateString()}</p>
                                         </div>
                                     </div>
@@ -352,7 +352,7 @@ const EmployeeLifecycleModule = () => {
                                     <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Employee</label>
                                     <select required value={newOffboarding.employee} onChange={e => setNewOffboarding({...newOffboarding, employee: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:border-indigo-400">
                                         <option value="">Select Employee...</option>
-                                        {employees.map(e => <option key={e.id} value={e.id}>{e.user_name}</option>)}
+                                        {employees.map(e => <option key={e.id} value={e.id}>{e.full_name || e.display_username}</option>)}
                                     </select>
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
