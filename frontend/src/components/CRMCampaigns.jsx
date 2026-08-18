@@ -189,7 +189,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
     useEffect(() => {
         if (activeTab === 'leads' || activeTab === 'assigned') {
             fetchLeads(leadsStartDate, leadsEndDate, selectedAssigneeFilter, searchTerm, selectedStageFilter, selectedSectionFilter, selectedCampaignFilter);
-            fetchAssignedStats(leadsStartDate, leadsEndDate, selectedAssigneeFilter, selectedSectionFilter);
+            fetchAssignedStats(leadsStartDate, leadsEndDate, selectedAssigneeFilter, selectedSectionFilter, selectedCampaignFilter);
         }
     }, [activeTab, currentPage, leadsStartDate, leadsEndDate, selectedAssigneeFilter, searchTerm, selectedStageFilter, selectedSectionFilter, selectedCampaignFilter]);
 
@@ -211,7 +211,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
         }
     };
 
-    const fetchAssignedStats = async (startDate, endDate, assignee, section) => {
+    const fetchAssignedStats = async (startDate, endDate, assignee, section, campaignId) => {
         setAssignedStatsLoading(true);
         try {
             let url = 'crm/dashboard-stats/';
@@ -220,6 +220,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
             if (endDate) params.append('end_date', endDate);
             if (assignee) params.append('assigned_to', assignee);
             if (section) params.append('sales_section', section);
+            if (campaignId) params.append('campaign_id', campaignId);
             if (params.toString()) url += `?${params.toString()}`;
             
             const res = await api.get(url);

@@ -77,6 +77,10 @@ class DashboardStatsView(APIView):
                 else:
                     students = students.filter(assigned_to__isnull=False)
 
+            campaign_id = request.query_params.get('campaign_id')
+            if campaign_id:
+                students = students.filter(campaign_id=campaign_id)
+
             # Date Presets (today, yesterday, this_week, this_month, custom)
             date_preset = request.query_params.get('date_preset')
             start_date = request.query_params.get('start_date')
