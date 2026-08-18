@@ -50,6 +50,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
     const [selectedAssigneeFilter, setSelectedAssigneeFilter] = useState('');
     const [selectedStageFilter, setSelectedStageFilter] = useState('');
     const [selectedSectionFilter, setSelectedSectionFilter] = useState(''); // '' = All, 'REGULAR' = Regular, 'CAREER_ACADEMY' = Career Academy
+    const [selectedCampaignFilter, setSelectedCampaignFilter] = useState('');
     
     // UI States for Campaigns
     const [searchTerm, setSearchTerm] = useState('');
@@ -181,15 +182,16 @@ const CRMCampaigns = ({ onLeadClick }) => {
             fetchSalesUsers();
             fetchPipelineStages();
             fetchPrograms();
+            fetchCampaigns(); // needed for campaign filter dropdown
         }
     }, [activeTab]);
 
     useEffect(() => {
         if (activeTab === 'leads' || activeTab === 'assigned') {
-            fetchLeads(leadsStartDate, leadsEndDate, selectedAssigneeFilter, searchTerm, selectedStageFilter, selectedSectionFilter);
+            fetchLeads(leadsStartDate, leadsEndDate, selectedAssigneeFilter, searchTerm, selectedStageFilter, selectedSectionFilter, selectedCampaignFilter);
             fetchAssignedStats(leadsStartDate, leadsEndDate, selectedAssigneeFilter, selectedSectionFilter);
         }
-    }, [activeTab, currentPage, leadsStartDate, leadsEndDate, selectedAssigneeFilter, searchTerm, selectedStageFilter, selectedSectionFilter]);
+    }, [activeTab, currentPage, leadsStartDate, leadsEndDate, selectedAssigneeFilter, searchTerm, selectedStageFilter, selectedSectionFilter, selectedCampaignFilter]);
 
     const fetchDashboardData = async () => {
         setDashboardLoading(true);
@@ -251,7 +253,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
         }
     };
     
-    const fetchLeads = async (startDate, endDate, assignee, search, stage, section) => {
+    const fetchLeads = async (startDate, endDate, assignee, search, stage, section, campaignId) => {
         setLeadsLoading(true);
         try {
             let url = `students/?page=${currentPage}`;
@@ -269,6 +271,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
             if (endDate) url += `&end_date=${endDate}`;
             if (search) url += `&search=${encodeURIComponent(search)}`;
             if (section) url += `&sales_section=${encodeURIComponent(section)}`;
+            if (campaignId) url += `&campaign_id=${encodeURIComponent(campaignId)}`;
             if (stage) {
                 url += `&lead_status=${encodeURIComponent(stage)}`;
             } else {
@@ -1290,6 +1293,21 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                     <option value="" className="text-slate-900 bg-white">All Sections</option>
                                     <option value="REGULAR" className="text-slate-900 bg-white">🎓 Regular</option>
                                     <option value="CAREER_ACADEMY" className="text-slate-900 bg-white">🏫 Career Academy</option>
+                                </select>
+                            </div>
+
+                            {/* Campaign Filter */}
+                            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 focus-within:ring-2 focus-within:ring-indigo-500/20">
+                                <span className="text-xs font-semibold text-slate-500 whitespace-nowrap">📢 Campaign:</span>
+                                <select
+                                    value={selectedCampaignFilter}
+                                    onChange={(e) => { setSelectedCampaignFilter(e.target.value); setCurrentPage(1); }}
+                                    className="bg-transparent text-xs font-semibold text-indigo-700 outline-none cursor-pointer max-w-[140px]"
+                                >
+                                    <option value="" className="text-slate-900 bg-white">All Campaigns</option>
+                                    {campaigns.map(c => (
+                                        <option key={c.id} value={c.id} className="text-slate-900 bg-white">{c.name}</option>
+                                    ))}
                                 </select>
                             </div>
 

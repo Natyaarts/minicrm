@@ -609,6 +609,10 @@ class StudentViewSet(viewsets.ModelViewSet):
         if campaign_only == 'true':
             qs = qs.filter(campaign__isnull=False)
 
+        campaign_id = self.request.query_params.get('campaign_id')
+        if campaign_id:
+            qs = qs.filter(campaign__id=campaign_id)
+
         sales_section = self.request.query_params.get('sales_section')
         if sales_section:
             from django.db.models import Q
