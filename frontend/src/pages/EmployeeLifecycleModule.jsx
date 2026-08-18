@@ -47,8 +47,8 @@ const EmployeeLifecycleModule = () => {
             ];
             
             // Only admins need the full employee list
-            if (authUser?.role === 'SUPER_ADMIN' || authUser?.role === 'ADMIN') {
-                promises.push(api.get('hrms/employees/'));
+            if (authUser?.role === 'SUPER_ADMIN' || authUser?.role === 'ADMIN' || !authUser?.role) {
+                promises.push(api.get('hrms/employees/?page_size=500&ordering=id'));
             }
 
             const results = await Promise.all(promises);
