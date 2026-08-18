@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Calendar, Image as ImageIcon, Send, Trash2, CheckCircle2, AlertCircle, Eye, RefreshCw, Layers, MessageSquare } from 'lucide-react';
+import { Sparkles, Calendar, Image as ImageIcon, Send, Trash2, CheckCircle2, AlertCircle, Eye, RefreshCw, Layers, MessageSquare, Pencil } from 'lucide-react';
 import api from '../api/axios';
 
 const THEME_PRESETS = [
@@ -18,6 +18,7 @@ export default function FestiveWishesManagement() {
   const [greetings, setGreetings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [editingGreeting, setEditingGreeting] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [previewGreeting, setPreviewGreeting] = useState(null);
 
@@ -108,11 +109,18 @@ export default function FestiveWishesManagement() {
         form.append('banner_image', formData.banner_image);
       }
 
-      await api.post('hrms/festive-greetings/', form, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+      if (editingGreeting) {
+        await api.patch(`hrms/festive-greetings/${editingGreeting.id}/`, form, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+      } else {
+        await api.post('hrms/festive-greetings/', form, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+      }
 
       setShowModal(false);
+      setEditingGreeting(null);
       setFormData({
         title: '',
         sub_title: '',
@@ -153,6 +161,23 @@ export default function FestiveWishesManagement() {
     }
   };
 
+  const openEditModal = (g) => {
+    setEditingGreeting(g);
+    setFormData({
+      title: g.title || '',
+      sub_title: g.sub_title || '',
+      message: g.message || '',
+      theme: g.theme || 'ONAM',
+      target_audience: g.target_audience || 'ALL',
+      start_date: g.start_date || new Date().toISOString().split('T')[0],
+      end_date: g.end_date || '',
+      is_active: g.is_active,
+      banner_image: null,
+      banner_preview: g.banner_image || ''
+    });
+    setShowModal(true);
+  };
+
   const selectedThemePreset = THEME_PRESETS.find(t => t.id === formData.theme) || THEME_PRESETS[0];
 
   return (
@@ -170,7 +195,7 @@ export default function FestiveWishesManagement() {
         </div>
 
         <button
-          onClick={() => setShowModal(true)}
+          onClick={() => { setEditingGreeting(null); setFormData({ title: '', sub_title: '', message: '', theme: 'ONAM', target_audience: 'ALL', start_date: new Date().toISOString().split('T')[0], end_date: '', is_active: true, banner_image: null, banner_preview: '' }); setShowModal(true); }}
           className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-amber-500 to-orange-600 text-white font-bold px-5 py-2.5 rounded-xl shadow-lg shadow-amber-500/20 hover:from-amber-600 hover:to-orange-700 transition"
         >
           <Sparkles className="w-5 h-5" />
@@ -284,6 +309,13 @@ export default function FestiveWishesManagement() {
                         <span>Preview</span>
                       </button>
                       <button
+                        onClick={() => openEditModal(g)}
+                        className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                        title="Edit"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      <button
                         onClick={() => handleDelete(g.id)}
                         className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
                         title="Delete"
@@ -309,11 +341,11 @@ export default function FestiveWishesManagement() {
                   🌸
                 </div>
                 <div>
-                  <h3 className="text-lg font-extrabold">Create Festive Wish / HR Banner</h3>
-                  <p className="text-xs text-slate-400">Configure theme, poster image, and greetings for employees & students</p>
+                  <h3 className="text-lg font-extrabold">{editingGreeting ? 'Edit Festive Wish / HR Banner' : 'Create Festive Wish / HR Banner'}</h3>
+                  <p className="text-xs text-slate-400">{editingGreeting ? 'Update the theme, poster image, and greeting details' : 'Configure theme, poster image, and greetings for employees & students'}</p>
                 </div>
               </div>
-              <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-white font-bold text-xl">
+              <button onClick={() => { setShowModal(false); setEditingGreeting(null); }} className="text-slate-400 hover:text-white font-bold text-xl">
                 ✕
               </button>
             </div>
