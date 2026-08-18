@@ -244,7 +244,7 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
         val contentResolver = reactApplicationContext.contentResolver
         val cleanPhone = phoneNumber.replace(Regex("[^0-9]"), "")
         
-        // 1. Check custom SAF folder first
+        // 1. Check custom SAF folder first (user-selected via folder picker)
         val prefs = reactApplicationContext.getSharedPreferences("CallRecordings", Context.MODE_PRIVATE)
         val customUriString = prefs.getString("custom_folder_uri", null)
         
@@ -255,7 +255,7 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
                 
                 if (documentFile != null && documentFile.isDirectory) {
                     var mostRecentFile: DocumentFile? = null
-                    var maxLastModified = startTimeMs - 30000 // Only files created/modified after call started (-30s)
+                    var maxLastModified = startTimeMs - 30000
                     
                     for (file in documentFile.listFiles()) {
                         if (file.isFile && file.lastModified() >= maxLastModified) {
@@ -265,10 +265,8 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
                             val phoneMatches = cleanPhone.isNotEmpty() && cleanFileName.isNotEmpty() && 
                                                (cleanFileName.contains(cleanPhone) || cleanPhone.contains(cleanFileName))
                                                
-                            val isAudio = name.endsWith(".m4a", true) || name.endsWith(".mp3", true) || 
-                                          name.endsWith(".amr", true) || name.endsWith(".wav", true) ||
-                                          name.contains("record", true) || name.contains("call", true)
-                                          
+                            val isAudio = isAudioRecordingFile(name)
+                                           
                             if (phoneMatches || isAudio) {
                                 if (file.lastModified() > (mostRecentFile?.lastModified() ?: 0)) {
                                     mostRecentFile = file
@@ -287,24 +285,90 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
             }
         }
 
-        // 2. Fallback to MediaStore
-        val uri = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+        // 2. Scan known brand-specific directories on the filesystem
+        //    Different brands save recordings to completely different paths.
+        val knownPaths = listOf(
+            // Samsung
+            "/storage/emulated/0/Call",
+            "/storage/emulated/0/DCIM/Call",
+            "/storage/emulated/0/Recordings/Call",
+            "/storage/emulated/0/Sounds/CallRecord",
+            // Xiaomi / MIUI
+            "/storage/emulated/0/MIUI/sound_recorder/call_rec",
+            "/storage/emulated/0/MIUI/sound_recorder",
+            "/storage/emulated/0/recordings",
+            "/storage/emulated/0/Recordings",
+            // Oppo / ColorOS / Realme
+            "/storage/emulated/0/ColorOS/Recorder",
+            "/storage/emulated/0/Recorder",
+            "/storage/emulated/0/record",
+            "/storage/emulated/0/Record",
+            // Vivo / FunTouch OS
+            "/storage/emulated/0/Sounds",
+            "/storage/emulated/0/BBKRecorder",
+            "/storage/emulated/0/vivoRecords",
+            // OnePlus / OxygenOS
+            "/storage/emulated/0/Recordings",
+            "/storage/emulated/0/CallRecordings",
+            // Motorola / Stock Android
+            "/storage/emulated/0/Android/data/com.google.android.dialer/files/Recordings",
+            "/storage/emulated/0/PhoneRecord",
+            // Huawei
+            "/storage/emulated/0/Sounds/CallRecord",
+            // Itel / Tecno / Infinix (common in India)
+            "/storage/emulated/0/TelephoneRecord",
+            "/storage/emulated/0/callrecordings",
+            // Generic fallbacks
+            "/storage/emulated/0/Music",
+            "/storage/emulated/0/Download",
+        )
+
+        val windowStart = startTimeMs - 60_000L // 1 min before call started
+        var bestFile: File? = null
+        var bestModified = windowStart
+
+        for (dirPath in knownPaths) {
+            val dir = File(dirPath)
+            if (!dir.exists() || !dir.isDirectory) continue
+            for (file in (dir.listFiles() ?: emptyArray())) {
+                if (!file.isFile) continue
+                if (file.lastModified() < windowStart) continue
+                if (!isAudioRecordingFile(file.name)) continue
+
+                val cleanFileName = file.name.replace(Regex("[^0-9]"), "")
+                val phoneMatches = cleanPhone.isNotEmpty() && cleanFileName.isNotEmpty() &&
+                    (cleanFileName.contains(cleanPhone) || cleanPhone.contains(cleanFileName.takeLast(10)))
+                val isCallKeyword = isCallRecordingKeyword(file.name, dirPath)
+
+                if (phoneMatches || isCallKeyword) {
+                    if (file.lastModified() > bestModified) {
+                        bestFile = file
+                        bestModified = file.lastModified()
+                    }
+                }
+            }
+        }
+
+        if (bestFile != null) {
+            return bestFile.absolutePath
+        }
+
+        // 3. Fallback: MediaStore scan (catches files not in known paths)
+        val mediaUri = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
         val projection = arrayOf(
             MediaStore.Audio.Media._ID,
             MediaStore.Audio.Media.DISPLAY_NAME,
             MediaStore.Audio.Media.DATA,
             MediaStore.Audio.Media.DATE_ADDED
         )
-        
-        // Bug 3 Fix: Extend window to -60s to account for large file write delays on long calls
-        val startTimeSeconds = startTimeMs / 1000 - 60
+        val startTimeSeconds = startTimeMs / 1000 - 120 // 2 min window
         val selection = "${MediaStore.Audio.Media.DATE_ADDED} >= ?"
         val selectionArgs = arrayOf(startTimeSeconds.toString())
         val sortOrder = "${MediaStore.Audio.Media.DATE_ADDED} DESC"
         
         var cursor: Cursor? = null
         try {
-            cursor = contentResolver.query(uri, projection, selection, selectionArgs, sortOrder)
+            cursor = contentResolver.query(mediaUri, projection, selection, selectionArgs, sortOrder)
             if (cursor != null) {
                 val idCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
                 val displayNameCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DISPLAY_NAME)
@@ -312,17 +376,15 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
                 
                 while (cursor.moveToNext()) {
                     val id = cursor.getLong(idCol)
-                    val filePath = cursor.getString(dataCol)
-                    val displayName = cursor.getString(displayNameCol)
+                    val filePath = cursor.getString(dataCol) ?: ""
+                    val displayName = cursor.getString(displayNameCol) ?: ""
                     
-                    val pathLower = filePath.lowercase()
-                    val isCallFolder = pathLower.contains("call") || pathLower.contains("record")
-                    
+                    val isCallPath = isCallRecordingKeyword(displayName, filePath)
                     val cleanFileName = displayName.replace(Regex("[^0-9]"), "")
-                    val phoneMatches = cleanPhone.isNotEmpty() && cleanFileName.isNotEmpty() && 
-                                       (cleanFileName.contains(cleanPhone) || cleanPhone.contains(cleanFileName))
+                    val phoneMatches = cleanPhone.isNotEmpty() && cleanFileName.isNotEmpty() &&
+                        (cleanFileName.contains(cleanPhone) || cleanPhone.contains(cleanFileName.takeLast(10)))
                     
-                    if (isCallFolder || phoneMatches) {
+                    if (isCallPath || phoneMatches) {
                         return copyUriToCache(id, displayName)
                     }
                 }
@@ -334,6 +396,30 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
         }
         return null
     }
+
+    /** Returns true if the filename looks like a call recording audio file */
+    private fun isAudioRecordingFile(name: String): Boolean {
+        val lower = name.lowercase()
+        val hasAudioExt = lower.endsWith(".m4a") || lower.endsWith(".mp3") ||
+            lower.endsWith(".amr") || lower.endsWith(".wav") ||
+            lower.endsWith(".aac") || lower.endsWith(".3gp") ||
+            lower.endsWith(".ogg") || lower.endsWith(".mp4")
+        if (!hasAudioExt) return false
+        // Accept any audio file — path context handled by isCallRecordingKeyword
+        return true
+    }
+
+    /** Returns true if name/path suggests it is a call recording */
+    private fun isCallRecordingKeyword(name: String, path: String): Boolean {
+        val combined = (name + " " + path).lowercase()
+        return combined.contains("call") || combined.contains("record") ||
+            combined.contains("rec_") || combined.contains("callrec") ||
+            combined.contains("voice") || combined.contains("phone") ||
+            combined.contains("dialer") || combined.contains("incoming") ||
+            combined.contains("outgoing") || combined.contains("bbkrecorder") ||
+            combined.contains("teleph") || combined.contains("sound_recorder")
+    }
+
 
     private fun copyUriToCache(id: Long, fileName: String): String? {
         try {
