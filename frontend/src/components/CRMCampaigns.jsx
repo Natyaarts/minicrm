@@ -52,6 +52,13 @@ const CRMCampaigns = ({ onLeadClick }) => {
     const [selectedSectionFilter, setSelectedSectionFilter] = useState(''); // '' = All, 'REGULAR' = Regular, 'CAREER_ACADEMY' = Career Academy
     const [selectedCampaignFilter, setSelectedCampaignFilter] = useState('');
     
+    // Popup Modal States for KPI Dashboard Clicking
+    const [popupLeads, setPopupLeads] = useState([]);
+    const [popupLoading, setPopupLoading] = useState(false);
+    const [activePopupType, setActivePopupType] = useState(null); // 'assigned' | 'contacted' | 'pending' | 'converted' | 'talk_time'
+    const [popupPage, setPopupPage] = useState(1);
+    const [popupTotalCount, setPopupTotalCount] = useState(0);
+    
     // UI States for Campaigns
     const [searchTerm, setSearchTerm] = useState('');
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -295,6 +302,71 @@ const CRMCampaigns = ({ onLeadClick }) => {
         } finally {
             setLeadsLoading(false);
         }
+    };
+    
+    const fetchPopupData = async (type, page = 1) => {
+        setPopupLoading(true);
+        try {
+            let url = '';
+            if (type === 'talk_time') {
+                url = `crm/interactions/?interaction_type=CALL&page=${page}`;
+                if (selectedAssigneeFilter && selectedAssigneeFilter !== 'assigned') {
+                    url += `&assigned_to=${selectedAssigneeFilter}`;
+                } else if (selectedAssigneeFilter === 'assigned') {
+                    url += `&assigned_to=assigned`;
+                }
+                if (leadsStartDate) url += `&start_date=${leadsStartDate}`;
+                if (leadsEndDate) url += `&end_date=${leadsEndDate}`;
+                if (selectedSectionFilter) url += `&sales_section=${encodeURIComponent(selectedSectionFilter)}`;
+                if (selectedCampaignFilter) url += `&campaign_id=${encodeURIComponent(selectedCampaignFilter)}`;
+            } else {
+                url = `students/?page=${page}`;
+                if (selectedAssigneeFilter && selectedAssigneeFilter !== 'assigned') {
+                    url += `&assigned_to=${selectedAssigneeFilter}`;
+                } else if (selectedAssigneeFilter === 'assigned' || activeTab === 'assigned') {
+                    url += `&assigned_to=assigned`;
+                }
+                if (leadsStartDate) url += `&start_date=${leadsStartDate}`;
+                if (leadsEndDate) url += `&end_date=${leadsEndDate}`;
+                if (selectedSectionFilter) url += `&sales_section=${encodeURIComponent(selectedSectionFilter)}`;
+                if (selectedCampaignFilter) url += `&campaign_id=${encodeURIComponent(selectedCampaignFilter)}`;
+                
+                if (type === 'contacted') {
+                    url += `&contacted=true`;
+                } else if (type === 'pending') {
+                    url += `&contacted=false`;
+                } else if (type === 'converted') {
+                    url += `&lead_status=ENROLLED`;
+                }
+            }
+
+            const res = await api.get(url);
+            let dataList = res.data.results || res.data || [];
+            
+            if (type === 'converted') {
+                const convertedStages = ['ENROLLED', 'CONVERTED', 'enrolled', 'converted', 'Enrolled', 'Converted'];
+                if (res.data.results) {
+                    // Filter if paginated API returns everything
+                    dataList = dataList.filter(lead => convertedStages.includes(lead.lead_status) || lead.lead_status === '4');
+                } else {
+                    dataList = dataList.filter(lead => convertedStages.includes(lead.lead_status) || lead.lead_status === '4');
+                }
+            }
+            
+            setPopupLeads(dataList);
+            setPopupTotalCount(res.data.count || dataList.length);
+        } catch (err) {
+            console.error("Failed to fetch popup data", err);
+            setPopupLeads([]);
+            setPopupTotalCount(0);
+        } finally {
+            setPopupLoading(false);
+        }
+    };
+
+    const handlePopupPageChange = (newPage) => {
+        setPopupPage(newPage);
+        fetchPopupData(activePopupType, newPage);
     };
     
     const fetchSalesUsers = async () => {
@@ -937,7 +1009,10 @@ const CRMCampaigns = ({ onLeadClick }) => {
                         {/* KPI Summary Cards */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
                             {/* Total Assigned */}
-                            <div className="bg-white p-4.5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
+                            <div 
+                                onClick={() => { setActivePopupType('assigned'); setPopupPage(1); fetchPopupData('assigned', 1); }}
+                                className="bg-white p-4.5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between cursor-pointer hover:border-blue-300 hover:shadow-md hover:scale-[1.01] active:scale-[0.99] transition-all"
+                            >
                                 <div>
                                     <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Total Assigned Leads</p>
                                     <h3 className="text-xl font-bold text-slate-900 mt-1">{assignedStats?.assigned_leads || 0}</h3>
@@ -949,7 +1024,10 @@ const CRMCampaigns = ({ onLeadClick }) => {
                             </div>
 
                             {/* Contacted Leads */}
-                            <div className="bg-white p-4.5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
+                            <div 
+                                onClick={() => { setActivePopupType('contacted'); setPopupPage(1); fetchPopupData('contacted', 1); }}
+                                className="bg-white p-4.5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between cursor-pointer hover:border-emerald-300 hover:shadow-md hover:scale-[1.01] active:scale-[0.99] transition-all"
+                            >
                                 <div>
                                     <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Contacted Leads</p>
                                     <h3 className="text-xl font-bold text-emerald-600 mt-1">{assignedStats?.contacted_leads || 0}</h3>
@@ -965,7 +1043,10 @@ const CRMCampaigns = ({ onLeadClick }) => {
                             </div>
 
                             {/* Total Call Duration / Talk Time */}
-                            <div className="bg-white p-4.5 rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50/30 to-white shadow-sm flex items-center justify-between">
+                            <div 
+                                onClick={() => { setActivePopupType('talk_time'); setPopupPage(1); fetchPopupData('talk_time', 1); }}
+                                className="bg-white p-4.5 rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50/30 to-white shadow-sm flex items-center justify-between cursor-pointer hover:border-indigo-300 hover:shadow-md hover:scale-[1.01] active:scale-[0.99] transition-all"
+                            >
                                 <div>
                                     <p className="text-[11px] font-semibold text-indigo-900 uppercase tracking-wider">Total Talk Time</p>
                                     <h3 className="text-xl font-bold text-indigo-700 mt-1">{assignedStats?.formatted_total_call_duration || '0s'}</h3>
@@ -977,7 +1058,10 @@ const CRMCampaigns = ({ onLeadClick }) => {
                             </div>
 
                             {/* Pending Contact */}
-                            <div className="bg-white p-4.5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
+                            <div 
+                                onClick={() => { setActivePopupType('pending'); setPopupPage(1); fetchPopupData('pending', 1); }}
+                                className="bg-white p-4.5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between cursor-pointer hover:border-amber-300 hover:shadow-md hover:scale-[1.01] active:scale-[0.99] transition-all"
+                            >
                                 <div>
                                     <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Pending Contact</p>
                                     <h3 className="text-xl font-bold text-amber-600 mt-1">{assignedStats?.pending_leads || 0}</h3>
@@ -989,7 +1073,10 @@ const CRMCampaigns = ({ onLeadClick }) => {
                             </div>
 
                             {/* Converted */}
-                            <div className="bg-white p-4.5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
+                            <div 
+                                onClick={() => { setActivePopupType('converted'); setPopupPage(1); fetchPopupData('converted', 1); }}
+                                className="bg-white p-4.5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between cursor-pointer hover:border-purple-300 hover:shadow-md hover:scale-[1.01] active:scale-[0.99] transition-all"
+                            >
                                 <div>
                                     <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Converted / Enrolled</p>
                                     <h3 className="text-xl font-bold text-purple-600 mt-1">{assignedStats?.converted_leads || 0}</h3>
@@ -2319,6 +2406,211 @@ const CRMCampaigns = ({ onLeadClick }) => {
                             >
                                 Close Report
                             </button>
+                        </div>
+                    </motion.div>
+            )}
+
+            {/* KPI Leads / Recordings Popup Modal */}
+            {activePopupType && (
+                <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn">
+                    <motion.div 
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl overflow-hidden border border-slate-100 flex flex-col max-h-[85vh]"
+                    >
+                        {/* Modal Header */}
+                        <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
+                            <div>
+                                <h3 className="font-bold text-slate-900 text-lg flex items-center gap-2">
+                                    {activePopupType === 'talk_time' ? (
+                                        <>
+                                            <Clock className="w-5 h-5 text-indigo-600" />
+                                            Call Recordings Report
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Users className="w-5 h-5 text-indigo-600" />
+                                            {activePopupType === 'assigned' && 'Assigned Leads List'}
+                                            {activePopupType === 'contacted' && 'Contacted Leads List'}
+                                            {activePopupType === 'pending' && 'Pending Contact Leads List'}
+                                            {activePopupType === 'converted' && 'Converted Leads List'}
+                                        </>
+                                    )}
+                                </h3>
+                                <p className="text-xs text-slate-500 mt-0.5 font-medium">
+                                    {activePopupType === 'talk_time' 
+                                        ? 'View and listen to call recordings for the selected team/duration.' 
+                                        : `Showing matching leads for this KPI card (${popupTotalCount} total).`}
+                                </p>
+                            </div>
+                            <button 
+                                onClick={() => { setActivePopupType(null); setPopupLeads([]); }} 
+                                className="text-slate-400 hover:text-red-500 transition-colors bg-slate-50 hover:bg-red-50 p-1.5 rounded-xl border border-slate-100"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        {/* Modal Content */}
+                        <div className="flex-1 overflow-y-auto p-6 min-h-[300px]">
+                            {popupLoading ? (
+                                <div className="flex flex-col items-center justify-center h-64 gap-3 text-slate-500 font-semibold">
+                                    <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                                    Loading details...
+                                </div>
+                            ) : popupLeads.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center h-64 text-slate-400 gap-2">
+                                    <p className="font-semibold text-sm">No records found.</p>
+                                    <p className="text-xs">No records matched the active filters.</p>
+                                </div>
+                            ) : activePopupType === 'talk_time' ? (
+                                /* Talk Time Recordings Table */
+                                <div className="overflow-x-auto rounded-xl border border-slate-100">
+                                    <table className="w-full text-left border-collapse text-xs">
+                                        <thead>
+                                            <tr className="bg-slate-50 text-slate-500 uppercase tracking-wider font-semibold">
+                                                <th className="px-5 py-3.5">Lead Name</th>
+                                                <th className="px-5 py-3.5">Lead Created</th>
+                                                <th className="px-5 py-3.5">Called Date</th>
+                                                <th className="px-5 py-3.5">Sales Rep</th>
+                                                <th className="px-5 py-3.5">Duration</th>
+                                                <th className="px-5 py-3.5">Call Type</th>
+                                                <th className="px-5 py-3.5">Audio Recording</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100 text-slate-700">
+                                            {popupLeads.map((item) => {
+                                                const leadCreatedDate = item.student_created_at 
+                                                    ? new Date(item.student_created_at).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                                                    : '-';
+                                                const calledDate = item.date 
+                                                    ? new Date(item.date).toLocaleString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })
+                                                    : '-';
+                                                
+                                                // Dynamic Audio URL resolver
+                                                const audioUrl = item.audio_recording
+                                                    ? (item.audio_recording.startsWith('http') 
+                                                        ? item.audio_recording 
+                                                        : (window.location.origin.includes('localhost') 
+                                                            ? `http://localhost:8000${item.audio_recording}` 
+                                                            : `${window.location.origin}${item.audio_recording}`))
+                                                    : null;
+
+                                                return (
+                                                    <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
+                                                        <td className="px-5 py-3 font-semibold text-slate-900">
+                                                            {item.student_name || 'Unknown Student'}
+                                                            {item.student_phone && (
+                                                                <span className="block text-[10px] text-slate-400 font-normal mt-0.5">{item.student_phone}</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-5 py-3 text-slate-600 font-medium">{leadCreatedDate}</td>
+                                                        <td className="px-5 py-3 text-slate-600 font-medium">{calledDate}</td>
+                                                        <td className="px-5 py-3 text-slate-600 font-medium">
+                                                            {item.author_name ? `${item.author_name} ${item.author_last_name || ''}`.trim() : 'System'}
+                                                        </td>
+                                                        <td className="px-5 py-3 font-semibold text-indigo-600">{item.formatted_call_duration || '0s'}</td>
+                                                        <td className="px-5 py-3">
+                                                            <span className={`px-2 py-0.5 text-[9px] font-bold rounded-md uppercase tracking-wider ${
+                                                                item.call_status === 'CONNECTED' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-rose-50 text-rose-600 border border-rose-100'
+                                                            }`}>
+                                                                {item.call_status || 'CONNECTED'}
+                                                            </span>
+                                                            <span className="block text-[9px] text-slate-400 mt-0.5">{item.call_direction || 'OUTGOING'}</span>
+                                                        </td>
+                                                        <td className="px-5 py-3">
+                                                            {audioUrl ? (
+                                                                <audio controls src={audioUrl} className="h-7 w-48 rounded-md bg-slate-50" />
+                                                            ) : (
+                                                                <span className="text-[10px] text-slate-400 italic">No recording file</span>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            ) : (
+                                /* Leads list Table */
+                                <div className="overflow-x-auto rounded-xl border border-slate-100">
+                                    <table className="w-full text-left border-collapse text-xs">
+                                        <thead>
+                                            <tr className="bg-slate-50 text-slate-500 uppercase tracking-wider font-semibold">
+                                                <th className="px-5 py-3.5">Lead Name & ID</th>
+                                                <th className="px-5 py-3.5">Contact Info</th>
+                                                <th className="px-5 py-3.5">Assigned To</th>
+                                                <th className="px-5 py-3.5">Status</th>
+                                                <th className="px-5 py-3.5">Date Created</th>
+                                                <th className="px-5 py-3.5 text-right">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100 text-slate-700">
+                                            {popupLeads.map((lead) => {
+                                                const createdDate = lead.created_at 
+                                                    ? new Date(lead.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                                                    : '-';
+                                                
+                                                return (
+                                                    <tr key={lead.id} className="hover:bg-slate-50/50 transition-colors">
+                                                        <td className="px-5 py-3 font-semibold text-slate-900">
+                                                            {lead.first_name} {lead.last_name}
+                                                            <span className="block text-[10px] text-slate-400 font-normal mt-0.5">{lead.crm_student_id}</span>
+                                                        </td>
+                                                        <td className="px-5 py-3">
+                                                            <span className="font-medium">{lead.mobile || '-'}</span>
+                                                            <span className="block text-[10px] text-slate-400 mt-0.5">{lead.email || '-'}</span>
+                                                        </td>
+                                                        <td className="px-5 py-3 font-medium text-slate-600">
+                                                            {lead.assigned_to_name || lead.assigned_to?.username || 'Unassigned'}
+                                                        </td>
+                                                        <td className="px-5 py-3">
+                                                            <span className="px-2 py-0.5 text-[9px] font-bold rounded-md bg-slate-100 text-slate-600 uppercase tracking-wider">
+                                                                {pipelineStages[lead.lead_status] || lead.lead_status || 'NEW'}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-5 py-3 text-slate-500 font-medium">{createdDate}</td>
+                                                        <td className="px-5 py-3 text-right">
+                                                            <button 
+                                                                onClick={() => {
+                                                                    onLeadClick && onLeadClick(lead);
+                                                                    setActivePopupType(null);
+                                                                }}
+                                                                className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg text-[10px] font-bold transition-all"
+                                                            >
+                                                                View Profile
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Modal Footer / Pagination */}
+                        <div className="p-5 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
+                            <span className="text-xs text-slate-500 font-medium">
+                                Showing page <span className="font-semibold text-slate-800">{popupPage}</span> (Total records: {popupTotalCount})
+                            </span>
+                            <div className="flex gap-2">
+                                <button 
+                                    onClick={() => handlePopupPageChange(Math.max(1, popupPage - 1))}
+                                    disabled={popupPage === 1 || popupLoading}
+                                    className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-bold text-slate-700 disabled:opacity-50 transition-colors hover:bg-slate-50 shadow-xs"
+                                >
+                                    Previous
+                                </button>
+                                <button 
+                                    onClick={() => handlePopupPageChange(popupPage + 1)}
+                                    disabled={popupLeads.length < 20 || popupLoading}
+                                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[10px] font-bold disabled:opacity-50 transition-colors shadow-sm"
+                                >
+                                    Next
+                                </button>
+                            </div>
                         </div>
                     </motion.div>
                 </div>

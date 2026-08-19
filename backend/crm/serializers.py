@@ -12,6 +12,7 @@ class LeadInteractionSerializer(serializers.ModelSerializer):
     author_last_name = serializers.CharField(source='author.last_name', read_only=True)
     student_name = serializers.SerializerMethodField()
     student_phone = serializers.CharField(source='student.mobile', read_only=True)
+    student_created_at = serializers.DateTimeField(source='student.created_at', read_only=True)
     formatted_call_duration = serializers.SerializerMethodField()
 
     class Meta:

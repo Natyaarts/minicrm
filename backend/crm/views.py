@@ -365,6 +365,37 @@ class LeadInteractionViewSet(viewsets.ModelViewSet):
         student_id = self.request.query_params.get('student_id', None)
         if student_id is not None:
             queryset = queryset.filter(student_id=student_id)
+            
+        interaction_type = self.request.query_params.get('interaction_type', None)
+        if interaction_type:
+            queryset = queryset.filter(interaction_type=interaction_type)
+            
+        assigned_to = self.request.query_params.get('assigned_to', None)
+        if assigned_to:
+            if assigned_to == 'unassigned':
+                queryset = queryset.filter(student__assigned_to__isnull=True)
+            elif assigned_to != 'assigned':
+                queryset = queryset.filter(student__assigned_to_id=assigned_to)
+            else:
+                queryset = queryset.filter(student__assigned_to__isnull=False)
+                
+        sales_section = self.request.query_params.get('sales_section', None)
+        if sales_section and sales_section != 'ALL':
+            queryset = queryset.filter(student__sales_section=sales_section)
+            
+        start_date = self.request.query_params.get('start_date', None)
+        end_date = self.request.query_params.get('end_date', None)
+        if start_date:
+            from django.utils.dateparse import parse_date
+            parsed_start = parse_date(start_date)
+            if parsed_start:
+                queryset = queryset.filter(date__date__gte=parsed_start)
+        if end_date:
+            from django.utils.dateparse import parse_date
+            parsed_end = parse_date(end_date)
+            if parsed_end:
+                queryset = queryset.filter(date__date__lte=parsed_end)
+                
         return queryset
 
     def perform_create(self, serializer):
