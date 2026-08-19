@@ -129,7 +129,13 @@ class Command(BaseCommand):
                             )
                             
                             from core.models import Program
-                            program = Program.objects.exclude(name="Wise Import").first() or Program.objects.first()
+                            program = None
+                            if campaign.section == 'CAREER_ACADEMY':
+                                program = Program.objects.filter(name='Natya Career Academy').first()
+                            elif campaign.section == 'REGULAR':
+                                program = Program.objects.filter(name='Natya').first()
+                            if not program:
+                                program = Program.objects.exclude(name="Wise Import").first() or Program.objects.first()
                             
                             student = Student.objects.create(
                                 user=user,

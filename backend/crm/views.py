@@ -442,7 +442,13 @@ class CampaignViewSet(viewsets.ModelViewSet):
         if program_id:
             default_program = Program.objects.filter(id=program_id).first()
         else:
-            default_program = Program.objects.exclude(name="Wise Import").first() or Program.objects.first()
+            default_program = None
+            if campaign and campaign.section == 'CAREER_ACADEMY':
+                default_program = Program.objects.filter(name='Natya Career Academy').first()
+            elif campaign and campaign.section == 'REGULAR':
+                default_program = Program.objects.filter(name='Natya').first()
+            if not default_program:
+                default_program = Program.objects.exclude(name="Wise Import").first() or Program.objects.first()
             
         try:
             decoded_file = file.read().decode('utf-8-sig')
@@ -588,7 +594,13 @@ class CampaignViewSet(viewsets.ModelViewSet):
         if program_id:
             default_program = Program.objects.filter(id=program_id).first()
         else:
-            default_program = Program.objects.exclude(name="Wise Import").first() or Program.objects.first()
+            default_program = None
+            if campaign and campaign.section == 'CAREER_ACADEMY':
+                default_program = Program.objects.filter(name='Natya Career Academy').first()
+            elif campaign and campaign.section == 'REGULAR':
+                default_program = Program.objects.filter(name='Natya').first()
+            if not default_program:
+                default_program = Program.objects.exclude(name="Wise Import").first() or Program.objects.first()
 
         results = []
         for i, row in enumerate(rows):
@@ -1035,17 +1047,22 @@ class WebhookReceiveView(APIView):
                 count = Student.objects.filter(crm_student_id__startswith="NATYA-").count() + 1
                 crm_id = f"NATYA-{count:04d}"
 
-                # Assign Program (fallback to first available)
-                program = None
-                if program_id:
-                    program = Program.objects.filter(id=program_id).first()
-                if not program:
-                    program = Program.objects.exclude(name="Wise Import").first() or Program.objects.first()
-
                 # Assign Campaign if valid
                 campaign = None
                 if campaign_id:
                     campaign = Campaign.objects.filter(id=campaign_id).first()
+
+                # Assign Program (fallback to campaign section match)
+                program = None
+                if program_id:
+                    program = Program.objects.filter(id=program_id).first()
+                if not program:
+                    if campaign and campaign.section == 'CAREER_ACADEMY':
+                        program = Program.objects.filter(name='Natya Career Academy').first()
+                    elif campaign and campaign.section == 'REGULAR':
+                        program = Program.objects.filter(name='Natya').first()
+                    if not program:
+                        program = Program.objects.exclude(name="Wise Import").first() or Program.objects.first()
 
                 # Check if Student profile already exists for this user
                 student = Student.objects.filter(user=user).first()
@@ -1161,12 +1178,17 @@ class CampaignWebhookReceiveView(APIView):
                 count = Student.objects.filter(crm_student_id__startswith="NATYA-").count() + 1
                 crm_id = f"NATYA-{count:04d}"
 
-                # Assign Program (fallback to first available)
+                # Assign Program (fallback to campaign section match)
                 program = None
                 if program_id:
                     program = Program.objects.filter(id=program_id).first()
                 if not program:
-                    program = Program.objects.exclude(name="Wise Import").first() or Program.objects.first()
+                    if campaign and campaign.section == 'CAREER_ACADEMY':
+                        program = Program.objects.filter(name='Natya Career Academy').first()
+                    elif campaign and campaign.section == 'REGULAR':
+                        program = Program.objects.filter(name='Natya').first()
+                    if not program:
+                        program = Program.objects.exclude(name="Wise Import").first() or Program.objects.first()
 
                 # Duplicate Check
                 is_duplicate = False
