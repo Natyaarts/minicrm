@@ -29,6 +29,9 @@ interface InteractionItem {
   date: string;
   author_name?: string;
   audio_recording?: string;
+  call_duration?: number;
+  call_direction?: string;
+  call_status?: string;
 }
 
 export default function LeadDetailsScreen() {
@@ -36,6 +39,15 @@ export default function LeadDetailsScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme();
   const isDark = false;
+
+  const formatSeconds = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    if (mins > 0) {
+      return `${mins}m ${secs}s`;
+    }
+    return `${secs}s`;
+  };
 
   const [loading, setLoading] = useState(true);
   const [student, setStudent] = useState<any>(null);
@@ -351,6 +363,19 @@ export default function LeadDetailsScreen() {
 
   const phoneNum = student?.phone || student?.mobile || '';
 
+  // Calculate Call statistics dynamically from timeline interactions history
+  const callInteractions = interactions.filter(i => i.interaction_type === 'CALL');
+  const totalCalls = callInteractions.length;
+  const outgoingCalls = callInteractions.filter(i => i.call_direction === 'OUTGOING');
+  const incomingCalls = callInteractions.filter(i => i.call_direction === 'INCOMING');
+  
+  const totalOutgoingDuration = outgoingCalls.reduce((sum, i) => sum + (i.call_duration || 0), 0);
+  const totalIncomingDuration = incomingCalls.reduce((sum, i) => sum + (i.call_duration || 0), 0);
+  const totalDuration = totalOutgoingDuration + totalIncomingDuration;
+
+  const connectedCalls = callInteractions.filter(i => i.call_status === 'CONNECTED').length;
+  const missedCalls = callInteractions.filter(i => i.call_status === 'MISSED').length;
+
   return (
     <>
     <SafeAreaView style={[styles.container, isDark && styles.darkBg]}>
@@ -458,6 +483,60 @@ export default function LeadDetailsScreen() {
               <FontAwesome5 name="envelope" size={12} color="#FBBF24" style={styles.contactIcon} />
               <Text style={[styles.contactText, isDark && styles.darkText]} numberOfLines={1}>{student?.email || 'No Email'}</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Call Statistics Summary Card */}
+        <View style={[styles.sectionCard, isDark && styles.darkCard]}>
+          <Text style={styles.sectionTitle}>CALL STATISTICS & PERFORMANCE</Text>
+          <View style={styles.statsGrid}>
+            <View style={styles.statBox}>
+              <View style={[styles.statIconContainer, { backgroundColor: 'rgba(59, 130, 246, 0.1)' }]}>
+                <FontAwesome5 name="phone-alt" size={12} color="#3B82F6" />
+              </View>
+              <View>
+                <Text style={styles.statLabel}>Total Calls</Text>
+                <Text style={[styles.statValue, isDark && styles.darkText]}>{totalCalls}</Text>
+              </View>
+            </View>
+
+            <View style={styles.statBox}>
+              <View style={[styles.statIconContainer, { backgroundColor: 'rgba(139, 92, 246, 0.1)' }]}>
+                <FontAwesome5 name="clock" size={12} color="#8B5CF6" />
+              </View>
+              <View>
+                <Text style={styles.statLabel}>Total Duration</Text>
+                <Text style={[styles.statValue, isDark && styles.darkText]}>{formatSeconds(totalDuration)}</Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.statsRow}>
+            <View style={styles.subStatCol}>
+              <Text style={styles.subStatLabel}>📤 Outgoing Calls</Text>
+              <Text style={[styles.subStatValue, isDark && styles.darkText]}>
+                {outgoingCalls.length} ({formatSeconds(totalOutgoingDuration)})
+              </Text>
+            </View>
+            <View style={styles.subStatCol}>
+              <Text style={styles.subStatLabel}>📥 Incoming Calls</Text>
+              <Text style={[styles.subStatValue, isDark && styles.darkText]}>
+                {incomingCalls.length} ({formatSeconds(totalIncomingDuration)})
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.dividerSub} />
+
+          <View style={styles.statsRow}>
+            <View style={styles.subStatCol}>
+              <Text style={styles.subStatLabel}>🟢 Connected Calls</Text>
+              <Text style={[styles.subStatValue, { color: '#10B981', fontWeight: '800' }]}>{connectedCalls}</Text>
+            </View>
+            <View style={styles.subStatCol}>
+              <Text style={styles.subStatLabel}>🔴 Missed Calls</Text>
+              <Text style={[styles.subStatValue, { color: '#EF4444', fontWeight: '800' }]}>{missedCalls}</Text>
+            </View>
           </View>
         </View>
 
@@ -905,6 +984,64 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E5E7EB',
     marginBottom: 20,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 16,
+  },
+  statBox: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    gap: 10,
+  },
+  statIconContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  statValue: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: '#0F172A',
+  },
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  subStatCol: {
+    flex: 1,
+  },
+  subStatLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#64748B',
+    marginBottom: 4,
+  },
+  subStatValue: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#334155',
+  },
+  dividerSub: {
+    height: 1,
+    backgroundColor: '#F1F5F9',
+    marginVertical: 12,
   },
   sectionTitle: {
     fontSize: 10,

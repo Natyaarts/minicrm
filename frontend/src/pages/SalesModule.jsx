@@ -1895,13 +1895,29 @@ const SalesModule = () => {
                 </div>
             </div>
             {/* Student Profile Modal */}
-            {selectedStudentProfile && (
-                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
-                    <motion.div
-                        initial={{ scale: 0.95, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        className="bg-white rounded-xl p-4 sm:p-6 border border-slate-200 w-full max-w-xl shadow-lg max-h-[90vh] overflow-y-auto custom-scrollbar"
-                    >
+            {selectedStudentProfile && (() => {
+                const callInteractions = interactions.filter(i => i.interaction_type === 'CALL');
+                const totalCalls = callInteractions.length;
+                const outgoingCalls = callInteractions.filter(i => i.call_direction === 'OUTGOING');
+                const incomingCalls = callInteractions.filter(i => i.call_direction === 'INCOMING');
+                const totalOutgoingDuration = outgoingCalls.reduce((sum, i) => sum + (i.call_duration || 0), 0);
+                const totalIncomingDuration = incomingCalls.reduce((sum, i) => sum + (i.call_duration || 0), 0);
+                const totalDuration = totalOutgoingDuration + totalIncomingDuration;
+                const connectedCalls = callInteractions.filter(i => i.call_status === 'CONNECTED').length;
+                const missedCalls = callInteractions.filter(i => i.call_status === 'MISSED').length;
+                const formatSeconds = (seconds) => {
+                    const mins = Math.floor(seconds / 60);
+                    const secs = seconds % 60;
+                    return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+                };
+
+                return (
+                    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
+                        <motion.div
+                            initial={{ scale: 0.95, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            className="bg-white rounded-xl p-4 sm:p-6 border border-slate-200 w-full max-w-xl shadow-lg max-h-[90vh] overflow-y-auto custom-scrollbar"
+                        >
                         <div className="flex justify-between items-start mb-6">
                             <div className="flex items-center gap-3 text-left">
                                 <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-500 flex items-center justify-center text-white text-sm font-bold">
@@ -2009,6 +2025,39 @@ const SalesModule = () => {
                                     <div>
                                         <p className="text-[10px] text-slate-500 mb-0.5">Course</p>
                                         <p className="font-semibold text-xs text-slate-800">{selectedStudentProfile.course_name || '-'}</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Call Performance Summary */}
+                            <div className="md:col-span-2 bg-slate-50 p-4 rounded-xl border border-slate-200 text-left">
+                                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Call Performance Summary</h3>
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                                    <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-xs">
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Total Calls</p>
+                                        <p className="font-bold text-slate-800 text-sm">{totalCalls}</p>
+                                    </div>
+                                    <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-xs">
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Total Duration</p>
+                                        <p className="font-bold text-indigo-600 text-sm">{formatSeconds(totalDuration)}</p>
+                                    </div>
+                                    <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-xs">
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">🟢 Connected</p>
+                                        <p className="font-bold text-emerald-600 text-sm">{connectedCalls} calls</p>
+                                    </div>
+                                    <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-xs">
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">🔴 Missed</p>
+                                        <p className="font-bold text-rose-600 text-sm">{missedCalls} calls</p>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-slate-600">
+                                    <div className="flex justify-between items-center bg-white px-3 py-2 rounded-lg border border-slate-200 shadow-xs">
+                                        <span>Outbound/Outgoing:</span>
+                                        <strong className="text-slate-800 font-bold">{outgoingCalls.length} calls ({formatSeconds(totalOutgoingDuration)})</strong>
+                                    </div>
+                                    <div className="flex justify-between items-center bg-white px-3 py-2 rounded-lg border border-slate-200 shadow-xs">
+                                        <span>Inbound/Incoming:</span>
+                                        <strong className="text-slate-800 font-bold">{incomingCalls.length} calls ({formatSeconds(totalIncomingDuration)})</strong>
                                     </div>
                                 </div>
                             </div>
@@ -2371,7 +2420,8 @@ const SalesModule = () => {
                         </div>
                     </motion.div>
                 </div>
-            )}
+                );
+            })()}
 
             {/* Edit Student Modal */}
             {editingStudent && (
