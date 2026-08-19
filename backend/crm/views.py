@@ -780,7 +780,7 @@ class CampaignViewSet(viewsets.ModelViewSet):
     def report(self, request, pk=None):
         campaign = self.get_object()
         from .models import Student
-        students = Student.objects.filter(campaign=campaign, is_active=True)
+        students = Student.objects.filter(campaign=campaign, is_active=True).exclude(lead_status='DUPLICATE')
         
         total_leads = students.count()
         
