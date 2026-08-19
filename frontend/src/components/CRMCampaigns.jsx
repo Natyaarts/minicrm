@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api/axios';
 import { motion } from 'framer-motion';
-import { Plus, X, Search, BarChart, Calendar, DollarSign, Users, ExternalLink, Edit2, Trash2, Link, Upload, TrendingUp, CheckCircle, Clock, Download, ArrowUpDown, ChevronLeft, ChevronRight, Phone } from 'lucide-react';
+import { Plus, X, Search, BarChart, Calendar, DollarSign, Users, ExternalLink, Edit2, Trash2, Link, Upload, TrendingUp, CheckCircle, Clock, Download, ArrowUpDown, ChevronLeft, ChevronRight, Phone, Layers, Megaphone } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 
@@ -58,6 +58,14 @@ const CRMCampaigns = ({ onLeadClick }) => {
     const [activePopupType, setActivePopupType] = useState(null); // 'assigned' | 'contacted' | 'pending' | 'converted' | 'talk_time'
     const [popupPage, setPopupPage] = useState(1);
     const [popupTotalCount, setPopupTotalCount] = useState(0);
+    const [popupSearch, setPopupSearch] = useState('');
+    const [popupSalesRep, setPopupSalesRep] = useState('');
+    const [popupCampaign, setPopupCampaign] = useState('');
+    const [popupSection, setPopupSection] = useState('');
+    const [popupStartDate, setPopupStartDate] = useState('');
+    const [popupEndDate, setPopupEndDate] = useState('');
+    const [showAllPipelineStages, setShowAllPipelineStages] = useState(false);
+    const [showAllAgents, setShowAllAgents] = useState(false);
     
     // UI States for Campaigns
     const [searchTerm, setSearchTerm] = useState('');
@@ -304,32 +312,45 @@ const CRMCampaigns = ({ onLeadClick }) => {
         }
     };
     
+    const openPopup = (type) => {
+        setPopupSearch('');
+        setPopupSalesRep(selectedAssigneeFilter || '');
+        setPopupCampaign(selectedCampaignFilter || '');
+        setPopupSection(selectedSectionFilter || '');
+        setPopupStartDate(leadsStartDate || '');
+        setPopupEndDate(leadsEndDate || '');
+        setPopupPage(1);
+        setActivePopupType(type);
+    };
+    
     const fetchPopupData = async (type, page = 1) => {
         setPopupLoading(true);
         try {
             let url = '';
             if (type === 'talk_time') {
                 url = `crm/interactions/?interaction_type=CALL&page=${page}`;
-                if (selectedAssigneeFilter && selectedAssigneeFilter !== 'assigned') {
-                    url += `&assigned_to=${selectedAssigneeFilter}`;
-                } else if (selectedAssigneeFilter === 'assigned') {
+                if (popupSalesRep && popupSalesRep !== 'assigned') {
+                    url += `&assigned_to=${popupSalesRep}`;
+                } else if (popupSalesRep === 'assigned') {
                     url += `&assigned_to=assigned`;
                 }
-                if (leadsStartDate) url += `&start_date=${leadsStartDate}`;
-                if (leadsEndDate) url += `&end_date=${leadsEndDate}`;
-                if (selectedSectionFilter) url += `&sales_section=${encodeURIComponent(selectedSectionFilter)}`;
-                if (selectedCampaignFilter) url += `&campaign_id=${encodeURIComponent(selectedCampaignFilter)}`;
+                if (popupStartDate) url += `&start_date=${popupStartDate}`;
+                if (popupEndDate) url += `&end_date=${popupEndDate}`;
+                if (popupSection) url += `&sales_section=${encodeURIComponent(popupSection)}`;
+                if (popupCampaign) url += `&campaign_id=${encodeURIComponent(popupCampaign)}`;
+                if (popupSearch) url += `&search=${encodeURIComponent(popupSearch)}`;
             } else {
                 url = `students/?page=${page}`;
-                if (selectedAssigneeFilter && selectedAssigneeFilter !== 'assigned') {
-                    url += `&assigned_to=${selectedAssigneeFilter}`;
-                } else if (selectedAssigneeFilter === 'assigned' || activeTab === 'assigned') {
+                if (popupSalesRep && popupSalesRep !== 'assigned') {
+                    url += `&assigned_to=${popupSalesRep}`;
+                } else if (popupSalesRep === 'assigned' || activeTab === 'assigned') {
                     url += `&assigned_to=assigned`;
                 }
-                if (leadsStartDate) url += `&start_date=${leadsStartDate}`;
-                if (leadsEndDate) url += `&end_date=${leadsEndDate}`;
-                if (selectedSectionFilter) url += `&sales_section=${encodeURIComponent(selectedSectionFilter)}`;
-                if (selectedCampaignFilter) url += `&campaign_id=${encodeURIComponent(selectedCampaignFilter)}`;
+                if (popupStartDate) url += `&start_date=${popupStartDate}`;
+                if (popupEndDate) url += `&end_date=${popupEndDate}`;
+                if (popupSection) url += `&sales_section=${encodeURIComponent(popupSection)}`;
+                if (popupCampaign) url += `&campaign_id=${encodeURIComponent(popupCampaign)}`;
+                if (popupSearch) url += `&search=${encodeURIComponent(popupSearch)}`;
                 
                 if (type === 'contacted') {
                     url += `&contacted=true`;
@@ -366,8 +387,13 @@ const CRMCampaigns = ({ onLeadClick }) => {
 
     const handlePopupPageChange = (newPage) => {
         setPopupPage(newPage);
-        fetchPopupData(activePopupType, newPage);
     };
+
+    useEffect(() => {
+        if (activePopupType) {
+            fetchPopupData(activePopupType, popupPage);
+        }
+    }, [activePopupType, popupPage, popupSearch, popupSalesRep, popupCampaign, popupSection, popupStartDate, popupEndDate]);
     
     const fetchSalesUsers = async () => {
         try {
@@ -1010,7 +1036,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
                             {/* Total Assigned */}
                             <div 
-                                onClick={() => { setActivePopupType('assigned'); setPopupPage(1); fetchPopupData('assigned', 1); }}
+                                onClick={() => openPopup('assigned')}
                                 className="bg-white p-4.5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between cursor-pointer hover:border-blue-300 hover:shadow-md hover:scale-[1.01] active:scale-[0.99] transition-all"
                             >
                                 <div>
@@ -1025,7 +1051,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
 
                             {/* Contacted Leads */}
                             <div 
-                                onClick={() => { setActivePopupType('contacted'); setPopupPage(1); fetchPopupData('contacted', 1); }}
+                                onClick={() => openPopup('contacted')}
                                 className="bg-white p-4.5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between cursor-pointer hover:border-emerald-300 hover:shadow-md hover:scale-[1.01] active:scale-[0.99] transition-all"
                             >
                                 <div>
@@ -1044,7 +1070,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
 
                             {/* Total Call Duration / Talk Time */}
                             <div 
-                                onClick={() => { setActivePopupType('talk_time'); setPopupPage(1); fetchPopupData('talk_time', 1); }}
+                                onClick={() => openPopup('talk_time')}
                                 className="bg-white p-4.5 rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50/30 to-white shadow-sm flex items-center justify-between cursor-pointer hover:border-indigo-300 hover:shadow-md hover:scale-[1.01] active:scale-[0.99] transition-all"
                             >
                                 <div>
@@ -1059,7 +1085,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
 
                             {/* Pending Contact */}
                             <div 
-                                onClick={() => { setActivePopupType('pending'); setPopupPage(1); fetchPopupData('pending', 1); }}
+                                onClick={() => openPopup('pending')}
                                 className="bg-white p-4.5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between cursor-pointer hover:border-amber-300 hover:shadow-md hover:scale-[1.01] active:scale-[0.99] transition-all"
                             >
                                 <div>
@@ -1074,7 +1100,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
 
                             {/* Converted */}
                             <div 
-                                onClick={() => { setActivePopupType('converted'); setPopupPage(1); fetchPopupData('converted', 1); }}
+                                onClick={() => openPopup('converted')}
                                 className="bg-white p-4.5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between cursor-pointer hover:border-purple-300 hover:shadow-md hover:scale-[1.01] active:scale-[0.99] transition-all"
                             >
                                 <div>
@@ -1106,41 +1132,60 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                     )}
                                 </div>
                                 
-                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-3">
+                                <div className="space-y-4">
                                     {(() => {
+                                        const sortedStages = [...assignedStats.pipeline_stages].sort((a, b) => b.count - a.count);
+                                        const displayedStages = showAllPipelineStages ? sortedStages : sortedStages.slice(0, 12);
                                         const totalStageLeads = assignedStats.pipeline_stages.reduce((sum, s) => sum + (s.count || 0), 0) || 0;
-                                        return assignedStats.pipeline_stages.map((stage) => {
-                                            const isSelected = selectedStageFilter === stage.id;
-                                            return (
-                                                <div 
-                                                    key={stage.id}
-                                                    onClick={() => {
-                                                        if (isSelected) setSelectedStageFilter('');
-                                                        else setSelectedStageFilter(stage.id);
-                                                        setCurrentPage(1);
-                                                    }}
-                                                    className={`p-3.5 rounded-xl border text-center transition-all cursor-pointer ${
-                                                        isSelected 
-                                                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-md ring-2 ring-indigo-300' 
-                                                            : 'bg-slate-50/80 text-slate-800 border-slate-200 hover:bg-white hover:border-indigo-300 hover:shadow-sm'
-                                                    }`}
-                                                >
-                                                    <p className={`text-[11px] font-semibold truncate ${isSelected ? 'text-indigo-100' : 'text-slate-500'}`}>
-                                                        {stage.name}
-                                                    </p>
-                                                    <h4 className={`text-xl font-bold mt-0.5 ${isSelected ? 'text-white' : 'text-slate-900'}`}>
-                                                        {stage.count}
-                                                    </h4>
-                                                    <span className={`text-[9px] font-bold inline-block mt-1 px-2 py-0.5 rounded-full ${
-                                                        isSelected ? 'bg-white/20 text-white' : 'bg-indigo-100 text-indigo-700'
-                                                    }`}>
-                                                        {totalStageLeads > 0 
-                                                            ? `${Math.round((stage.count / totalStageLeads) * 100)}%` 
-                                                            : '0%'}
-                                                    </span>
+                                        
+                                        return (
+                                            <>
+                                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-3">
+                                                    {displayedStages.map((stage) => {
+                                                        const isSelected = selectedStageFilter === stage.id;
+                                                        return (
+                                                            <div 
+                                                                key={stage.id}
+                                                                onClick={() => {
+                                                                    if (isSelected) setSelectedStageFilter('');
+                                                                    else setSelectedStageFilter(stage.id);
+                                                                    setCurrentPage(1);
+                                                                }}
+                                                                className={`p-3.5 rounded-xl border text-center transition-all cursor-pointer ${
+                                                                    isSelected 
+                                                                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-md ring-2 ring-indigo-300' 
+                                                                        : 'bg-slate-50/80 text-slate-800 border-slate-200 hover:bg-white hover:border-indigo-300 hover:shadow-sm hover:scale-[1.01]'
+                                                                }`}
+                                                            >
+                                                                <p className={`text-[11px] font-semibold truncate ${isSelected ? 'text-indigo-100' : 'text-slate-500'}`}>
+                                                                    {stage.name}
+                                                                </p>
+                                                                <h4 className={`text-xl font-bold mt-0.5 ${isSelected ? 'text-white' : 'text-slate-900'}`}>
+                                                                    {stage.count}
+                                                                </h4>
+                                                                <span className={`text-[9px] font-bold inline-block mt-1 px-2 py-0.5 rounded-full ${
+                                                                    isSelected ? 'bg-white/20 text-white' : 'bg-indigo-100 text-indigo-700'
+                                                                }`}>
+                                                                    {totalStageLeads > 0 
+                                                                        ? `${Math.round((stage.count / totalStageLeads) * 100)}%` 
+                                                                        : '0%'}
+                                                                </span>
+                                                            </div>
+                                                        );
+                                                    })}
                                                 </div>
-                                            );
-                                        });
+                                                {sortedStages.length > 12 && (
+                                                    <div className="flex justify-center pt-2">
+                                                        <button 
+                                                            onClick={() => setShowAllPipelineStages(!showAllPipelineStages)}
+                                                            className="text-xs font-bold text-indigo-600 hover:text-indigo-800 hover:bg-indigo-100 bg-indigo-50 px-4 py-2 rounded-xl transition-all border border-indigo-100/50 shadow-2xs hover:shadow-xs active:scale-[0.98]"
+                                                        >
+                                                            {showAllPipelineStages ? 'Show Less Stages' : `Show All Stages (${sortedStages.length})`}
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </>
+                                        );
                                     })()}
                                 </div>
                             </div>
@@ -1164,57 +1209,73 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                     )}
                                 </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                                    {assignedStats.leaderboard.map((rep) => {
-                                        const denominator = Math.max(rep.assigned, rep.contacted, 1);
-                                        const contactRate = Math.round((rep.contacted / denominator) * 100);
-                                        const isSelected = selectedAssigneeFilter === rep.id.toString();
-                                        return (
-                                            <div 
-                                                key={rep.id} 
-                                                onClick={() => {
-                                                    if (isSelected) setSelectedAssigneeFilter('');
-                                                    else setSelectedAssigneeFilter(rep.id.toString());
-                                                    setCurrentPage(1);
-                                                }}
-                                                className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
-                                                    isSelected 
-                                                        ? 'bg-indigo-50/90 border-indigo-400 ring-2 ring-indigo-500/20 shadow-sm' 
-                                                        : 'bg-slate-50/70 border-slate-200 hover:border-indigo-300 hover:bg-white'
-                                                }`}
-                                            >
-                                                <div className="flex items-center justify-between mb-2">
-                                                    <div className="flex items-center gap-2.5">
-                                                        <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs">
-                                                            {rep.name?.[0] || 'A'}
+                                <div className="space-y-4">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                        {(() => {
+                                            const sortedReps = [...assignedStats.leaderboard].sort((a, b) => b.assigned - a.assigned);
+                                            const displayedReps = showAllAgents ? sortedReps : sortedReps.slice(0, 6);
+                                            return displayedReps.map((rep) => {
+                                                const denominator = Math.max(rep.assigned, rep.contacted, 1);
+                                                const contactRate = Math.round((rep.contacted / denominator) * 100);
+                                                const isSelected = selectedAssigneeFilter === rep.id.toString();
+                                                return (
+                                                    <div 
+                                                        key={rep.id} 
+                                                        onClick={() => {
+                                                            if (isSelected) setSelectedAssigneeFilter('');
+                                                            else setSelectedAssigneeFilter(rep.id.toString());
+                                                            setCurrentPage(1);
+                                                        }}
+                                                        className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
+                                                            isSelected 
+                                                                ? 'bg-indigo-50/90 border-indigo-400 ring-2 ring-indigo-500/20 shadow-sm' 
+                                                                : 'bg-slate-50/70 border-slate-200 hover:border-indigo-300 hover:bg-white'
+                                                        }`}
+                                                    >
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <div className="flex items-center gap-2.5">
+                                                                <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs">
+                                                                    {rep.name?.[0] || 'A'}
+                                                                </div>
+                                                                <div>
+                                                                    <h4 className="font-bold text-slate-900 text-xs">{rep.name}</h4>
+                                                                    <p className="text-[10px] text-slate-500 font-medium">{rep.assigned} Assigned Leads</p>
+                                                                </div>
+                                                            </div>
+                                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${contactRate >= 70 ? 'bg-emerald-100 text-emerald-700' : contactRate >= 40 ? 'bg-amber-100 text-amber-700' : 'bg-slate-200 text-slate-700'}`}>
+                                                                {contactRate}% Contacted
+                                                            </span>
                                                         </div>
-                                                        <div>
-                                                            <h4 className="font-bold text-slate-900 text-xs">{rep.name}</h4>
-                                                            <p className="text-[10px] text-slate-500 font-medium">{rep.assigned} Assigned Leads</p>
-                                                        </div>
-                                                    </div>
-                                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${contactRate >= 70 ? 'bg-emerald-100 text-emerald-700' : contactRate >= 40 ? 'bg-amber-100 text-amber-700' : 'bg-slate-200 text-slate-700'}`}>
-                                                        {contactRate}% Contacted
-                                                    </span>
-                                                </div>
 
-                                                <div className="space-y-1.5 mt-2">
-                                                    <div className="flex items-center justify-between text-[11px] font-medium text-slate-600">
-                                                        <span>Contacted: <strong className="text-emerald-700">{rep.contacted}</strong></span>
-                                                        <span className="flex items-center gap-1 bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md font-bold text-[10px] border border-indigo-100">
-                                                            ⏱️ {rep.formatted_call_duration || '0s'} ({rep.total_calls || 0} calls)
-                                                        </span>
+                                                        <div className="space-y-1.5 mt-2">
+                                                            <div className="flex items-center justify-between text-[11px] font-medium text-slate-600">
+                                                                <span>Contacted: <strong className="text-emerald-700">{rep.contacted}</strong></span>
+                                                                <span className="flex items-center gap-1 bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md font-bold text-[10px] border border-indigo-100">
+                                                                    ⏱️ {rep.formatted_call_duration || '0s'} ({rep.total_calls || 0} calls)
+                                                                </span>
+                                                            </div>
+                                                            <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                                                                <div 
+                                                                    className="h-full bg-emerald-500 rounded-full transition-all duration-500" 
+                                                                    style={{ width: `${contactRate}%` }}
+                                                                />
+                                                            </div>
+                                                        </div>
                                                     </div>
-                                                    <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                                                        <div 
-                                                            className="h-full bg-emerald-500 rounded-full transition-all duration-500" 
-                                                            style={{ width: `${contactRate}%` }}
-                                                        />
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
+                                                );
+                                            });
+                                        })()}
+                                    </div>
+                                    {assignedStats.leaderboard.length > 6 && (
+                                        <div className="flex justify-center pt-2">
+                                            <button 
+                                                onClick={() => setShowAllAgents(!showAllAgents)}
+                                                className="text-xs font-bold text-indigo-600 hover:text-indigo-800 hover:bg-indigo-100 bg-indigo-50 px-4 py-2 rounded-xl transition-all border border-indigo-100/50 shadow-2xs hover:shadow-xs active:scale-[0.98]"
+                                            >
+                                                {showAllAgents ? 'Show Less Agents' : `Show All Agents (${assignedStats.leaderboard.length})`}
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         )}
@@ -1680,11 +1741,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
     return (
         <div className="max-w-7xl mx-auto space-y-6">
             {/* Header & Tabs */}
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-slate-200 pb-4">
-                <div>
-                    <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Marketing</h1>
-                    <p className="text-slate-500 mt-1">Manage marketing sources, track budgets, and route leads.</p>
-                </div>
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 pb-4">
                 <div className="flex bg-slate-100 p-1 rounded-xl w-full md:w-auto overflow-x-auto">
                     {(authUser?.role === 'SUPER_ADMIN' || authUser?.role === 'ADMIN') && (
                         <>
@@ -2443,6 +2500,44 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                         ? 'View and listen to call recordings for the selected team/duration.' 
                                         : `Showing matching leads for this KPI card (${popupTotalCount} total).`}
                                 </p>
+                                <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Scope:</span>
+                                    <span className="px-2 py-0.5 text-[9px] font-bold rounded bg-indigo-50 text-indigo-700 border border-indigo-100 uppercase">
+                                        Card: {activePopupType}
+                                    </span>
+                                    {(popupSearch || popupSalesRep || popupSection || popupCampaign || popupStartDate || popupEndDate) ? (
+                                        <>
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Filters:</span>
+                                            {popupSearch && (
+                                                <span className="px-2 py-0.5 text-[9px] font-bold rounded bg-slate-100 text-slate-700 border border-slate-200">
+                                                    Search: "{popupSearch}"
+                                                </span>
+                                            )}
+                                            {popupSalesRep && (
+                                                <span className="px-2 py-0.5 text-[9px] font-bold rounded bg-slate-100 text-slate-700 border border-slate-200 uppercase">
+                                                    Rep: {popupSalesRep === 'unassigned' ? 'Unassigned' : salesUsers.find(u => u.id.toString() === popupSalesRep.toString())?.name || popupSalesRep}
+                                                </span>
+                                            )}
+                                            {popupSection && (
+                                                <span className="px-2 py-0.5 text-[9px] font-bold rounded bg-slate-100 text-slate-700 border border-slate-200 uppercase">
+                                                    Section: {popupSection === 'REGULAR' ? 'Regular' : 'Career Academy'}
+                                                </span>
+                                            )}
+                                            {popupCampaign && (
+                                                <span className="px-2 py-0.5 text-[9px] font-bold rounded bg-slate-100 text-slate-700 border border-slate-200 uppercase">
+                                                    Campaign: {campaigns.find(c => c.id.toString() === popupCampaign.toString())?.name || popupCampaign}
+                                                </span>
+                                            )}
+                                            {(popupStartDate || popupEndDate) && (
+                                                <span className="px-2 py-0.5 text-[9px] font-bold rounded bg-slate-100 text-slate-700 border border-slate-200 uppercase">
+                                                    Date: {popupStartDate || '*'} to {popupEndDate || '*'}
+                                                </span>
+                                            )}
+                                        </>
+                                    ) : (
+                                        <span className="text-[9px] text-slate-400 font-semibold italic ml-1">No additional filters applied</span>
+                                    )}
+                                </div>
                             </div>
                             <button 
                                 onClick={() => { setActivePopupType(null); setPopupLeads([]); }} 
@@ -2454,6 +2549,106 @@ const CRMCampaigns = ({ onLeadClick }) => {
 
                         {/* Modal Content */}
                         <div className="flex-1 overflow-y-auto p-6 min-h-[300px]">
+                            {/* Popup Filters */}
+                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 mb-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 animate-fadeIn">
+                                {/* Search */}
+                                <div className="relative flex items-center bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 focus-within:ring-2 focus-within:ring-indigo-500/20 shadow-2xs">
+                                    <Search className="text-slate-400 w-3.5 h-3.5 mr-1.5 flex-shrink-0" />
+                                    <input
+                                        type="text"
+                                        placeholder="Search name / phone..."
+                                        value={popupSearch}
+                                        onChange={(e) => { setPopupSearch(e.target.value); setPopupPage(1); }}
+                                        className="w-full bg-transparent outline-none text-xs text-slate-700 placeholder-slate-400 font-medium"
+                                    />
+                                </div>
+
+                                {/* Assigned Sales Rep */}
+                                <div className="flex items-center bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 focus-within:ring-2 focus-within:ring-indigo-500/20 shadow-2xs">
+                                    <Users className="text-slate-400 w-3.5 h-3.5 mr-1.5 flex-shrink-0" />
+                                    <select 
+                                        value={popupSalesRep}
+                                        onChange={(e) => { setPopupSalesRep(e.target.value); setPopupPage(1); }}
+                                        className="bg-transparent text-xs font-semibold text-indigo-700 outline-none cursor-pointer w-full"
+                                    >
+                                        <option value="" className="text-slate-900 bg-white">All Sales Reps</option>
+                                        <option value="unassigned" className="text-slate-900 bg-white">Unassigned Leads</option>
+                                        {salesUsers.map(user => (
+                                            <option key={user.id} value={user.id} className="text-slate-900 bg-white">
+                                                {user.name || (user.first_name ? `${user.first_name} ${user.last_name || ''}`.trim() : user.username || `User #${user.id}`)}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {/* Section Filter */}
+                                <div className="flex items-center bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 focus-within:ring-2 focus-within:ring-indigo-500/20 shadow-2xs">
+                                    <Layers className="text-slate-400 w-3.5 h-3.5 mr-1.5 flex-shrink-0" />
+                                    <select
+                                        value={popupSection}
+                                        onChange={(e) => { setPopupSection(e.target.value); setPopupPage(1); }}
+                                        className="bg-transparent text-xs font-semibold text-indigo-700 outline-none cursor-pointer w-full"
+                                    >
+                                        <option value="" className="text-slate-900 bg-white">All Sections</option>
+                                        <option value="REGULAR" className="text-slate-900 bg-white">🎓 Regular</option>
+                                        <option value="CAREER_ACADEMY" className="text-slate-900 bg-white">🏫 Career Academy</option>
+                                    </select>
+                                </div>
+
+                                {/* Campaign Filter */}
+                                <div className="flex items-center bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 focus-within:ring-2 focus-within:ring-indigo-500/20 shadow-2xs">
+                                    <Megaphone className="text-slate-400 w-3.5 h-3.5 mr-1.5 flex-shrink-0" />
+                                    <select
+                                        value={popupCampaign}
+                                        onChange={(e) => { setPopupCampaign(e.target.value); setPopupPage(1); }}
+                                        className="bg-transparent text-xs font-semibold text-indigo-700 outline-none cursor-pointer w-full"
+                                    >
+                                        <option value="" className="text-slate-900 bg-white">All Campaigns</option>
+                                        {campaigns.map(c => (
+                                            <option key={c.id} value={c.id} className="text-slate-900 bg-white">{c.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {/* Date Filters */}
+                                <div className="flex items-center justify-between bg-white border border-slate-200 rounded-xl px-2 py-1.5 focus-within:ring-2 focus-within:ring-indigo-500/20 shadow-2xs">
+                                    <Calendar className="text-slate-400 w-3.5 h-3.5 mr-1 flex-shrink-0" />
+                                    <input 
+                                        type="date" 
+                                        value={popupStartDate} 
+                                        onChange={(e) => { setPopupStartDate(e.target.value); setPopupPage(1); }} 
+                                        className="w-[90px] text-[10px] outline-none bg-transparent text-slate-700 font-medium cursor-pointer" 
+                                    />
+                                    <span className="text-slate-400 text-[10px] px-1 font-bold">to</span>
+                                    <input 
+                                        type="date" 
+                                        value={popupEndDate} 
+                                        onChange={(e) => { setPopupEndDate(e.target.value); setPopupPage(1); }} 
+                                        className="w-[90px] text-[10px] outline-none bg-transparent text-slate-700 font-medium cursor-pointer" 
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Clear Filters Indicator */}
+                            {(popupSearch || popupSalesRep || popupCampaign || popupSection || popupStartDate || popupEndDate) && (
+                                <div className="flex justify-end mb-4 animate-fadeIn">
+                                    <button
+                                        onClick={() => {
+                                            setPopupSearch('');
+                                            setPopupSalesRep('');
+                                            setPopupCampaign('');
+                                            setPopupSection('');
+                                            setPopupStartDate('');
+                                            setPopupEndDate('');
+                                            setPopupPage(1);
+                                        }}
+                                        className="text-indigo-650 hover:text-indigo-800 text-[11px] font-bold flex items-center gap-1 bg-indigo-50 hover:bg-indigo-100/80 px-3.5 py-1.5 rounded-xl transition-all border border-indigo-100 shadow-2xs hover:shadow-xs active:scale-[0.98]"
+                                    >
+                                        Clear Popup Filters
+                                    </button>
+                                </div>
+                            )}
+
                             {popupLoading ? (
                                 <div className="flex flex-col items-center justify-center h-64 gap-3 text-slate-500 font-semibold">
                                     <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>

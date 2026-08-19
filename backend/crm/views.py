@@ -383,6 +383,20 @@ class LeadInteractionViewSet(viewsets.ModelViewSet):
         if sales_section and sales_section != 'ALL':
             queryset = queryset.filter(student__sales_section=sales_section)
             
+        campaign_id = self.request.query_params.get('campaign_id', None)
+        if campaign_id:
+            queryset = queryset.filter(student__campaign_id=campaign_id)
+            
+        search = self.request.query_params.get('search', None)
+        if search:
+            from django.db.models import Q
+            queryset = queryset.filter(
+                Q(student__first_name__icontains=search) |
+                Q(student__last_name__icontains=search) |
+                Q(student__mobile__icontains=search) |
+                Q(student__email__icontains=search)
+            )
+            
         start_date = self.request.query_params.get('start_date', None)
         end_date = self.request.query_params.get('end_date', None)
         if start_date:
