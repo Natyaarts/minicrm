@@ -1636,7 +1636,6 @@ const SalesModule = () => {
                             <CRMCampaigns 
                                 onLeadClick={(student) => {
                                     setSelectedStudentProfile(student);
-                                    setActiveTab('list');
                                 }}
                             />
                         </div>
@@ -2138,7 +2137,13 @@ const SalesModule = () => {
                                 <h3 className="text-xs font-bold text-indigo-900 uppercase tracking-wider mb-2">Sales Pipeline Status</h3>
                                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
                                     <select
-                                        value={pendingPipelineStatus}
+                                        value={(() => {
+                                            const matchedStage = pipelineStages.find(s => 
+                                                s.id?.toString() === pendingPipelineStatus?.toString() || 
+                                                s.name?.toLowerCase() === pendingPipelineStatus?.toLowerCase()
+                                            );
+                                            return matchedStage ? (matchedStage.id || matchedStage.name) : pendingPipelineStatus;
+                                        })()}
                                         onChange={(e) => setPendingPipelineStatus(e.target.value)}
                                         className="flex-1 text-xs font-semibold border border-indigo-200 rounded-lg p-2 bg-white outline-none text-indigo-700 shadow-sm"
                                     >
@@ -2149,15 +2154,58 @@ const SalesModule = () => {
                                         ))}
                                     </select>
                                     <button
-                                        onClick={() => handleStatusChange(pendingPipelineStatus)}
-                                        disabled={pendingPipelineStatus === (selectedStudentProfile.lead_status || 'NEW')}
+                                        onClick={() => {
+                                            const matchedStage = pipelineStages.find(s => 
+                                                s.id?.toString() === pendingPipelineStatus?.toString() || 
+                                                s.name?.toLowerCase() === pendingPipelineStatus?.toLowerCase()
+                                            );
+                                            const targetStatus = matchedStage ? (matchedStage.id || matchedStage.name) : pendingPipelineStatus;
+                                            handleStatusChange(targetStatus);
+                                        }}
+                                        disabled={(() => {
+                                            const currentStage = pipelineStages.find(s => 
+                                                s.id?.toString() === pendingPipelineStatus?.toString() || 
+                                                s.name?.toLowerCase() === pendingPipelineStatus?.toLowerCase()
+                                            );
+                                            const originalStage = pipelineStages.find(s => 
+                                                s.id?.toString() === selectedStudentProfile.lead_status?.toString() || 
+                                                s.name?.toLowerCase() === selectedStudentProfile.lead_status?.toLowerCase()
+                                            );
+                                            const currentVal = currentStage ? currentStage.id : pendingPipelineStatus;
+                                            const originalVal = originalStage ? originalStage.id : (selectedStudentProfile.lead_status || 'NEW');
+                                            return currentVal?.toString() === originalVal?.toString();
+                                        })()}
                                         className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors ${
-                                            pendingPipelineStatus !== (selectedStudentProfile.lead_status || 'NEW')
+                                            (() => {
+                                                const currentStage = pipelineStages.find(s => 
+                                                    s.id?.toString() === pendingPipelineStatus?.toString() || 
+                                                    s.name?.toLowerCase() === pendingPipelineStatus?.toLowerCase()
+                                                );
+                                                const originalStage = pipelineStages.find(s => 
+                                                    s.id?.toString() === selectedStudentProfile.lead_status?.toString() || 
+                                                    s.name?.toLowerCase() === selectedStudentProfile.lead_status?.toLowerCase()
+                                                );
+                                                const currentVal = currentStage ? currentStage.id : pendingPipelineStatus;
+                                                const originalVal = originalStage ? originalStage.id : (selectedStudentProfile.lead_status || 'NEW');
+                                                return currentVal?.toString() !== originalVal?.toString();
+                                            })()
                                                 ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm'
                                                 : 'bg-indigo-200 text-indigo-400 cursor-not-allowed'
                                         }`}
                                     >
-                                        {pendingPipelineStatus !== (selectedStudentProfile.lead_status || 'NEW') ? 'Save Status' : 'Saved'}
+                                        {(() => {
+                                            const currentStage = pipelineStages.find(s => 
+                                                s.id?.toString() === pendingPipelineStatus?.toString() || 
+                                                s.name?.toLowerCase() === pendingPipelineStatus?.toLowerCase()
+                                            );
+                                            const originalStage = pipelineStages.find(s => 
+                                                s.id?.toString() === selectedStudentProfile.lead_status?.toString() || 
+                                                s.name?.toLowerCase() === selectedStudentProfile.lead_status?.toLowerCase()
+                                            );
+                                            const currentVal = currentStage ? currentStage.id : pendingPipelineStatus;
+                                            const originalVal = originalStage ? originalStage.id : (selectedStudentProfile.lead_status || 'NEW');
+                                            return currentVal?.toString() !== originalVal?.toString();
+                                        })() ? 'Save Status' : 'Saved'}
                                     </button>
                                 </div>
                             </div>

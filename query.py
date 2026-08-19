@@ -2,46 +2,13 @@ import os
 import sys
 import django
 
-# Set up django
 sys.path.append(r'c:\Users\91811\OneDrive\Desktop\Natya Aug\minicrm\backend')
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
 django.setup()
 
-from crm.models import Student, Campaign, PipelineStage
+from crm.models import PipelineStage
 
-campaign = Campaign.objects.filter(name__icontains='meta morph').first()
-if campaign:
-    print(f"Campaign: {campaign.name} (ID: {campaign.id})")
-    students = Student.objects.filter(campaign=campaign, is_active=True)
-    print(f"Total active students: {students.count()}")
-    
-    # Show value counts of lead_status
-    from django.db.models import Count
-    counts = students.values('lead_status').annotate(total=Count('id')).order_by('-total')
-    stages_map = {str(stage.id): stage.name for stage in PipelineStage.objects.all()}
-    print("\nlead_status breakdown:")
-    for item in counts:
-        status_id = item['lead_status']
-        status_name = stages_map.get(str(status_id), status_id)
-        print(f"  - Status ID/Name: {status_id} / {status_name} -> {item['total']} students")
-        
-    # Let's check what converted_stages contains
-    converted_stages = ['ENROLLED', 'CONVERTED', '4', 'enrolled', 'converted', 'Enrolled', 'Converted']
-    for stage in PipelineStage.objects.filter(name__icontains='convert') | PipelineStage.objects.filter(name__icontains='enroll'):
-        converted_stages.append(str(stage.id))
-        if stage.name:
-            converted_stages.append(stage.name)
-            
-    print("\nConverted Stages definitions in backend view:")
-    print(converted_stages)
-    
-    # Which students match converted_stages
-    matching_students = students.filter(lead_status__in=converted_stages)
-    print(f"\nMatching converted students count: {matching_students.count()}")
-    matching_counts = matching_students.values('lead_status').annotate(total=Count('id'))
-    for item in matching_counts:
-        status_id = item['lead_status']
-        status_name = stages_map.get(str(status_id), status_id)
-        print(f"  - MATCHING Status ID/Name: {status_id} / {status_name} -> {item['total']} students")
-else:
-    print("Campaign not found")
+print("Pipeline Stages:")
+for stage in PipelineStage.objects.all():
+    print(f"  ID: {stage.id} | Name: {stage.name} | Order: {stage.order}")
+
