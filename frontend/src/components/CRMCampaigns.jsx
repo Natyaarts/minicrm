@@ -2408,6 +2408,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
                             </button>
                         </div>
                     </motion.div>
+                </div>
             )}
 
             {/* KPI Leads / Recordings Popup Modal */}
