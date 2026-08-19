@@ -442,7 +442,7 @@ class CampaignViewSet(viewsets.ModelViewSet):
         if program_id:
             default_program = Program.objects.filter(id=program_id).first()
         else:
-            default_program = Program.objects.first()
+            default_program = Program.objects.exclude(name="Wise Import").first() or Program.objects.first()
             
         try:
             decoded_file = file.read().decode('utf-8-sig')
@@ -588,7 +588,7 @@ class CampaignViewSet(viewsets.ModelViewSet):
         if program_id:
             default_program = Program.objects.filter(id=program_id).first()
         else:
-            default_program = Program.objects.first()
+            default_program = Program.objects.exclude(name="Wise Import").first() or Program.objects.first()
 
         results = []
         for i, row in enumerate(rows):
@@ -1040,7 +1040,7 @@ class WebhookReceiveView(APIView):
                 if program_id:
                     program = Program.objects.filter(id=program_id).first()
                 if not program:
-                    program = Program.objects.first()
+                    program = Program.objects.exclude(name="Wise Import").first() or Program.objects.first()
 
                 # Assign Campaign if valid
                 campaign = None
@@ -1166,7 +1166,7 @@ class CampaignWebhookReceiveView(APIView):
                 if program_id:
                     program = Program.objects.filter(id=program_id).first()
                 if not program:
-                    program = Program.objects.first()
+                    program = Program.objects.exclude(name="Wise Import").first() or Program.objects.first()
 
                 # Duplicate Check
                 is_duplicate = False

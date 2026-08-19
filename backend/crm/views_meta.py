@@ -211,7 +211,7 @@ class MetaLeadWebhookView(APIView):
                             today = datetime.date.today()
                             count = Student.objects.filter(user__date_joined__date=today).count() + 1
                             crm_id = f"LLAD-{today.strftime('%d%m%y')}{count:03d}"
-                            program = Program.objects.first()
+                            program = Program.objects.exclude(name="Wise Import").first() or Program.objects.first()
 
                             # Auto-assign lead to active sales rep using round-robin logic on the campaign's auto_assign_to list
                             assigned_to_user = None

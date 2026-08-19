@@ -129,7 +129,7 @@ class Command(BaseCommand):
                             )
                             
                             from core.models import Program
-                            program = Program.objects.first()
+                            program = Program.objects.exclude(name="Wise Import").first() or Program.objects.first()
                             
                             student = Student.objects.create(
                                 user=user,
