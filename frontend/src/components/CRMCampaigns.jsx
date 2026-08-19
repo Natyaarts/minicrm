@@ -2436,7 +2436,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                                                 <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
                                                                 {stage.name}
                                                             </span>
-                                                            <span>{stage.count} leads ({pct})</span>
+                                                            <span>{stage.count} {stage.count === 1 ? 'lead' : 'leads'} ({pct}%)</span>
                                                         </div>
                                                         <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
                                                             <div 
