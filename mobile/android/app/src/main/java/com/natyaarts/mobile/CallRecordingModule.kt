@@ -168,7 +168,9 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
         //    that may take >10s to flush to MediaStore on some devices.
         for (i in 1..30) {
             Thread.sleep(1000)
-            systemRecordingPath = findRecentSystemRecording(targetPhoneNumber, callStartTime)
+            // Limit heavy SAF directory listing queries to once every 5 seconds (indices: 1, 6, 11, 16, 21, 26)
+            val scanSaf = (i == 1 || i % 5 == 1)
+            systemRecordingPath = findRecentSystemRecording(targetPhoneNumber, callStartTime, scanSaf)
             if (systemRecordingPath != null) {
                 break
             }
@@ -240,7 +242,7 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
         return null
     }
 
-    private fun findRecentSystemRecording(phoneNumber: String, startTimeMs: Long): String? {
+    private fun findRecentSystemRecording(phoneNumber: String, startTimeMs: Long, scanSaf: Boolean): String? {
         val contentResolver = reactApplicationContext.contentResolver
         val cleanPhone = phoneNumber.replace(Regex("[^0-9]"), "")
         
@@ -251,33 +253,64 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
         if (customUriString != null) {
             try {
                 val treeUri = Uri.parse(customUriString)
-                val documentFile = DocumentFile.fromTreeUri(reactApplicationContext, treeUri)
                 
-                if (documentFile != null && documentFile.isDirectory) {
-                    var mostRecentFile: DocumentFile? = null
-                    var maxLastModified = startTimeMs - 30000
-                    
-                    for (file in documentFile.listFiles()) {
-                        if (file.isFile && file.lastModified() >= maxLastModified) {
-                            val name = file.name ?: ""
-                            val cleanFileName = name.replace(Regex("[^0-9]"), "")
-                            
-                            val phoneMatches = cleanPhone.isNotEmpty() && cleanFileName.isNotEmpty() && 
-                                               (cleanFileName.contains(cleanPhone) || cleanPhone.contains(cleanFileName))
-                                               
-                            val isAudio = isAudioRecordingFile(name)
-                                           
-                            if (phoneMatches || isAudio) {
-                                if (file.lastModified() > (mostRecentFile?.lastModified() ?: 0)) {
-                                    mostRecentFile = file
-                                    maxLastModified = file.lastModified()
+                // Attempt to resolve physical file path to bypass slow SAF DocumentFile API completely
+                val physicalPath = getPhysicalPathFromSafUri(treeUri)
+                if (physicalPath != null) {
+                    val dir = File(physicalPath)
+                    if (dir.exists() && dir.isDirectory) {
+                        var mostRecentFile: File? = null
+                        var maxLastModified = startTimeMs - 30000
+                        for (file in (dir.listFiles() ?: emptyArray())) {
+                            if (file.isFile && file.lastModified() >= maxLastModified) {
+                                val name = file.name ?: ""
+                                val cleanFileName = name.replace(Regex("[^0-9]"), "")
+                                val phoneMatches = cleanPhone.isNotEmpty() && cleanFileName.isNotEmpty() && 
+                                                   (cleanFileName.contains(cleanPhone) || cleanPhone.contains(cleanFileName.takeLast(10)))
+                                val isAudio = isAudioRecordingFile(name)
+                                if (phoneMatches || isAudio) {
+                                    if (file.lastModified() > (mostRecentFile?.lastModified() ?: 0)) {
+                                        mostRecentFile = file
+                                        maxLastModified = file.lastModified()
+                                    }
                                 }
                             }
                         }
+                        if (mostRecentFile != null) {
+                            return mostRecentFile.absolutePath
+                        }
                     }
-                    
-                    if (mostRecentFile != null) {
-                        return copySafFileToCache(mostRecentFile.uri, mostRecentFile.name ?: "recording.m4a")
+                }
+
+                // If physical resolution is not possible and scanSaf is true, use slow SAF listFiles fallback
+                if (scanSaf) {
+                    val documentFile = DocumentFile.fromTreeUri(reactApplicationContext, treeUri)
+                    if (documentFile != null && documentFile.isDirectory) {
+                        var mostRecentFile: DocumentFile? = null
+                        var maxLastModified = startTimeMs - 30000
+                        
+                        for (file in documentFile.listFiles()) {
+                            if (file.isFile && file.lastModified() >= maxLastModified) {
+                                val name = file.name ?: ""
+                                val cleanFileName = name.replace(Regex("[^0-9]"), "")
+                                
+                                val phoneMatches = cleanPhone.isNotEmpty() && cleanFileName.isNotEmpty() && 
+                                                   (cleanFileName.contains(cleanPhone) || cleanPhone.contains(cleanFileName))
+                                                   
+                                val isAudio = isAudioRecordingFile(name)
+                                               
+                                if (phoneMatches || isAudio) {
+                                    if (file.lastModified() > (mostRecentFile?.lastModified() ?: 0)) {
+                                        mostRecentFile = file
+                                        maxLastModified = file.lastModified()
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if (mostRecentFile != null) {
+                            return copySafFileToCache(mostRecentFile.uri, mostRecentFile.name ?: "recording.m4a")
+                        }
                     }
                 }
             } catch (e: Exception) {
@@ -442,6 +475,29 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
             }
         } catch (e: Exception) {
             e.printStackTrace()
+        }
+        return null
+    }
+
+    private fun getPhysicalPathFromSafUri(uri: Uri): String? {
+        if ("com.android.externalstorage.documents" == uri.authority) {
+            val paths = uri.pathSegments
+            val docId = if (paths.size >= 2 && paths[0] == "tree") {
+                Uri.decode(paths[1])
+            } else {
+                null
+            } ?: return null
+
+            val split = docId.split(":")
+            if (split.size >= 2) {
+                val type = split[0]
+                val relativePath = split[1]
+                if ("primary".equals(type, ignoreCase = true)) {
+                    return "/storage/emulated/0/$relativePath"
+                } else {
+                    return "/storage/$type/$relativePath"
+                }
+            }
         }
         return null
     }
