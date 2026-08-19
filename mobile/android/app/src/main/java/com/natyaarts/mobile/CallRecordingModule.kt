@@ -260,7 +260,7 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
                     val dir = File(physicalPath)
                     if (dir.exists() && dir.isDirectory) {
                         var mostRecentFile: File? = null
-                        var maxLastModified = startTimeMs - 30000
+                        var maxLastModified = startTimeMs - 900000 // 15 minutes window
                         for (file in (dir.listFiles() ?: emptyArray())) {
                             if (file.isFile && file.lastModified() >= maxLastModified) {
                                 val name = file.name ?: ""
@@ -287,7 +287,7 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
                     val documentFile = DocumentFile.fromTreeUri(reactApplicationContext, treeUri)
                     if (documentFile != null && documentFile.isDirectory) {
                         var mostRecentFile: DocumentFile? = null
-                        var maxLastModified = startTimeMs - 30000
+                        var maxLastModified = startTimeMs - 900000 // 15 minutes window
                         
                         for (file in documentFile.listFiles()) {
                             if (file.isFile && file.lastModified() >= maxLastModified) {
@@ -356,7 +356,7 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
             "/storage/emulated/0/Download",
         )
 
-        val windowStart = startTimeMs - 60_000L // 1 min before call started
+        val windowStart = startTimeMs - 900000L // 15 minutes window
         var bestFile: File? = null
         var bestModified = windowStart
 
@@ -394,7 +394,7 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
             MediaStore.Audio.Media.DATA,
             MediaStore.Audio.Media.DATE_ADDED
         )
-        val startTimeSeconds = startTimeMs / 1000 - 120 // 2 min window
+        val startTimeSeconds = startTimeMs / 1000 - 900 // 15 minutes window
         val selection = "${MediaStore.Audio.Media.DATE_ADDED} >= ?"
         val selectionArgs = arrayOf(startTimeSeconds.toString())
         val sortOrder = "${MediaStore.Audio.Media.DATE_ADDED} DESC"
