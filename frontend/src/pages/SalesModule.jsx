@@ -2157,7 +2157,7 @@ const SalesModule = () => {
                                         onClick={() => {
                                             const matchedStage = pipelineStages.find(s => 
                                                 s.id?.toString() === pendingPipelineStatus?.toString() || 
-                                                s.name?.toLowerCase() === pendingPipelineStatus?.toLowerCase()
+                                                s.name?.toLowerCase() === pendingPipelineStatus?.toString().toLowerCase()
                                             );
                                             const targetStatus = matchedStage ? (matchedStage.id || matchedStage.name) : pendingPipelineStatus;
                                             handleStatusChange(targetStatus);
@@ -2165,11 +2165,11 @@ const SalesModule = () => {
                                         disabled={(() => {
                                             const currentStage = pipelineStages.find(s => 
                                                 s.id?.toString() === pendingPipelineStatus?.toString() || 
-                                                s.name?.toLowerCase() === pendingPipelineStatus?.toLowerCase()
+                                                s.name?.toLowerCase() === pendingPipelineStatus?.toString().toLowerCase()
                                             );
                                             const originalStage = pipelineStages.find(s => 
                                                 s.id?.toString() === selectedStudentProfile.lead_status?.toString() || 
-                                                s.name?.toLowerCase() === selectedStudentProfile.lead_status?.toLowerCase()
+                                                s.name?.toLowerCase() === selectedStudentProfile.lead_status?.toString().toLowerCase()
                                             );
                                             const currentVal = currentStage ? currentStage.id : pendingPipelineStatus;
                                             const originalVal = originalStage ? originalStage.id : (selectedStudentProfile.lead_status || 'NEW');
@@ -2179,11 +2179,11 @@ const SalesModule = () => {
                                             (() => {
                                                 const currentStage = pipelineStages.find(s => 
                                                     s.id?.toString() === pendingPipelineStatus?.toString() || 
-                                                    s.name?.toLowerCase() === pendingPipelineStatus?.toLowerCase()
+                                                    s.name?.toLowerCase() === pendingPipelineStatus?.toString().toLowerCase()
                                                 );
                                                 const originalStage = pipelineStages.find(s => 
                                                     s.id?.toString() === selectedStudentProfile.lead_status?.toString() || 
-                                                    s.name?.toLowerCase() === selectedStudentProfile.lead_status?.toLowerCase()
+                                                    s.name?.toLowerCase() === selectedStudentProfile.lead_status?.toString().toLowerCase()
                                                 );
                                                 const currentVal = currentStage ? currentStage.id : pendingPipelineStatus;
                                                 const originalVal = originalStage ? originalStage.id : (selectedStudentProfile.lead_status || 'NEW');
@@ -2196,11 +2196,11 @@ const SalesModule = () => {
                                         {(() => {
                                             const currentStage = pipelineStages.find(s => 
                                                 s.id?.toString() === pendingPipelineStatus?.toString() || 
-                                                s.name?.toLowerCase() === pendingPipelineStatus?.toLowerCase()
+                                                s.name?.toLowerCase() === pendingPipelineStatus?.toString().toLowerCase()
                                             );
                                             const originalStage = pipelineStages.find(s => 
                                                 s.id?.toString() === selectedStudentProfile.lead_status?.toString() || 
-                                                s.name?.toLowerCase() === selectedStudentProfile.lead_status?.toLowerCase()
+                                                s.name?.toLowerCase() === selectedStudentProfile.lead_status?.toString().toLowerCase()
                                             );
                                             const currentVal = currentStage ? currentStage.id : pendingPipelineStatus;
                                             const originalVal = originalStage ? originalStage.id : (selectedStudentProfile.lead_status || 'NEW');
