@@ -173,6 +173,7 @@ const SalesModule = () => {
             setToast({ title: "Success", description: "Pipeline status updated.", type: 'success' });
             setTimeout(() => setToast(null), 3000);
             fetchStudents();
+            fetchInteractions(selectedStudentProfile.id);
         } catch (error) {
             console.error("Failed to update status", error);
             setToast({ title: "Error", description: "Failed to update status.", type: 'error' });

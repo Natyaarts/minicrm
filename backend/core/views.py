@@ -317,6 +317,31 @@ class StudentViewSet(viewsets.ModelViewSet):
             self.request.query_params._mutable = False
         return super().filter_queryset(queryset)
     
+    def perform_update(self, serializer):
+        instance = self.get_object()
+        old_status = getattr(instance, 'lead_status', None)
+        updated_instance = serializer.save()
+        new_status = getattr(updated_instance, 'lead_status', None)
+        
+        if old_status != new_status:
+            try:
+                from crm.models import PipelineStage, LeadInteraction
+                stages_map = {str(stage.id): stage.name for stage in PipelineStage.objects.all()}
+                old_name = stages_map.get(str(old_status), str(old_status))
+                new_name = stages_map.get(str(new_status), str(new_status))
+                
+                author = self.request.user if (self.request.user and self.request.user.is_authenticated) else None
+                LeadInteraction.objects.create(
+                    student=updated_instance,
+                    author=author,
+                    interaction_type='NOTE',
+                    notes=f"Status changed from '{old_name}' to '{new_name}'"
+                )
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Auto log status change failed: {e}")
+    
     def get_permissions(self):
         if self.action in ['create', 'public_lookup', 'partial_update']:
             return [permissions.AllowAny()]
