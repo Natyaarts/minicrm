@@ -74,6 +74,19 @@ class NormalizedMobileField(models.CharField):
             return digits
         return val
 
+class NormalizedEmailField(models.EmailField):
+    def get_prep_value(self, value):
+        val = super().get_prep_value(value)
+        if val:
+            return str(val).strip().lower()
+        return val
+
+    def pre_save(self, model_instance, add):
+        val = super().pre_save(model_instance, add)
+        if val:
+            return str(val).strip().lower()
+        return val
+
 class Student(models.Model):
     LEAD_STATUS_CHOICES = [
         ('NEW', 'New Lead'),
@@ -122,7 +135,7 @@ class Student(models.Model):
     dob = models.DateField(blank=True, null=True)
     gender = models.CharField(max_length=20, blank=True, null=True)
     marital_status = models.CharField(max_length=20, blank=True, null=True)
-    email = models.EmailField(blank=True, null=True)
+    email = NormalizedEmailField(blank=True, null=True)
     mobile = NormalizedMobileField(max_length=15, blank=True, null=True)
     
     # Address

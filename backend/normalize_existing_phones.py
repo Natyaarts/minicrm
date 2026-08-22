@@ -6,16 +6,33 @@ django.setup()
 
 from core.models import Student
 
-print("Starting phone number normalization for existing records...")
+print("Starting phone number and email normalization for existing records...")
 students = Student.objects.all()
-count = 0
+phone_count = 0
+email_count = 0
 for student in students:
+    modified = False
+    
     if student.mobile:
-        original = student.mobile
-        # Saving will trigger the pre_save hook of NormalizedMobileField
+        original_phone = student.mobile
+        # Saving triggers model field pre_save hooks
+        student.mobile = student.mobile  # trigger setter
+        modified = True
+        
+    if student.email:
+        original_email = student.email
+        student.email = student.email  # trigger setter
+        modified = True
+        
+    if modified:
         student.save()
-        if student.mobile != original:
-            print(f"Normalized {student.crm_student_id}: {original} -> {student.mobile}")
-            count += 1
+        
+        if student.mobile and student.mobile != original_phone:
+            print(f"Normalized Phone {student.crm_student_id}: {original_phone} -> {student.mobile}")
+            phone_count += 1
+            
+        if student.email and student.email != original_email:
+            print(f"Normalized Email {student.crm_student_id}: {original_email} -> {student.email}")
+            email_count += 1
 
-print(f"Done! Normalized {count} phone numbers.")
+print(f"Done! Normalized {phone_count} phone numbers and {email_count} emails.")
