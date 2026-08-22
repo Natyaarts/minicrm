@@ -34,7 +34,14 @@ const UsersModule = () => {
     const [selectedRoleForPerms, setSelectedRoleForPerms] = useState('SALES');
     const [rolePermissions, setRolePermissions] = useState([]);
     const modules = [
-        { id: 'SALES', name: 'Sales & Leads' },
+        { id: 'SALES', name: 'Sales & Leads (Legacy)' },
+        { id: 'CRM_DASHBOARD', name: 'CRM: Dashboard' },
+        { id: 'CRM_CAMPAIGNS', name: 'CRM: Campaigns' },
+        { id: 'CRM_PIPELINE', name: 'CRM: Pipeline' },
+        { id: 'CRM_LEADS_TABLE', name: 'CRM: Leads Table' },
+        { id: 'CRM_TASKS', name: 'CRM: Tasks' },
+        { id: 'CRM_REPORTS', name: 'CRM: Team Reports' },
+        { id: 'CRM_CALL_ANALYTICS', name: 'CRM: Call Analytics' },
         { id: 'MENTOR', name: 'Mentor Module' },
         { id: 'STUDENT', name: 'Student Portal' },
         { id: 'ACADEMIC_HIERARCHY', name: 'Academic Hierarchy' },

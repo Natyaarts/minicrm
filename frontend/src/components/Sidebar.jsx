@@ -48,13 +48,13 @@ const sidebarSections = [
         title: 'CRM Module',
         module: 'SALES',
         items: [
-            { icon: LayoutDashboard, label: 'Dashboard', path: '/crm/dashboard', module: 'SALES' },
-            { icon: Sparkles, label: 'Campaigns', path: '/crm/campaigns', module: 'SALES' },
-            { icon: Users, label: 'Pipeline', path: '/crm/pipeline', module: 'SALES' },
-            { icon: ClipboardEdit, label: 'Leads Table', path: '/crm/leads', module: 'SALES' },
-            { icon: CheckSquare, label: 'Tasks', path: '/crm/tasks', module: 'SALES' },
-            { icon: BarChart2, label: 'Team Reports', path: '/crm/reports', module: 'SALES' },
-            { icon: PieChart, label: 'Call Analytics', path: '/crm/analytics', module: 'SALES' },
+            { icon: LayoutDashboard, label: 'Dashboard', path: '/crm/dashboard', module: 'CRM_DASHBOARD' },
+            { icon: Sparkles, label: 'Campaigns', path: '/crm/campaigns', module: 'CRM_CAMPAIGNS' },
+            { icon: Users, label: 'Pipeline', path: '/crm/pipeline', module: 'CRM_PIPELINE' },
+            { icon: ClipboardEdit, label: 'Leads Table', path: '/crm/leads', module: 'CRM_LEADS_TABLE' },
+            { icon: CheckSquare, label: 'Tasks', path: '/crm/tasks', module: 'CRM_TASKS' },
+            { icon: BarChart2, label: 'Team Reports', path: '/crm/reports', module: 'CRM_REPORTS' },
+            { icon: PieChart, label: 'Call Analytics', path: '/crm/analytics', module: 'CRM_CALL_ANALYTICS' },
             { icon: GraduationCap, label: 'Mentor Module', path: '/mentor', module: 'MENTOR' },
             { icon: UserSquare2, label: 'Student Portal', path: '/student', module: 'STUDENT' },
             { icon: Sparkles, label: 'App Creator', path: '/crm/builder', module: 'ADMIN' },
@@ -116,7 +116,7 @@ function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }) {
 
         // Restrict CRM modules for non-manager sales users
         const managerOnlyCrmModules = ['Dashboard', 'Campaigns', 'Team Reports', 'Call Analytics'];
-        if (managerOnlyCrmModules.includes(item.label) && item.module === 'SALES') {
+        if (managerOnlyCrmModules.includes(item.label) && (item.module === 'SALES' || item.module.startsWith('CRM_'))) {
             const isManager = ['SUPER_ADMIN', 'ADMIN', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD'].includes(user.role) || user.is_manager;
             if (!isManager) return false;
         }

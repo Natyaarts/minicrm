@@ -26,22 +26,32 @@ class DynamicRolePermission(permissions.BasePermission):
         # Import model dynamically to avoid circular imports
         RolePermission = apps.get_model('users', 'RolePermission')
         
-        try:
-            perm = RolePermission.objects.get(role=request.user.role, module=module_name)
-            
-            if request.method in permissions.SAFE_METHODS: # GET, HEAD, OPTIONS
-                return perm.can_view
-            if request.method == 'POST':
-                return perm.can_add
-            if request.method in ['PUT', 'PATCH']:
-                return perm.can_edit
-            if request.method == 'DELETE':
-                return perm.can_delete
+        check_modules = [module_name]
+        if module_name == 'SALES':
+            check_modules.extend([
+                'CRM_DASHBOARD', 'CRM_CAMPAIGNS', 'CRM_PIPELINE', 
+                'CRM_LEADS_TABLE', 'CRM_TASKS', 'CRM_REPORTS', 'CRM_CALL_ANALYTICS'
+            ])
+
+        for mod in check_modules:
+            try:
+                perm = RolePermission.objects.get(role=request.user.role, module=mod)
                 
-        except RolePermission.DoesNotExist:
-            # If no explicit record, default to no permission
-            return False
-            
+                if request.method in permissions.SAFE_METHODS: # GET, HEAD, OPTIONS
+                    if perm.can_view:
+                        return True
+                elif request.method == 'POST':
+                    if perm.can_add:
+                        return True
+                elif request.method in ['PUT', 'PATCH']:
+                    if perm.can_edit:
+                        return True
+                elif request.method == 'DELETE':
+                    if perm.can_delete:
+                        return True
+            except RolePermission.DoesNotExist:
+                continue
+                
         return False
 
 class IsMentorOwner(permissions.BasePermission):

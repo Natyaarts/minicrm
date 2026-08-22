@@ -46,6 +46,13 @@ class User(AbstractUser):
 class RolePermission(models.Model):
     MODULE_CHOICES = (
         ('SALES', 'Sales & Leads'),
+        ('CRM_DASHBOARD', 'CRM Dashboard'),
+        ('CRM_CAMPAIGNS', 'CRM Campaigns'),
+        ('CRM_PIPELINE', 'CRM Pipeline'),
+        ('CRM_LEADS_TABLE', 'CRM Leads Table'),
+        ('CRM_TASKS', 'CRM Tasks'),
+        ('CRM_REPORTS', 'CRM Team Reports'),
+        ('CRM_CALL_ANALYTICS', 'CRM Call Analytics'),
         ('MENTOR', 'Mentor Module'),
         ('STUDENT', 'Student Portal'),
         ('ACADEMIC_HIERARCHY', 'Academic Hierarchy'),
