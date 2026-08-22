@@ -116,7 +116,7 @@ function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }) {
 
         // Restrict CRM modules for non-manager sales users
         const managerOnlyCrmModules = ['Dashboard', 'Campaigns', 'Team Reports', 'Call Analytics'];
-        if (managerOnlyCrmModules.includes(item.label) && (item.module === 'SALES' || item.module.startsWith('CRM_'))) {
+        if (managerOnlyCrmModules.includes(item.label) && item.module === 'SALES') {
             const isManager = ['SUPER_ADMIN', 'ADMIN', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD'].includes(user.role) || user.is_manager;
             if (!isManager) return false;
         }
