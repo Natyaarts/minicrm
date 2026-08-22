@@ -40,25 +40,6 @@ const AdminModule = () => {
     const [newProgramName, setNewProgramName] = useState('');
     const [newCourse, setNewCourse] = useState({ name: '', fee_amount: 0 });
 
-    // Permissions State
-    const [selectedRoleForPerms, setSelectedRoleForPerms] = useState('SALES');
-    const [rolePermissions, setRolePermissions] = useState([]);
-    const modules = [
-        { id: 'SALES', name: 'Sales & Leads' },
-        { id: 'MENTOR', name: 'Mentor Module' },
-        { id: 'STUDENT', name: 'Student Portal' },
-        { id: 'ACADEMIC_HIERARCHY', name: 'Academic Hierarchy' },
-        { id: 'COORDINATOR', name: 'Coordinator Module' },
-        { id: 'TEACHER', name: 'Teacher Module' },
-        { id: 'COURSES', name: 'Courses & Batches' },
-        { id: 'ANALYTICS', name: 'Analytics & Reports' },
-        { id: 'WORKFORCE', name: 'HRMS: Workforce Hub' },
-        { id: 'ATTENDANCE', name: 'HRMS: Attendance' },
-        { id: 'PAYROLL', name: 'HRMS: Payroll' },
-        { id: 'STAFF_DIRECTORY', name: 'Staff Directory' },
-        { id: 'ADMIN', name: 'Administrator Portal' },
-    ];
-
     // Razorpay Integration State
     const [razorpayConfig, setRazorpayConfig] = useState({ key_id: '', key_secret: '', is_active: false });
     const [isSavingRazorpay, setIsSavingRazorpay] = useState(false);
@@ -66,9 +47,8 @@ const AdminModule = () => {
 
     useEffect(() => {
         if (activeTab === 'fields') fetchHierarchy();
-        if (activeTab === 'permissions') fetchRolePermissions();
         if (activeTab === 'integrations') fetchRazorpayConfig();
-    }, [activeTab, selectedRoleForPerms]);
+    }, [activeTab]);
 
     useEffect(() => {
         if (selectedNode) {
@@ -265,38 +245,7 @@ const AdminModule = () => {
         }
     };
 
-    // --- Permission Logic ---
-    const fetchRolePermissions = async () => {
-        try {
-            const res = await api.get(`auth/management/permissions/?role=${selectedRoleForPerms}`);
-            setRolePermissions(Array.isArray(res.data) ? res.data : (res.data?.results || []));
-        } catch (err) {
-            console.error(err);
-        }
-    };
 
-    const handleTogglePermission = async (moduleCode, key, currentVal) => {
-        let permObj = rolePermissions.find(p => p.module === moduleCode);
-
-        try {
-            if (!permObj) {
-                const res = await api.post('auth/management/permissions/', {
-                    role: selectedRoleForPerms,
-                    module: moduleCode,
-                    [key]: !currentVal
-                });
-                setRolePermissions(prev => [...prev, res.data]);
-            } else {
-                const res = await api.patch(`auth/management/permissions/${permObj.id}/`, {
-                    [key]: !currentVal
-                });
-                setRolePermissions(prev => prev.map(p => p.id === permObj.id ? res.data : p));
-            }
-        } catch (err) {
-            console.error(err);
-            alert("Failed to save permission. Check console for details.");
-        }
-    };
 
     // Sync State
     const [syncStatus, setSyncStatus] = useState(null);
@@ -388,7 +337,6 @@ const AdminModule = () => {
             <div className="flex gap-2 p-1 bg-slate-100/50 rounded-lg w-fit">
                 {[
                     { id: 'fields', label: 'Form Builder', icon: <Database size={16} /> },
-                    { id: 'permissions', label: 'Permissions', icon: <Shield size={16} /> },
                     { id: 'integrations', label: 'Integrations', icon: <Globe size={16} /> },
                 ].map(tab => (
                     <button
@@ -786,62 +734,7 @@ const AdminModule = () => {
                 </div>
             )}
 
-            {/* Permissions Tab Content */}
-            {activeTab === 'permissions' && (
-                <div className="space-y-6 animate-fadeIn">
-                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                        <label className="block text-xs mb-3 text-slate-500 font-semibold uppercase tracking-wider">Configure Permissions for Role:</label>
-                        <div className="flex gap-2 flex-wrap">
-                            {['ADMIN', 'SALES', 'MARKETER', 'MENTOR', 'ACADEMIC', 'ACADEMIC_COORDINATOR', 'TEACHER', 'STUDENT', 'EMPLOYEE'].map(role => (
-                                <button
-                                    key={role}
-                                    onClick={() => setSelectedRoleForPerms(role)}
-                                    className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all shadow-sm border border-transparent ${selectedRoleForPerms === role ? 'bg-slate-800 text-white' : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border-slate-200'}`}
-                                >
-                                    {role}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
 
-                    <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-                        <table className="w-full text-left">
-                            <thead className="bg-slate-50 text-slate-500 text-[10px] uppercase tracking-wider font-semibold border-b border-slate-200">
-                                <tr>
-                                    <th className="p-4">Module / Section</th>
-                                    <th className="p-4 text-center">View</th>
-                                    <th className="p-4 text-center">Add</th>
-                                    <th className="p-4 text-center">Edit</th>
-                                    <th className="p-4 text-center">Delete</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {modules?.map(mod => {
-                                    const p = Array.isArray(rolePermissions) ? rolePermissions.find(x => x.module === mod.id) || {} : {};
-                                    return (
-                                        <tr key={mod.id} className="hover:bg-slate-50 transition-colors">
-                                            <td className="p-4">
-                                                <div className="font-semibold text-slate-800 text-sm">{mod.name}</div>
-                                                <div className="text-[10px] text-slate-400 uppercase tracking-wider mt-0.5">{mod.id}</div>
-                                            </td>
-                                            {['can_view', 'can_add', 'can_edit', 'can_delete'].map(key => (
-                                                <td key={key} className="p-4 text-center">
-                                                    <button
-                                                        onClick={() => handleTogglePermission(mod.id, key, p[key] || false)}
-                                                        className={`w-10 h-6 rounded-full transition-all relative border border-slate-200 ${p[key] ? 'bg-slate-800 border-slate-800' : 'bg-slate-100'}`}
-                                                    >
-                                                        <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-all transform ${p[key] ? 'translate-x-5' : 'translate-x-1'}`}></div>
-                                                    </button>
-                                                </td>
-                                            ))}
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            )}
 
             {/* Integrations Tab */}
             {activeTab === 'integrations' && (

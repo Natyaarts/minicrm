@@ -27,11 +27,70 @@ const UsersModule = () => {
         { label: 'Teacher Staff', role: 'TEACHER', icon: BookOpen, color: 'text-teal-600', bg: 'bg-teal-50' },
         { label: 'General Staff', role: 'EMPLOYEE', icon: Users, color: 'text-amber-600', bg: 'bg-amber-50' },
         { label: 'Student Accounts', role: 'STUDENT', icon: UserCircle, color: 'text-blue-600', bg: 'bg-blue-50' },
+        { label: 'Role Permissions', role: 'PERMISSIONS', icon: Shield, color: 'text-pink-600', bg: 'bg-pink-50' },
+    ];
+
+    // Permissions State
+    const [selectedRoleForPerms, setSelectedRoleForPerms] = useState('SALES');
+    const [rolePermissions, setRolePermissions] = useState([]);
+    const modules = [
+        { id: 'SALES', name: 'Sales & Leads' },
+        { id: 'MENTOR', name: 'Mentor Module' },
+        { id: 'STUDENT', name: 'Student Portal' },
+        { id: 'ACADEMIC_HIERARCHY', name: 'Academic Hierarchy' },
+        { id: 'COORDINATOR', name: 'Coordinator Module' },
+        { id: 'TEACHER', name: 'Teacher Module' },
+        { id: 'COURSES', name: 'Courses & Batches' },
+        { id: 'ANALYTICS', name: 'Analytics & Reports' },
+        { id: 'WORKFORCE', name: 'HRMS: Workforce Hub' },
+        { id: 'ATTENDANCE', name: 'HRMS: Attendance' },
+        { id: 'PAYROLL', name: 'HRMS: Payroll' },
+        { id: 'STAFF_DIRECTORY', name: 'Staff Directory' },
+        { id: 'ADMIN', name: 'Administrator Portal' },
     ];
 
     useEffect(() => {
-        fetchUsers();
-    }, [userPage, activeTab]);
+        if (activeTab === 'PERMISSIONS') {
+            fetchRolePermissions();
+        } else {
+            fetchUsers();
+        }
+    }, [userPage, activeTab, selectedRoleForPerms]);
+
+    const fetchRolePermissions = async () => {
+        setLoading(true);
+        try {
+            const res = await api.get(`auth/management/permissions/?role=${selectedRoleForPerms}`);
+            setRolePermissions(Array.isArray(res.data) ? res.data : (res.data?.results || []));
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleTogglePermission = async (moduleCode, key, currentVal) => {
+        let permObj = rolePermissions.find(p => p.module === moduleCode);
+
+        try {
+            if (!permObj) {
+                const res = await api.post('auth/management/permissions/', {
+                    role: selectedRoleForPerms,
+                    module: moduleCode,
+                    [key]: !currentVal
+                });
+                setRolePermissions(prev => [...prev, res.data]);
+            } else {
+                const res = await api.patch(`auth/management/permissions/${permObj.id}/`, {
+                    [key]: !currentVal
+                });
+                setRolePermissions(prev => prev.map(p => p.id === permObj.id ? res.data : p));
+            }
+        } catch (err) {
+            console.error(err);
+            alert("Failed to save permission. Check console for details.");
+        }
+    };
 
     const fetchUsers = async () => {
         setLoading(true);
@@ -121,15 +180,21 @@ const UsersModule = () => {
                     <h1 className="text-2xl font-bold text-slate-800 tracking-tight">
                         {currentTab?.label || 'Identity'} Hub
                     </h1>
-                    <p className="text-slate-500 mt-1 text-xs">Manage access, security profiles and activity for all {activeTab.toLowerCase()}s</p>
+                    <p className="text-slate-500 mt-1 text-xs">
+                        {activeTab === 'PERMISSIONS' 
+                            ? 'Configure dynamic view, add, edit, and delete permissions for each staff role.' 
+                            : `Manage access, security profiles and activity for all ${activeTab.toLowerCase()}s`}
+                    </p>
                 </div>
-                <button
-                    onClick={openCreateUser}
-                    className={`flex items-center gap-1.5 px-4 py-2 ${currentTab?.bg || 'bg-indigo-600'} ${currentTab?.color || 'text-white'} font-semibold rounded-lg shadow-sm transition-colors hover:opacity-90 active:scale-95 text-xs border border-slate-200/10`}
-                >
-                    <UserPlus size={15} />
-                    Add {activeTab.replace('_', ' ')}
-                </button>
+                {activeTab !== 'PERMISSIONS' && (
+                    <button
+                        onClick={openCreateUser}
+                        className={`flex items-center gap-1.5 px-4 py-2 ${currentTab?.bg || 'bg-indigo-600'} ${currentTab?.color || 'text-white'} font-semibold rounded-lg shadow-sm transition-colors hover:opacity-90 active:scale-95 text-xs border border-slate-200/10`}
+                    >
+                        <UserPlus size={15} />
+                        Add {activeTab.replace('_', ' ')}
+                    </button>
+                )}
             </header>
 
             {/* Enhanced Tabs System */}
@@ -149,132 +214,192 @@ const UsersModule = () => {
                 ))}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                {/* Stats for Active Section */}
-                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
-                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${tabs.find(t => t.role === activeTab)?.bg || 'bg-indigo-50'} ${tabs.find(t => t.role === activeTab)?.color || 'text-indigo-600'}`}>
-                        {activeTab === 'ADMIN' ? <Shield size={20} /> : activeTab === 'MENTOR' ? <GraduationCap size={20} /> : activeTab === 'TEACHER' ? <BookOpen size={20} /> : <Users size={20} />}
-                    </div>
-                    <div>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Active {activeTab.replace('_', ' ')}s</p>
-                        <h3 className="text-xl font-bold text-slate-800">{userPagination.count}</h3>
-                    </div>
-                </div>
-
-                {/* Internal Search */}
-                <div className="md:col-span-3 bg-white p-2 rounded-xl border border-slate-200 shadow-sm flex items-center gap-3 px-4">
-                    <Search className="text-slate-400" size={18} />
-                    <input
-                        type="text"
-                        placeholder={`Search ${activeTab.toLowerCase()} names, emails, or usernames...`}
-                        className="bg-transparent border-none outline-none w-full text-sm text-slate-700 placeholder-slate-400"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && fetchUsers()}
-                    />
-                    <button
-                        onClick={fetchUsers}
-                        className="px-4 py-2 bg-slate-800 text-white font-semibold rounded-lg text-xs hover:bg-slate-900 transition-colors"
-                    >
-                        Search
-                    </button>
-                </div>
-            </div>
-
-            {/* User List Panel */}
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse min-w-[800px]">
-                        <thead>
-                            <tr className="bg-slate-50 border-b border-slate-200">
-                                <th className="px-6 py-3 text-xs font-semibold uppercase text-slate-500 tracking-wider">Identity & Profile</th>
-                                <th className="px-6 py-3 text-xs font-semibold uppercase text-slate-500 tracking-wider text-center">Security Role</th>
-                                <th className="px-6 py-3 text-xs font-semibold uppercase text-slate-500 tracking-wider">Status</th>
-                                <th className="px-6 py-3 text-xs font-semibold uppercase text-slate-500 tracking-wider text-right">Control</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                            {users.map(user => (
-                                <tr key={user.id} className="hover:bg-slate-50/50 transition-colors">
-                                    <td className="px-6 py-4">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center text-slate-600 font-bold text-sm border border-slate-200 shadow-sm">
-                                                {user.first_name ? user.first_name[0] : user.username[0].toUpperCase()}
-                                            </div>
-                                            <div>
-                                                <p className="font-semibold text-slate-800 text-sm leading-none">{user.first_name || user.username} {user.last_name || ''}</p>
-                                                <p className="text-xs text-slate-400 mt-1.5">{user.email}</p>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4 text-center">
-                                        <span className={`px-2.5 py-1 rounded-md text-xs font-semibold tracking-wide inline-block ${user.role === 'SUPER_ADMIN' ? 'bg-indigo-600 text-white' :
-                                            user.role === 'ADMIN' ? 'bg-rose-50 border border-rose-100 text-rose-600' :
-                                                user.role === 'MARKETER' ? 'bg-violet-50 border border-violet-100 text-violet-600' :
-                                                    user.role === 'MENTOR' ? 'bg-emerald-50 border border-emerald-100 text-emerald-600' :
-                                                        user.role === 'TEACHER' ? 'bg-teal-50 border border-teal-100 text-teal-600' :
-                                                            user.role === 'ACADEMIC_COORDINATOR' ? 'bg-amber-50 border border-amber-100 text-amber-600' :
-                                                                user.role === 'EMPLOYEE' ? 'bg-orange-50 border border-orange-100 text-orange-600' :
-                                                                    'bg-blue-50 border border-blue-100 text-blue-600'
-                                            }`}>
-                                            {user.role.replace('_', ' ')}
-                                        </span>
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <div className="flex items-center gap-2">
-                                            <div className="relative flex h-2 w-2">
-                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                                            </div>
-                                            <span className="text-xs text-slate-600 font-medium">Operational</span>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4 text-right space-x-2">
-                                        <button
-                                            onClick={() => openEditUser(user)}
-                                            className="inline-flex items-center justify-center w-8 h-8 bg-white border border-slate-200 text-slate-500 rounded-lg hover:text-indigo-600 hover:border-indigo-300 transition-colors shadow-sm"
-                                        >
-                                            <Edit2 size={14} />
-                                        </button>
-                                        <button
-                                            onClick={() => handleDeleteUser(user.id, user.role)}
-                                            className="inline-flex items-center justify-center w-8 h-8 bg-white border border-slate-200 text-slate-500 rounded-lg hover:text-rose-600 hover:border-rose-300 transition-colors shadow-sm"
-                                        >
-                                            <Trash2 size={14} />
-                                        </button>
-                                    </td>
-                                </tr>
+            {activeTab === 'PERMISSIONS' ? (
+                <div className="space-y-6 animate-fadeIn">
+                    {/* Permissions Role Selector */}
+                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                        <label className="block text-xs mb-3 text-slate-500 font-semibold uppercase tracking-wider">Configure Permissions for Role:</label>
+                        <div className="flex gap-2 flex-wrap">
+                            {['ADMIN', 'SALES', 'MARKETER', 'MENTOR', 'ACADEMIC', 'ACADEMIC_COORDINATOR', 'TEACHER', 'STUDENT', 'EMPLOYEE'].map(role => (
+                                <button
+                                    key={role}
+                                    onClick={() => setSelectedRoleForPerms(role)}
+                                    className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all shadow-sm border border-transparent ${selectedRoleForPerms === role ? 'bg-slate-800 text-white' : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border-slate-200'}`}
+                                >
+                                    {role}
+                                </button>
                             ))}
-                        </tbody>
-                    </table>
-
-                    {/* Footer / Pagination Toolbar */}
-                    <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex flex-col md:flex-row items-center justify-between gap-4">
-                        <div className="flex items-center gap-2">
-                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
-                            <p className="text-xs text-slate-500 font-medium">
-                                Page {userPage} &bull; Showing {users.length} of {userPagination.count} records
-                            </p>
                         </div>
-                        <div className="flex gap-2">
+                    </div>
+
+                    {/* Permissions Table Grid */}
+                    <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+                        <table className="w-full text-left">
+                            <thead className="bg-slate-50 text-slate-500 text-[10px] uppercase tracking-wider font-semibold border-b border-slate-200">
+                                <tr>
+                                    <th className="p-4">Module / Section</th>
+                                    <th className="p-4 text-center">View</th>
+                                    <th className="p-4 text-center">Add</th>
+                                    <th className="p-4 text-center">Edit</th>
+                                    <th className="p-4 text-center">Delete</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {modules?.map(mod => {
+                                    const p = Array.isArray(rolePermissions) ? rolePermissions.find(x => x.module === mod.id) || {} : {};
+                                    return (
+                                        <tr key={mod.id} className="hover:bg-slate-50 transition-colors">
+                                            <td className="p-4">
+                                                <div className="font-semibold text-slate-800 text-sm">{mod.name}</div>
+                                                <div className="text-[10px] text-slate-400 uppercase tracking-wider mt-0.5">{mod.id}</div>
+                                            </td>
+                                            {['can_view', 'can_add', 'can_edit', 'can_delete'].map(key => (
+                                                <td key={key} className="p-4 text-center">
+                                                    <button
+                                                        onClick={() => handleTogglePermission(mod.id, key, p[key] || false)}
+                                                        className={`w-10 h-6 rounded-full transition-all relative border border-slate-200 ${p[key] ? 'bg-slate-800 border-slate-800' : 'bg-slate-100'}`}
+                                                    >
+                                                        <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-all transform ${p[key] ? 'translate-x-5' : 'translate-x-1'}`}></div>
+                                                    </button>
+                                                </td>
+                                            ))}
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ) : (
+                <>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        {/* Stats for Active Section */}
+                        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
+                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${tabs.find(t => t.role === activeTab)?.bg || 'bg-indigo-50'} ${tabs.find(t => t.role === activeTab)?.color || 'text-indigo-600'}`}>
+                                {activeTab === 'ADMIN' ? <Shield size={20} /> : activeTab === 'MENTOR' ? <GraduationCap size={20} /> : activeTab === 'TEACHER' ? <BookOpen size={20} /> : <Users size={20} />}
+                            </div>
+                            <div>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Active {activeTab.replace('_', ' ')}s</p>
+                                <h3 className="text-xl font-bold text-slate-800">{userPagination.count}</h3>
+                            </div>
+                        </div>
+
+                        {/* Internal Search */}
+                        <div className="md:col-span-3 bg-white p-2 rounded-xl border border-slate-200 shadow-sm flex items-center gap-3 px-4">
+                            <Search className="text-slate-400" size={18} />
+                            <input
+                                type="text"
+                                placeholder={`Search ${activeTab.toLowerCase()} names, emails, or usernames...`}
+                                className="bg-transparent border-none outline-none w-full text-sm text-slate-700 placeholder-slate-400"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && fetchUsers()}
+                            />
                             <button
-                                onClick={() => setUserPage(p => Math.max(1, p - 1))}
-                                disabled={!userPagination.previous || loading}
-                                className="px-3.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 disabled:opacity-50 transition-colors hover:bg-slate-50 shadow-sm"
+                                onClick={fetchUsers}
+                                className="px-4 py-2 bg-slate-800 text-white font-semibold rounded-lg text-xs hover:bg-slate-900 transition-colors"
                             >
-                                Previous
-                            </button>
-                            <button
-                                onClick={() => setUserPage(p => p + 1)}
-                                disabled={!userPagination.next || loading}
-                                className="px-3.5 py-1.5 bg-indigo-600 border border-indigo-600 rounded-lg text-xs font-semibold text-white disabled:opacity-50 transition-colors hover:bg-indigo-700 shadow-sm"
-                            >
-                                Next
+                                Search
                             </button>
                         </div>
                     </div>
-                </div>
-            </div>
+
+                    {/* User List Panel */}
+                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse min-w-[800px]">
+                                <thead>
+                                    <tr className="bg-slate-50 border-b border-slate-200">
+                                        <th className="px-6 py-3 text-xs font-semibold uppercase text-slate-500 tracking-wider">Identity & Profile</th>
+                                        <th className="px-6 py-3 text-xs font-semibold uppercase text-slate-500 tracking-wider text-center">Security Role</th>
+                                        <th className="px-6 py-3 text-xs font-semibold uppercase text-slate-500 tracking-wider">Status</th>
+                                        <th className="px-6 py-3 text-xs font-semibold uppercase text-slate-500 tracking-wider text-right">Control</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {users.map(user => (
+                                        <tr key={user.id} className="hover:bg-slate-50/50 transition-colors">
+                                            <td className="px-6 py-4">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center text-slate-600 font-bold text-sm border border-slate-200 shadow-sm">
+                                                        {user.first_name ? user.first_name[0] : user.username[0].toUpperCase()}
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-semibold text-slate-800 text-sm leading-none">{user.first_name || user.username} {user.last_name || ''}</p>
+                                                        <p className="text-xs text-slate-400 mt-1.5">{user.email}</p>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4 text-center">
+                                                <span className={`px-2.5 py-1 rounded-md text-xs font-semibold tracking-wide inline-block ${user.role === 'SUPER_ADMIN' ? 'bg-indigo-600 text-white' :
+                                                    user.role === 'ADMIN' ? 'bg-rose-50 border border-rose-100 text-rose-600' :
+                                                        user.role === 'MARKETER' ? 'bg-violet-50 border border-violet-100 text-violet-600' :
+                                                            user.role === 'MENTOR' ? 'bg-emerald-50 border border-emerald-100 text-emerald-600' :
+                                                                user.role === 'TEACHER' ? 'bg-teal-50 border border-teal-100 text-teal-600' :
+                                                                    user.role === 'ACADEMIC_COORDINATOR' ? 'bg-amber-50 border border-amber-100 text-amber-600' :
+                                                                        user.role === 'EMPLOYEE' ? 'bg-orange-50 border border-orange-100 text-orange-600' :
+                                                                            'bg-blue-50 border border-blue-100 text-blue-600'
+                                                    }`}>
+                                                    {user.role.replace('_', ' ')}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="relative flex h-2 w-2">
+                                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                                    </div>
+                                                    <span className="text-xs text-slate-600 font-medium">Operational</span>
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4 text-right space-x-2">
+                                                <button
+                                                    onClick={() => openEditUser(user)}
+                                                    className="inline-flex items-center justify-center w-8 h-8 bg-white border border-slate-200 text-slate-500 rounded-lg hover:text-indigo-600 hover:border-indigo-300 transition-colors shadow-sm"
+                                                >
+                                                    <Edit2 size={14} />
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDeleteUser(user.id, user.role)}
+                                                    className="inline-flex items-center justify-center w-8 h-8 bg-white border border-slate-200 text-slate-500 rounded-lg hover:text-rose-600 hover:border-rose-300 transition-colors shadow-sm"
+                                                >
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+
+                            {/* Footer / Pagination Toolbar */}
+                            <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex flex-col md:flex-row items-center justify-between gap-4">
+                                <div className="flex items-center gap-2">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                                    <p className="text-xs text-slate-500 font-medium">
+                                        Page {userPage} &bull; Showing {users.length} of {userPagination.count} records
+                                    </p>
+                                </div>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => setUserPage(p => Math.max(1, p - 1))}
+                                        disabled={!userPagination.previous || loading}
+                                        className="px-3.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 disabled:opacity-50 transition-colors hover:bg-slate-50 shadow-sm"
+                                    >
+                                        Previous
+                                    </button>
+                                    <button
+                                        onClick={() => setUserPage(p => p + 1)}
+                                        disabled={!userPagination.next || loading}
+                                        className="px-3.5 py-1.5 bg-indigo-600 border border-indigo-600 rounded-lg text-xs font-semibold text-white disabled:opacity-50 transition-colors hover:bg-indigo-700 shadow-sm"
+                                    >
+                                        Next
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </>
+            )}
 
             {/* User Modal */}
             <AnimatePresence>
