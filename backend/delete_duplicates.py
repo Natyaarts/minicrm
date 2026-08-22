@@ -9,6 +9,7 @@ django.setup()
 from core.models import Student
 
 confirm = "--confirm" in sys.argv
+delete_all = "--all" in sys.argv
 
 start_date = datetime.date(2026, 8, 15)
 end_date = datetime.date(2026, 8, 20)
@@ -16,18 +17,25 @@ end_date = datetime.date(2026, 8, 20)
 if not confirm:
     print("====================================================")
     print("RUNNING IN DRY RUN MODE (NO DATA WILL BE DELETED)")
-    print("To actually delete, run: python backend/delete_duplicates.py --confirm")
+    if delete_all:
+        print("To actually delete all duplicates database-wide, run:\npython backend/delete_duplicates.py --all --confirm")
+    else:
+        print("To actually delete duplicates from 15-20 Aug, run:\npython backend/delete_duplicates.py --confirm")
+        print("To preview all duplicates database-wide, run:\npython backend/delete_duplicates.py --all")
     print("====================================================\n")
 else:
     print("====================================================")
-    print("WARNING: PERFORMING ACTUAL DELETIONS")
+    print(f"WARNING: PERFORMING ACTUAL DELETIONS ({'DATABASE-WIDE' if delete_all else '15-20 AUG ONLY'})")
     print("====================================================\n")
 
-target_leads = Student.objects.filter(
-    is_active=True,
-    created_at__date__gte=start_date,
-    created_at__date__lte=end_date
-).exclude(lead_status='DUPLICATE')
+if delete_all:
+    target_leads = Student.objects.filter(is_active=True).exclude(lead_status='DUPLICATE')
+else:
+    target_leads = Student.objects.filter(
+        is_active=True,
+        created_at__date__gte=start_date,
+        created_at__date__lte=end_date
+    ).exclude(lead_status='DUPLICATE')
 
 processed_mobiles = set()
 processed_emails = set()
@@ -41,14 +49,11 @@ for lead in target_leads:
         if len(matches) > 1:
             processed_mobiles.add(lead.mobile)
             
-            # Determine which one to keep
-            # Priority: 1. Has interactions, 2. Created outside 15-20 Aug, 3. Earliest ID
+            # Determine which one to keep (prefer leads with interactions / transactions)
             def get_keep_score(s):
                 from crm.models import LeadInteraction
                 interactions_count = LeadInteraction.objects.filter(student=s).count()
-                in_range = start_date <= s.created_at.date() <= end_date if s.created_at else False
-                # We prefer leads with interactions, and we prefer keeping the one OUTSIDE the 15-20 Aug range
-                return (interactions_count, -1 if in_range else 1, -s.id)
+                return (interactions_count, -s.id)
 
             matches.sort(key=get_keep_score, reverse=True)
             primary = matches[0]
@@ -58,8 +63,12 @@ for lead in target_leads:
             print(f"  [KEEP] Primary: {primary.crm_student_id} | {primary.first_name} | Created: {primary.created_at.date() if primary.created_at else 'N/A'}")
             
             for s in to_delete:
+                # If delete_all is active, we delete any secondary duplicate
+                # If not, we only delete if s was created within 15-20 Aug range
                 in_range = start_date <= s.created_at.date() <= end_date if s.created_at else False
-                if in_range:
+                should_delete_this = delete_all or in_range
+                
+                if should_delete_this:
                     if confirm:
                         user = s.user
                         s.delete()
@@ -82,8 +91,7 @@ for lead in target_leads:
             def get_keep_score(s):
                 from crm.models import LeadInteraction
                 interactions_count = LeadInteraction.objects.filter(student=s).count()
-                in_range = start_date <= s.created_at.date() <= end_date if s.created_at else False
-                return (interactions_count, -1 if in_range else 1, -s.id)
+                return (interactions_count, -s.id)
 
             matches.sort(key=get_keep_score, reverse=True)
             primary = matches[0]
@@ -94,7 +102,9 @@ for lead in target_leads:
             
             for s in to_delete:
                 in_range = start_date <= s.created_at.date() <= end_date if s.created_at else False
-                if in_range:
+                should_delete_this = delete_all or in_range
+                
+                if should_delete_this:
                     if confirm:
                         user = s.user
                         s.delete()
