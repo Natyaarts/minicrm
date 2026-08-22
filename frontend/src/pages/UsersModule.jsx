@@ -210,11 +210,12 @@ const UsersModule = () => {
                                     <td className="px-6 py-4 text-center">
                                         <span className={`px-2.5 py-1 rounded-md text-xs font-semibold tracking-wide inline-block ${user.role === 'SUPER_ADMIN' ? 'bg-indigo-600 text-white' :
                                             user.role === 'ADMIN' ? 'bg-rose-50 border border-rose-100 text-rose-600' :
-                                                user.role === 'MENTOR' ? 'bg-emerald-50 border border-emerald-100 text-emerald-600' :
-                                                    user.role === 'TEACHER' ? 'bg-teal-50 border border-teal-100 text-teal-600' :
-                                                        user.role === 'ACADEMIC_COORDINATOR' ? 'bg-amber-50 border border-amber-100 text-amber-600' :
-                                                            user.role === 'EMPLOYEE' ? 'bg-orange-50 border border-orange-100 text-orange-600' :
-                                                                'bg-blue-50 border border-blue-100 text-blue-600'
+                                                user.role === 'MARKETER' ? 'bg-violet-50 border border-violet-100 text-violet-600' :
+                                                    user.role === 'MENTOR' ? 'bg-emerald-50 border border-emerald-100 text-emerald-600' :
+                                                        user.role === 'TEACHER' ? 'bg-teal-50 border border-teal-100 text-teal-600' :
+                                                            user.role === 'ACADEMIC_COORDINATOR' ? 'bg-amber-50 border border-amber-100 text-amber-600' :
+                                                                user.role === 'EMPLOYEE' ? 'bg-orange-50 border border-orange-100 text-orange-600' :
+                                                                    'bg-blue-50 border border-blue-100 text-blue-600'
                                             }`}>
                                             {user.role.replace('_', ' ')}
                                         </span>
