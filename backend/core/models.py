@@ -55,6 +55,25 @@ class BatchAssignmentHistory(models.Model):
     def __str__(self):
         return f"{self.batch.name} reassigned to {self.new_mentor.username if self.new_mentor else 'None'} by {self.assigned_by.username if self.assigned_by else 'System'}"
 
+class NormalizedMobileField(models.CharField):
+    def get_prep_value(self, value):
+        val = super().get_prep_value(value)
+        if val:
+            digits = ''.join(c for c in str(val) if c.isdigit())
+            if len(digits) >= 10:
+                return digits[-10:]
+            return digits
+        return val
+
+    def pre_save(self, model_instance, add):
+        val = super().pre_save(model_instance, add)
+        if val:
+            digits = ''.join(c for c in str(val) if c.isdigit())
+            if len(digits) >= 10:
+                return digits[-10:]
+            return digits
+        return val
+
 class Student(models.Model):
     LEAD_STATUS_CHOICES = [
         ('NEW', 'New Lead'),
@@ -104,7 +123,7 @@ class Student(models.Model):
     gender = models.CharField(max_length=20, blank=True, null=True)
     marital_status = models.CharField(max_length=20, blank=True, null=True)
     email = models.EmailField(blank=True, null=True)
-    mobile = models.CharField(max_length=15, blank=True, null=True)
+    mobile = NormalizedMobileField(max_length=15, blank=True, null=True)
     
     # Address
     perm_address = models.TextField(blank=True, null=True)

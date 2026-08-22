@@ -1068,6 +1068,9 @@ class WebhookReceiveView(APIView):
                 elif mobile.lower().startswith('p;'):
                     mobile = mobile[2:].strip()
                 mobile = mobile.replace(' ', '')
+                if mobile:
+                    digits = ''.join(c for c in mobile if c.isdigit())
+                    mobile = digits[-10:] if len(digits) >= 10 else digits
 
                 campaign_id = payload.get('campaign_id')
                 program_id = payload.get('program_id')
@@ -1200,6 +1203,9 @@ class CampaignWebhookReceiveView(APIView):
                 elif mobile.lower().startswith('p;'):
                     mobile = mobile[2:].strip()
                 mobile = mobile.replace(' ', '')
+                if mobile:
+                    digits = ''.join(c for c in mobile if c.isdigit())
+                    mobile = digits[-10:] if len(digits) >= 10 else digits
 
                 program_id = payload.get('program_id')
 

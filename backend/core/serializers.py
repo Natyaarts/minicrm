@@ -293,6 +293,11 @@ class StudentSerializer(serializers.ModelSerializer):
             # 1. Create User
             email = validated_data.get('email')
             mobile = validated_data.get('mobile')
+            if mobile:
+                digits = ''.join(c for c in str(mobile) if c.isdigit())
+                mobile = digits[-10:] if len(digits) >= 10 else digits
+                validated_data['mobile'] = mobile
+
             username = email if email else f"user_{mobile}"
             
             # Check duplicates on Student record
