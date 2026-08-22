@@ -301,7 +301,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
             if (campaignId) url += `&campaign_id=${encodeURIComponent(campaignId)}`;
             if (stage) {
                 url += `&lead_status=${encodeURIComponent(stage)}`;
-            } else {
+            } else if (!search) {
                 url += `&hide_converted=true`;
             }
             if (stage === 'DUPLICATE') {
@@ -665,7 +665,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
             if (leadsStartDate) params.append('start_date', leadsStartDate);
             if (leadsEndDate) params.append('end_date', leadsEndDate);
             if (selectedStageFilter) params.append('lead_status', selectedStageFilter);
-            else params.append('hide_converted', 'true');
+            else if (!searchTerm) params.append('hide_converted', 'true');
             if (selectedSectionFilter) params.append('sales_section', selectedSectionFilter);
             if (selectedCampaignFilter) params.append('campaign_id', selectedCampaignFilter);
             if (searchTerm) params.append('search', searchTerm);

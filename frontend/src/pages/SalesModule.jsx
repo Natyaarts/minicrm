@@ -265,7 +265,7 @@ const SalesModule = () => {
             if (selectedStageFilter) params.append('lead_status', selectedStageFilter);
             if (selectedAssigneeFilter) params.append('assigned_to', selectedAssigneeFilter);
             if (selectedContactedFilter) params.append('contacted', selectedContactedFilter);
-            if (hideConverted) params.append('hide_converted', 'true');
+            if (hideConverted && !searchTerm) params.append('hide_converted', 'true');
             if (salesSectionFilter && salesSectionFilter !== 'ALL') params.append('sales_section', salesSectionFilter);
 
             const res = await api.get(`students/export_csv/?${params.toString()}`, { responseType: 'blob' });
@@ -410,7 +410,7 @@ const SalesModule = () => {
             if (selectedStageFilter) params.append('lead_status', selectedStageFilter);
             if (selectedAssigneeFilter) params.append('assigned_to', selectedAssigneeFilter);
             if (selectedContactedFilter) params.append('contacted', selectedContactedFilter);
-            if (hideConverted) params.append('hide_converted', 'true');
+            if (hideConverted && !searchTerm) params.append('hide_converted', 'true');
             if (salesSectionFilter && salesSectionFilter !== 'ALL') params.append('sales_section', salesSectionFilter);
 
             const res = await api.get(`students/?${params.toString()}`);
