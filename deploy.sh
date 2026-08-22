@@ -40,6 +40,7 @@ sudo cp -r "$FRONTEND_DIR/dist/"* /var/www/html/ 2>/dev/null || echo "⚠️  No
 # 5. Restart Services
 echo "🔄 Restarting Services..."
 sudo systemctl restart "$SERVICE_NAME"
+sudo systemctl restart nginx
 sudo systemctl status "$SERVICE_NAME" --no-pager
 
 echo "✅ Deployment Successful!"

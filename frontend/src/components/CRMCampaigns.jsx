@@ -10,17 +10,28 @@ const CRMCampaigns = ({ onLeadClick }) => {
     
     // Tab State
     const [activeTab, setActiveTab] = useState('assigned'); 
+    const [hasDefaulted, setHasDefaulted] = useState(false);
+
+    useEffect(() => {
+        if (authUser && !hasDefaulted) {
+            const canManage = ['SUPER_ADMIN', 'ADMIN', 'MARKETER'].includes(authUser.role);
+            if (canManage) {
+                setActiveTab('dashboard');
+            } else {
+                setActiveTab('assigned');
+            }
+            setHasDefaulted(true);
+        }
+    }, [authUser, hasDefaulted]);
 
     useEffect(() => {
         if (authUser) {
-            const isAdmin = authUser.role === 'SUPER_ADMIN' || authUser.role === 'ADMIN';
-            if (!isAdmin && (activeTab === 'dashboard' || activeTab === 'campaigns')) {
+            const canManage = ['SUPER_ADMIN', 'ADMIN', 'MARKETER'].includes(authUser.role);
+            if (!canManage && (activeTab === 'dashboard' || activeTab === 'campaigns')) {
                 setActiveTab('assigned');
-            } else if (isAdmin && activeTab === 'assigned' && !activeTab) {
-                setActiveTab('dashboard');
             }
         }
-    }, [authUser]);
+    }, [authUser, activeTab]);
 
     // Data States
     const [campaigns, setCampaigns] = useState([]);
@@ -426,7 +437,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
             // Refresh leads list
             fetchLeads(leadsStartDate, leadsEndDate, selectedAssigneeFilter, searchTerm, selectedStageFilter);
             // Refresh dashboard data as well
-            if (authUser?.role === 'SUPER_ADMIN' || authUser?.role === 'ADMIN') {
+            if (['SUPER_ADMIN', 'ADMIN', 'MARKETER'].includes(authUser?.role)) {
                 fetchDashboardData(dashboardStartDate, dashboardEndDate);
             }
         } catch (error) {
@@ -1743,7 +1754,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
             {/* Header & Tabs */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 pb-4">
                 <div className="flex bg-slate-100 p-1 rounded-xl w-full md:w-auto overflow-x-auto">
-                    {(authUser?.role === 'SUPER_ADMIN' || authUser?.role === 'ADMIN') && (
+                    {['SUPER_ADMIN', 'ADMIN', 'MARKETER'].includes(authUser?.role) && (
                         <>
                             <button 
                                 onClick={() => setActiveTab('dashboard')}
