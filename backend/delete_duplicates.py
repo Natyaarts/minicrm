@@ -1,56 +1,110 @@
 import os
+import sys
 import django
-import re
-from collections import defaultdict
+import datetime
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'minicrm.settings')
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
 django.setup()
 
-from hrms.models import EmployeeProfile
-from django.contrib.auth import get_user_model
+from core.models import Student
 
-User = get_user_model()
+confirm = "--confirm" in sys.argv
 
-def find_and_delete_duplicates():
-    profiles = EmployeeProfile.objects.select_related('user').all()
-    
-    # Group by name (case-insensitive)
-    name_groups = defaultdict(list)
-    for p in profiles:
-        name = (p.user.get_full_name() or p.user.username).strip().lower()
-        name_groups[name].append(p)
-        
-    deleted_count = 0
-    
-    for name, group in name_groups.items():
-        if len(group) > 1:
-            print(f"\nFound {len(group)} duplicates for '{name}':")
-            # Sort the group to decide which one to KEEP.
-            # We prefer profiles with 'EMP-NA-' IDs over auto-generated 'EMP-XXXX-XXXX' IDs.
-            # We also prefer ACTIVE over RESIGNED just in case.
-            
-            def score_profile(p):
-                score = 0
-                if 'EMP-NA-' in p.employee_id:
-                    score += 100
-                if p.status == 'ACTIVE':
-                    score += 10
-                # Tie-breaker: older profile is kept (lower ID)
-                score -= p.id * 0.01 
-                return score
-                
-            sorted_group = sorted(group, key=score_profile, reverse=True)
-            
-            keeper = sorted_group[0]
-            print(f"  -> KEEPING: {keeper.employee_id} (Status: {keeper.status})")
-            
-            # Delete the rest
-            for duplicate in sorted_group[1:]:
-                print(f"  -> DELETING DUPLICATE: {duplicate.employee_id} (Status: {duplicate.status})")
-                duplicate.user.delete()
-                deleted_count += 1
-                
-    print(f"\nDone! Automatically removed {deleted_count} duplicate users.")
+start_date = datetime.date(2026, 8, 15)
+end_date = datetime.date(2026, 8, 20)
 
-if __name__ == '__main__':
-    find_and_delete_duplicates()
+if not confirm:
+    print("====================================================")
+    print("RUNNING IN DRY RUN MODE (NO DATA WILL BE DELETED)")
+    print("To actually delete, run: python backend/delete_duplicates.py --confirm")
+    print("====================================================\n")
+else:
+    print("====================================================")
+    print("WARNING: PERFORMING ACTUAL DELETIONS")
+    print("====================================================\n")
+
+target_leads = Student.objects.filter(
+    is_active=True,
+    created_at__date__gte=start_date,
+    created_at__date__lte=end_date
+).exclude(lead_status='DUPLICATE')
+
+processed_mobiles = set()
+processed_emails = set()
+
+deleted_count = 0
+
+for lead in target_leads:
+    # 1. Handle Phone duplicates
+    if lead.mobile and lead.mobile not in processed_mobiles:
+        matches = list(Student.objects.filter(mobile=lead.mobile, is_active=True).exclude(lead_status='DUPLICATE').order_by('id'))
+        if len(matches) > 1:
+            processed_mobiles.add(lead.mobile)
+            
+            # Determine which one to keep
+            # Priority: 1. Has interactions, 2. Created outside 15-20 Aug, 3. Earliest ID
+            def get_keep_score(s):
+                from crm.models import LeadInteraction
+                interactions_count = LeadInteraction.objects.filter(student=s).count()
+                in_range = start_date <= s.created_at.date() <= end_date if s.created_at else False
+                # We prefer leads with interactions, and we prefer keeping the one OUTSIDE the 15-20 Aug range
+                return (interactions_count, -1 if in_range else 1, -s.id)
+
+            matches.sort(key=get_keep_score, reverse=True)
+            primary = matches[0]
+            to_delete = matches[1:]
+            
+            print(f"\nPhone Group: {lead.mobile}")
+            print(f"  [KEEP] Primary: {primary.crm_student_id} | {primary.first_name} | Created: {primary.created_at.date() if primary.created_at else 'N/A'}")
+            
+            for s in to_delete:
+                in_range = start_date <= s.created_at.date() <= end_date if s.created_at else False
+                if in_range:
+                    if confirm:
+                        user = s.user
+                        s.delete()
+                        if user:
+                            user.delete()
+                        print(f"  [DELETED] {s.crm_student_id} | {s.first_name} | Created: {s.created_at.date() if s.created_at else 'N/A'}")
+                    else:
+                        print(f"  [WOULD DELETE] {s.crm_student_id} | {s.first_name} | Created: {s.created_at.date() if s.created_at else 'N/A'}")
+                    deleted_count += 1
+                else:
+                    print(f"  [SKIP - OUT OF RANGE] {s.crm_student_id} | {s.first_name} | Created: {s.created_at.date() if s.created_at else 'N/A'}")
+
+    # 2. Handle Email duplicates
+    if lead.email and "@webhook.temp" not in lead.email and lead.email.lower() != 'na' and lead.email not in processed_emails:
+        matches = list(Student.objects.filter(email=lead.email, is_active=True).exclude(lead_status='DUPLICATE').order_by('id'))
+        if len(matches) > 1:
+            processed_emails.add(lead.email)
+            
+            # Determine which one to keep
+            def get_keep_score(s):
+                from crm.models import LeadInteraction
+                interactions_count = LeadInteraction.objects.filter(student=s).count()
+                in_range = start_date <= s.created_at.date() <= end_date if s.created_at else False
+                return (interactions_count, -1 if in_range else 1, -s.id)
+
+            matches.sort(key=get_keep_score, reverse=True)
+            primary = matches[0]
+            to_delete = matches[1:]
+            
+            print(f"\nEmail Group: {lead.email}")
+            print(f"  [KEEP] Primary: {primary.crm_student_id} | {primary.first_name} | Created: {primary.created_at.date() if primary.created_at else 'N/A'}")
+            
+            for s in to_delete:
+                in_range = start_date <= s.created_at.date() <= end_date if s.created_at else False
+                if in_range:
+                    if confirm:
+                        user = s.user
+                        s.delete()
+                        if user:
+                            user.delete()
+                        print(f"  [DELETED] {s.crm_student_id} | {s.first_name} | Created: {s.created_at.date() if s.created_at else 'N/A'}")
+                    else:
+                        print(f"  [WOULD DELETE] {s.crm_student_id} | {s.first_name} | Created: {s.created_at.date() if s.created_at else 'N/A'}")
+                    deleted_count += 1
+                else:
+                    print(f"  [SKIP - OUT OF RANGE] {s.crm_student_id} | {s.first_name} | Created: {s.created_at.date() if s.created_at else 'N/A'}")
+
+print(f"\nTotal duplicates processed for deletion: {deleted_count}")
