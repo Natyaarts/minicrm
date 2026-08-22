@@ -19,6 +19,7 @@ class Designation(models.Model):
         ('ACADEMIC_COORDINATOR', 'Coordinator'),
         ('TEACHER', 'Teacher'),
         ('EMPLOYEE', 'General Employee'),
+        ('MARKETER', 'Digital Marketer'),
     )
     name = models.CharField(max_length=100)
     department = models.ForeignKey(Department, on_delete=models.CASCADE, related_name='designations')

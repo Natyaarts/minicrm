@@ -762,6 +762,7 @@ const HRMSModule = () => {
                                     >
                                         <option value="ADMIN">Admin</option>
                                         <option value="SALES">Sales</option>
+                                        <option value="MARKETER">Digital Marketer</option>
                                         <option value="MENTOR">Mentor</option>
                                         <option value="ACADEMIC">Academic</option>
                                         <option value="ACADEMIC_COORDINATOR">Coordinator</option>

@@ -22,6 +22,7 @@ const UsersModule = () => {
     const tabs = [
         { label: 'Administrators', role: 'ADMIN', icon: Shield, color: 'text-rose-600', bg: 'bg-rose-50' },
         { label: 'Sales Management', role: 'SALES', icon: Briefcase, color: 'text-indigo-600', bg: 'bg-indigo-50' },
+        { label: 'Digital Marketers', role: 'MARKETER', icon: Briefcase, color: 'text-violet-600', bg: 'bg-violet-50' },
         { label: 'Mentors & Faculty', role: 'MENTOR', icon: GraduationCap, color: 'text-emerald-600', bg: 'bg-emerald-50' },
         { label: 'Teacher Staff', role: 'TEACHER', icon: BookOpen, color: 'text-teal-600', bg: 'bg-teal-50' },
         { label: 'General Staff', role: 'EMPLOYEE', icon: Users, color: 'text-amber-600', bg: 'bg-amber-50' },
@@ -374,11 +375,17 @@ const UsersModule = () => {
                                                         <option value="ACADEMIC">Academic Manager</option>
                                                         <option value="ACADEMIC_COORDINATOR">Academic Coordinator</option>
                                                         <option value="TEACHER">Teacher</option>
+                                                        <option value="MARKETER">Digital Marketer</option>
                                                         <option value="EMPLOYEE">General Employee</option>
                                                     </>
                                                 ) : activeTab === 'SALES' ? (
                                                     <>
                                                         <option value="SALES">Sales</option>
+                                                        <option value="EMPLOYEE">General Employee</option>
+                                                    </>
+                                                ) : activeTab === 'MARKETER' ? (
+                                                    <>
+                                                        <option value="MARKETER">Digital Marketer</option>
                                                         <option value="EMPLOYEE">General Employee</option>
                                                     </>
                                                 ) : activeTab === 'MENTOR' ? (
