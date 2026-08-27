@@ -119,5 +119,4 @@ for campaign in campaigns:
         print(f"Error occurred during analysis for {campaign.name}: {str(ex)}")
 
 
-except Exception as ex:
-    print(f"Error occurred: {str(ex)}")
+
