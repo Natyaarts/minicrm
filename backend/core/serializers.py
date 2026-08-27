@@ -328,8 +328,7 @@ class StudentSerializer(serializers.ModelSerializer):
                 user.save()
 
             # 2. Generate CRM ID
-            count = Student.objects.count() + 1
-            crm_id = f"NATYA-{count:04d}"
+            crm_id = Student.generate_next_crm_id()
             
             # 3. Create Student
             student = Student.objects.create(user=user, crm_student_id=crm_id, **validated_data)

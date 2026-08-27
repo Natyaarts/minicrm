@@ -113,8 +113,7 @@ class Command(BaseCommand):
                         continue
                         
                     temp_username = f"st_{cleaned_phone}"
-                    count = Student.objects.filter(crm_student_id__startswith="NATYA-").count() + 1
-                    crm_id = f"NATYA-{1000 + count}"
+                    crm_id = Student.generate_next_crm_id()
                     
                     try:
                         with django_db_transaction.atomic():

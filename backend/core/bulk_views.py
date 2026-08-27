@@ -113,8 +113,7 @@ class BulkUploadView(views.APIView):
                     user.save()
 
                     # Generate CRM ID
-                    count = Student.objects.filter(crm_student_id__startswith="NATYA-").count() + 1
-                    crm_id = f"NATYA-{count:04d}"
+                    crm_id = Student.generate_next_crm_id()
 
                     # Create Student
                     lms_id = row.get('lms_id') or row.get('wise_id')

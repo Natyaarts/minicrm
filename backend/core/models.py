@@ -127,6 +127,21 @@ class Student(models.Model):
     ]
     lead_quality = models.CharField(max_length=20, choices=LEAD_QUALITY_CHOICES, default='UNKNOWN', help_text='Sales rep feedback sent back to Meta for ad optimization')
 
+    @classmethod
+    def generate_next_crm_id(cls):
+        import re
+        max_num = 0
+        for s_id in cls.objects.filter(crm_student_id__startswith="NATYA-").values_list('crm_student_id', flat=True):
+            match = re.search(r'NATYA-(\d+)', s_id)
+            if match:
+                num = int(match.group(1))
+                if num > max_num:
+                    max_num = num
+        new_num = max_num + 1
+        if new_num < 1000:
+            return f"NATYA-{new_num:04d}"
+        return f"NATYA-{new_num}"
+
     # Personal Info - Minimal required for system, others optional
     first_name = models.CharField(max_length=50, blank=True, null=True)
     last_name = models.CharField(max_length=50, blank=True, null=True)
