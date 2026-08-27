@@ -157,6 +157,7 @@ class GoogleSheetSyncView(APIView):
         campaign_id = request.data.get('campaign_id')
         spreadsheet_id = request.data.get('spreadsheet_id')
         sheet_name = request.data.get('sheet_name', 'Sheet1')
+        force_full_sync = request.data.get('force_full_sync', False)
         
         try:
             campaign = Campaign.objects.get(id=campaign_id)
@@ -166,6 +167,11 @@ class GoogleSheetSyncView(APIView):
         if spreadsheet_id:
             campaign.google_spreadsheet_id = spreadsheet_id
             campaign.google_sheet_name = sheet_name
+            if force_full_sync:
+                campaign.google_last_synced_row = 1
+            campaign.save()
+        elif force_full_sync:
+            campaign.google_last_synced_row = 1
             campaign.save()
             
         if not campaign.google_spreadsheet_id:

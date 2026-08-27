@@ -141,6 +141,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
     const [googleSheets, setGoogleSheets] = useState([]);
     const [isLoadingSheets, setIsLoadingSheets] = useState(false);
     const [isSyncingSheets, setIsSyncingSheets] = useState(false);
+    const [forceFullSync, setForceFullSync] = useState(false);
 
     const handleConnectGoogle = async () => {
         if (!editingCampaign?.id) {
@@ -178,9 +179,11 @@ const CRMCampaigns = ({ onLeadClick }) => {
             const res = await api.post('crm/google/sync/', {
                 campaign_id: editingCampaign.id,
                 spreadsheet_id: formData.google_spreadsheet_id,
-                sheet_name: formData.google_sheet_name || 'Sheet1'
+                sheet_name: formData.google_sheet_name || 'Sheet1',
+                force_full_sync: forceFullSync
             });
             alert(`Sync complete! Imported: ${res.data?.imported || 0}, Skipped/Duplicates: ${res.data?.skipped || 0}`);
+            setForceFullSync(false);
             fetchLeads();
         } catch (error) {
             console.error("Failed to sync Google Sheets", error);
@@ -2101,6 +2104,19 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                                             <div className="w-10 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-5 peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
                                                         </label>
                                                         <span className="text-xs text-slate-700 font-semibold">Enable Background Auto-Sync</span>
+                                                    </div>
+                                                    
+                                                    <div className="flex items-center gap-3">
+                                                        <label className="relative inline-flex items-center cursor-pointer">
+                                                            <input 
+                                                                type="checkbox" 
+                                                                checked={forceFullSync} 
+                                                                onChange={(e) => setForceFullSync(e.target.checked)} 
+                                                                className="sr-only peer" 
+                                                            />
+                                                            <div className="w-10 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-5 peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-600"></div>
+                                                        </label>
+                                                        <span className="text-xs text-slate-700 font-semibold">Force Full Sync (re-scan entire sheet)</span>
                                                     </div>
                                                     
                                                     <button
