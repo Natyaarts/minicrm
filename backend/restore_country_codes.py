@@ -65,6 +65,12 @@ for campaign in campaigns:
             print(f"  - Mobile column not found in headers for campaign: {campaign.name}")
             continue
 
+        # Fetch all active students for this campaign into memory to bypass ORM query filtering issues
+        students_by_mobile = {}
+        for s in Student.objects.filter(campaign=campaign, is_active=True):
+            if s.mobile:
+                students_by_mobile[str(s.mobile).strip()] = s
+
         print(f"  - Read {len(rows) - 1} data rows from sheet. Processing...")
 
         campaign_updated = 0
@@ -86,8 +92,8 @@ for campaign in campaigns:
                 continue
 
             # Find matching student by the old format in database
-            students = Student.objects.filter(mobile=old_normalized, campaign=campaign)
-            for student in students:
+            student = students_by_mobile.get(old_normalized)
+            if student:
                 # If it already has the new format, skip
                 if student.mobile == new_normalized:
                     continue
@@ -101,19 +107,19 @@ for campaign in campaigns:
 
                         # Update linked user username (strip '+' for username safety)
                         user = student.user
-                        clean_username = f"st_{new_normalized.replace('+', '')}"
-                        if user.username != clean_username:
-                            # Verify no other user has this username
-                            if not User.objects.filter(username=clean_username).exists():
-                                user.username = clean_username
-                                user.save()
+                        if user:
+                            clean_username = f"st_{new_normalized.replace('+', '')}"
+                            if user.username != clean_username:
+                                # Verify no other user has this username
+                                if not User.objects.filter(username=clean_username).exists():
+                                    user.username = clean_username
+                                    user.save()
 
                         print(f"    [ROW {idx}] Updated lead '{student.first_name}': {old_mobile} -> {new_normalized}")
                         campaign_updated += 1
                         total_updated += 1
                 except Exception as ex:
                     print(f"    [ROW {idx}] Error updating student ID {student.id}: {ex}")
-
         print(f"  - Completed campaign '{campaign.name}'. Updated: {campaign_updated} leads.\n")
 
     except Exception as ex:
