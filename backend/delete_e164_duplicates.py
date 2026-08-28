@@ -57,9 +57,16 @@ for phone, students in duplicate_groups.items():
     # 3. Earlier creation date / ID
     def get_keep_score(s):
         int_count = LeadInteraction.objects.filter(student=s).count()
-        # Check if they have a payment transaction
+        has_agent = 1 if s.assigned_to else 0
+        not_new = 1 if s.lead_status != 'NEW' else 0
         tx_count = s.transactions.count() if hasattr(s, 'transactions') else 0
-        return (int_count, tx_count, -s.id)
+        # Priority:
+        # 1. Number of interactions (history)
+        # 2. Assigned sales agent
+        # 3. Changed pipeline status (not 'NEW')
+        # 4. Transactions
+        # 5. Smaller ID (older lead)
+        return (int_count, has_agent, not_new, tx_count, -s.id)
 
     students.sort(key=get_keep_score, reverse=True)
     primary = students[0]
