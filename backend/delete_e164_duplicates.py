@@ -75,6 +75,21 @@ for phone, students in duplicate_groups.items():
     print(f"  [KEEP]  ID: {primary.crm_student_id} | Name: {primary.first_name} | Created: {primary.created_at} | Mobile in DB: {primary.mobile}")
     
     for s in to_delete:
+        # Strict safeguard: Only delete if created today (Aug 28) between 7:00 PM and 8:30 PM local time (13:30 to 15:00 UTC)
+        created_utc = s.created_at
+        is_target_time = (
+            created_utc.year == 2026 and 
+            created_utc.month == 8 and 
+            created_utc.day == 28 and 
+            ( (created_utc.hour == 13 and created_utc.minute >= 30) or 
+              (created_utc.hour == 14) or 
+              (created_utc.hour == 15 and created_utc.minute <= 0) )
+        )
+        
+        if not is_target_time:
+            print(f"  [SKIP]  ID: {s.crm_student_id} | Name: {s.first_name} (Created outside 7pm-8:30pm today: {s.created_at})")
+            continue
+
         print(f"  [DEL]   ID: {s.crm_student_id} | Name: {s.first_name} | Created: {s.created_at} | Mobile in DB: {s.mobile}")
         
         if confirm:
