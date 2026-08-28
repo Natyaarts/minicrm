@@ -6,7 +6,7 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Sum
 import traceback
-from core.models import Student, Program, Transaction
+from core.models import Student, Program, Transaction, normalize_phone_number
 from .models import PipelineStage, LeadInteraction, Campaign, WebhookEndpoint, WebhookLog, Task
 from .serializers import PipelineStageSerializer, LeadInteractionSerializer, CampaignSerializer, TaskSerializer
 
@@ -1069,8 +1069,7 @@ class WebhookReceiveView(APIView):
                     mobile = mobile[2:].strip()
                 mobile = mobile.replace(' ', '')
                 if mobile:
-                    digits = ''.join(c for c in mobile if c.isdigit())
-                    mobile = digits[-10:] if len(digits) >= 10 else digits
+                    mobile = normalize_phone_number(mobile)
 
                 campaign_id = payload.get('campaign_id')
                 program_id = payload.get('program_id')
@@ -1203,8 +1202,7 @@ class CampaignWebhookReceiveView(APIView):
                     mobile = mobile[2:].strip()
                 mobile = mobile.replace(' ', '')
                 if mobile:
-                    digits = ''.join(c for c in mobile if c.isdigit())
-                    mobile = digits[-10:] if len(digits) >= 10 else digits
+                    mobile = normalize_phone_number(mobile)
 
                 program_id = payload.get('program_id')
 

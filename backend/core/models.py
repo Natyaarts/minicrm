@@ -55,23 +55,29 @@ class BatchAssignmentHistory(models.Model):
     def __str__(self):
         return f"{self.batch.name} reassigned to {self.new_mentor.username if self.new_mentor else 'None'} by {self.assigned_by.username if self.assigned_by else 'System'}"
 
+def normalize_phone_number(val):
+    if not val:
+        return ''
+    digits = ''.join(c for c in str(val) if c.isdigit())
+    if not digits:
+        return ''
+    if len(digits) == 11 and digits.startswith('0'):
+        digits = digits[1:]
+    if len(digits) == 12 and digits.startswith('91'):
+        return digits[-10:]
+    return digits
+
 class NormalizedMobileField(models.CharField):
     def get_prep_value(self, value):
         val = super().get_prep_value(value)
         if val:
-            digits = ''.join(c for c in str(val) if c.isdigit())
-            if len(digits) >= 10:
-                return digits[-10:]
-            return digits
+            return normalize_phone_number(val)
         return val
 
     def pre_save(self, model_instance, add):
         val = super().pre_save(model_instance, add)
         if val:
-            digits = ''.join(c for c in str(val) if c.isdigit())
-            if len(digits) >= 10:
-                return digits[-10:]
-            return digits
+            return normalize_phone_number(val)
         return val
 
 class NormalizedEmailField(models.EmailField):

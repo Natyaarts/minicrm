@@ -10,7 +10,7 @@ from django.shortcuts import redirect
 from django.contrib.auth import get_user_model
 from django.utils.dateparse import parse_datetime
 from .models import Campaign, PipelineStage
-from core.models import Student
+from core.models import Student, normalize_phone_number
 
 User = get_user_model()
 
@@ -260,9 +260,7 @@ class GoogleSheetSyncView(APIView):
                 first_name = "Sheet Lead"
                 
             # Sanitize phone
-            cleaned_phone = ''.join(c for c in mobile if c.isdigit())
-            if len(cleaned_phone) > 10:
-                cleaned_phone = cleaned_phone[-10:]
+            cleaned_phone = normalize_phone_number(mobile)
                 
             if not cleaned_phone:
                 skipped_count += 1

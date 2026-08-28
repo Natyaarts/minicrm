@@ -5,7 +5,7 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 from crm.models import Campaign, PipelineStage
 from crm.views_google import get_refreshed_access_token
-from core.models import Student
+from core.models import Student, normalize_phone_number
 from django.contrib.auth import get_user_model
 from django.db import transaction as django_db_transaction
 
@@ -101,9 +101,7 @@ class Command(BaseCommand):
                     if not first_name:
                         first_name = "Sheet Lead"
                         
-                    cleaned_phone = ''.join(c for c in mobile if c.isdigit())
-                    if len(cleaned_phone) > 10:
-                        cleaned_phone = cleaned_phone[-10:]
+                    cleaned_phone = normalize_phone_number(mobile)
                         
                     if not cleaned_phone:
                         continue

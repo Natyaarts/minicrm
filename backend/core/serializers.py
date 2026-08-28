@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from django.apps import apps
 from django.db import transaction as db_transaction
 from django.db.models import Sum, Count
-from .models import Program, SubProgram, Course, Batch, Student, Transaction, Document, SyllabusPart, ClassSession, Attendance, BatchResource, Exam, ExamResult, Question, QuestionOption, StudentSubmission, MonthlyPayment, StudentTeacherHandover
+from .models import Program, SubProgram, Course, Batch, Student, Transaction, Document, SyllabusPart, ClassSession, Attendance, BatchResource, Exam, ExamResult, Question, QuestionOption, StudentSubmission, MonthlyPayment, StudentTeacherHandover, normalize_phone_number
 
 User = get_user_model()
 
@@ -294,8 +294,7 @@ class StudentSerializer(serializers.ModelSerializer):
             email = validated_data.get('email')
             mobile = validated_data.get('mobile')
             if mobile:
-                digits = ''.join(c for c in str(mobile) if c.isdigit())
-                mobile = digits[-10:] if len(digits) >= 10 else digits
+                mobile = normalize_phone_number(mobile)
                 validated_data['mobile'] = mobile
 
             username = email if email else f"user_{mobile}"
