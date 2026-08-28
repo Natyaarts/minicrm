@@ -58,14 +58,15 @@ class BatchAssignmentHistory(models.Model):
 def normalize_phone_number(val):
     if not val:
         return ''
-    digits = ''.join(c for c in str(val) if c.isdigit())
+    val_str = str(val).strip()
+    digits = ''.join(c for c in val_str if c.isdigit())
     if not digits:
         return ''
     if len(digits) == 11 and digits.startswith('0'):
         digits = digits[1:]
-    if len(digits) == 12 and digits.startswith('91'):
-        return digits[-10:]
-    return digits
+    if len(digits) == 10:
+        return f"+91{digits}"
+    return f"+{digits}"
 
 class NormalizedMobileField(models.CharField):
     def get_prep_value(self, value):
