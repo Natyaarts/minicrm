@@ -62,21 +62,28 @@ def task_notification(sender, instance, created, **kwargs):
 @receiver(post_save, sender=LeaveRequest)
 def leave_notification(sender, instance, created, **kwargs):
     if not created: # On update (approval/rejection)
+        status_text = instance.status.replace('_', ' ').title()
         Notification.objects.create(
             user=instance.employee.user,
-            title=f"Leave Request {instance.status}",
-            message=f"Your leave request for {instance.start_date} has been {instance.status.lower()}.",
+            title=f"Leave Request {status_text}",
+            message=f"Your leave request for {instance.start_date} to {instance.end_date} has been updated to {status_text}.",
             notification_type='LEAVE',
             target_url="/hrms/leaves"
         )
     elif created:
-        # Notify Admins about new leave request
-        admins = User.objects.filter(role__in=['ADMIN', 'SUPER_ADMIN'])
-        for admin in admins:
+        # Notify Admins and direct reporting manager about new leave request
+        recipients = set(User.objects.filter(role__in=['ADMIN', 'SUPER_ADMIN']))
+        if instance.employee.reporting_to and instance.employee.reporting_to.user:
+            recipients.add(instance.employee.reporting_to.user)
+        recipients.discard(instance.employee.user)
+        
+        emp_name = instance.employee.user.get_full_name() or instance.employee.user.username
+        leave_name = instance.leave_type.name if instance.leave_type else "Leave"
+        for recipient in recipients:
             Notification.objects.create(
-                user=admin,
+                user=recipient,
                 title="New Leave Request",
-                message=f"{instance.employee.user.get_full_name()} has requested leave.",
+                message=f"{emp_name} has requested {leave_name} ({instance.start_date} to {instance.end_date}).",
                 notification_type='LEAVE',
                 target_url="/hrms/leaves"
             )

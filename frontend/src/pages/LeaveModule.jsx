@@ -24,7 +24,7 @@ import { useAuth } from '../context/AuthContext';
 const LeaveModule = () => {
     const { user: authUser } = useAuth();
     const [activeTab, setActiveTab] = useState('my-requests');
-    const [adminFilter, setAdminFilter] = useState('PENDING_MANAGER');
+    const [adminFilter, setAdminFilter] = useState('ALL_PENDING');
     const [leaveTypes, setLeaveTypes] = useState([]);
     const [balances, setBalances] = useState([]);
     const [requests, setRequests] = useState([]);
@@ -424,7 +424,7 @@ const LeaveModule = () => {
             </div>
 
             {/* Tabs */}
-            <div className="flex gap-2 mb-6 bg-slate-100 p-1 rounded-lg w-fit border border-slate-200">
+            <div className="flex gap-2 mb-6 bg-slate-100 p-1 rounded-lg w-fit border border-slate-200 flex-wrap">
                 {[
                     { id: 'my-requests', label: 'My Requests', icon: Clock },
                     { id: 'calendar', label: 'Leave Calendar', icon: Calendar },
@@ -432,8 +432,9 @@ const LeaveModule = () => {
                     { id: 'settings', label: 'Manage Types & Holidays', icon: Settings, adminOnly: true },
                     { id: 'policy', label: 'Leave Policies', icon: Info },
                 ].filter(tab => {
-                    if (tab.adminOnly) return authUser?.role === 'SUPER_ADMIN';
-                    if (tab.managerOrAdmin) return authUser?.role === 'SUPER_ADMIN' || requests.some(r => r.user_id !== authUser?.id);
+                    const isHRAdmin = ['SUPER_ADMIN', 'ADMIN'].includes(authUser?.role) || authUser?.is_superuser;
+                    if (tab.adminOnly) return isHRAdmin;
+                    if (tab.managerOrAdmin) return isHRAdmin || requests.some(r => r.user_id !== authUser?.id);
                     return true;
                 }).map(tab => (
                     <button
@@ -453,19 +454,41 @@ const LeaveModule = () => {
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden min-h-[400px]">
                 {activeTab === 'admin-panel' && (
                     <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50 flex-wrap gap-4">
-                        <h3 className="text-lg font-bold text-slate-800">Process Requests</h3>
+                        <div>
+                            <h3 className="text-lg font-bold text-slate-800">Process Requests</h3>
+                            <p className="text-xs text-slate-500">Review and approve team and employee time-off requests.</p>
+                        </div>
                         <div className="flex gap-2 bg-white p-1 rounded-lg border border-slate-200 shadow-sm flex-wrap">
-                            {['PENDING_MANAGER', 'PENDING_HR', 'APPROVED', 'REJECTED'].map(status => (
-                                <button
-                                    key={status}
-                                    onClick={() => setAdminFilter(status)}
-                                    className={`px-3 py-1.5 rounded-md text-[10px] font-semibold tracking-wider transition-all ${
-                                        adminFilter === status ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                                    }`}
-                                >
-                                    {status.replace('_', ' ')}
-                                </button>
-                            ))}
+                            {[
+                                { id: 'ALL_PENDING', label: 'All Pending' },
+                                { id: 'PENDING_MANAGER', label: 'Pending Manager' },
+                                { id: 'PENDING_HR', label: 'Pending HR' },
+                                { id: 'APPROVED', label: 'Approved' },
+                                { id: 'REJECTED', label: 'Rejected' },
+                                { id: 'ALL', label: 'All Requests' },
+                            ].map(filter => {
+                                const count = requests.filter(r => {
+                                    if (filter.id === 'ALL_PENDING') return r.status === 'PENDING_MANAGER' || r.status === 'PENDING_HR';
+                                    if (filter.id === 'ALL') return true;
+                                    return r.status === filter.id;
+                                }).length;
+                                return (
+                                    <button
+                                        key={filter.id}
+                                        onClick={() => setAdminFilter(filter.id)}
+                                        className={`px-3 py-1.5 rounded-md text-[10px] font-semibold tracking-wider transition-all flex items-center gap-1.5 ${
+                                            adminFilter === filter.id ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+                                        }`}
+                                    >
+                                        <span>{filter.label}</span>
+                                        {count > 0 && (
+                                            <span className={`px-1.5 py-0.5 rounded-full text-[9px] ${adminFilter === filter.id ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                                                {count}
+                                            </span>
+                                        )}
+                                    </button>
+                                );
+                            })}
                         </div>
                     </div>
                 )}
@@ -484,73 +507,145 @@ const LeaveModule = () => {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                            {requests.filter(req => {
-                                if (activeTab === 'admin-panel') return req.status === adminFilter;
-                                if (activeTab === 'my-requests') return req.user_id === authUser?.id;
-                                return true;
-                            }).map((req) => (
-                                <tr key={req.id} className="hover:bg-slate-50 transition-colors group">
-                                    <td className="px-5 py-4">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center text-[10px] font-bold">
-                                                {req.employee_name?.[0]}
-                                            </div>
-                                            <div>
-                                                <p className="text-sm font-semibold text-slate-800">{req.employee_name}</p>
-                                                <p className="text-[10px] font-medium text-slate-500 uppercase">EMP-{req.employee}</p>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td className="px-5 py-4">
-                                        <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
-                                            <Calendar size={14} className="text-slate-400" />
-                                            {new Date(req.start_date).toLocaleDateString()} - {new Date(req.end_date).toLocaleDateString()}
-                                        </div>
-                                    </td>
-                                    <td className="px-5 py-4">
-                                        <span className="text-[10px] font-semibold text-indigo-700 bg-indigo-50 px-2 py-1 rounded-md uppercase tracking-wider">
-                                            {req.leave_type_name}
-                                        </span>
-                                    </td>
-                                    <td className="px-5 py-4 text-sm font-bold text-slate-800">{req.duration} Days</td>
-                                    <td className="px-5 py-4">
-                                        <span className={`px-3 py-1 rounded-lg text-[10px] font-semibold uppercase tracking-wider border ${getStatusColor(req.status)}`}>
-                                            {req.status}
-                                        </span>
-                                    </td>
-                                    <td className="px-5 py-4 text-right">
-                                        {activeTab === 'admin-panel' && (req.status === 'PENDING_MANAGER' || req.status === 'PENDING_HR') ? (
-                                            <div className="flex justify-end gap-2">
-                                                {((req.status === 'PENDING_MANAGER' && req.user_id !== authUser?.id) || 
-                                                  (req.status === 'PENDING_HR' && authUser?.role === 'SUPER_ADMIN') ||
-                                                  (req.status === 'PENDING_MANAGER' && authUser?.role === 'SUPER_ADMIN')) && (
-                                                    <button 
-                                                        onClick={() => handleAction(req.id, 'approve')}
-                                                        className="p-1.5 bg-emerald-50 text-emerald-600 rounded-md hover:bg-emerald-100 transition-colors"
-                                                        title="Approve"
-                                                    >
-                                                        <Check size={16} strokeWidth={2.5} />
-                                                    </button>
+                            {(() => {
+                                const isHRAdmin = ['SUPER_ADMIN', 'ADMIN'].includes(authUser?.role) || authUser?.is_superuser;
+                                const filteredRequests = requests.filter(req => {
+                                    if (activeTab === 'admin-panel') {
+                                        if (adminFilter === 'ALL_PENDING') {
+                                            return req.status === 'PENDING_MANAGER' || req.status === 'PENDING_HR';
+                                        }
+                                        if (adminFilter === 'ALL') {
+                                            return true;
+                                        }
+                                        return req.status === adminFilter;
+                                    }
+                                    if (activeTab === 'my-requests') {
+                                        return req.user_id === authUser?.id;
+                                    }
+                                    return true;
+                                });
+
+                                if (filteredRequests.length === 0) {
+                                    return (
+                                        <tr>
+                                            <td colSpan={6} className="px-5 py-12 text-center text-slate-400">
+                                                <CalendarDays size={32} className="mx-auto mb-2 opacity-40 text-slate-400" />
+                                                <p className="text-sm font-medium text-slate-600">No leave requests found</p>
+                                                <p className="text-xs text-slate-400 mt-0.5">
+                                                    {activeTab === 'admin-panel' 
+                                                        ? `No requests matching "${adminFilter.replace('_', ' ')}"`
+                                                        : "You haven't submitted any leave requests yet."}
+                                                </p>
+                                            </td>
+                                        </tr>
+                                    );
+                                }
+
+                                return filteredRequests.map((req) => {
+                                    const canApprove = req.can_approve ?? (
+                                        (req.status === 'PENDING_HR' && isHRAdmin) ||
+                                        (req.status === 'PENDING_MANAGER' && req.user_id !== authUser?.id)
+                                    );
+                                    const canReject = req.can_reject ?? (
+                                        (req.status === 'PENDING_HR' && isHRAdmin) ||
+                                        (req.status === 'PENDING_MANAGER' && (isHRAdmin || req.user_id !== authUser?.id))
+                                    );
+
+                                    return (
+                                        <tr key={req.id} className="hover:bg-slate-50 transition-colors group">
+                                            <td className="px-5 py-4">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center text-xs font-bold border border-slate-200">
+                                                        {(req.employee_name || 'E')[0].toUpperCase()}
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-sm font-semibold text-slate-800">{req.employee_name || `Employee #${req.employee}`}</p>
+                                                        <p className="text-[10px] font-medium text-slate-500 uppercase">
+                                                            {req.employee_code || `EMP-${req.employee}`}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="px-5 py-4">
+                                                <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
+                                                    <Calendar size={14} className="text-slate-400" />
+                                                    {new Date(req.start_date).toLocaleDateString()} - {new Date(req.end_date).toLocaleDateString()}
+                                                </div>
+                                            </td>
+                                            <td className="px-5 py-4">
+                                                <span className="text-[10px] font-semibold text-indigo-700 bg-indigo-50 px-2 py-1 rounded-md uppercase tracking-wider border border-indigo-100">
+                                                    {req.leave_type_name || 'Leave'}
+                                                </span>
+                                            </td>
+                                            <td className="px-5 py-4 text-sm font-bold text-slate-800">{req.duration} Days</td>
+                                            <td className="px-5 py-4">
+                                                <span className={`px-3 py-1 rounded-lg text-[10px] font-semibold uppercase tracking-wider border ${getStatusColor(req.status)}`}>
+                                                    {req.status_display || req.status?.replace('_', ' ')}
+                                                </span>
+                                            </td>
+                                            <td className="px-5 py-4 text-right">
+                                                {activeTab === 'admin-panel' && (req.status === 'PENDING_MANAGER' || req.status === 'PENDING_HR') ? (
+                                                    <div className="flex justify-end gap-2">
+                                                        {canApprove && (
+                                                            <button 
+                                                                onClick={() => {
+                                                                    const confirmMsg = req.status === 'PENDING_MANAGER' 
+                                                                        ? "Approve this request as Manager? (Will advance to Pending HR)" 
+                                                                        : "Grant final HR approval for this leave?";
+                                                                    if (window.confirm(confirmMsg)) {
+                                                                        handleAction(req.id, 'approve');
+                                                                    }
+                                                                }}
+                                                                className="p-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-md transition-colors shadow-xs"
+                                                                title={req.status === 'PENDING_MANAGER' ? "Manager Approve" : "HR Approve"}
+                                                            >
+                                                                <Check size={16} strokeWidth={2.5} />
+                                                            </button>
+                                                        )}
+                                                        {canReject && (
+                                                            <button 
+                                                                onClick={() => {
+                                                                    const reason = prompt("Enter rejection reason:");
+                                                                    if (reason !== null && reason.trim()) {
+                                                                        handleAction(req.id, 'reject', reason.trim());
+                                                                    }
+                                                                }}
+                                                                className="p-1.5 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-md transition-colors shadow-xs"
+                                                                title="Reject"
+                                                            >
+                                                                <X size={16} strokeWidth={2.5} />
+                                                            </button>
+                                                        )}
+                                                        {!canApprove && !canReject && (
+                                                            <span className="text-[10px] text-slate-400 italic">
+                                                                {req.status === 'PENDING_MANAGER' ? 'Awaiting Manager' : 'Awaiting HR'}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                ) : (
+                                                    <div className="text-right text-xs text-slate-400">
+                                                        {req.status === 'REJECTED' && req.rejection_reason && (
+                                                            <span className="text-[10px] text-rose-500 italic truncate block max-w-[150px] ml-auto" title={req.rejection_reason}>
+                                                                Reason: {req.rejection_reason}
+                                                            </span>
+                                                        )}
+                                                        {req.status === 'APPROVED' && (
+                                                            <span className="text-[10px] text-emerald-600 font-medium">
+                                                                {req.approved_by_name ? `Approved by ${req.approved_by_name}` : 'Approved'}
+                                                            </span>
+                                                        )}
+                                                        {req.status !== 'REJECTED' && req.status !== 'APPROVED' && (
+                                                            <span className="text-[10px] text-slate-400">
+                                                                {req.status?.replace('_', ' ')}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 )}
-                                                <button 
-                                                    onClick={() => {
-                                                        const reason = prompt("Enter rejection reason:");
-                                                        if(reason) handleAction(req.id, 'reject', reason);
-                                                    }}
-                                                    className="p-1.5 bg-rose-50 text-rose-600 rounded-md hover:bg-rose-100 transition-colors"
-                                                    title="Reject"
-                                                >
-                                                    <X size={16} strokeWidth={2.5} />
-                                                </button>
-                                            </div>
-                                        ) : (
-                                            <button className="p-1.5 text-slate-400 hover:text-slate-600 transition-colors">
-                                                <ChevronRight size={16} />
-                                            </button>
-                                        )}
-                                    </td>
-                                </tr>
-                            ))}
+                                            </td>
+                                        </tr>
+                                    );
+                                });
+                            })()}
                         </tbody>
                     </table>
                 )}
