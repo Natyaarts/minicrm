@@ -289,6 +289,58 @@ class StudentSerializer(serializers.ModelSerializer):
         aadhar_card = validated_data.pop('aadhar_card', None)
         marklist = validated_data.pop('marklist', None)
         
+        # Extract core fields from dynamic values if missing
+        if dynamic_values:
+            dyn_dict = {}
+            if isinstance(dynamic_values, str):
+                import json
+                try:
+                    dyn_dict = json.loads(dynamic_values)
+                except Exception:
+                    dyn_dict = {}
+            elif isinstance(dynamic_values, dict):
+                dyn_dict = dynamic_values
+
+            DynamicField = apps.get_model('forms_builder', 'DynamicField')
+            for f_id, f_val in dyn_dict.items():
+                if not f_val or not str(f_val).strip():
+                    continue
+                try:
+                    f_obj = DynamicField.objects.get(id=f_id)
+                    lbl = f_obj.label.lower().strip()
+                    if ('full name' in lbl or lbl == 'name') and (not validated_data.get('first_name') or validated_data.get('first_name') in ['Student', '']):
+                        parts = str(f_val).strip().split(' ', 1)
+                        validated_data['first_name'] = parts[0]
+                        if len(parts) > 1 and parts[1]:
+                            validated_data['last_name'] = parts[1]
+                        elif not validated_data.get('last_name'):
+                            validated_data['last_name'] = ''
+                    elif ('mobile' in lbl or 'phone' in lbl or 'contact' in lbl) and not validated_data.get('mobile'):
+                        validated_data['mobile'] = normalize_phone_number(f_val)
+                    elif 'email' in lbl and not validated_data.get('email'):
+                        validated_data['email'] = str(f_val).strip().lower()
+                    elif ('dob' in lbl or 'date of birth' in lbl) and not validated_data.get('dob'):
+                        try:
+                            validated_data['dob'] = str(f_val).split('T')[0]
+                        except Exception:
+                            pass
+                    elif 'gender' in lbl and not validated_data.get('gender'):
+                        validated_data['gender'] = str(f_val).strip()
+                    elif 'marital' in lbl and not validated_data.get('marital_status'):
+                        validated_data['marital_status'] = str(f_val).strip()
+                    elif ('father' in lbl) and not validated_data.get('father_husband_name'):
+                        validated_data['father_husband_name'] = str(f_val).strip()
+                    elif ('mother' in lbl) and not validated_data.get('mother_name'):
+                        validated_data['mother_name'] = str(f_val).strip()
+                    elif ('address' in lbl or 'permanent address' in lbl) and not validated_data.get('perm_address'):
+                        validated_data['perm_address'] = str(f_val).strip()
+                    elif 'district' in lbl and not validated_data.get('perm_district'):
+                        validated_data['perm_district'] = str(f_val).strip()
+                    elif 'state' in lbl and not validated_data.get('perm_state'):
+                        validated_data['perm_state'] = str(f_val).strip()
+                except (DynamicField.DoesNotExist, ValueError):
+                    pass
+
         with db_transaction.atomic():
             # 1. Create User
             email = validated_data.get('email')
@@ -321,7 +373,12 @@ class StudentSerializer(serializers.ModelSerializer):
                 if hasattr(user, 'student_profile') and not is_duplicate:
                     raise serializers.ValidationError({"mobile": "An application has already been submitted for this mobile number/email."})
             else:
-                user = User.objects.create_user(username=username, email=email)
+                user = User.objects.create_user(
+                    username=username, 
+                    email=email or '',
+                    first_name=validated_data.get('first_name', ''),
+                    last_name=validated_data.get('last_name', '')
+                )
                 user.set_password('welcome123') # Default password
                 user.role = 'STUDENT'
                 user.save()

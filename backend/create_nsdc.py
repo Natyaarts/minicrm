@@ -20,7 +20,8 @@ def run():
     # Create the Program
     program = Program.objects.create(
         name=brand_name,
-        description="Auto-generated NSDC Registration Form"
+        description="Auto-generated NSDC Registration Form",
+        slug="nsdc"
     )
     print(f"✅ Created Program: {program.name}")
 

@@ -419,7 +419,7 @@ const CallAnalyticsDashboard = () => {
                                 <tr>
                                     <th className="px-4 py-3 font-semibold">Date & Time</th>
                                     <th className="px-4 py-3 font-semibold">Sales Executive</th>
-                                    <th className="px-4 py-3 font-semibold">Client Name</th>
+                                    <th className="px-4 py-3 font-semibold">Client / Phone</th>
                                     <th className="px-4 py-3 font-semibold">Direction</th>
                                     <th className="px-4 py-3 font-semibold">Status</th>
                                     <th className="px-4 py-3 font-semibold">Duration</th>
@@ -431,19 +431,46 @@ const CallAnalyticsDashboard = () => {
                                     <tr key={call.id} className="hover:bg-slate-50">
                                         <td className="px-4 py-3">{new Date(call.date).toLocaleString()}</td>
                                         <td className="px-4 py-3 font-medium">{call.employee}</td>
-                                        <td className="px-4 py-3 text-slate-600">{call.client}</td>
-                                        <td className="px-4 py-3">
-                                            {call.direction === 'INCOMING' ? <span className="text-emerald-600 flex items-center gap-1"><PhoneIncoming size={14}/> Incoming</span> : <span className="text-amber-500 flex items-center gap-1"><PhoneOutgoing size={14}/> Outgoing</span>}
+                                        <td className="px-4 py-3 text-slate-600">
+                                            <div className="flex flex-col">
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="font-medium text-slate-800">{call.client || 'Unknown / Unmatched'}</span>
+                                                    {!call.is_matched && (
+                                                        <span className="px-1.5 py-0.5 text-[9px] bg-slate-100 text-slate-500 rounded border border-slate-200 font-medium">
+                                                            Unmatched
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                {call.phone_number && (
+                                                    <span className="text-xs text-slate-400 mt-0.5">{call.phone_number}</span>
+                                                )}
+                                            </div>
                                         </td>
                                         <td className="px-4 py-3">
-                                            <span className={`px-2 py-1 rounded text-xs font-semibold ${call.status === 'CONNECTED' ? 'bg-green-100 text-green-700' : call.status === 'MISSED' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-700'}`}>
-                                                {call.status || 'UNKNOWN'}
+                                            {call.direction === 'INCOMING' ? (
+                                                <span className="text-blue-600 font-semibold flex items-center gap-1 bg-blue-50 px-2 py-0.5 rounded border border-blue-100 w-fit text-xs">
+                                                    <PhoneIncoming size={13}/> ↙ Incoming
+                                                </span>
+                                            ) : (
+                                                <span className="text-emerald-600 font-semibold flex items-center gap-1 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100 w-fit text-xs">
+                                                    <PhoneOutgoing size={13}/> ↗ Outgoing
+                                                </span>
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                                                call.status === 'CONNECTED' ? 'bg-green-100 text-green-700' :
+                                                call.status === 'MISSED' ? 'bg-red-100 text-red-700' :
+                                                call.status === 'REJECTED' ? 'bg-rose-100 text-rose-800' :
+                                                'bg-slate-100 text-slate-700'
+                                            }`}>
+                                                {call.status || 'CONNECTED'}
                                             </span>
                                         </td>
-                                        <td className="px-4 py-3">{formatDuration(call.duration)}</td>
+                                        <td className="px-4 py-3 font-semibold text-slate-700">{formatDuration(call.duration)}</td>
                                         <td className="px-4 py-3 text-center">
                                             {call.recording_url ? (
-                                                <audio controls controlsList="nodownload noplaybackrate" className="h-8 w-48">
+                                                <audio controls controlsList="nodownload noplaybackrate" className="h-8 w-48 mx-auto">
                                                     <source src={call.recording_url.startsWith('http') ? call.recording_url : `${api.defaults.baseURL.split('/api')[0]}${call.recording_url}`} type="audio/mpeg" />
                                                     Your browser does not support the audio element.
                                                 </audio>

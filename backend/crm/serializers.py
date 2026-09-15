@@ -2,18 +2,22 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from .models import PipelineStage, LeadInteraction, Campaign, Task
 
+from core.models import Student
+
 class PipelineStageSerializer(serializers.ModelSerializer):
     class Meta:
         model = PipelineStage
         fields = '__all__'
 
 class LeadInteractionSerializer(serializers.ModelSerializer):
+    student = serializers.PrimaryKeyRelatedField(queryset=Student.objects.all(), required=False, allow_null=True)
     author_name = serializers.CharField(source='author.first_name', read_only=True)
     author_last_name = serializers.CharField(source='author.last_name', read_only=True)
     student_name = serializers.SerializerMethodField()
-    student_phone = serializers.CharField(source='student.mobile', read_only=True)
+    student_phone = serializers.SerializerMethodField()
     student_created_at = serializers.DateTimeField(source='student.created_at', read_only=True)
     formatted_call_duration = serializers.SerializerMethodField()
+    recording_file_or_url = serializers.SerializerMethodField()
 
     class Meta:
         model = LeadInteraction
@@ -21,8 +25,14 @@ class LeadInteractionSerializer(serializers.ModelSerializer):
 
     def get_student_name(self, obj):
         if obj.student:
-            return f"{obj.student.first_name} {obj.student.last_name}".strip()
-        return None
+            name = f"{obj.student.first_name or ''} {obj.student.last_name or ''}".strip()
+            return name if name else f"Student #{obj.student.id}"
+        return obj.customer_number or obj.caller_number or obj.receiver_number or "Unknown / Unmatched"
+
+    def get_student_phone(self, obj):
+        if obj.student and obj.student.mobile:
+            return obj.student.mobile
+        return obj.customer_number or obj.caller_number or obj.receiver_number or ""
 
     def get_formatted_call_duration(self, obj):
         sec = obj.call_duration or 0
@@ -38,6 +48,19 @@ class LeadInteractionSerializer(serializers.ModelSerializer):
             parts.append(f"{m}m")
         parts.append(f"{s}s")
         return " ".join(parts)
+
+    def get_recording_file_or_url(self, obj):
+        if obj.audio_recording:
+            try:
+                request = self.context.get('request')
+                if request:
+                    return request.build_absolute_uri(obj.audio_recording.url)
+                return obj.audio_recording.url
+            except Exception:
+                pass
+        if obj.recording_url:
+            return obj.recording_url
+        return None
 
 class CampaignSerializer(serializers.ModelSerializer):
     lead_count = serializers.SerializerMethodField()

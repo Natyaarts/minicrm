@@ -9,6 +9,20 @@ class Program(models.Model):
     require_payment = models.BooleanField(default=False)
     registration_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
 
+    def save(self, *args, **kwargs):
+        if not self.slug and self.name:
+            from django.utils.text import slugify
+            base_slug = slugify(self.name)
+            if 'nsdc' in self.name.lower():
+                base_slug = 'nsdc'
+            slug = base_slug
+            counter = 1
+            while Program.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                slug = f"{base_slug}-{counter}"
+                counter += 1
+            self.slug = slug
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return self.name
 

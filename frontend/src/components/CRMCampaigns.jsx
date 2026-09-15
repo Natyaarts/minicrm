@@ -2711,18 +2711,29 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                                     : '-';
                                                 
                                                 // Dynamic Audio URL resolver
-                                                const audioUrl = item.audio_recording
-                                                    ? (item.audio_recording.startsWith('http') 
-                                                        ? item.audio_recording 
+                                                const rawAudio = item.recording_file_or_url || item.audio_recording || item.recording_url;
+                                                const audioUrl = rawAudio
+                                                    ? (rawAudio.startsWith('http') 
+                                                        ? rawAudio 
                                                         : (window.location.origin.includes('localhost') 
-                                                            ? `http://localhost:8000${item.audio_recording}` 
-                                                            : `${window.location.origin}${item.audio_recording}`))
+                                                            ? `http://localhost:8000${rawAudio}` 
+                                                            : `${window.location.origin}${rawAudio}`))
                                                     : null;
+
+                                                const isIncoming = (item.call_direction || 'OUTGOING').toUpperCase() === 'INCOMING';
+                                                const isMatched = item.is_matched !== false && (item.student || item.student_id);
 
                                                 return (
                                                     <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
                                                         <td className="px-5 py-3 font-semibold text-slate-900">
-                                                            {item.student_name || 'Unknown Student'}
+                                                            <div className="flex items-center gap-1.5">
+                                                                <span>{item.student_name || 'Unknown / Unmatched'}</span>
+                                                                {!isMatched && (
+                                                                    <span className="px-1.5 py-0.5 text-[9px] bg-slate-100 text-slate-600 rounded font-medium border border-slate-200">
+                                                                        Unmatched
+                                                                    </span>
+                                                                )}
+                                                            </div>
                                                             {item.student_phone && (
                                                                 <span className="block text-[10px] text-slate-400 font-normal mt-0.5">{item.student_phone}</span>
                                                             )}
@@ -2734,18 +2745,24 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                                         </td>
                                                         <td className="px-5 py-3 font-semibold text-indigo-600">{item.formatted_call_duration || '0s'}</td>
                                                         <td className="px-5 py-3">
-                                                            <span className={`px-2 py-0.5 text-[9px] font-bold rounded-md uppercase tracking-wider ${
-                                                                item.call_status === 'CONNECTED' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-rose-50 text-rose-600 border border-rose-100'
-                                                            }`}>
-                                                                {item.call_status || 'CONNECTED'}
-                                                            </span>
-                                                            <span className="block text-[9px] text-slate-400 mt-0.5">{item.call_direction || 'OUTGOING'}</span>
+                                                            <div className="flex flex-col gap-1 items-start">
+                                                                <span className={`px-2 py-0.5 text-[9px] font-bold rounded-md uppercase tracking-wider ${
+                                                                    isIncoming ? 'bg-blue-50 text-blue-600 border border-blue-100' : 'bg-emerald-50 text-emerald-600 border border-emerald-100'
+                                                                }`}>
+                                                                    {isIncoming ? '↙ INCOMING' : '↗ OUTGOING'}
+                                                                </span>
+                                                                <span className={`text-[9px] font-semibold ${
+                                                                    item.call_status === 'CONNECTED' ? 'text-emerald-600' : 'text-rose-600'
+                                                                }`}>
+                                                                    {item.call_status || 'CONNECTED'}
+                                                                </span>
+                                                            </div>
                                                         </td>
                                                         <td className="px-5 py-3">
                                                             {audioUrl ? (
                                                                 <audio controls src={audioUrl} className="h-7 w-48 rounded-md bg-slate-50" />
                                                             ) : (
-                                                                <span className="text-[10px] text-slate-400 italic">No recording file</span>
+                                                                <span className="text-[10px] text-slate-400 italic">No recording</span>
                                                             )}
                                                         </td>
                                                     </tr>

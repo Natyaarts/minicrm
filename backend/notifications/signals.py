@@ -19,7 +19,7 @@ def payment_notification(sender, instance, created, **kwargs):
                 title="Payment Received",
                 message=f"₹{instance.amount} received from {instance.student.first_name} {instance.student.last_name}.",
                 notification_type='PAYMENT',
-                target_url=f"/students/{instance.student.crm_student_id}"
+                target_url=f"/sales?student={instance.student.id}"
             )
 
 @receiver(post_save, sender=Document)
@@ -33,7 +33,7 @@ def document_notification(sender, instance, created, **kwargs):
                 title="New Document Uploaded",
                 message=f"{instance.document_type} uploaded by {instance.student.first_name}.",
                 notification_type='INFO',
-                target_url=f"/students/{instance.student.crm_student_id}"
+                target_url=f"/sales?student={instance.student.id}"
             )
 
 @receiver(post_save, sender=Batch)
@@ -110,5 +110,5 @@ def lead_assignment_notification(sender, instance, created, **kwargs):
             title="New Lead Assigned",
             message=f"You have been assigned a new lead: {instance.first_name} {instance.last_name}.",
             notification_type='INFO',
-            target_url=f"/sales"
+            target_url=f"/sales?student={instance.id}"
         )

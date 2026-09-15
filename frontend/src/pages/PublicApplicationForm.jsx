@@ -122,7 +122,7 @@ const PublicApplicationForm = () => {
         try {
             // 1. Fetch Hierarchy to find program by slug
             const hRes = await api.get('programs/hierarchy/');
-            const prog = hRes.data.find(p => p.slug === programSlug || p.id.toString() === programSlug);
+            const prog = hRes.data.find(p => p.slug === programSlug || p.id.toString() === programSlug || (p.name && p.name.toLowerCase().includes(programSlug.toLowerCase())));
 
             if (!prog) throw new Error("Program not found");
             setProgram(prog);
@@ -414,9 +414,15 @@ const PublicApplicationForm = () => {
         }
 
         // Manual Validation
-        if (!foundStudent && (!formData.sub_program || !formData.course)) {
-            alert("Please select both Category and Course to continue.");
-            return;
+        if (!foundStudent) {
+            if (subPrograms.length > 0 && !formData.sub_program) {
+                alert("Please select a Category to continue.");
+                return;
+            }
+            if (courses.length > 0 && !formData.course) {
+                alert("Please select a Course to continue.");
+                return;
+            }
         }
 
         const visibleFields = activeFields.filter(isFieldVisible);
@@ -502,20 +508,44 @@ const PublicApplicationForm = () => {
                 const dynamicValues = formData.dynamic_values;
 
                 allFields.forEach(f => {
-                    const label = f.label.toLowerCase();
+                    const label = f.label.toLowerCase().trim();
                     const val = dynamicValues[f.id];
                     if (!val) return;
 
-                    if ((label.includes('name') || label === 'name') && !formDataObj.has('first_name')) {
+                    if ((label === 'full name' || label === 'name' || label === 'student name' || (!label.includes('father') && !label.includes('mother') && label.includes('name'))) && !formDataObj.has('first_name')) {
                         const parts = String(val).trim().split(' ');
                         formDataObj.append('first_name', parts[0]);
-                        formDataObj.append('last_name', parts.slice(1).join(' ') || 'Student');
+                        formDataObj.append('last_name', parts.slice(1).join(' ') || '');
                     }
                     if (label.includes('email') && !formDataObj.has('email')) {
                         formDataObj.append('email', val);
                     }
                     if ((label.includes('mobile') || label.includes('phone') || label.includes('mob') || label.includes('contact')) && !formDataObj.has('mobile')) {
                         formDataObj.append('mobile', val);
+                    }
+                    if (label.includes('father') && !formDataObj.has('father_husband_name')) {
+                        formDataObj.append('father_husband_name', val);
+                    }
+                    if (label.includes('mother') && !formDataObj.has('mother_name')) {
+                        formDataObj.append('mother_name', val);
+                    }
+                    if ((label.includes('dob') || label.includes('date of birth')) && !formDataObj.has('dob')) {
+                        formDataObj.append('dob', String(val).split('T')[0]);
+                    }
+                    if (label.includes('gender') && !formDataObj.has('gender')) {
+                        formDataObj.append('gender', val);
+                    }
+                    if (label.includes('marital') && !formDataObj.has('marital_status')) {
+                        formDataObj.append('marital_status', val);
+                    }
+                    if (label.includes('address') && !formDataObj.has('perm_address')) {
+                        formDataObj.append('perm_address', val);
+                    }
+                    if (label.includes('district') && !formDataObj.has('perm_district')) {
+                        formDataObj.append('perm_district', val);
+                    }
+                    if (label.includes('state') && !formDataObj.has('perm_state')) {
+                        formDataObj.append('perm_state', val);
                     }
                 });
                 
@@ -713,8 +743,8 @@ const PublicApplicationForm = () => {
                             </p>
                         </div>
 
-                        {/* Category & Course Selection - Hidden if profile found since they are already enrolled */}
-                        {!foundStudent && (
+                        {/* Category & Course Selection - Hidden if profile found or program has no sub-programs */}
+                        {!foundStudent && subPrograms.length > 0 && (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6 bg-slate-50 rounded-[30px] border border-slate-100">
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Select Category</label>

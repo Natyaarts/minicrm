@@ -20,13 +20,33 @@ const StudentPortal = () => {
     const [searchResults, setSearchResults] = useState([]);
     const [isSearching, setIsSearching] = useState(false);
 
-    const isAdmin = user?.role === 'SUPER_ADMIN' || user?.is_superuser;
+    const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || user?.is_superuser;
 
     useEffect(() => {
-        if (!isAdmin) {
-            fetchMyData();
+        const params = new URLSearchParams(window.location.search);
+        const sid = params.get('student') || params.get('sid') || params.get('id');
+
+        if (isAdmin) {
+            if (sid) {
+                const loadDirectStudent = async () => {
+                    try {
+                        setLoading(true);
+                        const res = await api.get(`students/${sid}/`);
+                        if (res.data) {
+                            selectStudent(res.data);
+                        }
+                    } catch (err) {
+                        console.error("Direct student lookup failed in portal:", err);
+                    } finally {
+                        setLoading(false);
+                    }
+                };
+                loadDirectStudent();
+            } else {
+                setLoading(false); // Admin starts ready to search
+            }
         } else {
-            setLoading(false); // Admin starts ready to search
+            fetchMyData();
         }
     }, [isAdmin]);
 

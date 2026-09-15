@@ -1,8 +1,121 @@
 import * as FileSystem from 'expo-file-system';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import client from '../api/client';
 
+const PENDING_CALLS_STORAGE_KEY = '@pending_call_queue';
+
+/**
+ * Generates a unique client-side mobile call event ID.
+ * Ensures that the same call is never uploaded twice.
+ */
+export const generateMobileCallId = (phone?: string, direction?: string): string => {
+  const ts = Date.now();
+  const rand = Math.random().toString(36).substring(2, 8);
+  const cleanPhone = (phone || '').replace(/\D/g, '').slice(-6);
+  const dir = (direction || 'OUT').toUpperCase().slice(0, 3);
+  return `mob_${ts}_${dir}_${cleanPhone}_${rand}`;
+};
+
+/**
+ * Queues a call event locally in AsyncStorage if the BDE is offline or upload fails.
+ */
+export const queueOfflineCall = async (callData: any) => {
+  try {
+    const rawQueue = await AsyncStorage.getItem(PENDING_CALLS_STORAGE_KEY);
+    const queue = rawQueue ? JSON.parse(rawQueue) : [];
+    
+    // Ensure mobile_call_id exists
+    if (!callData.mobile_call_id) {
+      callData.mobile_call_id = generateMobileCallId(callData.customer_number || callData.phoneNumber, callData.call_direction);
+    }
+    
+    // Deduplicate by mobile_call_id in queue
+    const exists = queue.some((item: any) => item.mobile_call_id === callData.mobile_call_id);
+    if (!exists) {
+      queue.push({
+        ...callData,
+        queued_at: Date.now()
+      });
+      await AsyncStorage.setItem(PENDING_CALLS_STORAGE_KEY, JSON.stringify(queue));
+      console.log(`[SyncManager] Queued offline call: ${callData.mobile_call_id}`);
+    }
+  } catch (err) {
+    console.error('[SyncManager] Failed to queue offline call:', err);
+  }
+};
+
+/**
+ * Syncs any pending calls stored in the local offline queue to the CRM backend.
+ */
+export const syncPendingCalls = async () => {
+  try {
+    const rawQueue = await AsyncStorage.getItem(PENDING_CALLS_STORAGE_KEY);
+    if (!rawQueue) return;
+    
+    const queue = JSON.parse(rawQueue);
+    if (!Array.isArray(queue) || queue.length === 0) return;
+    
+    console.log(`[SyncManager] Processing ${queue.length} pending offline calls...`);
+    const remainingQueue: any[] = [];
+    
+    for (const item of queue) {
+      try {
+        const formData = new FormData();
+        if (item.student && item.student !== '0') formData.append('student', String(item.student));
+        formData.append('interaction_type', 'CALL');
+        formData.append('mobile_call_id', item.mobile_call_id);
+        if (item.customer_number) formData.append('customer_number', item.customer_number);
+        if (item.caller_number) formData.append('caller_number', item.caller_number);
+        if (item.receiver_number) formData.append('receiver_number', item.receiver_number);
+        formData.append('call_direction', item.call_direction || 'OUTGOING');
+        formData.append('call_status', item.call_status || 'CONNECTED');
+        formData.append('call_duration', String(item.call_duration || 0));
+        formData.append('notes', item.notes || `Call Logged via Mobile Sync (${item.call_direction || 'OUTGOING'})`);
+        if (item.pipeline_status) formData.append('pipeline_status', String(item.pipeline_status));
+        if (item.next_followup_date) formData.append('next_followup_date', item.next_followup_date);
+
+        if (item.recordedFilePath) {
+          let finalUri = item.recordedFilePath;
+          if (!finalUri.startsWith('file://') && !finalUri.startsWith('content://')) {
+            finalUri = `file://${finalUri}`;
+          }
+          const extMatch = finalUri.match(/\.([a-zA-Z0-9]+)$/);
+          const ext = extMatch ? extMatch[1].toLowerCase() : 'm4a';
+          let mimeType = 'audio/m4a';
+          if (ext === 'mp3') mimeType = 'audio/mpeg';
+          else if (ext === 'wav') mimeType = 'audio/wav';
+
+          formData.append('audio_recording', {
+            uri: finalUri,
+            type: mimeType,
+            name: `offline_rec_${item.mobile_call_id}.${ext}`
+          } as any);
+        }
+
+        await client.post('/crm/interactions/', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        console.log(`[SyncManager] Successfully synced offline call: ${item.mobile_call_id}`);
+      } catch (postErr: any) {
+        console.warn(`[SyncManager] Sync failed for call ${item.mobile_call_id}, keeping in queue:`, postErr?.message);
+        remainingQueue.push(item);
+      }
+    }
+    
+    await AsyncStorage.setItem(PENDING_CALLS_STORAGE_KEY, JSON.stringify(remainingQueue));
+  } catch (err) {
+    console.error('[SyncManager] Error syncing pending calls:', err);
+  }
+};
+
+/**
+ * Scans local storage cache for audio recordings and links them to interactions missing recordings.
+ */
 export const syncMissingRecordings = async () => {
   try {
+    // Also sync pending queued calls first
+    await syncPendingCalls();
+
     console.log('[SyncManager] Starting background sync check for missing call recordings...');
     
     // 1. Fetch recent call interactions
@@ -11,7 +124,7 @@ export const syncMissingRecordings = async () => {
     
     // Filter for CALL interactions that are missing audio
     const missingAudioCalls = interactions.filter((item: any) => {
-      return item.interaction_type === 'CALL' && (!item.audio_recording || item.audio_recording === '');
+      return item.interaction_type === 'CALL' && (!item.audio_recording || item.audio_recording === '') && (!item.recording_url || item.recording_url === '');
     });
     
     if (missingAudioCalls.length === 0) {
@@ -26,7 +139,7 @@ export const syncMissingRecordings = async () => {
     const files = await FileSystem.readDirectoryAsync(FileSystem.cacheDirectory);
     
     for (const call of missingAudioCalls) {
-      const studentPhone = call.student_phone?.replace(/\D/g, '').slice(-10); // last 10 digits
+      const targetPhone = (call.student_phone || call.customer_number || call.caller_number || call.receiver_number || '').replace(/\D/g, '').slice(-10);
       const callTime = new Date(call.date).getTime();
       
       // Find a matching file in the cache
@@ -43,7 +156,7 @@ export const syncMissingRecordings = async () => {
             if (fileInfo.exists) {
               // Match by phone number if present in filename
               const cleanFileName = fileName.replace(/\D/g, '');
-              const hasPhoneMatch = studentPhone && cleanFileName.includes(studentPhone);
+              const hasPhoneMatch = targetPhone && cleanFileName.includes(targetPhone);
               
               // Match by creation/modification time
               const fileTime = fileInfo.modificationTime ? fileInfo.modificationTime * 1000 : 0;

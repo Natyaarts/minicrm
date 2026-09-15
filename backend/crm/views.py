@@ -9,6 +9,7 @@ import traceback
 from core.models import Student, Program, Transaction, normalize_phone_number
 from .models import PipelineStage, LeadInteraction, Campaign, WebhookEndpoint, WebhookLog, Task
 from .serializers import PipelineStageSerializer, LeadInteractionSerializer, CampaignSerializer, TaskSerializer
+from .utils import normalize_phone_for_matching, match_lead_by_phone, match_agent_by_phone
 
 User = get_user_model()
 from django.shortcuts import get_object_or_404
@@ -364,11 +365,29 @@ class LeadInteractionViewSet(viewsets.ModelViewSet):
         queryset = LeadInteraction.objects.all()
         student_id = self.request.query_params.get('student_id', None)
         if student_id is not None:
-            queryset = queryset.filter(student_id=student_id)
+            if str(student_id).lower() in ['null', 'none', 'unmatched', '0']:
+                queryset = queryset.filter(student__isnull=True)
+            else:
+                queryset = queryset.filter(student_id=student_id)
             
         interaction_type = self.request.query_params.get('interaction_type', None)
         if interaction_type:
             queryset = queryset.filter(interaction_type=interaction_type)
+            
+        direction = self.request.query_params.get('direction') or self.request.query_params.get('call_direction')
+        if direction:
+            queryset = queryset.filter(call_direction=direction.upper())
+
+        call_status = self.request.query_params.get('status') or self.request.query_params.get('call_status')
+        if call_status:
+            queryset = queryset.filter(call_status=call_status.upper())
+
+        is_matched = self.request.query_params.get('is_matched')
+        if is_matched is not None:
+            if is_matched.lower() in ['true', '1']:
+                queryset = queryset.filter(is_matched=True)
+            elif is_matched.lower() in ['false', '0']:
+                queryset = queryset.filter(is_matched=False)
             
         assigned_to = self.request.query_params.get('assigned_to', None)
         if assigned_to:
@@ -394,7 +413,11 @@ class LeadInteractionViewSet(viewsets.ModelViewSet):
                 Q(student__first_name__icontains=search) |
                 Q(student__last_name__icontains=search) |
                 Q(student__mobile__icontains=search) |
-                Q(student__email__icontains=search)
+                Q(student__email__icontains=search) |
+                Q(customer_number__icontains=search) |
+                Q(caller_number__icontains=search) |
+                Q(receiver_number__icontains=search) |
+                Q(notes__icontains=search)
             )
             
         start_date = self.request.query_params.get('start_date', None)
@@ -412,49 +435,117 @@ class LeadInteractionViewSet(viewsets.ModelViewSet):
                 
         return queryset
 
-    def perform_create(self, serializer):
-        print("======== DEBUG INTERACTION UPLOAD ========")
-        print("request.data:", self.request.data)
-        print("request.FILES:", self.request.FILES)
-        print("audio_recording from data:", self.request.data.get('audio_recording'))
-        print("audio_recording type:", type(self.request.data.get('audio_recording')))
-        print("==========================================")
-        interaction = serializer.save(author=self.request.user)
+    def create(self, request, *args, **kwargs):
+        mobile_call_id = request.data.get('mobile_call_id')
+        provider_call_id = request.data.get('provider_call_id')
         
-        # Manually update new fields if provided
-        call_duration = self.request.data.get('call_duration')
-        if call_duration is not None:
-            try:
-                interaction.call_duration = int(call_duration)
-            except ValueError:
-                pass
-        
-        call_direction = self.request.data.get('call_direction')
-        if call_direction in ['INCOMING', 'OUTGOING']:
-            interaction.call_direction = call_direction
+        # Deduplication check: if mobile_call_id or provider_call_id already exists, perform idempotent update
+        existing = None
+        if mobile_call_id:
+            existing = LeadInteraction.objects.filter(mobile_call_id=mobile_call_id).first()
+        elif provider_call_id:
+            existing = LeadInteraction.objects.filter(provider_call_id=provider_call_id).first()
             
-        call_status = self.request.data.get('call_status')
-        if call_status in ['CONNECTED', 'MISSED', 'REJECTED', 'UNANSWERED']:
-            interaction.call_status = call_status
-            
-        interaction.save()
+        if existing:
+            # Update with newly provided fields
+            if request.FILES.get('audio_recording'):
+                existing.audio_recording = request.FILES.get('audio_recording')
+            if request.data.get('recording_url'):
+                existing.recording_url = request.data.get('recording_url')
+            if request.data.get('call_duration'):
+                try:
+                    existing.call_duration = int(request.data.get('call_duration'))
+                except (ValueError, TypeError):
+                    pass
+            if request.data.get('call_status'):
+                existing.call_status = request.data.get('call_status')
+            if request.data.get('notes'):
+                existing.notes = request.data.get('notes')
+            existing.save()
+            serializer = self.get_serializer(existing)
+            return Response(serializer.data, status=status.HTTP_200_OK)
 
-        pipeline_status = self.request.data.get('pipeline_status')
-        if pipeline_status:
-            interaction.student.lead_status = pipeline_status
-            interaction.student.save()
-            
-        next_followup_date = self.request.data.get('next_followup_date')
-        if next_followup_date:
-            Task.objects.create(
-                title=f"Follow-up: {interaction.student.first_name} {interaction.student.last_name}",
-                student=interaction.student,
-                assigned_to=self.request.user,
-                task_type='CALL',
-                status='PENDING',
-                due_date=next_followup_date,
-                notes=self.request.data.get('notes', 'Follow-up from previous interaction.')
-            )
+        # Extract parameters
+        student_id = request.data.get('student')
+        customer_number = str(request.data.get('customer_number') or '').strip()
+        caller_number = str(request.data.get('caller_number') or '').strip()
+        receiver_number = str(request.data.get('receiver_number') or '').strip()
+        call_direction = (request.data.get('call_direction') or 'OUTGOING').upper()
+        call_status = (request.data.get('call_status') or ('CONNECTED' if request.data.get('call_duration') and int(request.data.get('call_duration', 0)) > 0 else 'CONNECTED')).upper()
+        call_duration = request.data.get('call_duration', 0)
+        notes = request.data.get('notes', '')
+        interaction_type = request.data.get('interaction_type', 'CALL')
+
+        # Fallback for customer number based on call direction
+        if not customer_number:
+            if call_direction == 'INCOMING':
+                customer_number = caller_number or receiver_number
+            else:
+                customer_number = receiver_number or caller_number
+
+        try:
+            dur_int = int(call_duration)
+        except (ValueError, TypeError):
+            dur_int = 0
+
+        # Secondary lead matching: search complete CRM dataset
+        student = None
+        is_matched = False
+        if student_id and str(student_id) not in ['0', '', 'null', 'None']:
+            try:
+                student = Student.objects.filter(id=student_id).first()
+                if student:
+                    is_matched = True
+            except (ValueError, TypeError):
+                student = None
+
+        if not student and customer_number:
+            student, is_matched = match_lead_by_phone(customer_number)
+
+        # Guaranteed persistence - Call is created FIRST
+        interaction = LeadInteraction.objects.create(
+            student=student,
+            author=request.user if request.user.is_authenticated else None,
+            interaction_type=interaction_type,
+            mobile_call_id=mobile_call_id if mobile_call_id else None,
+            customer_number=customer_number,
+            caller_number=caller_number,
+            receiver_number=receiver_number,
+            call_direction=call_direction,
+            call_status=call_status,
+            call_duration=dur_int,
+            start_time=request.data.get('start_time'),
+            end_time=request.data.get('end_time'),
+            recording_url=request.data.get('recording_url'),
+            provider_call_id=provider_call_id,
+            provider_event_id=request.data.get('provider_event_id'),
+            telephony_provider=request.data.get('telephony_provider', 'MOBILE_APP'),
+            is_matched=is_matched,
+            notes=notes,
+            audio_recording=request.FILES.get('audio_recording')
+        )
+
+        # Optional pipeline update & follow-up task only if student matched
+        if student:
+            pipeline_status = request.data.get('pipeline_status')
+            if pipeline_status:
+                student.lead_status = pipeline_status
+                student.save()
+
+            next_followup_date = request.data.get('next_followup_date')
+            if next_followup_date:
+                Task.objects.create(
+                    title=f"Follow-up: {student.first_name} {student.last_name}",
+                    student=student,
+                    assigned_to=request.user if request.user.is_authenticated else None,
+                    task_type='CALL',
+                    status='PENDING',
+                    due_date=next_followup_date,
+                    notes=notes or 'Follow-up from previous call interaction.'
+                )
+
+        serializer = self.get_serializer(interaction)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 class CampaignViewSet(viewsets.ModelViewSet):
     queryset = Campaign.objects.all()
@@ -942,20 +1033,21 @@ class BDEReportView(APIView):
 
             timeline.append({
                 'id': inter.id,
-                'student_name': f"{inter.student.first_name} {inter.student.last_name}" if inter.student else 'Unknown',
+                'student_name': f"{inter.student.first_name} {inter.student.last_name}".strip() if inter.student else (inter.customer_number or inter.caller_number or inter.receiver_number or 'Unknown / Unmatched'),
                 'student_id': inter.student.id if inter.student else None,
-                'student_phone': inter.student.mobile if inter.student else '',
+                'student_phone': inter.student.mobile if inter.student else (inter.customer_number or inter.caller_number or inter.receiver_number or ''),
                 'student_email': inter.student.email if inter.student else '',
                 'student_crm_id': inter.student.crm_student_id if inter.student else '',
                 'student_status': inter.student.lead_status if inter.student else '',
+                'is_matched': bool(inter.student_id),
                 'type': inter.interaction_type,
                 'call_duration': dur_sec,
                 'formatted_call_duration': format_duration_seconds(dur_sec),
-                'call_direction': inter.call_direction,
-                'call_status': inter.call_status,
+                'call_direction': inter.call_direction or 'OUTGOING',
+                'call_status': inter.call_status or 'CONNECTED',
                 'notes': inter.notes,
                 'date': inter.date,
-                'audio_url': audio_url
+                'audio_url': audio_url or inter.recording_url
             })
 
         pending_tasks = Task.objects.filter(assigned_to=bde, status='PENDING')
@@ -1505,15 +1597,30 @@ class CallAnalyticsView(APIView):
 
         history = []
         for inter in history_qs[start:end]:
+            rec_url = None
+            if inter.audio_recording:
+                try:
+                    rec_url = request.build_absolute_uri(inter.audio_recording.url)
+                except Exception:
+                    rec_url = inter.audio_recording.url
+            elif inter.recording_url:
+                rec_url = inter.recording_url
+
+            client_name = f"{inter.student.first_name} {inter.student.last_name}".strip() if inter.student else (inter.customer_number or inter.caller_number or inter.receiver_number or 'Unknown / Unmatched')
+            client_phone = inter.student.mobile if inter.student else (inter.customer_number or inter.caller_number or inter.receiver_number or '')
+
             history.append({
                 'id': inter.id,
                 'date': inter.date,
-                'employee': f"{inter.author.first_name} {inter.author.last_name}".strip() if inter.author else 'Unknown',
-                'client': f"{inter.student.first_name} {inter.student.last_name}".strip() if inter.student else 'Unknown',
-                'direction': inter.call_direction,
-                'status': inter.call_status,
+                'employee': f"{inter.author.first_name} {inter.author.last_name}".strip() if inter.author else 'System / Unknown',
+                'client': client_name,
+                'phone_number': client_phone,
+                'student_id': inter.student_id,
+                'is_matched': bool(inter.student_id),
+                'direction': inter.call_direction or 'OUTGOING',
+                'status': inter.call_status or 'CONNECTED',
                 'duration': inter.call_duration,
-                'recording_url': inter.audio_recording.url if inter.audio_recording else None
+                'recording_url': rec_url
             })
 
         return Response({

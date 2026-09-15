@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Notifications from 'expo-notifications';
 import { useLocalSearchParams, router } from 'expo-router';
 import { startNativeRecording, stopNativeRecording, listenToCallEvents, requestCallPermissions, listenToCallState, makeDirectCall } from '../src/utils/CallManager';
+import { generateMobileCallId, queueOfflineCall } from '../src/utils/SyncManager';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
@@ -408,75 +409,73 @@ const Dialpad = () => {
 
 
   const handlePostCallSubmit = async () => {
-    if (!leadId || leadId === '0') {
-      Alert.alert('No Lead Linked', 'Call log will not be saved because no lead was selected.');
-      setCallStatus('IDLE');
-      setPostCallNotes('');
-      setRecordedFilePath(null);
-      setManualRecordingFile(null);
-      setNextFollowupDate(null);
-      return;
-    }
-
     if (isSubmitting) return;
     setIsSubmitting(true);
 
-    try {
-      const status = callDuration > 0 ? 'CONNECTED' : 'MISSED';
-      
-      const parameters: Record<string, string> = {
-        student: String(leadId),
-        interaction_type: 'CALL',
-        call_duration: String(callDuration),
-        call_direction: 'OUTGOING',
-        call_status: status,
-        notes: `Duration: ${formatDuration(callDuration)}\nNotes: ${postCallNotes}`
-      };
-      
-      if (pipelineStatus) parameters.pipeline_status = String(pipelineStatus);
-      if (nextFollowupDate) parameters.next_followup_date = nextFollowupDate.toISOString();
+    const cleanNumber = (phoneNumber || '').replace(/[\s\-().]/g, '');
+    const mobileCallId = generateMobileCallId(cleanNumber, 'OUTGOING');
+    const status = callDuration > 0 ? 'CONNECTED' : 'MISSED';
 
-      let fileUriToUpload = null;
-      let mimeType = 'audio/m4a';
-      let fileName = `recording_${Date.now()}.m4a`;
+    const parameters: Record<string, string> = {
+      interaction_type: 'CALL',
+      mobile_call_id: mobileCallId,
+      customer_number: cleanNumber,
+      receiver_number: cleanNumber,
+      call_duration: String(callDuration),
+      call_direction: 'OUTGOING',
+      call_status: status,
+      notes: postCallNotes 
+        ? `Duration: ${formatDuration(callDuration)}\nNotes: ${postCallNotes}`
+        : `Outbound Call - Duration: ${formatDuration(callDuration)}`
+    };
 
-      if (recordedFilePath) {
-        fileUriToUpload = recordedFilePath;
-        if (!fileUriToUpload.startsWith('file://') && !fileUriToUpload.startsWith('content://')) {
-          fileUriToUpload = `file://${fileUriToUpload}`;
-        }
-        const extMatch = fileUriToUpload.match(/\.([a-zA-Z0-9]+)$/);
-        const ext = extMatch ? extMatch[1].toLowerCase() : 'm4a';
-        fileName = `recording_${Date.now()}.${ext}`;
-        
-        if (ext === 'mp3') mimeType = 'audio/mpeg';
-        else if (ext === 'wav') mimeType = 'audio/wav';
-        else if (ext === 'amr') mimeType = 'audio/amr';
-        else if (ext === 'aac') mimeType = 'audio/aac';
-      } else if (manualRecordingFile) {
-        fileUriToUpload = manualRecordingFile.uri;
-        mimeType = manualRecordingFile.mimeType || 'audio/mpeg';
-        fileName = manualRecordingFile.name || `recording_${Date.now()}.mp3`;
+    if (leadId && String(leadId) !== '0') {
+      parameters.student = String(leadId);
+    }
+    
+    if (pipelineStatus && leadId && String(leadId) !== '0') parameters.pipeline_status = String(pipelineStatus);
+    if (nextFollowupDate && leadId && String(leadId) !== '0') parameters.next_followup_date = nextFollowupDate.toISOString();
+
+    let fileUriToUpload = null;
+    let mimeType = 'audio/m4a';
+    let fileName = `recording_${Date.now()}.m4a`;
+
+    if (recordedFilePath) {
+      fileUriToUpload = recordedFilePath;
+      if (!fileUriToUpload.startsWith('file://') && !fileUriToUpload.startsWith('content://')) {
+        fileUriToUpload = `file://${fileUriToUpload}`;
       }
+      const extMatch = fileUriToUpload.match(/\.([a-zA-Z0-9]+)$/);
+      const ext = extMatch ? extMatch[1].toLowerCase() : 'm4a';
+      fileName = `recording_${Date.now()}.${ext}`;
+      
+      if (ext === 'mp3') mimeType = 'audio/mpeg';
+      else if (ext === 'wav') mimeType = 'audio/wav';
+      else if (ext === 'amr') mimeType = 'audio/amr';
+      else if (ext === 'aac') mimeType = 'audio/aac';
+    } else if (manualRecordingFile) {
+      fileUriToUpload = manualRecordingFile.uri;
+      mimeType = manualRecordingFile.mimeType || 'audio/mpeg';
+      fileName = manualRecordingFile.name || `recording_${Date.now()}.mp3`;
+    }
 
+    try {
       if (fileUriToUpload) {
-        const token = await AsyncStorage.getItem('userToken');
-        const response = await FileSystem.uploadAsync('https://natyaarts.org/api/crm/interactions/', fileUriToUpload, {
-          fieldName: 'audio_recording',
-          httpMethod: 'POST',
-          uploadType: 1, // 1 = FileSystemUploadType.MULTIPART
-          parameters: parameters,
-          headers: {
-            'Authorization': `Token ${token}`
-          }
-        });
+        const formData = new FormData();
+        Object.keys(parameters).forEach(k => formData.append(k, parameters[k]));
+        formData.append('audio_recording', {
+          uri: fileUriToUpload,
+          type: mimeType,
+          name: fileName
+        } as any);
 
-        if (response.status !== 200 && response.status !== 201) {
-          throw new Error(response.body);
-        }
+        await client.post('/crm/interactions/', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
       } else {
         await client.post('/crm/interactions/', parameters);
       }
+
       if (nextFollowupDate) {
         const trigger = nextFollowupDate.getTime() - Date.now();
         if (trigger > 0) {
@@ -499,9 +498,26 @@ const Dialpad = () => {
       setNextFollowupDate(null);
       if (activeTab === 'history') fetchRecentCalls();
     } catch (error: any) {
-      console.error('Failed to upload post-call log:', error?.response?.data || error);
-      const errorMsg = error?.response?.data ? JSON.stringify(error.response.data) : error.message;
-      Alert.alert('Error', `Failed to save call log.\nDetails: ${errorMsg}`);
+      console.warn('Failed to upload post-call log online, queueing offline:', error?.response?.data || error);
+      await queueOfflineCall({
+        mobile_call_id: mobileCallId,
+        student: (leadId && String(leadId) !== '0') ? leadId : null,
+        customer_number: cleanNumber,
+        receiver_number: cleanNumber,
+        call_direction: 'OUTGOING',
+        call_status: status,
+        call_duration: callDuration,
+        notes: postCallNotes || `Outbound call to ${cleanNumber}`,
+        pipeline_status: pipelineStatus,
+        next_followup_date: nextFollowupDate?.toISOString(),
+        recordedFilePath
+      });
+      Alert.alert('Saved Offline', 'Call logged locally and will sync automatically.');
+      setCallStatus('IDLE');
+      setPostCallNotes('');
+      setRecordedFilePath(null);
+      setManualRecordingFile(null);
+      setNextFollowupDate(null);
     } finally {
       setIsSubmitting(false);
     }
@@ -800,6 +816,8 @@ const Dialpad = () => {
           if (durMatch) {
             duration = durMatch[1];
             cleanNote = notesStr.replace(/Duration:\s*\d{2}:\d{2}\n?/, '').replace(/Notes:\s*/, '');
+          } else if (item.formatted_call_duration) {
+            duration = item.formatted_call_duration;
           }
 
           const formattedTime = new Date(item.date).toLocaleString([], {
@@ -809,8 +827,30 @@ const Dialpad = () => {
             minute: '2-digit'
           });
 
-          const displayName = item.student_name || `Student ID: ${item.student}`;
-          const displayPhone = item.student_phone || 'No Phone';
+          const isIncoming = (item.call_direction || 'OUTGOING').toUpperCase() === 'INCOMING';
+          const isMissed = (item.call_status || '').toUpperCase() === 'MISSED' || (item.call_status || '').toUpperCase() === 'UNANSWERED';
+          const isRejected = (item.call_status || '').toUpperCase() === 'REJECTED';
+          const isMatched = item.is_matched !== false && (item.student || item.student_id);
+
+          const displayName = item.student_name || (isMatched ? `Student ID: ${item.student}` : 'Unknown / Unmatched');
+          const displayPhone = item.student_phone || item.customer_number || item.caller_number || item.receiver_number || 'No Phone';
+
+          // Direction icon configuration
+          let iconName: any = 'arrow-up-outline';
+          let iconColor = '#10B981'; // Green for Outgoing
+          let iconBg = '#ECFDF5';
+
+          if (isIncoming) {
+            if (isMissed || isRejected) {
+              iconName = 'call-outline';
+              iconColor = '#EF4444'; // Red for Missed/Rejected
+              iconBg = '#FEF2F2';
+            } else {
+              iconName = 'arrow-down-outline';
+              iconColor = '#3B82F6'; // Blue for Incoming
+              iconBg = '#EFF6FF';
+            }
+          }
 
           return (
             <TouchableOpacity 
@@ -824,12 +864,22 @@ const Dialpad = () => {
               }}
             >
               <View style={styles.historyLeft}>
-                <View style={styles.historyIcon}>
-                  <Ionicons name="call-outline" size={20} color="#10B981" />
+                <View style={[styles.historyIcon, { backgroundColor: iconBg }]}>
+                  <Ionicons name={iconName} size={20} color={iconColor} />
                 </View>
                 <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={styles.historyName}>{displayName}</Text>
-                  <Text style={styles.historyPhone}>{displayPhone}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={styles.historyName}>{displayName}</Text>
+                    {!isMatched && (
+                      <View style={{ backgroundColor: '#F1F5F9', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                        <Text style={{ fontSize: 10, color: '#64748B', fontWeight: '600' }}>Unmatched</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={styles.historyPhone}>
+                    {isIncoming ? '↙ ' : '↗ '}
+                    {displayPhone}
+                  </Text>
                   {cleanNote ? (
                     <Text style={styles.historyNotes} numberOfLines={2}>{cleanNote}</Text>
                   ) : null}
@@ -837,11 +887,27 @@ const Dialpad = () => {
               </View>
               <View style={{ alignItems: 'flex-end', justifyContent: 'space-between', height: '100%', minHeight: 40 }}>
                 <Text style={styles.historyTime}>{formattedTime}</Text>
-                {duration ? (
-                  <View style={styles.durationBadge}>
-                    <Text style={styles.durationText}>{duration}</Text>
+                <View style={{ flexDirection: 'row', gap: 4, alignItems: 'center', marginTop: 4 }}>
+                  <View style={{
+                    backgroundColor: isMissed ? '#FEF2F2' : (isIncoming ? '#EFF6FF' : '#ECFDF5'),
+                    paddingHorizontal: 6,
+                    paddingVertical: 2,
+                    borderRadius: 4
+                  }}>
+                    <Text style={{
+                      fontSize: 10,
+                      fontWeight: '700',
+                      color: isMissed ? '#DC2626' : (isIncoming ? '#2563EB' : '#059669')
+                    }}>
+                      {item.call_status || (isIncoming ? 'INCOMING' : 'CONNECTED')}
+                    </Text>
                   </View>
-                ) : null}
+                  {duration ? (
+                    <View style={styles.durationBadge}>
+                      <Text style={styles.durationText}>{duration}</Text>
+                    </View>
+                  ) : null}
+                </View>
               </View>
             </TouchableOpacity>
           );

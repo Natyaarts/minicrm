@@ -386,7 +386,7 @@ class StudentViewSet(viewsets.ModelViewSet):
         student = serializer.save()
         from notifications.models import Notification
         User = get_user_model()
-        staff_users = User.objects.filter(role__in=['ADMIN', 'SUPER_ADMIN', 'SALES'])
+        staff_users = User.objects.filter(role__in=['ADMIN', 'SUPER_ADMIN'])
         for user in staff_users:
             Notification.objects.create(
                 user=user,
@@ -419,24 +419,17 @@ class StudentViewSet(viewsets.ModelViewSet):
             pass
 
         if user.role in ['ADMIN', 'SUPER_ADMIN']:
-            # Restrict duplicate leads access to SUPER_ADMIN only
             lead_status_param = self.request.query_params.get('lead_status', '')
-            if self.action == 'destroy':
-                # Let Super Admin delete duplicate leads
+            if self.action in ['destroy', 'retrieve', 'partial_update', 'update']:
+                # Allow Admin / SuperAdmin to view and edit individual records by ID even if duplicate
                 pass
             elif lead_status_param.upper() == 'DUPLICATE':
-                if user.role != 'SUPER_ADMIN':
-                    # Exclude duplicates for normal Admins
-                    qs = qs.exclude(lead_status='DUPLICATE')
-                else:
-                    # Let Super Admin view duplicates
-                    pass
+                pass # Allow Admin and SuperAdmin to view duplicate leads when filter requested
             else:
-                # Exclude duplicates from normal views even for Admins/Super Admins
                 qs = qs.exclude(lead_status='DUPLICATE')
         else:
-            # Exclude duplicates for all non-admin roles
-            if self.action != 'destroy':
+            # Exclude duplicates for all non-admin roles in list views
+            if self.action not in ['destroy', 'retrieve']:
                 qs = qs.exclude(lead_status='DUPLICATE')
 
         if user.role == 'SALES':

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, TextInput, Platform, ScrollView, Alert, ActivityIndicator, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { listenToCallState, listenToMissedCalls, startNativeRecording, stopNativeRecording } from '../utils/CallManager';
+import { generateMobileCallId, queueOfflineCall } from '../utils/SyncManager';
 import client from '../api/client';
 import * as DocumentPicker from 'expo-document-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -45,37 +46,51 @@ export default function GlobalCallListener() {
       const phone = event.phoneNumber;
       if (!phone) return;
 
+      const mobileCallId = generateMobileCallId(phone, 'INCOMING');
+      let student = null;
+
       try {
-        // Attempt to find student / lead
-        const res = await client.get(`/students/?search=${encodeURIComponent(phone)}`);
-        const results = res.data.results || res.data || [];
-        const student = results[0];
+        // Attempt secondary lead lookup
+        const cleanPhone = phone.replace(/\D/g, '').slice(-10);
+        const res = await client.get('/core/students/', { params: { search: cleanPhone } });
+        const results = res.data?.results || res.data || [];
+        if (results.length > 0) student = results[0];
+      } catch (_) {}
 
-        if (student) {
-          const payload = new FormData();
-          payload.append('student', student.id);
-          payload.append('interaction_type', 'CALL');
-          payload.append('call_direction', 'INCOMING');
-          payload.append('call_status', 'MISSED');
-          payload.append('call_duration', '0');
-          payload.append('notes', `Missed incoming call from ${phone}`);
+      try {
+        const payload = new FormData();
+        if (student?.id) payload.append('student', String(student.id));
+        payload.append('mobile_call_id', mobileCallId);
+        payload.append('customer_number', phone);
+        payload.append('caller_number', phone);
+        payload.append('interaction_type', 'CALL');
+        payload.append('call_direction', 'INCOMING');
+        payload.append('call_status', 'MISSED');
+        payload.append('call_duration', '0');
+        payload.append('notes', `Missed incoming call from ${phone}`);
 
-          await client.post('/crm/interactions/', payload, {
-            headers: { 'Content-Type': 'multipart/form-data' }
-          });
+        await client.post('/crm/interactions/', payload, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
 
-          Alert.alert(
-            '🚨 Missed Call Alert',
-            `Missed call from ${student.first_name || ''} ${student.last_name || ''} (${phone}). Added to CRM interactions.`
-          );
-        } else {
-          Alert.alert(
-            '🚨 Missed Call Alert',
-            `Missed call from unknown number (${phone}).`
-          );
-        }
+        Alert.alert(
+          '🚨 Missed Call Alert',
+          student 
+            ? `Missed call from ${student.first_name || ''} ${student.last_name || ''} (${phone}). Logged to CRM.`
+            : `Missed call from ${phone}. Logged to CRM.`
+        );
       } catch (err) {
-        console.error('Failed to log missed call automatically:', err);
+        console.warn('Failed to upload missed call online, queueing offline:', err);
+        await queueOfflineCall({
+          mobile_call_id: mobileCallId,
+          student: student?.id,
+          customer_number: phone,
+          caller_number: phone,
+          call_direction: 'INCOMING',
+          call_status: 'MISSED',
+          call_duration: 0,
+          notes: `Missed incoming call from ${phone}`
+        });
       }
     });
 
@@ -215,37 +230,32 @@ export default function GlobalCallListener() {
   };
 
   const handleSaveCall = async () => {
-    // If unknown lead, maybe block or create a lead?
-    if (!leadInfo?.id) {
-      Alert.alert(
-        'Unknown Caller', 
-        'This number is not in your CRM. Do you want to save it as a new Lead first?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Ignore Call', onPress: resetModal },
-          { text: 'Create Lead (Coming Soon)', onPress: () => console.log('Feature pending') }
-        ]
-      );
-      return;
-    }
-
     if (isSubmitting) return;
     setIsSubmitting(true);
 
+    const mobileCallId = generateMobileCallId(displayPhone, 'INCOMING');
+    const status = callDuration > 0 ? 'CONNECTED' : 'MISSED';
+
     try {
       const formData = new FormData();
-      formData.append('student', leadInfo.id.toString());
+      if (leadInfo?.id) {
+        formData.append('student', leadInfo.id.toString());
+      }
+      formData.append('mobile_call_id', mobileCallId);
+      formData.append('customer_number', displayPhone);
+      formData.append('caller_number', displayPhone);
       formData.append('interaction_type', 'CALL');
       formData.append('call_duration', callDuration.toString());
       formData.append('call_direction', 'INCOMING');
-      
-      // Determine if answered based on duration
-      const status = callDuration > 0 ? 'CONNECTED' : 'MISSED';
       formData.append('call_status', status);
 
-      formData.append('notes', `Incoming Call - Duration: ${formatDuration(callDuration)}\nNotes: ${postCallNotes}`);
-      if (pipelineStatus) formData.append('pipeline_status', pipelineStatus);
-      if (nextFollowupDate) {
+      const notesContent = postCallNotes 
+        ? `Incoming Call - Duration: ${formatDuration(callDuration)}\nNotes: ${postCallNotes}`
+        : `Incoming Call from ${displayPhone} (${status}, ${formatDuration(callDuration)})`;
+      formData.append('notes', notesContent);
+
+      if (pipelineStatus && leadInfo?.id) formData.append('pipeline_status', pipelineStatus);
+      if (nextFollowupDate && leadInfo?.id) {
         formData.append('next_followup_date', nextFollowupDate.toISOString());
       }
 
@@ -280,13 +290,10 @@ export default function GlobalCallListener() {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
 
-      // ── Bug 2 Fix: Schedule device alarm for follow-up reminder ──
-      if (nextFollowupDate) {
+      if (nextFollowupDate && leadInfo?.id) {
         const msUntilFollowup = nextFollowupDate.getTime() - Date.now();
         if (msUntilFollowup > 0) {
-          const leadName = leadInfo
-            ? `${leadInfo.first_name || ''} ${leadInfo.last_name || ''}`.trim()
-            : displayPhone;
+          const leadName = `${leadInfo.first_name || ''} ${leadInfo.last_name || ''}`.trim() || displayPhone;
           try {
             await Notifications.scheduleNotificationAsync({
               content: {
@@ -301,7 +308,6 @@ export default function GlobalCallListener() {
                 channelId: 'default',
               },
             });
-            console.log('[GlobalCallListener] Follow-up reminder scheduled for', nextFollowupDate.toISOString());
           } catch (notifErr) {
             console.warn('[GlobalCallListener] Failed to schedule reminder:', notifErr);
           }
@@ -311,9 +317,22 @@ export default function GlobalCallListener() {
       Alert.alert('✅ Saved', 'Incoming call logged successfully.');
       resetModal();
     } catch (error: any) {
-      console.error('Failed to upload incoming call log:', error?.response?.data || error);
-      const errorMsg = error?.response?.data ? JSON.stringify(error.response.data) : error.message;
-      Alert.alert('Error', `Failed to save call log.\nDetails: ${errorMsg}`);
+      console.warn('Failed to upload incoming call log online, queueing offline:', error?.response?.data || error);
+      await queueOfflineCall({
+        mobile_call_id: mobileCallId,
+        student: leadInfo?.id,
+        customer_number: displayPhone,
+        caller_number: displayPhone,
+        call_direction: 'INCOMING',
+        call_status: status,
+        call_duration: callDuration,
+        notes: postCallNotes || `Incoming Call from ${displayPhone}`,
+        pipeline_status: pipelineStatus,
+        next_followup_date: nextFollowupDate?.toISOString(),
+        recordedFilePath
+      });
+      Alert.alert('Saved Offline', 'Call logged locally and will sync automatically.');
+      resetModal();
     } finally {
       setIsSubmitting(false);
     }
@@ -503,22 +522,20 @@ export default function GlobalCallListener() {
           </TouchableOpacity>
         )}
 
-        {leadInfo ? (
-          <TouchableOpacity 
-            style={[styles.saveBtn, isSubmitting && { backgroundColor: '#A0AEC0' }]} 
-            onPress={handleSaveCall}
-            disabled={isSubmitting}
-          >
-            {isSubmitting ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <ActivityIndicator color="#FFF" size="small" />
-                <Text style={styles.saveBtnText}>Saving & Uploading...</Text>
-              </View>
-            ) : (
-              <Text style={styles.saveBtnText}>Save & Upload Log</Text>
-            )}
-          </TouchableOpacity>
-        ) : null}
+        <TouchableOpacity 
+          style={[styles.saveBtn, isSubmitting && { backgroundColor: '#A0AEC0' }]} 
+          onPress={handleSaveCall}
+          disabled={isSubmitting}
+        >
+          {isSubmitting ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <ActivityIndicator color="#FFF" size="small" />
+              <Text style={styles.saveBtnText}>Saving & Uploading...</Text>
+            </View>
+          ) : (
+            <Text style={styles.saveBtnText}>Save & Upload Log</Text>
+          )}
+        </TouchableOpacity>
 
         <TouchableOpacity style={styles.discardBtn} onPress={resetModal}>
           <Text style={styles.discardBtnText}>Dismiss</Text>

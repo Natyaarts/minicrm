@@ -23,21 +23,54 @@ class LeadInteraction(models.Model):
         ('MEETING', 'Meeting'),
         ('WHATSAPP', 'WhatsApp'),
     )
-    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='crm_interactions')
-    author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    CALL_DIRECTION_CHOICES = (
+        ('INCOMING', 'Incoming'),
+        ('OUTGOING', 'Outgoing'),
+    )
+    CALL_STATUS_CHOICES = (
+        ('CONNECTED', 'Connected'),
+        ('MISSED', 'Missed'),
+        ('REJECTED', 'Rejected'),
+        ('UNANSWERED', 'Unanswered'),
+        ('BUSY', 'Busy'),
+        ('FAILED', 'Failed'),
+    )
+
+    student = models.ForeignKey(Student, on_delete=models.SET_NULL, null=True, blank=True, related_name='crm_interactions')
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
     interaction_type = models.CharField(max_length=20, choices=INTERACTION_TYPES, default='NOTE')
+    
+    # Telephony & Call Logging Fields
+    mobile_call_id = models.CharField(max_length=150, blank=True, null=True, unique=True, db_index=True, help_text="Unique client-generated mobile call ID for deduplication")
+    customer_number = models.CharField(max_length=50, blank=True, null=True, db_index=True, help_text="Customer / Lead phone number")
+    caller_number = models.CharField(max_length=50, blank=True, null=True, db_index=True, help_text="Caller phone number")
+    receiver_number = models.CharField(max_length=50, blank=True, null=True, db_index=True, help_text="Receiver / Destination phone number")
+    call_direction = models.CharField(max_length=20, choices=CALL_DIRECTION_CHOICES, default='OUTGOING', null=True, blank=True)
+    call_status = models.CharField(max_length=30, choices=CALL_STATUS_CHOICES, null=True, blank=True)
     call_duration = models.IntegerField(default=0, help_text="Duration in seconds")
-    call_direction = models.CharField(max_length=20, choices=(('INCOMING', 'Incoming'), ('OUTGOING', 'Outgoing')), null=True, blank=True)
-    call_status = models.CharField(max_length=20, choices=(('CONNECTED', 'Connected'), ('MISSED', 'Missed/Unanswered')), null=True, blank=True)
-    notes = models.TextField()
+    start_time = models.DateTimeField(null=True, blank=True)
+    end_time = models.DateTimeField(null=True, blank=True)
+    
+    notes = models.TextField(blank=True, default='')
     audio_recording = models.FileField(upload_to='call_recordings/%Y/%m/', null=True, blank=True)
+    recording_url = models.CharField(max_length=1000, blank=True, null=True, help_text="Remote/telephony audio recording URL")
+    
+    provider_call_id = models.CharField(max_length=150, blank=True, null=True, db_index=True, help_text="Provider call ID")
+    provider_event_id = models.CharField(max_length=150, blank=True, null=True, db_index=True, help_text="Provider event ID")
+    telephony_provider = models.CharField(max_length=50, blank=True, null=True, default='MOBILE_APP')
+    is_matched = models.BooleanField(default=False, help_text="Whether this call is linked to an existing CRM Student/Lead")
+    
     date = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ['-date']
 
     def __str__(self):
-        return f"{self.interaction_type} with {self.student.first_name} on {self.date.strftime('%Y-%m-%d')}"
+        target = f"{self.student.first_name} {self.student.last_name}".strip() if self.student else (self.customer_number or self.caller_number or 'Unknown')
+        direction = self.call_direction or 'OUTGOING'
+        date_str = self.date.strftime('%Y-%m-%d') if self.date else ''
+        return f"{self.interaction_type} ({direction}) with {target} on {date_str}"
+
 
 class Campaign(models.Model):
     STATUS_CHOICES = (

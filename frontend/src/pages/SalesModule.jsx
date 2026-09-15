@@ -76,7 +76,10 @@ const SalesModule = () => {
     const [bulkResponse, setBulkResponse] = useState(null);
 
     useEffect(() => {
-        if (location.pathname === '/crm/dashboard') setActiveTab('dashboard');
+        const studentId = searchParams.get('student') || searchParams.get('id');
+        if (studentId) {
+            setActiveTab('list');
+        } else if (location.pathname === '/crm/dashboard') setActiveTab('dashboard');
         else if (location.pathname === '/crm/pipeline') setActiveTab('kanban');
         else if (location.pathname === '/crm/leads') setActiveTab('list');
         else if (location.pathname === '/crm/tasks') setActiveTab('tasks');
@@ -84,13 +87,31 @@ const SalesModule = () => {
         else if (location.pathname === '/crm/reports') setActiveTab('reports');
         else if (location.pathname === '/crm/analytics') setActiveTab('analytics');
         else if (location.pathname === '/sales') setActiveTab('dashboard');
-    }, [location.pathname]);
+    }, [location.pathname, searchParams]);
 
     // Student List Data
     const [studentList, setStudentList] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [toast, setToast] = useState(null);
     const [selectedStudentProfile, setSelectedStudentProfile] = useState(null);
+
+    // Auto-load student profile from URL parameter (e.g. from notification click)
+    useEffect(() => {
+        const studentId = searchParams.get('student') || searchParams.get('id');
+        if (studentId) {
+            const loadStudent = async () => {
+                try {
+                    const res = await api.get(`students/${studentId}/`);
+                    if (res.data) {
+                        setSelectedStudentProfile(res.data);
+                    }
+                } catch (err) {
+                    console.error("Failed to auto-load student from notification URL:", err);
+                }
+            };
+            loadStudent();
+        }
+    }, [searchParams]);
     const [pendingPipelineStatus, setPendingPipelineStatus] = useState('');
     const [selectedLeadIds, setSelectedLeadIds] = useState([]);
     const [showBulkAssignModal, setShowBulkAssignModal] = useState(false);
