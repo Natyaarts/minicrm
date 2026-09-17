@@ -111,6 +111,7 @@ class Campaign(models.Model):
     
     # Auto-Assignment to selected Sales Representatives
     auto_assign_to = models.ManyToManyField(settings.AUTH_USER_MODEL, blank=True, related_name='assigned_meta_campaigns', help_text='Sales representatives to auto-assign incoming leads to (Round-Robin)')
+    last_assigned_bde = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='last_assigned_campaigns', help_text='The last sales representative assigned a lead for this campaign')
     
     # Campaign-wise Webhook Integration (e.g. Google Sheets)
     secret_token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, null=True, help_text='Secret token for Campaign-linked webhooks')

@@ -5,6 +5,7 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 from crm.models import Campaign, PipelineStage
 from crm.views_google import get_refreshed_access_token
+from crm.services import get_next_assigned_rep
 from core.models import Student, normalize_phone_number
 from django.contrib.auth import get_user_model
 from django.db import transaction as django_db_transaction
@@ -101,13 +102,15 @@ class Command(BaseCommand):
                     if not first_name:
                         first_name = "Sheet Lead"
                         
-                    cleaned_phone = normalize_phone_number(mobile)
+                    from crm.services.deduplication import lookup_existing_student, normalize_lead_phone, normalize_lead_email
+                    cleaned_phone = normalize_lead_phone(mobile)
+                    clean_em = normalize_lead_email(email)
                         
-                    if not cleaned_phone:
+                    if not cleaned_phone and not clean_em:
                         continue
                         
-                    exists = Student.objects.filter(mobile=cleaned_phone).exists()
-                    if exists:
+                    dup_student, _ = lookup_existing_student(mobile=cleaned_phone, email=clean_em)
+                    if dup_student:
                         continue
                         
                     temp_username = f"st_{cleaned_phone}"
@@ -134,6 +137,9 @@ class Command(BaseCommand):
                             if not program:
                                 program = Program.objects.exclude(name="Wise Import").first() or Program.objects.first()
                             
+                            # Handle Auto Assignment via centralized service
+                            assigned_to_user = get_next_assigned_rep(campaign)
+
                             student = Student.objects.create(
                                 user=user,
                                 crm_student_id=crm_id,
@@ -144,21 +150,16 @@ class Command(BaseCommand):
                                 mobile=cleaned_phone,
                                 campaign=campaign,
                                 lead_status=new_stage_id,
-                                sales_section=campaign.section
+                                sales_section=campaign.section,
+                                assigned_to=assigned_to_user
                             )
-                            
-                            assignees = list(campaign.auto_assign_to.all())
-                            if assignees:
-                                rep = assignees[imported_count % len(assignees)]
-                                student.assigned_to = rep
-                                student.save()
                                 
                         imported_count += 1
                     except Exception as row_ex:
                         self.stdout.write(self.style.ERROR(f'Row {idx} sync error: {str(row_ex)}'))
                         
                 campaign.google_last_synced_row = len(rows)
-                campaign.save()
+                campaign.save(update_fields=['google_last_synced_row'])
                 self.stdout.write(self.style.SUCCESS(f'Imported {imported_count} new leads for Campaign {campaign.name}.'))
                 
             except Exception as ex:

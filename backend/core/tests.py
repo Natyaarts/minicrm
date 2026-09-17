@@ -171,8 +171,8 @@ class NSDCRegistrationFlowTests(APITestCase):
 
     def test_duplicate_lead_can_be_retrieved_by_admin_on_notification_click(self):
         """
-        Verify that if an applicant submits duplicate details (flagged as DUPLICATE),
-        an Admin clicking the notification (/sales?student=<id>) can still retrieve the record.
+        Verify that duplicate submission attempts are rejected with HTTP 400,
+        no duplicate Student or User is created, and the original student remains intact.
         """
         # First student
         s1 = Student.objects.create(
@@ -184,8 +184,10 @@ class NSDCRegistrationFlowTests(APITestCase):
             mobile="+919999999999",
             program_type=self.nsdc_program
         )
+        initial_student_count = Student.objects.count()
+        initial_user_count = User.objects.count()
 
-        # Second student with same email/mobile (creates duplicate)
+        # Second submission attempt with duplicate email/mobile
         payload = {
             "program_type": self.nsdc_program.id,
             "first_name": "Second",
@@ -195,17 +197,15 @@ class NSDCRegistrationFlowTests(APITestCase):
             "is_active": "true"
         }
         res = self.client.post("/api/students/", payload, format="multipart")
-        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
-        dup_student_id = res.data["id"]
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(Student.objects.count(), initial_student_count)
+        self.assertEqual(User.objects.count(), initial_user_count)
 
-        dup_student = Student.objects.get(id=dup_student_id)
-        self.assertEqual(dup_student.lead_status, "DUPLICATE")
-
-        # Admin retrieving by ID (simulating notification click)
+        # Admin retrieving original student by ID
         self.client.force_authenticate(user=self.admin_user)
-        retrieve_res = self.client.get(f"/api/students/{dup_student_id}/")
+        retrieve_res = self.client.get(f"/api/students/{s1.id}/")
         self.assertEqual(retrieve_res.status_code, status.HTTP_200_OK)
-        self.assertEqual(retrieve_res.data["id"], dup_student_id)
+        self.assertEqual(retrieve_res.data["id"], s1.id)
 
     def test_program_slug_auto_generated(self):
         """Verify that program slug is properly generated automatically."""

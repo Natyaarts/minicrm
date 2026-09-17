@@ -342,40 +342,36 @@ class StudentSerializer(serializers.ModelSerializer):
                     pass
 
         with db_transaction.atomic():
-            # 1. Create User
+            # 1. Normalize and check duplicates
             email = validated_data.get('email')
             mobile = validated_data.get('mobile')
-            if mobile:
-                mobile = normalize_phone_number(mobile)
-                validated_data['mobile'] = mobile
-
-            username = email if email else f"user_{mobile}"
             
-            # Check duplicates on Student record
-            is_duplicate = False
-            duplicate_reason = ""
-            if mobile and Student.objects.filter(mobile=mobile).exists():
-                is_duplicate = True
-                dup = Student.objects.filter(mobile=mobile).first()
-                duplicate_reason = f"Duplicate mobile: {mobile} (Original CRM ID: {dup.crm_student_id})"
-            elif email and Student.objects.filter(email=email).exists():
-                is_duplicate = True
-                dup = Student.objects.filter(email=email).first()
-                duplicate_reason = f"Duplicate email: {email} (Original CRM ID: {dup.crm_student_id})"
+            from crm.services.deduplication import lookup_existing_student, normalize_lead_phone, normalize_lead_email
+            clean_phone = normalize_lead_phone(mobile)
+            clean_em = normalize_lead_email(email)
+            if clean_phone:
+                validated_data['mobile'] = clean_phone
+            if clean_em:
+                validated_data['email'] = clean_em
 
-            if is_duplicate:
-                validated_data['lead_status'] = 'DUPLICATE'
+            # Centralized duplicate check
+            dup_student, dup_reason = lookup_existing_student(mobile=clean_phone or mobile, email=clean_em or email)
+            if dup_student:
+                raise serializers.ValidationError({
+                    "mobile": f"A student or lead record already exists with these contact details (CRM ID: {dup_student.crm_student_id})."
+                })
 
+            username = clean_em if clean_em else (f"user_{clean_phone}" if clean_phone else f"student_{Student.objects.count() + 1}")
+            
             # Check if user exists
             if User.objects.filter(username=username).exists():
                 user = User.objects.get(username=username)
-                # CRITICAL: Check if this user already has a student profile
-                if hasattr(user, 'student_profile') and not is_duplicate:
+                if hasattr(user, 'student_profile'):
                     raise serializers.ValidationError({"mobile": "An application has already been submitted for this mobile number/email."})
             else:
                 user = User.objects.create_user(
                     username=username, 
-                    email=email or '',
+                    email=clean_em or '',
                     first_name=validated_data.get('first_name', ''),
                     last_name=validated_data.get('last_name', '')
                 )
@@ -388,14 +384,6 @@ class StudentSerializer(serializers.ModelSerializer):
             
             # 3. Create Student
             student = Student.objects.create(user=user, crm_student_id=crm_id, **validated_data)
-            
-            if is_duplicate and duplicate_reason:
-                from crm.models import LeadInteraction
-                LeadInteraction.objects.create(
-                    student=student,
-                    notes=f"SYSTEM NOTICE: This lead is registered as DUPLICATE. {duplicate_reason}",
-                    interaction_type='NOTE'
-                )
             
             # 4. Handle Documents (Legacy & Dynamic)
             Document = apps.get_model('core', 'Document')

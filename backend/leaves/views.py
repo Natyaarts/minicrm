@@ -90,6 +90,22 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
                 leave.status = 'APPROVED'
                 leave.approved_by = EmployeeProfile.objects.filter(user=user).first()
                 leave.save()
+
+                # Synchronize with Attendance records
+                from hrms.models import Attendance
+                import datetime as dt
+                cur_d = leave.start_date
+                while cur_d <= leave.end_date:
+                    Attendance.objects.update_or_create(
+                        employee=leave.employee,
+                        date=cur_d,
+                        defaults={
+                            'status': 'ON_LEAVE',
+                            'notes': f"Approved Leave ({leave.leave_type.name}): {leave.reason}"
+                        }
+                    )
+                    cur_d += dt.timedelta(days=1)
+
                 return Response({"status": "Leave approved by HR."})
             else:
                 return Response({"error": "You do not have permission to give final HR approval for this leave."}, status=status.HTTP_403_FORBIDDEN)

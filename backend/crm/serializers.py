@@ -80,7 +80,7 @@ class CampaignSerializer(serializers.ModelSerializer):
     class Meta:
         model = Campaign
         fields = '__all__'
-        read_only_fields = ['created_by']
+        read_only_fields = ['created_by', 'last_assigned_bde']
 
     def get_lead_count(self, obj):
         return obj.leads.filter(is_active=True).exclude(lead_status='DUPLICATE').count()

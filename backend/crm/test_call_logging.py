@@ -309,3 +309,64 @@ class CallLoggingIntegrationTests(TestCase):
         self.assertIsNone(interaction.student)
         self.assertFalse(interaction.is_matched)
         self.assertEqual(interaction.call_duration, 30)
+
+    def test_13_call_duration_consistency_and_report_calculation(self):
+        """13. Authoritative call duration is preserved and computed consistently across interactions and BDE reports"""
+        # 51-second incoming call
+        response = self.client.post('/api/crm/interactions/', {
+            'interaction_type': 'CALL',
+            'call_direction': 'INCOMING',
+            'caller_number': '+919876543210',
+            'customer_number': '+919876543210',
+            'call_status': 'CONNECTED',
+            'call_duration': 51,
+            'notes': 'Incoming Call - Duration: 00:51\nNotes: Discussed admissions',
+            'mobile_call_id': 'mob_dur_51s'
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['call_duration'], 51)
+        self.assertEqual(response.data['formatted_call_duration'], '51s')
+
+        # Check BDE report calculation
+        bde_report_resp = self.client.get(f'/api/crm/bde-report/{self.user.id}/')
+        self.assertEqual(bde_report_resp.status_code, status.HTTP_200_OK)
+        report_data = bde_report_resp.data
+        self.assertGreaterEqual(report_data['metrics']['total_call_duration'], 51)
+        
+        # Verify specific timeline entry has duration 51
+        timeline_entry = next((item for item in report_data['timeline'] if item['id'] == response.data['id']), None)
+        self.assertIsNotNone(timeline_entry)
+        self.assertEqual(timeline_entry['call_duration'], 51)
+
+    def test_14_subsecond_connected_call_and_missed_call_handling(self):
+        """14. Sub-second connected call is saved as CONNECTED with duration=0, while missed call is MISSED"""
+        # Sub-second connected call (answered and immediately hung up)
+        resp_subsecond = self.client.post('/api/crm/interactions/', {
+            'interaction_type': 'CALL',
+            'call_direction': 'INCOMING',
+            'caller_number': '+919876543210',
+            'customer_number': '+919876543210',
+            'call_status': 'CONNECTED',
+            'call_duration': 0,
+            'notes': 'Incoming Call from +919876543210 (CONNECTED, 00:00)',
+            'mobile_call_id': 'mob_subsecond_001'
+        })
+        self.assertEqual(resp_subsecond.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(resp_subsecond.data['call_status'], 'CONNECTED')
+        self.assertEqual(resp_subsecond.data['call_duration'], 0)
+
+        # True missed call
+        resp_missed = self.client.post('/api/crm/interactions/', {
+            'interaction_type': 'CALL',
+            'call_direction': 'INCOMING',
+            'caller_number': '+919876543210',
+            'customer_number': '+919876543210',
+            'call_status': 'MISSED',
+            'call_duration': 0,
+            'notes': 'Missed incoming call from +919876543210',
+            'mobile_call_id': 'mob_true_missed_001'
+        })
+        self.assertEqual(resp_missed.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(resp_missed.data['call_status'], 'MISSED')
+        self.assertEqual(resp_missed.data['call_duration'], 0)
+

@@ -5,12 +5,16 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
+import android.provider.CallLog
 import android.content.ContentUris
 import android.database.Cursor
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 import androidx.documentfile.provider.DocumentFile
 import com.facebook.react.bridge.ActivityEventListener
 import com.facebook.react.bridge.Promise
@@ -500,6 +504,97 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
             }
         }
         return null
+    }
+
+    @ReactMethod
+    fun getLatestCallLogDuration(phoneNumber: String?, callStartTimeMs: Double, callDirection: String?, promise: Promise) {
+        Thread {
+            try {
+                if (ContextCompat.checkSelfPermission(reactApplicationContext, Manifest.permission.READ_CALL_LOG) != PackageManager.PERMISSION_GRANTED) {
+                    promise.resolve(null)
+                    return@Thread
+                }
+
+                val cleanTarget = (phoneNumber ?: "").replace(Regex("[^0-9]"), "").takeLast(10)
+                val startTime = callStartTimeMs.toLong()
+                // Look back up to 60s before start time or 10 min if start time is 0
+                val windowStart = if (startTime > 0) (startTime - 60_000) else (System.currentTimeMillis() - 600_000)
+
+                val projection = arrayOf(
+                    CallLog.Calls.NUMBER,
+                    CallLog.Calls.DATE,
+                    CallLog.Calls.DURATION,
+                    CallLog.Calls.TYPE
+                )
+
+                val selection = "${CallLog.Calls.DATE} >= ?"
+                val selectionArgs = arrayOf(windowStart.toString())
+                val sortOrder = "${CallLog.Calls.DATE} DESC"
+
+                var matchedDuration: Long? = null
+
+                // Retry up to 4 times (0ms, 300ms, 600ms, 900ms) to allow OS telephony stack to commit the entry
+                for (attempt in 0..3) {
+                    if (attempt > 0) {
+                        Thread.sleep(300)
+                    }
+
+                    val cursor = reactApplicationContext.contentResolver.query(
+                        CallLog.Calls.CONTENT_URI,
+                        projection,
+                        selection,
+                        selectionArgs,
+                        sortOrder
+                    )
+
+                    cursor?.use { c ->
+                        val numIdx = c.getColumnIndex(CallLog.Calls.NUMBER)
+                        val dateIdx = c.getColumnIndex(CallLog.Calls.DATE)
+                        val durIdx = c.getColumnIndex(CallLog.Calls.DURATION)
+                        val typeIdx = c.getColumnIndex(CallLog.Calls.TYPE)
+
+                        while (c.moveToNext()) {
+                            val num = if (numIdx != -1) c.getString(numIdx) ?: "" else ""
+                            val dur = if (durIdx != -1) c.getLong(durIdx) else 0L
+                            val type = if (typeIdx != -1) c.getInt(typeIdx) else 0
+
+                            val rowClean = num.replace(Regex("[^0-9]"), "").takeLast(10)
+
+                            val directionMatches = when (callDirection?.uppercase()) {
+                                "INCOMING" -> type == CallLog.Calls.INCOMING_TYPE || 
+                                              type == CallLog.Calls.MISSED_TYPE || 
+                                              (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && type == CallLog.Calls.REJECTED_TYPE)
+                                "OUTGOING" -> type == CallLog.Calls.OUTGOING_TYPE
+                                else -> true
+                            }
+
+                            val numberMatches = cleanTarget.isEmpty() || rowClean.isEmpty() ||
+                                    rowClean == cleanTarget ||
+                                    rowClean.endsWith(cleanTarget) ||
+                                    cleanTarget.endsWith(rowClean)
+
+                            if (directionMatches && numberMatches) {
+                                matchedDuration = dur
+                                break
+                            }
+                        }
+                    }
+
+                    if (matchedDuration != null) {
+                        break
+                    }
+                }
+
+                if (matchedDuration != null) {
+                    promise.resolve(matchedDuration.toDouble())
+                } else {
+                    promise.resolve(null)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                promise.resolve(null)
+            }
+        }.start()
     }
 
     @ReactMethod

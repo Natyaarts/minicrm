@@ -20,6 +20,15 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import FaceSelfieCapture from '../components/FaceSelfieCapture';
 
+// Helper for local India/IST date string YYYY-MM-DD
+const getTodayIST = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
 const AttendanceModule = () => {
     const { user: authUser } = useAuth();
     const [loading, setLoading] = useState(false);
@@ -28,15 +37,35 @@ const AttendanceModule = () => {
     const [location, setLocation] = useState({ latitude: null, longitude: null, status: 'idle' });
     const [activeTab, setActiveTab] = useState('personal');
     const [searchTerm, setSearchTerm] = useState('');
+    const [filterType, setFilterType] = useState('all');
     const [showSelfieCapture, setShowSelfieCapture] = useState(false);
     const [previewImage, setPreviewImage] = useState(null);
     const [page, setPage] = useState(1);
     const [pagination, setPagination] = useState({ count: 0, next: null, previous: null });
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getTodayIST();
     const [startDate, setStartDate] = useState(todayStr);
     const [endDate, setEndDate] = useState(todayStr);
-    const [dashboardStats, setDashboardStats] = useState({ activeNow: 0, leaveCount: 0, halfDayCount: 0, absentCount: 0 });
-    const [todayLogs, setTodayLogs] = useState([]);
+    const [dashboardStats, setDashboardStats] = useState({
+        presentCount: 0,
+        lateCount: 0,
+        activeNow: 0,
+        leaveCount: 0,
+        halfDayCount: 0,
+        absentCount: 0,
+        missedClockOutCount: 0,
+        wfhCount: 0,
+        totalEmployees: 0
+    });
+    const [statLists, setStatLists] = useState({
+        present: [],
+        late: [],
+        active_now: [],
+        on_leave: [],
+        half_day: [],
+        absent: [],
+        missed_clock_out: [],
+        wfh: []
+    });
     const [allEmployees, setAllEmployees] = useState([]);
     const [selectedDashboardStat, setSelectedDashboardStat] = useState(null);
     // Manual Entry modal state
@@ -45,8 +74,10 @@ const AttendanceModule = () => {
     const [manualLoading, setManualLoading] = useState(false);
     const [manualMsg, setManualMsg] = useState(null);
 
+    const isAdmin = authUser?.role === 'SUPER_ADMIN' || authUser?.role === 'ADMIN';
+
     useEffect(() => {
-        if (authUser?.role === 'SUPER_ADMIN') {
+        if (isAdmin) {
             setActiveTab('master');
         }
     }, [authUser]);
@@ -54,7 +85,7 @@ const AttendanceModule = () => {
     useEffect(() => {
         fetchAttendance(1);
         requestLocation();
-    }, [activeTab, startDate, endDate]);
+    }, [activeTab, startDate, endDate, filterType]);
 
     const requestLocation = () => {
         if ("geolocation" in navigator) {
@@ -83,6 +114,13 @@ const AttendanceModule = () => {
             let query = `hrms/attendance/?page=${pageNum}`;
             if (startDate) query += `&start_date=${startDate}`;
             if (endDate) query += `&end_date=${endDate}`;
+            if (filterType && filterType !== 'all') {
+                if (filterType === 'missed_clock_out') {
+                    query += `&missed_clock_out=true`;
+                } else {
+                    query += `&status=${filterType.toUpperCase()}`;
+                }
+            }
             
             const res = await api.get(query);
             const data = res.data.results || res.data || [];
@@ -94,57 +132,46 @@ const AttendanceModule = () => {
                 previous: res.data.previous
             });
 
-            // Always check today's record accurately 
-            const todayStr = new Date().toISOString().split('T')[0];
-            const todayRes = await api.get(`hrms/attendance/?start_date=${todayStr}&end_date=${todayStr}`);
-            const todayData = todayRes.data.results || todayRes.data || [];
+            // Authoritative summary from backend for today / selected date
+            const todayStrLocal = getTodayIST();
+            const summaryRes = await api.get(`hrms/attendance/daily_summary/?date=${startDate || todayStrLocal}`);
+            const summaryData = summaryRes.data;
             
-            const activeNow = todayData.filter(l => l.clock_in && !l.clock_out).length;
-            const leaveCount = todayData.filter(l => l.status === 'ON_LEAVE').length;
-            const halfDayCount = todayData.filter(l => l.status === 'HALF_DAY').length;
-            
-            // Get total employees to calculate absent count
-            let totalEmployees = 0;
-            let allEmps = [];
-            try {
-                const empRes = await api.get('hrms/employees/');
-                totalEmployees = empRes.data.count || (empRes.data.results || empRes.data).length;
-                
-                allEmps = empRes.data.results || empRes.data || [];
-                
-                // If there are more pages, fetch them too
-                if (empRes.data.count > allEmps.length) {
-                    const totalPages = Math.ceil(empRes.data.count / allEmps.length);
-                    const promises = [];
-                    for (let i = 2; i <= totalPages; i++) {
-                        promises.push(api.get(`hrms/employees/?page=${i}`));
-                    }
-                    const responses = await Promise.all(promises);
-                    responses.forEach(r => {
-                        allEmps = [...allEmps, ...(r.data.results || [])];
-                    });
-                }
-                
-                setAllEmployees(allEmps);
-            } catch (e) {
-                console.error("Failed to fetch employees count", e);
-            }
-            
-            // Office employees only
-            const officeEmployees = allEmps.filter(e => e.work_location !== 'REMOTE');
-            const wfhCount = allEmps.filter(e => e.work_location === 'REMOTE').length;
-            
-            // Absent is total office employees minus office employees who have a record today
-            const uniqueOfficeRecordsCount = new Set(
-                todayData.filter(l => officeEmployees.some(e => e.id === l.employee)).map(l => l.employee)
-            ).size;
-            const absentCount = Math.max(0, officeEmployees.length - uniqueOfficeRecordsCount);
-            
-            setDashboardStats({ activeNow, leaveCount, halfDayCount, absentCount, wfhCount });
-            setTodayLogs(todayData);
+            if (summaryData && summaryData.counts) {
+                setDashboardStats({
+                    presentCount: summaryData.counts.present_count || 0,
+                    lateCount: summaryData.counts.late_count || 0,
+                    activeNow: summaryData.counts.active_now_count || 0,
+                    leaveCount: summaryData.counts.on_leave_count || 0,
+                    halfDayCount: summaryData.counts.half_day_count || 0,
+                    absentCount: summaryData.counts.absent_count || 0,
+                    missedClockOutCount: summaryData.counts.missed_clock_out_count || 0,
+                    wfhCount: summaryData.counts.wfh_count || 0,
+                    totalEmployees: summaryData.counts.total_employees || 0
+                });
+                setStatLists(summaryData.employees || {});
 
-            const record = todayData.find(r => Number(r.user_id) === Number(authUser?.id));
-            setTodayRecord(record || null);
+                // Populate allEmployees for dropdown
+                const combined = [
+                    ...(summaryData.employees?.present || []),
+                    ...(summaryData.employees?.absent || []),
+                    ...(summaryData.employees?.on_leave || [])
+                ];
+                const seen = new Set();
+                const uniqueEmps = [];
+                combined.forEach(e => {
+                    if (!seen.has(e.id)) {
+                        seen.add(e.id);
+                        uniqueEmps.push(e);
+                    }
+                });
+                setAllEmployees(uniqueEmps);
+            }
+
+            // Always check current user's today record accurately
+            const myAttRes = await api.get(`hrms/attendance/?my_only=true&start_date=${todayStrLocal}&end_date=${todayStrLocal}`);
+            const myAttData = myAttRes.data.results || myAttRes.data || [];
+            setTodayRecord(myAttData[0] || null);
         } catch (err) {
             console.error("Failed to fetch attendance", err);
         } finally {
@@ -152,40 +179,43 @@ const AttendanceModule = () => {
         }
     };
 
-    const handleExportCSV = () => {
-        if (!attendanceLogs.length) return alert("No data to export.");
-        
-        const headers = ["Employee", "Employee ID", "Date", "Clock In", "Clock Out", "Duration", "Status"];
-        
-        const rows = attendanceLogs.map(log => {
-            const getDuration = () => {
-                if (!log.clock_in || !log.clock_out) return '--';
-                const start = new Date(`2000-01-01T${log.clock_in}`);
-                const end = new Date(`2000-01-01T${log.clock_out}`);
-                const diffMs = end - start;
-                const diffHrs = Math.floor(diffMs / (1000 * 60 * 60));
-                const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-                return `${diffHrs}h ${diffMins}m`;
-            };
+    const handleExportCSV = async () => {
+        try {
+            let exportUrl = `hrms/attendance/date_range_report/?start_date=${startDate || getTodayIST()}&end_date=${endDate || getTodayIST()}`;
+            if (filterType && filterType !== 'all') {
+                if (filterType === 'missed_clock_out') {
+                    exportUrl += `&filter_type=missed_clock_out`;
+                } else {
+                    exportUrl += `&status_filter=${filterType.toUpperCase()}`;
+                }
+            }
+            const res = await api.get(exportUrl);
+            const records = res.data.results || res.data || [];
+            if (!records.length) return alert("No data to export.");
             
-            return [
+            const headers = ["Employee", "Employee ID", "Date", "Clock In", "Clock Out", "Duration", "Status", "Notes"];
+            const rows = records.map(log => [
                 `"${log.employee_name || ''}"`,
                 `"${log.employee_id_display || ''}"`,
                 `"${log.date || ''}"`,
-                `"${log.clock_in ? new Date(`2000-01-01T${log.clock_in}`).toLocaleTimeString() : ''}"`,
-                `"${log.clock_out ? new Date(`2000-01-01T${log.clock_out}`).toLocaleTimeString() : ''}"`,
-                `"${getDuration()}"`,
-                `"${log.status || ''}"`
-            ].join(',');
-        });
-        
-        const csvContent = [headers.join(','), ...rows].join('\n');
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.setAttribute('href', url);
-        link.setAttribute('download', `Attendance_Export_${new Date().toISOString().split('T')[0]}.csv`);
-        link.click();
+                `"${log.clock_in ? log.clock_in : ''}"`,
+                `"${log.clock_out ? log.clock_out : ''}"`,
+                `"${log.duration_display || '--'}"`,
+                `"${log.status || ''}"`,
+                `"${log.notes || ''}"`
+            ].join(','));
+
+            const csvContent = [headers.join(','), ...rows].join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.setAttribute('href', url);
+            link.setAttribute('download', `Attendance_Export_${getTodayIST()}.csv`);
+            link.click();
+        } catch (e) {
+            console.error("Export error", e);
+            alert("Failed to export attendance");
+        }
     };
 
     const getCurrentLocationFresh = () => new Promise((resolve) => {
@@ -299,8 +329,6 @@ const AttendanceModule = () => {
         }
     };
 
-    const isAdmin = authUser?.role === 'SUPER_ADMIN';
-
     return (
         <div className="space-y-6 animate-fadeIn px-2 md:px-0 pb-20 relative">
             {/* Manual Entry Modal */}
@@ -319,97 +347,112 @@ const AttendanceModule = () => {
                             exit={{ scale: 0.9, opacity: 0 }}
                             className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
                         >
-                            <div className="bg-indigo-600 px-6 py-4 flex items-center justify-between">
-                                <div>
-                                    <h2 className="text-white font-bold text-base">Manual Attendance Entry</h2>
-                                    <p className="text-indigo-200 text-xs mt-0.5">HR correction for missed punch-in</p>
+                            <div className="bg-gradient-to-r from-indigo-600 to-violet-600 px-6 py-4 flex items-center justify-between text-white">
+                                <div className="flex items-center space-x-2">
+                                    <Clock size={20} />
+                                    <h3 className="font-bold text-base">Manual Attendance Entry</h3>
                                 </div>
-                                <button onClick={() => setShowManualEntry(false)} className="text-indigo-200 hover:text-white transition-colors text-lg font-bold">✕</button>
+                                <button onClick={() => setShowManualEntry(false)} className="text-white/80 hover:text-white">
+                                    <XCircle size={20} />
+                                </button>
                             </div>
+
                             <form onSubmit={handleManualEntry} className="p-6 space-y-4">
+                                {manualMsg && (
+                                    <div className={`p-3 rounded-lg text-xs font-medium ${manualMsg.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}`}>
+                                        {manualMsg.text}
+                                    </div>
+                                )}
+
                                 <div>
-                                    <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">Employee *</label>
+                                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Employee *</label>
                                     <select
-                                        required
                                         value={manualForm.employee_id}
-                                        onChange={e => setManualForm(f => ({ ...f, employee_id: e.target.value }))}
-                                        className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm text-slate-700 bg-slate-50 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                                        onChange={(e) => setManualForm({ ...manualForm, employee_id: e.target.value })}
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                        required
                                     >
-                                        <option value="">-- Select Employee --</option>
+                                        <option value="">Select Employee</option>
                                         {allEmployees.map(emp => (
                                             <option key={emp.id} value={emp.id}>
-                                                {emp.full_name || emp.display_username || `Employee #${emp.id}`} ({emp.employee_id})
+                                                {emp.name || emp.username} ({emp.employee_id})
                                             </option>
                                         ))}
                                     </select>
                                 </div>
+
                                 <div>
-                                    <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">Date *</label>
+                                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Date *</label>
                                     <input
                                         type="date"
-                                        required
-                                        max={todayStr}
                                         value={manualForm.date}
-                                        onChange={e => setManualForm(f => ({ ...f, date: e.target.value }))}
-                                        className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm text-slate-700 bg-slate-50 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                                        onChange={(e) => setManualForm({ ...manualForm, date: e.target.value })}
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                        required
                                     />
                                 </div>
+
                                 <div className="grid grid-cols-2 gap-3">
                                     <div>
-                                        <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">Clock In</label>
+                                        <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Clock In (HH:MM)</label>
                                         <input
                                             type="time"
                                             value={manualForm.clock_in}
-                                            onChange={e => setManualForm(f => ({ ...f, clock_in: e.target.value }))}
-                                            className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm text-slate-700 bg-slate-50 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                                            onChange={(e) => setManualForm({ ...manualForm, clock_in: e.target.value })}
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">Clock Out</label>
+                                        <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Clock Out (HH:MM)</label>
                                         <input
                                             type="time"
                                             value={manualForm.clock_out}
-                                            onChange={e => setManualForm(f => ({ ...f, clock_out: e.target.value }))}
-                                            className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm text-slate-700 bg-slate-50 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                                            onChange={(e) => setManualForm({ ...manualForm, clock_out: e.target.value })}
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                                         />
                                     </div>
                                 </div>
+
                                 <div>
-                                    <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">Status *</label>
+                                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Status *</label>
                                     <select
-                                        required
                                         value={manualForm.status}
-                                        onChange={e => setManualForm(f => ({ ...f, status: e.target.value }))}
-                                        className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm text-slate-700 bg-slate-50 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                                        onChange={(e) => setManualForm({ ...manualForm, status: e.target.value })}
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                                     >
                                         <option value="PRESENT">Present</option>
                                         <option value="LATE">Late</option>
                                         <option value="HALF_DAY">Half Day</option>
-                                        <option value="ABSENT">Absent</option>
                                         <option value="ON_LEAVE">On Leave</option>
+                                        <option value="ABSENT">Absent</option>
                                     </select>
                                 </div>
-                                {manualMsg && (
-                                    <div className={`p-3 rounded-lg text-xs font-semibold ${
-                                        manualMsg.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'
-                                    }`}>
-                                        {manualMsg.type === 'success' ? '✓ ' : '✗ '}{manualMsg.text}
-                                    </div>
-                                )}
-                                <div className="flex gap-3 pt-1">
+
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Notes / Reason</label>
+                                    <textarea
+                                        rows={2}
+                                        value={manualForm.notes || ''}
+                                        onChange={(e) => setManualForm({ ...manualForm, notes: e.target.value })}
+                                        placeholder="e.g. Regularized by Admin, Client visit..."
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none resize-none"
+                                    />
+                                </div>
+
+                                <div className="flex justify-end gap-3 pt-2">
                                     <button
                                         type="button"
                                         onClick={() => setShowManualEntry(false)}
-                                        className="flex-1 py-2.5 border border-slate-200 text-slate-600 rounded-lg text-sm font-semibold hover:bg-slate-50 transition-colors"
+                                        className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
                                     >
                                         Cancel
                                     </button>
                                     <button
                                         type="submit"
                                         disabled={manualLoading}
-                                        className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-semibold shadow-sm transition-colors disabled:opacity-60"
+                                        className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow-sm transition-all disabled:opacity-50"
                                     >
-                                        {manualLoading ? 'Saving...' : 'Save Entry'}
+                                        {manualLoading ? 'Saving...' : 'Save Attendance'}
                                     </button>
                                 </div>
                             </form>
@@ -465,18 +508,43 @@ const AttendanceModule = () => {
                                 <XCircle size={20} />
                             </button>
                             <h2 className="text-xl font-bold text-slate-800 mb-4 capitalize">
-                                {selectedDashboardStat === 'active' ? 'Active Now' : selectedDashboardStat === 'leave' ? 'On Leave' : selectedDashboardStat === 'absent' ? 'Absent' : selectedDashboardStat === 'wfh' ? 'Work From Home' : 'Half Day'} Employees
+                                {selectedDashboardStat === 'active' ? 'Active Now' : 
+                                 selectedDashboardStat === 'present' ? 'Present / Late' : 
+                                 selectedDashboardStat === 'leave' ? 'On Leave' : 
+                                 selectedDashboardStat === 'absent' ? 'Absent' : 
+                                 selectedDashboardStat === 'missedClockOut' ? 'Missed Clock-Out' : 
+                                 selectedDashboardStat === 'wfh' ? 'Work From Home' : 'Half Day'} Employees
                             </h2>
                             <div className="space-y-3">
-                                {selectedDashboardStat === 'absent' ? (
-                                    allEmployees.filter(emp => emp.work_location !== 'REMOTE' && !todayLogs.some(l => l.employee === emp.id)).map((emp, idx) => (
+                                {(() => {
+                                    const list = 
+                                        selectedDashboardStat === 'active' ? (statLists.active_now || []) :
+                                        selectedDashboardStat === 'present' ? (statLists.present || []) :
+                                        selectedDashboardStat === 'leave' ? (statLists.on_leave || []) :
+                                        selectedDashboardStat === 'halfDay' ? (statLists.half_day || []) :
+                                        selectedDashboardStat === 'absent' ? (statLists.absent || []) :
+                                        selectedDashboardStat === 'missedClockOut' ? (statLists.missed_clock_out || []) :
+                                        selectedDashboardStat === 'wfh' ? (statLists.wfh || []) : [];
+
+                                    if (!list.length) {
+                                        return <p className="text-center text-slate-500 py-4">No employees found in this category.</p>;
+                                    }
+
+                                    return list.map((emp, idx) => (
                                         <div key={idx} className="flex items-center justify-between bg-slate-50 p-3 rounded-lg border border-slate-100">
                                             <div>
-                                                <p className="font-semibold text-slate-800">{emp.full_name || emp.display_username}</p>
-                                                <p className="text-xs text-slate-500">ID: {emp.employee_id}</p>
+                                                <p className="font-semibold text-slate-800">{emp.name || emp.username || 'Employee'}</p>
+                                                <p className="text-xs text-slate-500">
+                                                    ID: {emp.employee_id} {emp.clock_in ? `• In: ${emp.clock_in}` : ''} {emp.clock_out ? `• Out: ${emp.clock_out}` : ''}
+                                                </p>
+                                                {emp.leave_type && (
+                                                    <p className="text-[11px] text-amber-600 font-medium mt-0.5">
+                                                        Leave: {emp.leave_type} {emp.leave_reason ? `(${emp.leave_reason})` : ''}
+                                                    </p>
+                                                )}
                                             </div>
                                             <div className="text-right flex items-center space-x-2">
-                                                {isAdmin && (
+                                                {selectedDashboardStat === 'absent' && isAdmin && (
                                                     <button 
                                                         onClick={() => handleMarkPresent(emp.id)}
                                                         className="px-2 py-1 bg-green-100 hover:bg-green-200 text-green-700 text-xs font-bold rounded transition-colors"
@@ -484,50 +552,17 @@ const AttendanceModule = () => {
                                                         Mark Present
                                                     </button>
                                                 )}
-                                                <span className="px-2 py-1 bg-slate-200 text-slate-700 text-xs font-bold rounded">Absent</span>
-                                            </div>
-                                        </div>
-                                    ))
-                                ) : selectedDashboardStat === 'wfh' ? (
-                                    allEmployees.filter(emp => emp.work_location === 'REMOTE').map((emp, idx) => (
-                                        <div key={idx} className="flex items-center justify-between bg-slate-50 p-3 rounded-lg border border-slate-100">
-                                            <div>
-                                                <p className="font-semibold text-slate-800">{emp.full_name || emp.display_username}</p>
-                                                <p className="text-xs text-slate-500">ID: {emp.employee_id}</p>
-                                            </div>
-                                            <div className="text-right">
-                                                <span className="px-2 py-1 bg-indigo-100 text-indigo-700 text-xs font-bold rounded">WFH</span>
-                                            </div>
-                                        </div>
-                                    ))
-                                ) : (
-                                    todayLogs.filter(l => 
-                                        selectedDashboardStat === 'active' ? (l.clock_in && !l.clock_out) :
-                                        selectedDashboardStat === 'leave' ? l.status === 'ON_LEAVE' :
-                                        selectedDashboardStat === 'halfDay' ? l.status === 'HALF_DAY' : false
-                                    ).map((log, idx) => (
-                                        <div key={idx} className="flex items-center justify-between bg-slate-50 p-3 rounded-lg border border-slate-100">
-                                            <div>
-                                                <p className="font-semibold text-slate-800">{log.employee_name || 'Unknown'}</p>
-                                                <p className="text-xs text-slate-500">ID: {log.employee_id_display || 'N/A'}</p>
-                                            </div>
-                                            <div className="text-right">
                                                 {selectedDashboardStat === 'active' && <span className="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs font-bold rounded">Active</span>}
-                                                {selectedDashboardStat === 'leave' && <span className="px-2 py-1 bg-red-100 text-red-700 text-xs font-bold rounded">Leave</span>}
+                                                {selectedDashboardStat === 'present' && <span className="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs font-bold rounded">{emp.status || 'Present'}</span>}
+                                                {selectedDashboardStat === 'leave' && <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs font-bold rounded">On Leave</span>}
                                                 {selectedDashboardStat === 'halfDay' && <span className="px-2 py-1 bg-amber-100 text-amber-700 text-xs font-bold rounded">Half Day</span>}
+                                                {selectedDashboardStat === 'absent' && <span className="px-2 py-1 bg-slate-200 text-slate-700 text-xs font-bold rounded">Absent</span>}
+                                                {selectedDashboardStat === 'missedClockOut' && <span className="px-2 py-1 bg-rose-100 text-rose-700 text-xs font-bold rounded">Missed Out</span>}
+                                                {selectedDashboardStat === 'wfh' && <span className="px-2 py-1 bg-indigo-100 text-indigo-700 text-xs font-bold rounded">WFH</span>}
                                             </div>
                                         </div>
-                                    ))
-                                )}
-
-                                {((selectedDashboardStat === 'absent' && allEmployees.filter(emp => !todayLogs.some(l => l.employee === emp.id)).length === 0) || 
-                                 (selectedDashboardStat !== 'absent' && todayLogs.filter(l => 
-                                    selectedDashboardStat === 'active' ? (l.clock_in && !l.clock_out) :
-                                    selectedDashboardStat === 'leave' ? l.status === 'ON_LEAVE' :
-                                    selectedDashboardStat === 'halfDay' ? l.status === 'HALF_DAY' : false
-                                 ).length === 0)) && (
-                                    <p className="text-center text-slate-500 py-4">No employees found.</p>
-                                )}
+                                    ));
+                                })()}
                             </div>
                         </motion.div>
                     </motion.div>
@@ -590,65 +625,77 @@ const AttendanceModule = () => {
             </div>
 
             {isAdmin && (
-                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
                     <div 
                         onClick={() => setSelectedDashboardStat('active')}
-                        className={`bg-white p-5 rounded-xl border ${selectedDashboardStat === 'active' ? 'border-emerald-500 shadow-md ring-2 ring-emerald-200' : 'border-slate-200 shadow-sm hover:border-emerald-300 hover:shadow-md'} flex items-center justify-between cursor-pointer transition-all`}
+                        className={`bg-white p-4 rounded-xl border ${selectedDashboardStat === 'active' ? 'border-emerald-500 shadow-md ring-2 ring-emerald-200' : 'border-slate-200 shadow-sm hover:border-emerald-300 hover:shadow-md'} flex items-center justify-between cursor-pointer transition-all`}
                     >
                         <div>
-                            <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-1">Active Now</p>
-                            <h3 className="text-2xl font-bold text-slate-800">{dashboardStats.activeNow}</h3>
+                            <p className="text-slate-500 text-[11px] font-semibold uppercase tracking-wider mb-0.5">Active Now</p>
+                            <h3 className="text-xl font-bold text-slate-800">{dashboardStats.activeNow}</h3>
                         </div>
-                        <div className="w-12 h-12 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600">
-                            <User size={24} />
+                        <div className="w-9 h-9 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600">
+                            <User size={18} />
+                        </div>
+                    </div>
+                    <div 
+                        onClick={() => setSelectedDashboardStat('present')}
+                        className={`bg-white p-4 rounded-xl border ${selectedDashboardStat === 'present' ? 'border-teal-500 shadow-md ring-2 ring-teal-200' : 'border-slate-200 shadow-sm hover:border-teal-300 hover:shadow-md'} flex items-center justify-between cursor-pointer transition-all`}
+                    >
+                        <div>
+                            <p className="text-slate-500 text-[11px] font-semibold uppercase tracking-wider mb-0.5">Present</p>
+                            <h3 className="text-xl font-bold text-slate-800">{dashboardStats.presentCount}</h3>
+                        </div>
+                        <div className="w-9 h-9 rounded-full bg-teal-50 flex items-center justify-center text-teal-600">
+                            <CheckCircle2 size={18} />
                         </div>
                     </div>
                     <div 
                         onClick={() => setSelectedDashboardStat('leave')}
-                        className={`bg-white p-5 rounded-xl border ${selectedDashboardStat === 'leave' ? 'border-red-500 shadow-md ring-2 ring-red-200' : 'border-slate-200 shadow-sm hover:border-red-300 hover:shadow-md'} flex items-center justify-between cursor-pointer transition-all`}
+                        className={`bg-white p-4 rounded-xl border ${selectedDashboardStat === 'leave' ? 'border-purple-500 shadow-md ring-2 ring-purple-200' : 'border-slate-200 shadow-sm hover:border-purple-300 hover:shadow-md'} flex items-center justify-between cursor-pointer transition-all`}
                     >
                         <div>
-                            <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-1">On Leave</p>
-                            <h3 className="text-2xl font-bold text-slate-800">{dashboardStats.leaveCount}</h3>
+                            <p className="text-slate-500 text-[11px] font-semibold uppercase tracking-wider mb-0.5">On Leave</p>
+                            <h3 className="text-xl font-bold text-slate-800">{dashboardStats.leaveCount}</h3>
                         </div>
-                        <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center text-red-600">
-                            <XCircle size={24} />
+                        <div className="w-9 h-9 rounded-full bg-purple-50 flex items-center justify-center text-purple-600">
+                            <XCircle size={18} />
                         </div>
                     </div>
                     <div 
                         onClick={() => setSelectedDashboardStat('halfDay')}
-                        className={`bg-white p-5 rounded-xl border ${selectedDashboardStat === 'halfDay' ? 'border-amber-500 shadow-md ring-2 ring-amber-200' : 'border-slate-200 shadow-sm hover:border-amber-300 hover:shadow-md'} flex items-center justify-between cursor-pointer transition-all`}
+                        className={`bg-white p-4 rounded-xl border ${selectedDashboardStat === 'halfDay' ? 'border-amber-500 shadow-md ring-2 ring-amber-200' : 'border-slate-200 shadow-sm hover:border-amber-300 hover:shadow-md'} flex items-center justify-between cursor-pointer transition-all`}
                     >
                         <div>
-                            <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-1">Half Day</p>
-                            <h3 className="text-2xl font-bold text-slate-800">{dashboardStats.halfDayCount}</h3>
+                            <p className="text-slate-500 text-[11px] font-semibold uppercase tracking-wider mb-0.5">Half Day</p>
+                            <h3 className="text-xl font-bold text-slate-800">{dashboardStats.halfDayCount}</h3>
                         </div>
-                        <div className="w-12 h-12 rounded-full bg-amber-50 flex items-center justify-center text-amber-600">
-                            <Timer size={24} />
+                        <div className="w-9 h-9 rounded-full bg-amber-50 flex items-center justify-center text-amber-600">
+                            <Timer size={18} />
                         </div>
                     </div>
                     <div 
                         onClick={() => setSelectedDashboardStat('absent')}
-                        className={`bg-white p-5 rounded-xl border ${selectedDashboardStat === 'absent' ? 'border-slate-500 shadow-md ring-2 ring-slate-200' : 'border-slate-200 shadow-sm hover:border-slate-400 hover:shadow-md'} flex items-center justify-between cursor-pointer transition-all`}
+                        className={`bg-white p-4 rounded-xl border ${selectedDashboardStat === 'absent' ? 'border-slate-500 shadow-md ring-2 ring-slate-200' : 'border-slate-200 shadow-sm hover:border-slate-400 hover:shadow-md'} flex items-center justify-between cursor-pointer transition-all`}
                     >
                         <div>
-                            <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-1">Absent</p>
-                            <h3 className="text-2xl font-bold text-slate-800">{dashboardStats.absentCount}</h3>
+                            <p className="text-slate-500 text-[11px] font-semibold uppercase tracking-wider mb-0.5">Absent</p>
+                            <h3 className="text-xl font-bold text-slate-800">{dashboardStats.absentCount}</h3>
                         </div>
-                        <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-600">
-                            <UserX size={24} />
+                        <div className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-600">
+                            <UserX size={18} />
                         </div>
                     </div>
                     <div 
-                        onClick={() => setSelectedDashboardStat('wfh')}
-                        className={`bg-white p-5 rounded-xl border ${selectedDashboardStat === 'wfh' ? 'border-indigo-500 shadow-md ring-2 ring-indigo-200' : 'border-slate-200 shadow-sm hover:border-indigo-400 hover:shadow-md'} flex items-center justify-between cursor-pointer transition-all`}
+                        onClick={() => setSelectedDashboardStat('missedClockOut')}
+                        className={`bg-white p-4 rounded-xl border ${selectedDashboardStat === 'missedClockOut' ? 'border-rose-500 shadow-md ring-2 ring-rose-200' : 'border-slate-200 shadow-sm hover:border-rose-300 hover:shadow-md'} flex items-center justify-between cursor-pointer transition-all`}
                     >
                         <div>
-                            <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-1">WFH</p>
-                            <h3 className="text-2xl font-bold text-slate-800">{dashboardStats.wfhCount || 0}</h3>
+                            <p className="text-slate-500 text-[11px] font-semibold uppercase tracking-wider mb-0.5">Missed Out</p>
+                            <h3 className="text-xl font-bold text-slate-800">{dashboardStats.missedClockOutCount}</h3>
                         </div>
-                        <div className="w-12 h-12 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600">
-                            <MapPin size={24} />
+                        <div className="w-9 h-9 rounded-full bg-rose-50 flex items-center justify-center text-rose-600">
+                            <Clock size={18} />
                         </div>
                     </div>
                 </div>
@@ -791,6 +838,19 @@ const AttendanceModule = () => {
                                         className="px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 font-semibold text-slate-600"
                                         title="End Date"
                                     />
+                                    <select
+                                        value={filterType}
+                                        onChange={(e) => setFilterType(e.target.value)}
+                                        className="px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 font-semibold text-slate-600 cursor-pointer"
+                                    >
+                                        <option value="all">All Statuses</option>
+                                        <option value="present">Present</option>
+                                        <option value="late">Late</option>
+                                        <option value="half_day">Half Day</option>
+                                        <option value="on_leave">On Leave</option>
+                                        <option value="absent">Absent</option>
+                                        <option value="missed_clock_out">Missed Out</option>
+                                    </select>
                                     <div className="relative">
                                         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
                                         <input 
@@ -798,7 +858,7 @@ const AttendanceModule = () => {
                                             placeholder="Search logs..." 
                                             value={searchTerm}
                                             onChange={(e) => setSearchTerm(e.target.value)}
-                                            className="pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 transition-all w-36 sm:w-48"
+                                            className="pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 transition-all w-32 sm:w-40"
                                         />
                                     </div>
                                     <button 

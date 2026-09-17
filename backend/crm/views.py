@@ -6,10 +6,13 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Sum
 import traceback
+import uuid
 from core.models import Student, Program, Transaction, normalize_phone_number
 from .models import PipelineStage, LeadInteraction, Campaign, WebhookEndpoint, WebhookLog, Task
 from .serializers import PipelineStageSerializer, LeadInteractionSerializer, CampaignSerializer, TaskSerializer
 from .utils import normalize_phone_for_matching, match_lead_by_phone, match_agent_by_phone
+from .services.deduplication import lookup_existing_student, record_reengagement_interaction, normalize_lead_phone, normalize_lead_email
+from .services.assignment import get_next_assigned_rep
 
 User = get_user_model()
 from django.shortcuts import get_object_or_404
@@ -592,7 +595,7 @@ class CampaignViewSet(viewsets.ModelViewSet):
             reader = csv.DictReader(io_string)
             
             leads_created = 0
-            duplicates_created = 0
+            duplicates_skipped = 0
             skipped_leads = 0
             total_rows = 0
             
@@ -624,98 +627,71 @@ class CampaignViewSet(viewsets.ModelViewSet):
                 email = clean_row.get('email', '').strip()
                 mobile = clean_row.get('contact', clean_row.get('mobile', '')).strip()
                 
-                # Sanitize phone format (remove "p:" prefix if present, strip spaces)
-                if mobile.lower().startswith('p:'):
-                    mobile = mobile[2:].strip()
-                if mobile.lower().startswith('p;'):
-                    mobile = mobile[2:].strip()
-                mobile = mobile.replace(' ', '')
+                clean_phone = normalize_lead_phone(mobile)
+                clean_em = normalize_lead_email(email)
                 
                 place = clean_row.get('place', '').strip()
                 tag = clean_row.get('tag', '').strip()
                 
-                
-                if first_name or mobile or email:
-                    import uuid
-                    base_username = mobile if mobile else email if email else first_name
-                    username = f"{base_username}_{str(uuid.uuid4())[:8]}" if base_username else f"lead_{str(uuid.uuid4())[:8]}"
-                    
-                    # Clean placeholders (treat NA, N/A, NIL, NONE, etc. as empty)
-                    check_mobile = mobile if mobile and mobile.upper() not in ['NA', 'N/A', 'NIL', 'NONE'] else None
-                    check_email = email if email and email.upper() not in ['NA', 'N/A', 'NIL', 'NONE'] else None
+                if first_name or clean_phone or clean_em:
+                    # Centralized duplicate check
+                    dup_student, dup_reason = lookup_existing_student(mobile=mobile, email=email)
+                    if dup_student:
+                        duplicates_skipped += 1
+                        continue
 
-                    # Duplicate check against active records
-                    is_duplicate = False
-                    duplicate_reason = ""
-                    if check_mobile and Student.objects.filter(mobile=check_mobile, is_active=True).exists():
-                        is_duplicate = True
-                        dup = Student.objects.filter(mobile=check_mobile, is_active=True).first()
-                        duplicate_reason = f"Duplicate mobile: {check_mobile} (Original CRM ID: {dup.crm_student_id})"
-                    elif check_email and Student.objects.filter(email=check_email, is_active=True).exists():
-                        is_duplicate = True
-                        dup = Student.objects.filter(email=check_email, is_active=True).first()
-                        duplicate_reason = f"Duplicate email: {check_email} (Original CRM ID: {dup.crm_student_id})"
+                    with transaction.atomic():
+                        import uuid
+                        base_username = clean_phone if clean_phone else clean_em if clean_em else first_name
+                        username = f"{base_username}_{str(uuid.uuid4())[:8]}" if base_username else f"lead_{str(uuid.uuid4())[:8]}"
+                        import re
+                        username = re.sub(r'[^\w@+\.-]', '_', username)
 
-                    User = get_user_model()
-                    user = User.objects.create_user(
-                        username=username,
-                        email=email,
-                        first_name=first_name,
-                        last_name=last_name,
-                        role='STUDENT',
-                        password='Password@123'
-                    )
-                    
-                    # Generate unique CRM Student ID
-                    import uuid
-                    crm_id = f"LEAD-{str(uuid.uuid4())[:8].upper()}"
-                    
-                    # Handle Auto-Assignment Round Robin for bulk uploaded non-duplicate leads
-                    assigned_to_user = None
-                    if not is_duplicate:
-                        reps = list(campaign.auto_assign_to.all().order_by('id'))
-                        if reps:
-                            # Count leads created for this campaign to determine round robin index
-                            leads_count = Student.objects.filter(campaign=campaign, is_active=True).exclude(lead_status='DUPLICATE').count()
-                            assigned_to_user = reps[leads_count % len(reps)]
+                        User = get_user_model()
+                        user = User.objects.create_user(
+                            username=username,
+                            email=clean_em,
+                            first_name=first_name,
+                            last_name=last_name,
+                            role='STUDENT',
+                            password='Password@123'
+                        )
+                        
+                        # Generate unique CRM Student ID
+                        crm_id = f"LEAD-{str(uuid.uuid4())[:8].upper()}"
+                        
+                        # Handle Auto-Assignment Round Robin for bulk uploaded non-duplicate leads
+                        assigned_to_user = get_next_assigned_rep(campaign)
 
-                    student = Student.objects.create(
-                        user=user,
-                        crm_student_id=crm_id,
-                        first_name=first_name,
-                        last_name=last_name,
-                        email=email,
-                        mobile=mobile,
-                        perm_city=place,
-                        lms_course_names=tag,
-                        campaign=campaign,
-                        sales_section=campaign.section,
-                        program_type=default_program,
-                        assigned_to=assigned_to_user,
-                        lead_status='DUPLICATE' if is_duplicate else '2' # Default to '2' (unconverted new)
-                    )
+                        stage = PipelineStage.objects.filter(name__iexact='New').first()
+                        stage_id = str(stage.id) if stage else '2'
 
-                    if is_duplicate:
-                        duplicates_created += 1
-                        if duplicate_reason:
-                            from .models import LeadInteraction
-                            LeadInteraction.objects.create(
-                                student=student,
-                                notes=f"SYSTEM NOTICE (Bulk CSV Upload): This lead is registered as DUPLICATE. {duplicate_reason}",
-                                interaction_type='NOTE'
-                            )
-                    else:
+                        student = Student.objects.create(
+                            user=user,
+                            crm_student_id=crm_id,
+                            first_name=first_name,
+                            last_name=last_name,
+                            email=clean_em,
+                            mobile=clean_phone,
+                            perm_city=place,
+                            lms_course_names=tag,
+                            campaign=campaign,
+                            sales_section=campaign.section,
+                            program_type=default_program,
+                            assigned_to=assigned_to_user,
+                            lead_status=stage_id
+                        )
                         leads_created += 1
                 else:
                     skipped_leads += 1
                     
-            # Actually, let's make sure lead_status uses the pipeline stage ID for NEW
+            # Make sure lead_status uses the pipeline stage ID for NEW
             stage = PipelineStage.objects.filter(name__iexact='New').first()
             stage_id = str(stage.id) if stage else '2'
             Student.objects.filter(campaign=campaign, lead_status='2').update(lead_status=stage_id)
 
             return Response({
-                'message': f'CSV upload processed. Total rows: {total_rows}. Successful additions: {leads_created}. Duplicates flagged: {duplicates_created}. Skipped: {skipped_leads}.'
+                'message': f'CSV upload processed. Total rows: {total_rows}. Successful additions: {leads_created}. Duplicates skipped: {duplicates_skipped}. Skipped (invalid): {skipped_leads}.'
             })
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -759,17 +735,13 @@ class CampaignViewSet(viewsets.ModelViewSet):
             email = clean_row.get('email', '').strip()
             mobile = clean_row.get('contact', clean_row.get('mobile', '')).strip()
 
-            # Sanitize phone
-            if mobile.lower().startswith('p:'):
-                mobile = mobile[2:].strip()
-            elif mobile.lower().startswith('p;'):
-                mobile = mobile[2:].strip()
-            mobile = mobile.replace(' ', '')
+            clean_phone = normalize_lead_phone(mobile)
+            clean_em = normalize_lead_email(email)
 
             place = clean_row.get('place', '').strip()
             tag = clean_row.get('tag', '').strip()
 
-            if not first_name and not mobile and not email:
+            if not first_name and not clean_phone and not clean_em:
                 results.append({
                     'status': 'SKIPPED',
                     'name': 'Row ' + str(i+1),
@@ -777,85 +749,65 @@ class CampaignViewSet(viewsets.ModelViewSet):
                 })
                 continue
 
+            # Centralized duplicate check
+            dup_student, dup_reason = lookup_existing_student(mobile=mobile, email=email)
+            if dup_student:
+                results.append({
+                    'status': 'SKIPPED_DUPLICATE',
+                    'name': f"{first_name} {last_name}".strip() or 'Lead',
+                    'message': dup_reason or f"Duplicate lead (Original CRM ID: {dup_student.crm_student_id})",
+                    'crm_id': dup_student.crm_student_id
+                })
+                continue
+
             try:
-                with transaction.atomic():
-                    import uuid
-                    base_username = mobile if mobile else email if email else first_name
-                    username = f"{base_username}_{str(uuid.uuid4())[:8]}" if base_username else f"lead_{str(uuid.uuid4())[:8]}"
-                    # Sanitize username to prevent invalid character crashes (only letters, numbers, _, @, +, ., -)
-                    import re
-                    username = re.sub(r'[^\w@+\.-]', '_', username)
+                    with transaction.atomic():
+                        import uuid
+                        base_username = clean_phone if clean_phone else clean_em if clean_em else first_name
+                        username = f"{base_username}_{str(uuid.uuid4())[:8]}" if base_username else f"lead_{str(uuid.uuid4())[:8]}"
+                        # Sanitize username to prevent invalid character crashes (only letters, numbers, _, @, +, ., -)
+                        import re
+                        username = re.sub(r'[^\w@+\.-]', '_', username)
 
-                    check_mobile = mobile if mobile and mobile.upper() not in ['NA', 'N/A', 'NIL', 'NONE'] else None
-                    check_email = email if email and email.upper() not in ['NA', 'N/A', 'NIL', 'NONE'] else None
+                        User = get_user_model()
+                        user = User.objects.create_user(
+                            username=username,
+                            email=clean_em,
+                            first_name=first_name,
+                            last_name=last_name,
+                            role='STUDENT',
+                            password='Password@123'
+                        )
 
-                    is_duplicate = False
-                    duplicate_reason = ""
-                    if check_mobile and Student.objects.filter(mobile=check_mobile, is_active=True).exists():
-                        is_duplicate = True
-                        dup = Student.objects.filter(mobile=check_mobile, is_active=True).first()
-                        duplicate_reason = f"Duplicate mobile: {check_mobile} (Original CRM ID: {dup.crm_student_id})"
-                    elif check_email and Student.objects.filter(email=check_email, is_active=True).exists():
-                        is_duplicate = True
-                        dup = Student.objects.filter(email=check_email, is_active=True).first()
-                        duplicate_reason = f"Duplicate email: {check_email} (Original CRM ID: {dup.crm_student_id})"
+                        crm_id = f"LEAD-{str(uuid.uuid4())[:8].upper()}"
 
-                    User = get_user_model()
-                    user = User.objects.create_user(
-                        username=username,
-                        email=email,
-                        first_name=first_name,
-                        last_name=last_name,
-                        role='STUDENT',
-                        password='Password@123'
-                    )
+                        # Handle Auto-Assignment Round Robin for batch uploaded non-duplicate leads
+                        assigned_to_user = get_next_assigned_rep(campaign)
 
-                    crm_id = f"LEAD-{str(uuid.uuid4())[:8].upper()}"
+                        stage = PipelineStage.objects.filter(name__iexact='New').first()
+                        stage_id = str(stage.id) if stage else '2'
 
-                    assigned_to_user = None
-                    if not is_duplicate:
-                        reps = list(campaign.auto_assign_to.all().order_by('id'))
-                        if reps:
-                            leads_count = Student.objects.filter(campaign=campaign, is_active=True).exclude(lead_status='DUPLICATE').count()
-                            assigned_to_user = reps[leads_count % len(reps)]
+                        student = Student.objects.create(
+                            user=user,
+                            crm_student_id=crm_id,
+                            first_name=first_name,
+                            last_name=last_name,
+                            email=clean_em,
+                            mobile=clean_phone,
+                            perm_city=place,
+                            lms_course_names=tag,
+                            campaign=campaign,
+                            sales_section=campaign.section,
+                            program_type=default_program,
+                            assigned_to=assigned_to_user,
+                            lead_status=stage_id
+                        )
 
-                    stage = PipelineStage.objects.filter(name__iexact='New').first()
-                    stage_id = str(stage.id) if stage else '2'
-
-                    student = Student.objects.create(
-                        user=user,
-                        crm_student_id=crm_id,
-                        first_name=first_name,
-                        last_name=last_name,
-                        email=email,
-                        mobile=mobile,
-                        perm_city=place,
-                        lms_course_names=tag,
-                        campaign=campaign,
-                        sales_section=campaign.section,
-                        program_type=default_program,
-                        assigned_to=assigned_to_user,
-                        lead_status='DUPLICATE' if is_duplicate else stage_id
-                    )
-
-                    if is_duplicate:
-                        if duplicate_reason:
-                            from .models import LeadInteraction
-                            LeadInteraction.objects.create(
-                                student=student,
-                                notes=f"SYSTEM NOTICE (Bulk CSV Upload): This lead is registered as DUPLICATE. {duplicate_reason}",
-                                interaction_type='NOTE'
-                            )
-                        results.append({
-                            'status': 'DUPLICATE',
-                            'name': f"{first_name} {last_name}",
-                            'message': duplicate_reason or 'Duplicate lead'
-                        })
-                    else:
                         results.append({
                             'status': 'SUCCESS',
                             'name': f"{first_name} {last_name}",
-                            'message': 'Successfully imported'
+                            'message': 'Successfully imported',
+                            'crm_id': student.crm_student_id
                         })
 
             except Exception as row_error:
@@ -1153,30 +1105,54 @@ class WebhookReceiveView(APIView):
                 email = payload.get('email', '')
                 mobile = payload.get('mobile') or payload.get('phone') or payload.get('phone_number') or ''
                 
-                # Sanitize phone format (remove "p:" prefix, strip spaces)
-                mobile = str(mobile).strip()
-                if mobile.lower().startswith('p:'):
-                    mobile = mobile[2:].strip()
-                elif mobile.lower().startswith('p;'):
-                    mobile = mobile[2:].strip()
-                mobile = mobile.replace(' ', '')
-                if mobile:
-                    mobile = normalize_phone_number(mobile)
+                clean_phone = normalize_lead_phone(mobile)
+                clean_em = normalize_lead_email(email)
+
+                if not clean_phone and not clean_em:
+                    raise ValueError("At least valid email or mobile is required to create a lead.")
 
                 campaign_id = payload.get('campaign_id')
                 program_id = payload.get('program_id')
 
-                # Create or get User
-                username = email if email else f"lead_{mobile}"
-                if not username:
-                    raise ValueError("At least email or mobile is required to create a lead.")
-                
-                if not email:
-                    email = f"{username}@webhook.temp"
+                # Assign Campaign if valid
+                campaign = None
+                if campaign_id:
+                    campaign = Campaign.objects.filter(id=campaign_id).first()
+
+                # Centralized duplicate check
+                dup_student, dup_reason = lookup_existing_student(mobile=clean_phone, email=clean_em)
+                if dup_student:
+                    # Lead already exists! Log re-engagement on original student instead of creating duplicate.
+                    event_id = payload.get('event_id') or payload.get('id') or payload.get('lead_id')
+                    record_reengagement_interaction(
+                        student=dup_student,
+                        source_name=f"webhook '{endpoint.name}'",
+                        campaign_name=campaign.name if campaign else None,
+                        event_id=str(event_id) if event_id else None,
+                        extra_notes=dup_reason
+                    )
+
+                    # Log Success
+                    WebhookLog.objects.create(
+                        endpoint=endpoint,
+                        payload=payload,
+                        status='SUCCESS'
+                    )
+
+                    return Response({
+                        "message": "Lead already exists; re-engagement logged.",
+                        "student_id": dup_student.id,
+                        "crm_id": dup_student.crm_student_id,
+                        "is_duplicate": True
+                    }, status=status.HTTP_200_OK)
+
+                # Create new User
+                username = clean_em if clean_em else f"lead_{clean_phone}"
+                user_email = clean_em if clean_em else f"{username}@webhook.temp"
                 
                 user, created = User.objects.get_or_create(
                     username=username,
-                    defaults={'email': email, 'role': 'STUDENT'}
+                    defaults={'email': user_email, 'role': 'STUDENT'}
                 )
                 if created:
                     user.set_password('welcome123')
@@ -1184,11 +1160,6 @@ class WebhookReceiveView(APIView):
 
                 # Generate CRM ID
                 crm_id = Student.generate_next_crm_id()
-
-                # Assign Campaign if valid
-                campaign = None
-                if campaign_id:
-                    campaign = Campaign.objects.filter(id=campaign_id).first()
 
                 # Assign Program (fallback to campaign section match)
                 program = None
@@ -1202,44 +1173,23 @@ class WebhookReceiveView(APIView):
                     if not program:
                         program = Program.objects.exclude(name="Wise Import").first() or Program.objects.first()
 
-                # Check if Student profile already exists for this user
-                student = Student.objects.filter(user=user).first()
-                if student:
-                    # Lead already exists! Update the lead information instead of crashing.
-                    student.first_name = first_name
-                    student.last_name = last_name
-                    if email and "@webhook.temp" not in email:
-                        student.email = email
-                    if mobile:
-                        student.mobile = mobile
-                    if program:
-                        student.program_type = program
-                    if campaign:
-                        student.campaign = campaign
-                        student.sales_section = campaign.section
-                    student.save()
-                    
-                    # Log system interaction
-                    LeadInteraction.objects.create(
-                        student=student,
-                        author=None,
-                        interaction_type='NOTE',
-                        notes=f"Re-engaged lead from webhook: {endpoint.name}. Campaign: {campaign.name if campaign else 'N/A'}."
-                    )
-                else:
-                    # Create Student Lead
-                    student = Student.objects.create(
-                        user=user,
-                        crm_student_id=crm_id,
-                        first_name=first_name,
-                        last_name=last_name,
-                        email=email if "@webhook.temp" not in email else '',
-                        mobile=mobile,
-                        program_type=program,
-                        campaign=campaign,
-                        sales_section=campaign.section if campaign else 'BOTH',
-                        is_active=True
-                    )
+                # Auto-assign lead if campaign is configured for auto-assignment
+                assigned_to_user = get_next_assigned_rep(campaign) if campaign else None
+
+                # Create Student Lead
+                student = Student.objects.create(
+                    user=user,
+                    crm_student_id=crm_id,
+                    first_name=first_name,
+                    last_name=last_name,
+                    email=clean_em,
+                    mobile=clean_phone,
+                    program_type=program,
+                    campaign=campaign,
+                    sales_section=campaign.section if campaign else 'BOTH',
+                    assigned_to=assigned_to_user,
+                    is_active=True
+                )
 
                 # Log Success
                 WebhookLog.objects.create(
@@ -1286,29 +1236,42 @@ class CampaignWebhookReceiveView(APIView):
                 email = payload.get('email', '')
                 mobile = payload.get('mobile') or payload.get('phone') or payload.get('phone_number') or ''
                 
-                # Sanitize phone format (remove "p:" prefix, strip spaces)
-                mobile = str(mobile).strip()
-                if mobile.lower().startswith('p:'):
-                    mobile = mobile[2:].strip()
-                elif mobile.lower().startswith('p;'):
-                    mobile = mobile[2:].strip()
-                mobile = mobile.replace(' ', '')
-                if mobile:
-                    mobile = normalize_phone_number(mobile)
+                clean_phone = normalize_lead_phone(mobile)
+                clean_em = normalize_lead_email(email)
+
+                if not clean_phone and not clean_em:
+                    raise ValueError("At least valid email or mobile is required to create a lead.")
 
                 program_id = payload.get('program_id')
 
+                # Centralized duplicate check
+                dup_student, dup_reason = lookup_existing_student(mobile=clean_phone, email=clean_em)
+                if dup_student:
+                    event_id = payload.get('event_id') or payload.get('id') or payload.get('lead_id')
+                    record_reengagement_interaction(
+                        student=dup_student,
+                        source_name="Campaign Webhook",
+                        campaign_name=campaign.name if campaign else None,
+                        event_id=str(event_id) if event_id else None,
+                        extra_notes=dup_reason
+                    )
+
+                    return Response({
+                        "message": "Lead already exists; re-engagement logged.",
+                        "student_id": dup_student.id,
+                        "crm_id": dup_student.crm_student_id,
+                        "assigned_to": dup_student.assigned_to.username if dup_student.assigned_to else "Unassigned",
+                        "status": dup_student.lead_status,
+                        "is_duplicate": True
+                    }, status=status.HTTP_200_OK)
+
                 # Create or get User
-                username = email if email else f"lead_{mobile}"
-                if not username:
-                    raise ValueError("At least email or mobile is required to create a lead.")
-                
-                if not email:
-                    email = f"{username}@webhook.temp"
+                username = clean_em if clean_em else f"lead_{clean_phone}"
+                user_email = clean_em if clean_em else f"{username}@webhook.temp"
                 
                 user, created = User.objects.get_or_create(
                     username=username,
-                    defaults={'email': email, 'role': 'STUDENT'}
+                    defaults={'email': user_email, 'role': 'STUDENT'}
                 )
                 if created:
                     user.set_password('welcome123')
@@ -1329,89 +1292,45 @@ class CampaignWebhookReceiveView(APIView):
                     if not program:
                         program = Program.objects.exclude(name="Wise Import").first() or Program.objects.first()
 
-                # Duplicate Check
-                is_duplicate = False
-                duplicate_reason = ""
-                if mobile and Student.objects.filter(mobile=mobile).exists():
-                    is_duplicate = True
-                    dup = Student.objects.filter(mobile=mobile).first()
-                    duplicate_reason = f"Duplicate mobile: {mobile} (Original CRM ID: {dup.crm_student_id})"
-                elif email and "@webhook.temp" not in email and Student.objects.filter(email=email).exists():
-                    is_duplicate = True
-                    dup = Student.objects.filter(email=email).first()
-                    duplicate_reason = f"Duplicate email: {email} (Original CRM ID: {dup.crm_student_id})"
-
-                # Auto-assign lead using round-robin logic on the campaign's auto_assign_to list
-                assigned_to_user = None
-                if not is_duplicate and campaign.auto_assign_to.exists():
-                    try:
-                        reps = list(campaign.auto_assign_to.filter(is_active=True).order_by('id'))
-                        if reps:
-                            # Find the last assigned student for this campaign who has an assigned sales rep
-                            last_assigned_student = Student.objects.filter(
-                                campaign=campaign, 
-                                assigned_to__isnull=False
-                            ).order_by('-id').first()
-                            
-                            next_index = 0
-                            if last_assigned_student and last_assigned_student.assigned_to in reps:
-                                last_index = reps.index(last_assigned_student.assigned_to)
-                                next_index = (last_index + 1) % len(reps)
-                            
-                            assigned_to_user = reps[next_index]
-                    except Exception as assign_err:
-                        logger.error(f"Error calculating webhook round-robin assignment: {assign_err}")
-
-                # Check if Student profile already exists
+                # Check if Student profile already exists for this User
                 student = Student.objects.filter(user=user).first()
                 if student:
                     student.first_name = first_name
                     student.last_name = last_name
-                    if email and "@webhook.temp" not in email:
-                        student.email = email
-                    if mobile:
-                        student.mobile = mobile
+                    if clean_em:
+                        student.email = clean_em
+                    if clean_phone:
+                        student.mobile = clean_phone
                     if program:
                         student.program_type = program
                     student.campaign = campaign
                     student.sales_section = campaign.section
-                    if not is_duplicate and assigned_to_user:
-                        student.assigned_to = assigned_to_user
-                    if is_duplicate:
-                        student.lead_status = "DUPLICATE"
                     student.save()
                     
-                    # Log system interaction
                     LeadInteraction.objects.create(
                         student=student,
                         author=None,
                         interaction_type='NOTE',
-                        notes=f"Re-engaged lead from Campaign Webhook: {campaign.name}. " + (duplicate_reason if is_duplicate else "")
+                        notes=f"Re-engaged lead from Campaign Webhook: {campaign.name}."
                     )
                 else:
-                    # Create Student Lead
+                    # Genuinely new lead: determine assignment and create Student Lead
+                    assigned_to_user = get_next_assigned_rep(campaign)
+
                     student = Student.objects.create(
                         user=user,
                         crm_student_id=crm_id,
                         first_name=first_name,
                         last_name=last_name,
-                        email=email if "@webhook.temp" not in email else '',
-                        mobile=mobile,
+                        email=clean_em,
+                        mobile=clean_phone,
                         program_type=program,
                         campaign=campaign,
                         sales_section=campaign.section,
-                        lead_status="DUPLICATE" if is_duplicate else "NEW",
+                        lead_status="NEW",
                         assigned_to=assigned_to_user,
                         is_active=True
                     )
-                    
-                    if is_duplicate and duplicate_reason:
-                        LeadInteraction.objects.create(
-                            student=student,
-                            author=None,
-                            interaction_type='NOTE',
-                            notes=f"SYSTEM NOTICE (Campaign Webhook): This lead is registered as DUPLICATE. {duplicate_reason}"
-                        )
 
                 return Response({
                     "message": "Lead processed successfully.",

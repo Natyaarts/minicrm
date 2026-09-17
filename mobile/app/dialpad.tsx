@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Dimensions, Pla
 import { Ionicons } from '@expo/vector-icons';
 import * as Notifications from 'expo-notifications';
 import { useLocalSearchParams, router } from 'expo-router';
-import { startNativeRecording, stopNativeRecording, listenToCallEvents, requestCallPermissions, listenToCallState, makeDirectCall } from '../src/utils/CallManager';
+import { startNativeRecording, stopNativeRecording, listenToCallEvents, requestCallPermissions, listenToCallState, makeDirectCall, getLatestCallLogDuration } from '../src/utils/CallManager';
 import { generateMobileCallId, queueOfflineCall } from '../src/utils/SyncManager';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -176,12 +176,19 @@ const Dialpad = () => {
           // Only trigger log screen if the app was in the background for at least 3 seconds
           if (timeInBackground > 3000) {
             lastBackgroundTimeRef.current = 0;
-            if (callStartTimeRef.current > 0) {
-              const elapsed = Math.max(1, Math.floor((Date.now() - callStartTimeRef.current) / 1000));
-              setCallDuration(elapsed);
-            } else {
-              setCallDuration(1);
+            const startTime = callStartTimeRef.current;
+            const elapsed = startTime > 0 ? Math.max(1, Math.floor((Date.now() - startTime) / 1000)) : 1;
+            setCallDuration(elapsed);
+
+            // Query CallLog asynchronously if available
+            if (Platform.OS === 'android' && phoneRef.current) {
+              getLatestCallLogDuration(phoneRef.current, startTime, 'OUTGOING').then(logDur => {
+                if (typeof logDur === 'number' && logDur >= 0) {
+                  setCallDuration(logDur);
+                }
+              }).catch(() => {});
             }
+
             // Trigger POST_CALL flow to log the call
             setCallStatus('POST_CALL');
             setIsProcessingRecording(true);
@@ -226,7 +233,7 @@ const Dialpad = () => {
       );
       if (status.isLoaded && status.durationMillis && status.durationMillis > 0) {
         const durationSec = Math.round(status.durationMillis / 1000);
-        console.log('[extractDurationFromAudio] Extracted exact audio duration:', durationSec, 'seconds');
+        console.log('[extractDurationFromAudio] Extracted audio duration:', durationSec, 'seconds');
         await sound.unloadAsync();
         return durationSec;
       }
@@ -244,9 +251,15 @@ const Dialpad = () => {
       console.log("Recording saved at:", path);
       if (path) {
         setRecordedFilePath(path);
-        const exactDuration = await extractDurationFromAudio(path);
-        if (exactDuration && exactDuration > 0) {
-          setCallDuration(exactDuration);
+        // Audio recording duration must NOT overwrite a valid call duration.
+        // Only use as last-resort fallback if callDuration is 0 and no start time is tracked.
+        if (callDuration <= 0 && callStartTimeRef.current === 0) {
+          try {
+            const exactDuration = await extractDurationFromAudio(path);
+            if (exactDuration && exactDuration > 0) {
+              setCallDuration(prev => (prev > 0 ? prev : exactDuration));
+            }
+          } catch (_) {}
         }
       }
     });
@@ -270,8 +283,22 @@ const Dialpad = () => {
       } else if (state === 'IDLE') {
         if (callStarted) {
           callStarted = false;
-          const elapsed = Math.max(1, Math.floor((Date.now() - callStartTimeRef.current) / 1000));
-          setCallDuration(elapsed);
+          const startTime = callStartTimeRef.current;
+          const elapsed = startTime > 0 ? Math.max(1, Math.floor((Date.now() - startTime) / 1000)) : 1;
+          let authoritativeDuration = elapsed;
+
+          if (Platform.OS === 'android' && phoneRef.current) {
+            try {
+              const logDuration = await getLatestCallLogDuration(phoneRef.current, startTime, 'OUTGOING');
+              if (typeof logDuration === 'number' && logDuration >= 0) {
+                authoritativeDuration = logDuration;
+              }
+            } catch (err) {
+              console.warn('[dialpad] Failed to query CallLog duration:', err);
+            }
+          }
+
+          setCallDuration(authoritativeDuration);
           setCallStatus('POST_CALL');
           setIsProcessingRecording(true);
           // Automatically stop recording when call hangs up
@@ -279,9 +306,12 @@ const Dialpad = () => {
           if (filePath) {
             console.log("Call auto-stopped recording. Path:", filePath);
             setRecordedFilePath(filePath);
-            const exactDuration = await extractDurationFromAudio(filePath);
-            if (exactDuration && exactDuration > 0) {
-              setCallDuration(exactDuration);
+            // Protect authoritative call duration: only fallback if authoritativeDuration is 0
+            if (authoritativeDuration <= 0) {
+              const exactDuration = await extractDurationFromAudio(filePath);
+              if (exactDuration && exactDuration > 0) {
+                setCallDuration(exactDuration);
+              }
             }
           }
           setIsProcessingRecording(false);
@@ -394,7 +424,7 @@ const Dialpad = () => {
         if (asset.uri) {
           const exactDuration = await extractDurationFromAudio(asset.uri);
           if (exactDuration && exactDuration > 0) {
-            setCallDuration(exactDuration);
+            setCallDuration(prev => (prev > 0 ? prev : exactDuration));
             Alert.alert('Recording Selected', `File: ${asset.name}\nDuration: ${formatDuration(exactDuration)}`);
           } else {
             Alert.alert('Recording Selected', `File: ${asset.name}`);

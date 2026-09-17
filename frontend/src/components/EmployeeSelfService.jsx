@@ -17,10 +17,18 @@ const EmployeeSelfService = () => {
         return () => clearInterval(timer);
     }, []);
 
+    const getTodayIST = () => {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+
     const fetchData = async () => {
         try {
             // Fetch today's attendance using my_only=true to get only current user's records
-            const todayStr = new Date().toISOString().split('T')[0];
+            const todayStr = getTodayIST();
             const attRes = await api.get(`hrms/attendance/?my_only=true&start_date=${todayStr}&end_date=${todayStr}`);
             const attData = attRes.data.results || attRes.data || [];
             // Find today's record (no user_id filter needed since my_only=true returns only mine)

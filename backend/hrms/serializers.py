@@ -10,6 +10,8 @@ class AttendanceSerializer(serializers.ModelSerializer):
     employee_name = serializers.ReadOnlyField(source='employee.user.get_full_name')
     employee_id_display = serializers.ReadOnlyField(source='employee.employee_id')
     user_id = serializers.ReadOnlyField(source='employee.user.id')
+    is_missed_clock_out = serializers.SerializerMethodField()
+    duration_display = serializers.SerializerMethodField()
     
     class Meta:
         model = Attendance
@@ -19,9 +21,26 @@ class AttendanceSerializer(serializers.ModelSerializer):
             'clock_in_latitude', 'clock_in_longitude',
             'clock_out_latitude', 'clock_out_longitude',
             'clock_in_photo', 'is_face_verified', 'verification_confidence',
-            'status', 'notes'
+            'status', 'notes', 'is_missed_clock_out', 'duration_display'
         ]
         read_only_fields = ['id', 'date', 'status']
+
+    def get_is_missed_clock_out(self, obj):
+        return bool(obj.clock_in and not obj.clock_out)
+
+    def get_duration_display(self, obj):
+        if not obj.clock_in or not obj.clock_out:
+            return '--'
+        from datetime import datetime, date
+        dummy_date = date(2000, 1, 1)
+        start = datetime.combine(dummy_date, obj.clock_in)
+        end = datetime.combine(dummy_date, obj.clock_out)
+        diff_secs = (end - start).total_seconds()
+        if diff_secs < 0:
+            diff_secs += 86400
+        hours = int(diff_secs // 3600)
+        minutes = int((diff_secs % 3600) // 60)
+        return f"{hours}h {minutes}m"
 from django.contrib.auth import get_user_model
 
 User = get_user_model()

@@ -11,6 +11,7 @@ from django.contrib.auth import get_user_model
 from django.utils.dateparse import parse_datetime
 from .models import Campaign, PipelineStage
 from core.models import Student, normalize_phone_number
+from .services import get_next_assigned_rep
 
 User = get_user_model()
 
@@ -259,16 +260,18 @@ class GoogleSheetSyncView(APIView):
             if not first_name:
                 first_name = "Sheet Lead"
                 
-            # Sanitize phone
-            cleaned_phone = normalize_phone_number(mobile)
+            # Sanitize phone and email
+            from crm.services.deduplication import lookup_existing_student, normalize_lead_phone, normalize_lead_email
+            cleaned_phone = normalize_lead_phone(mobile)
+            clean_em = normalize_lead_email(email)
                 
-            if not cleaned_phone:
+            if not cleaned_phone and not clean_em:
                 skipped_count += 1
                 continue
                 
-            # Create user account and student profile (checking duplicates)
-            exists = Student.objects.filter(mobile=cleaned_phone).exists()
-            if exists:
+            # Centralized duplicate check
+            dup_student, _ = lookup_existing_student(mobile=cleaned_phone, email=clean_em)
+            if dup_student:
                 skipped_count += 1
                 continue
                 
@@ -300,6 +303,9 @@ class GoogleSheetSyncView(APIView):
                     if not program:
                         program = Program.objects.exclude(name="Wise Import").first() or Program.objects.first()
                     
+                    # Handle Auto Assignment via centralized service
+                    assigned_to_user = get_next_assigned_rep(campaign)
+
                     student = Student.objects.create(
                         user=user,
                         crm_student_id=crm_id,
@@ -310,16 +316,9 @@ class GoogleSheetSyncView(APIView):
                         mobile=cleaned_phone,
                         campaign=campaign,
                         lead_status=new_stage_id,
-                        sales_section=campaign.section
+                        sales_section=campaign.section,
+                        assigned_to=assigned_to_user
                     )
-                    
-                    # Handle Auto Assignment
-                    assignees = list(campaign.auto_assign_to.all())
-                    if assignees:
-                        # Simple Round-Robin: select assignee based on lead index
-                        rep = assignees[imported_count % len(assignees)]
-                        student.assigned_to = rep
-                        student.save()
                         
                 imported_count += 1
             except Exception as ex:
@@ -331,7 +330,7 @@ class GoogleSheetSyncView(APIView):
                 
         # Save progress
         campaign.google_last_synced_row = len(rows)
-        campaign.save()
+        campaign.save(update_fields=['google_last_synced_row'])
         
         return Response({
             'message': 'Sync complete',

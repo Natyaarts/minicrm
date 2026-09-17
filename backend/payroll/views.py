@@ -106,15 +106,19 @@ class PayslipViewSet(viewsets.ModelViewSet):
             
             real_absent_days = absent_records.count() - protected_absences
             
-            # 3. Calculate LOP from explicitly Unpaid Leaves
+            # 3. Calculate LOP from explicitly Unpaid Leaves and count Paid Leaves
             unpaid_leaves = approved_leaves.filter(leave_type__is_paid=False)
             unpaid_leave_days = sum((l.end_date - l.start_date).days + 1 for l in unpaid_leaves)
+
+            paid_leaves = approved_leaves.filter(leave_type__is_paid=True)
+            approved_paid_leave_days = sum((l.end_date - l.start_date).days + 1 for l in paid_leaves)
+            actual_paid_leave_days = max(paid_leave_days, approved_paid_leave_days)
             
             # 4. Total LOP Calculation
             lop_days = Decimal(str(real_absent_days)) + (Decimal(str(half_days)) * Decimal('0.5')) + Decimal(str(unpaid_leave_days))
             
             # Use Decimal for all money/day math
-            total_paid_days = Decimal(str(present_days)) + (Decimal(str(half_days)) * Decimal('0.5')) + Decimal(str(paid_leave_days))
+            total_paid_days = Decimal(str(present_days)) + (Decimal(str(half_days)) * Decimal('0.5')) + Decimal(str(actual_paid_leave_days))
             
             gross_salary = struct.base_salary + struct.total_allowances
             daily_rate = gross_salary / Decimal(str(days_in_month))

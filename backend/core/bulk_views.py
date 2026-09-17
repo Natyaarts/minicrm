@@ -50,29 +50,23 @@ class BulkUploadView(views.APIView):
                     email = str(row['email']).strip() if pd.notna(row.get('email')) else None
                     first_name = row['first_name']
                     
-                    # Check if User exists by mobile or email
-                    existing_user = None
-                    if email:
-                        existing_user = User.objects.filter(email=email).first()
-                    if not existing_user and mobile:
-                        existing_user = User.objects.filter(username__icontains=mobile).first()
-                    
-                    if existing_user:
-                        # If user exists, check if Student profile exists
-                        if hasattr(existing_user, 'student_profile'):
-                             # Update existing student if Wise ID is provided
-                             lms_id = row.get('lms_id') or row.get('wise_id')
-                             if lms_id and pd.notna(lms_id):
-                                 s = existing_user.student_profile
-                                 s.lms_student_id = str(lms_id).strip()
-                                 # Optional: update campaign if requested, but generally bulk upload is for NEW leads
-                                 s.save()
-                                 success_count += 1 # Count as success update
-                                 continue
-                             else:
-                                 errors.append(f"Row {index+1}: Student {first_name} ({mobile}) already exists (skipped)")
-                                 continue
-                    
+                    from crm.services.deduplication import lookup_existing_student, normalize_lead_phone, normalize_lead_email
+                    clean_phone = normalize_lead_phone(mobile)
+                    clean_em = normalize_lead_email(email)
+
+                    # Check duplicates using centralized deduplication
+                    dup_student, dup_reason = lookup_existing_student(mobile=clean_phone or mobile, email=clean_em or email)
+                    if dup_student:
+                        lms_id = row.get('lms_id') or row.get('wise_id')
+                        if lms_id and pd.notna(lms_id):
+                            dup_student.lms_student_id = str(lms_id).strip()
+                            dup_student.save()
+                            success_count += 1
+                            continue
+                        else:
+                            errors.append(f"Row {index+1}: Skipped duplicate lead ({dup_reason})")
+                            continue
+
                     # Resolve Program
                     program_name = row.get('program_name')
                     # Default to NATYA if missing/nan
@@ -102,12 +96,10 @@ class BulkUploadView(views.APIView):
                         course = qs.filter(name__iexact=row['course_name']).first()
 
                     # Create User
-                    username = email if email else f"user_{mobile}"
-                    if not email:
-                         # Mock email if missing
-                         email = f"{mobile}@example.com"
+                    username = clean_em if clean_em else (f"user_{clean_phone}" if clean_phone else f"user_{mobile}")
+                    user_email = clean_em if clean_em else (f"{clean_phone}@example.com" if clean_phone else f"{mobile}@example.com")
 
-                    user = User.objects.create_user(username=username, email=email)
+                    user = User.objects.create_user(username=username, email=user_email)
                     user.set_password('welcome123')
                     user.role = 'STUDENT'
                     user.save()

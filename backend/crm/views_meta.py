@@ -14,6 +14,13 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, permissions
 from core.models import Student, Program
+from crm.services import (
+    lookup_existing_student,
+    record_reengagement_interaction,
+    normalize_lead_phone,
+    normalize_lead_email,
+    get_next_assigned_rep,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -178,32 +185,36 @@ class MetaLeadWebhookView(APIView):
                     first_name = name.split()[0] if name else "Meta"
                     last_name = " ".join(name.split()[1:]) if len(name.split()) > 1 else "Lead"
 
+                    clean_phone = normalize_lead_phone(phone)
+                    clean_em = normalize_lead_email(email)
+
                     try:
                         from django.contrib.auth import get_user_model
                         from django.db import transaction
                         import datetime
                         User = get_user_model()
 
+                        # Centralized duplicate check
+                        dup_student, dup_reason = lookup_existing_student(mobile=clean_phone, email=clean_em)
+                        if dup_student:
+                            record_reengagement_interaction(
+                                student=dup_student,
+                                source_name="Meta Lead Ad",
+                                campaign_name=campaign.name if campaign else None,
+                                event_id=str(lead_id),
+                                extra_notes=f"Name: {name}, Phone: {phone}"
+                            )
+                            logger.info(f"Meta lead {lead_id} matched existing student {dup_student.crm_student_id}. Logged re-engagement note.")
+                            continue
+
                         username = f"meta_{lead_id}"[:150]
 
                         with transaction.atomic():
-                            # Duplicate check
-                            is_duplicate = False
-                            duplicate_reason = ""
-                            if phone and Student.objects.filter(mobile=phone).exists():
-                                is_duplicate = True
-                                dup = Student.objects.filter(mobile=phone).first()
-                                duplicate_reason = f"Duplicate mobile: {phone} (Original CRM ID: {dup.crm_student_id})"
-                            elif email and Student.objects.filter(email=email).exists():
-                                is_duplicate = True
-                                dup = Student.objects.filter(email=email).first()
-                                duplicate_reason = f"Duplicate email: {email} (Original CRM ID: {dup.crm_student_id})"
-
                             user = User.objects.create_user(
                                 username=username,
                                 first_name=first_name,
                                 last_name=last_name,
-                                email=email or "",
+                                email=clean_em or "",
                                 password=get_random_string(20),
                                 role="STUDENT",
                             )
@@ -219,27 +230,8 @@ class MetaLeadWebhookView(APIView):
                             if not program:
                                 program = Program.objects.exclude(name="Wise Import").first() or Program.objects.first()
 
-                            # Auto-assign lead to active sales rep using round-robin logic on the campaign's auto_assign_to list
-                            assigned_to_user = None
-                            if not is_duplicate and campaign and campaign.auto_assign_to.exists():
-                                try:
-                                    # Get list of selected sales reps sorted by ID
-                                    reps = list(campaign.auto_assign_to.filter(is_active=True).order_by('id'))
-                                    if reps:
-                                        # Find the last assigned student for this campaign who has an assigned sales rep
-                                        last_assigned_student = Student.objects.filter(
-                                            campaign=campaign, 
-                                            assigned_to__isnull=False
-                                        ).order_by('-id').first()
-                                        
-                                        next_index = 0
-                                        if last_assigned_student and last_assigned_student.assigned_to in reps:
-                                            last_index = reps.index(last_assigned_student.assigned_to)
-                                            next_index = (last_index + 1) % len(reps)
-                                        
-                                        assigned_to_user = reps[next_index]
-                                except Exception as assign_err:
-                                    logger.error(f"Error calculating round-robin assignment: {assign_err}")
+                            # Auto-assign lead using centralized assignment service
+                            assigned_to_user = get_next_assigned_rep(campaign)
 
                             student = Student.objects.create(
                                 user=user,
@@ -247,25 +239,17 @@ class MetaLeadWebhookView(APIView):
                                 program_type=program,
                                 first_name=first_name,
                                 last_name=last_name,
-                                email=email or None,
-                                mobile=phone or None,
-                                lead_status="DUPLICATE" if is_duplicate else "NEW",
+                                email=clean_em or None,
+                                mobile=clean_phone or None,
+                                lead_status="NEW",
                                 meta_lead_id=str(lead_id),
                                 campaign=campaign,
                                 sales_section=campaign.section if campaign else "BOTH",
                                 assigned_to=assigned_to_user,
                             )
 
-                            if is_duplicate and duplicate_reason:
-                                from crm.models import LeadInteraction
-                                LeadInteraction.objects.create(
-                                    student=student,
-                                    notes=f"SYSTEM NOTICE (Meta Ad Webhook): This lead is registered as DUPLICATE. {duplicate_reason}",
-                                    interaction_type='NOTE'
-                                )
-
                             leads_created += 1
-                            logger.info(f"Created new Meta lead: {student.crm_student_id} - {name} ({phone})")
+                            logger.info(f"Created new Meta lead: {student.crm_student_id} - {name} ({clean_phone})")
 
                     except Exception as e:
                         logger.error(f"Failed to create student from Meta lead {lead_id}: {e}")

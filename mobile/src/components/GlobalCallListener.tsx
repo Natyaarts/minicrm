@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, TextInput, Platform, ScrollView, Alert, ActivityIndicator, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { listenToCallState, listenToMissedCalls, startNativeRecording, stopNativeRecording } from '../utils/CallManager';
+import { listenToCallState, listenToMissedCalls, startNativeRecording, stopNativeRecording, getLatestCallLogDuration } from '../utils/CallManager';
 import { generateMobileCallId, queueOfflineCall } from '../utils/SyncManager';
 import client from '../api/client';
 import * as DocumentPicker from 'expo-document-picker';
@@ -19,6 +19,7 @@ export default function GlobalCallListener() {
 
   const [displayPhone, setDisplayPhone] = useState('');
   const [callDuration, setCallDuration] = useState(0);
+  const [callStatusState, setCallStatusState] = useState<'CONNECTED' | 'MISSED'>('CONNECTED');
   const [recordedFilePath, setRecordedFilePath] = useState<string | null>(null);
   
   const [leadInfo, setLeadInfo] = useState<any>(null); 
@@ -34,6 +35,7 @@ export default function GlobalCallListener() {
 
   // Refs for background state tracking
   const isIncomingRef = useRef(false);
+  const isOffhookRef = useRef(false);
   const incomingPhoneRef = useRef<string | null>(null);
   const callStartTimeRef = useRef<number | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -101,7 +103,9 @@ export default function GlobalCallListener() {
       if (state === 'RINGING') {
         // ── Bug 1 Fix: Show live ringing banner immediately ──
         isIncomingRef.current = true;
+        isOffhookRef.current = false;
         incomingPhoneRef.current = phoneNumber;
+        callStartTimeRef.current = null;
         setDisplayPhone(phoneNumber);
         setRingingPhone(phoneNumber || 'Unknown Number');
         setRingingLeadInfo(null);
@@ -129,8 +133,9 @@ export default function GlobalCallListener() {
         }
       } 
       else if (state === 'OFFHOOK') {
-        // Incoming call was answered — hide banner, start timer
+        // Incoming call was answered — hide banner, start UI timer
         if (isIncomingRef.current) {
+          isOffhookRef.current = true;
           // Slide banner out
           Animated.timing(bannerAnim, {
             toValue: -120,
@@ -157,6 +162,31 @@ export default function GlobalCallListener() {
 
         if (isIncomingRef.current) {
           stopTimer();
+
+          const endTime = Date.now();
+          const startTime = callStartTimeRef.current;
+          const wasOffhook = isOffhookRef.current;
+          const phone = incomingPhoneRef.current || displayPhone;
+
+          let authoritativeDuration = 0;
+          if (wasOffhook && startTime) {
+            const wallClockSec = Math.max(0, Math.round((endTime - startTime) / 1000));
+            authoritativeDuration = wallClockSec;
+
+            if (Platform.OS === 'android' && phone) {
+              try {
+                const logDuration = await getLatestCallLogDuration(phone, startTime, 'INCOMING');
+                if (typeof logDuration === 'number' && logDuration >= 0) {
+                  authoritativeDuration = logDuration;
+                }
+              } catch (err) {
+                console.warn('[GlobalCallListener] Failed to query CallLog duration:', err);
+              }
+            }
+          }
+
+          setCallDuration(authoritativeDuration);
+          setCallStatusState(wasOffhook ? 'CONNECTED' : 'MISSED');
           
           if (Platform.OS === 'android') {
             const path = await stopNativeRecording();
@@ -169,6 +199,7 @@ export default function GlobalCallListener() {
         
         // Reset tracking refs
         isIncomingRef.current = false;
+        isOffhookRef.current = false;
         callStartTimeRef.current = null;
         incomingPhoneRef.current = null;
       }
@@ -234,7 +265,7 @@ export default function GlobalCallListener() {
     setIsSubmitting(true);
 
     const mobileCallId = generateMobileCallId(displayPhone, 'INCOMING');
-    const status = callDuration > 0 ? 'CONNECTED' : 'MISSED';
+    const status = callDuration > 0 ? 'CONNECTED' : callStatusState;
 
     try {
       const formData = new FormData();
@@ -326,7 +357,7 @@ export default function GlobalCallListener() {
         call_direction: 'INCOMING',
         call_status: status,
         call_duration: callDuration,
-        notes: postCallNotes || `Incoming Call from ${displayPhone}`,
+        notes: postCallNotes ? `Incoming Call - Duration: ${formatDuration(callDuration)}\nNotes: ${postCallNotes}` : `Incoming Call from ${displayPhone} (${status}, ${formatDuration(callDuration)})`,
         pipeline_status: pipelineStatus,
         next_followup_date: nextFollowupDate?.toISOString(),
         recordedFilePath
@@ -347,6 +378,7 @@ export default function GlobalCallListener() {
     setLeadInfo(null);
     setDisplayPhone('');
     setCallDuration(0);
+    setCallStatusState('CONNECTED');
   };
 
   const pickRecordingFile = async () => {

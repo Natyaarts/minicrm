@@ -128,6 +128,30 @@ export const makeDirectCall = async (phoneNumber: string): Promise<boolean> => {
     }
 };
 
+export const getLatestCallLogDuration = async (
+    phoneNumber?: string,
+    startTimeMs?: number,
+    direction?: string
+): Promise<number | null> => {
+    if (Platform.OS !== 'android' || !CallRecordingModule || !CallRecordingModule.getLatestCallLogDuration) {
+        return null;
+    }
+    try {
+        const dur = await CallRecordingModule.getLatestCallLogDuration(
+            phoneNumber || "",
+            startTimeMs || 0,
+            direction || "INCOMING"
+        );
+        if (typeof dur === 'number' && !isNaN(dur) && dur >= 0) {
+            return dur;
+        }
+        return null;
+    } catch (e) {
+        console.warn('[CallManager] getLatestCallLogDuration error:', e);
+        return null;
+    }
+};
+
 export const listenToCallEvents = (onRecordingStopped: (filePath: string) => void) => {
     if (!callRecordingEmitter) return () => {};
 
