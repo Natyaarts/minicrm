@@ -85,10 +85,12 @@ export const syncPendingCalls = async () => {
           if (ext === 'mp3') mimeType = 'audio/mpeg';
           else if (ext === 'wav') mimeType = 'audio/wav';
 
+          const cleanPhone = (item.customer_number || item.caller_number || item.receiver_number || '').replace(/\D/g, '').slice(-10);
+          const recName = `offline_rec_${cleanPhone ? cleanPhone + '_' : ''}${item.mobile_call_id}.${ext}`;
           formData.append('audio_recording', {
             uri: finalUri,
             type: mimeType,
-            name: `offline_rec_${item.mobile_call_id}.${ext}`
+            name: recName
           } as any);
         }
 
@@ -142,29 +144,33 @@ export const syncMissingRecordings = async () => {
       const targetPhone = (call.student_phone || call.customer_number || call.caller_number || call.receiver_number || '').replace(/\D/g, '').slice(-10);
       const callTime = new Date(call.date).getTime();
       
-      // Find a matching file in the cache
+      // Find a matching file in the cache with strict phone/call identity
       let bestMatchingFile: string | null = null;
-      let minDiff = 300000; // 5 minutes max tolerance
+      let minDiff = 1800000; // 30 minutes max tolerance for phone-matched files
       
       for (const fileName of files) {
         // Check if the file is a recording
-        if (fileName.includes('fallback_recording') || fileName.includes('saf_recorded') || fileName.includes('incoming_record') || fileName.includes('record')) {
+        if (fileName.includes('fallback_recording') || fileName.includes('saf_recorded') || fileName.includes('incoming_record') || fileName.includes('recorded_call') || fileName.includes('offline_rec') || fileName.includes('record')) {
           const fileUri = `${FileSystem.cacheDirectory}${fileName}`;
           try {
             const fileInfo = await FileSystem.getInfoAsync(fileUri);
             
             if (fileInfo.exists) {
-              // Match by phone number if present in filename
+              // Extract normalized digits from filename
               const cleanFileName = fileName.replace(/\D/g, '');
-              const hasPhoneMatch = targetPhone && cleanFileName.includes(targetPhone);
+              const hasPhoneMatch = Boolean(targetPhone && targetPhone.length >= 6 && cleanFileName.includes(targetPhone));
+              const hasCallIdMatch = Boolean(call.mobile_call_id && fileName.includes(call.mobile_call_id));
               
-              // Match by creation/modification time
-              const fileTime = fileInfo.modificationTime ? fileInfo.modificationTime * 1000 : 0;
-              const timeDiff = Math.abs(fileTime - callTime);
-              
-              if (hasPhoneMatch || timeDiff < minDiff) {
-                bestMatchingFile = fileUri;
-                minDiff = timeDiff;
+              // Strictly require phone number or call ID match.
+              // Never attach an unrelated recording based merely on a broad timestamp window.
+              if (hasPhoneMatch || hasCallIdMatch) {
+                const fileTime = fileInfo.modificationTime ? fileInfo.modificationTime * 1000 : 0;
+                const timeDiff = fileTime && callTime ? Math.abs(fileTime - callTime) : 0;
+                
+                if (timeDiff < minDiff) {
+                  bestMatchingFile = fileUri;
+                  minDiff = timeDiff;
+                }
               }
             }
           } catch (_) {}
@@ -185,17 +191,17 @@ export const syncMissingRecordings = async () => {
         formData.append('audio_recording', {
           uri: bestMatchingFile,
           type: mimeType,
-          name: `sync_record_${call.id}_${Date.now()}.${ext}`
+          name: `sync_record_${targetPhone ? targetPhone + '_' : ''}${call.id}_${Date.now()}.${ext}`
         } as any);
         
-        // Upload via PATCH
+        // Upload via PATCH (preserves call_duration in backend)
         await client.patch(`/crm/interactions/${call.id}/`, formData, {
           headers: { 'Content-Type': 'multipart/form-data' }
         });
         
         console.log(`[SyncManager] Successfully uploaded missing recording for call ID ${call.id}`);
       } else {
-        console.log(`[SyncManager] No matching local recording found for call ID ${call.id}`);
+        console.log(`[SyncManager] No matching local recording found for call ID ${call.id} (left unassigned safely)`);
       }
     }
   } catch (err) {

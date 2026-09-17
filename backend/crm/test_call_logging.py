@@ -370,3 +370,90 @@ class CallLoggingIntegrationTests(TestCase):
         self.assertEqual(resp_missed.data['call_status'], 'MISSED')
         self.assertEqual(resp_missed.data['call_duration'], 0)
 
+    def test_15_incoming_recording_identity_and_cross_attachment_prevention(self):
+        """15. Two incoming calls close together retain separate recording identities and independent call durations"""
+        audio_file_1 = SimpleUploadedFile("incoming_record_9876543210_1726550000.m4a", b"audio_content_1", content_type="audio/m4a")
+        resp_call_1 = self.client.post('/api/crm/interactions/', {
+            'interaction_type': 'CALL',
+            'call_direction': 'INCOMING',
+            'caller_number': '+919876543210',
+            'customer_number': '+919876543210',
+            'call_status': 'CONNECTED',
+            'call_duration': 64,
+            'mobile_call_id': 'mob_inc_ananya_64s',
+            'audio_recording': audio_file_1
+        }, format='multipart')
+        self.assertEqual(resp_call_1.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(resp_call_1.data['call_duration'], 64)
+        self.assertEqual(resp_call_1.data['formatted_call_duration'], '1m 4s')
+        self.assertTrue('incoming_record_9876543210' in resp_call_1.data['audio_recording'])
+
+        # Second call to a different lead 30 seconds later
+        audio_file_2 = SimpleUploadedFile("incoming_record_9811122233_1726550030.m4a", b"audio_content_2", content_type="audio/m4a")
+        resp_call_2 = self.client.post('/api/crm/interactions/', {
+            'interaction_type': 'CALL',
+            'call_direction': 'INCOMING',
+            'caller_number': '+919811122233',
+            'customer_number': '+919811122233',
+            'call_status': 'CONNECTED',
+            'call_duration': 5,
+            'mobile_call_id': 'mob_inc_rohan_5s',
+            'audio_recording': audio_file_2
+        }, format='multipart')
+        self.assertEqual(resp_call_2.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(resp_call_2.data['call_duration'], 5)
+        self.assertEqual(resp_call_2.data['formatted_call_duration'], '5s')
+        self.assertTrue('incoming_record_9811122233' in resp_call_2.data['audio_recording'])
+
+        # Confirm neither call altered the other
+        call_1_db = LeadInteraction.objects.get(mobile_call_id='mob_inc_ananya_64s')
+        call_2_db = LeadInteraction.objects.get(mobile_call_id='mob_inc_rohan_5s')
+        self.assertEqual(call_1_db.call_duration, 64)
+        self.assertEqual(call_2_db.call_duration, 5)
+        self.assertNotEqual(call_1_db.audio_recording.name, call_2_db.audio_recording.name)
+
+    def test_16_audio_patch_never_overwrites_call_duration(self):
+        """16. Attaching or patching an audio recording via SyncManager never modifies call_duration"""
+        initial_resp = self.client.post('/api/crm/interactions/', {
+            'interaction_type': 'CALL',
+            'call_direction': 'INCOMING',
+            'caller_number': '+919876543210',
+            'customer_number': '+919876543210',
+            'call_status': 'CONNECTED',
+            'call_duration': 51,
+            'mobile_call_id': 'mob_sync_test_51s'
+        })
+        self.assertEqual(initial_resp.status_code, status.HTTP_201_CREATED)
+        interaction_id = initial_resp.data['id']
+        self.assertEqual(initial_resp.data['call_duration'], 51)
+        self.assertIsNone(initial_resp.data['audio_recording'])
+
+        # SyncManager attaches audio later via PATCH
+        sync_audio = SimpleUploadedFile("sync_record_9876543210_51s.m4a", b"synced_audio_bytes", content_type="audio/m4a")
+        patch_resp = self.client.patch(f'/api/crm/interactions/{interaction_id}/', {
+            'audio_recording': sync_audio
+        }, format='multipart')
+        self.assertEqual(patch_resp.status_code, status.HTTP_200_OK)
+        self.assertIsNotNone(patch_resp.data['audio_recording'])
+        self.assertEqual(patch_resp.data['call_duration'], 51)
+        self.assertEqual(patch_resp.data['formatted_call_duration'], '51s')
+
+    def test_17_outgoing_recording_behaviour_remains_intact(self):
+        """17. Outgoing call logging and recording attachment functions as expected"""
+        outgoing_audio = SimpleUploadedFile("outgoing_record_9876543210_120s.m4a", b"outgoing_audio", content_type="audio/m4a")
+        resp_out = self.client.post('/api/crm/interactions/', {
+            'interaction_type': 'CALL',
+            'call_direction': 'OUTGOING',
+            'receiver_number': '+919876543210',
+            'customer_number': '+919876543210',
+            'call_status': 'CONNECTED',
+            'call_duration': 120,
+            'mobile_call_id': 'mob_outgoing_120s',
+            'audio_recording': outgoing_audio
+        }, format='multipart')
+        self.assertEqual(resp_out.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(resp_out.data['call_direction'], 'OUTGOING')
+        self.assertEqual(resp_out.data['call_duration'], 120)
+        self.assertEqual(resp_out.data['formatted_call_duration'], '2m 0s')
+        self.assertIsNotNone(resp_out.data['audio_recording'])
+

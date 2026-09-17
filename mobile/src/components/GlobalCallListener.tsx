@@ -304,16 +304,18 @@ export default function GlobalCallListener() {
         else if (ext === 'amr') mimeType = 'audio/amr';
         else if (ext === 'aac') mimeType = 'audio/aac';
         
+        const cleanPhone = (displayPhone || '').replace(/\D/g, '').slice(-10);
         formData.append('audio_recording', {
           uri: finalUri,
           type: mimeType,
-          name: `incoming_record_${Date.now()}.${ext}`
+          name: `incoming_record_${cleanPhone ? cleanPhone + '_' : ''}${Date.now()}.${ext}`
         } as any);
       } else if (manualRecordingFile) {
+        const cleanPhone = (displayPhone || '').replace(/\D/g, '').slice(-10);
         formData.append('audio_recording', {
           uri: manualRecordingFile.uri,
           type: manualRecordingFile.mimeType || 'audio/mpeg',
-          name: manualRecordingFile.name || `record_${Date.now()}.mp3`
+          name: manualRecordingFile.name || `record_${cleanPhone ? cleanPhone + '_' : ''}${Date.now()}.mp3`
         } as any);
       }
 

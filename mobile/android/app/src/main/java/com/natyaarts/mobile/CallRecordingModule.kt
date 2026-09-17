@@ -129,9 +129,11 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
                 stopRecordingInternal(false)
             }
 
-            // Start MediaRecorder as fallback
+            // Start MediaRecorder as fallback with sanitized phone number in prefix to maintain recording identity
+            val cleanPhone = (phoneNumber ?: "").replace(Regex("[^0-9]"), "").takeLast(10)
+            val prefix = if (cleanPhone.isNotEmpty()) "fallback_recording_${cleanPhone}_" else "fallback_recording_"
             val outputDir = reactApplicationContext.cacheDir
-            val audioFile = File.createTempFile("fallback_recording_", ".m4a", outputDir)
+            val audioFile = File.createTempFile(prefix, ".m4a", outputDir)
             val filePath = audioFile.absolutePath
             fallbackFilePath = filePath
 
@@ -223,11 +225,13 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
         return path
     }
     
-    private fun copySafFileToCache(uri: Uri, fileName: String): String? {
+    private fun copySafFileToCache(uri: Uri, fileName: String, cleanPhone: String = ""): String? {
         try {
             val cacheDir = reactApplicationContext.cacheDir
             val safeFileName = fileName.replace(Regex("[^a-zA-Z0-9.-]"), "_")
-            val destFile = File(cacheDir, "saf_recorded_$safeFileName")
+            val cleanDigits = safeFileName.replace(Regex("[^0-9]"), "")
+            val prefix = if (cleanPhone.isNotEmpty() && !cleanDigits.contains(cleanPhone)) "saf_recorded_${cleanPhone}_" else "saf_recorded_"
+            val destFile = File(cacheDir, "$prefix$safeFileName")
             
             reactApplicationContext.contentResolver.openInputStream(uri)?.use { input ->
                 destFile.outputStream().use { output ->
@@ -313,7 +317,7 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
                         }
                         
                         if (mostRecentFile != null) {
-                            return copySafFileToCache(mostRecentFile.uri, mostRecentFile.name ?: "recording.m4a")
+                            return copySafFileToCache(mostRecentFile.uri, mostRecentFile.name ?: "recording.m4a", cleanPhone)
                         }
                     }
                 }
@@ -422,7 +426,7 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
                         (cleanFileName.contains(cleanPhone) || cleanPhone.contains(cleanFileName.takeLast(10)))
                     
                     if (isCallPath || phoneMatches) {
-                        return copyUriToCache(id, displayName)
+                        return copyUriToCache(id, displayName, cleanPhone)
                     }
                 }
             }
@@ -458,13 +462,15 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
     }
 
 
-    private fun copyUriToCache(id: Long, fileName: String): String? {
+    private fun copyUriToCache(id: Long, fileName: String, cleanPhone: String = ""): String? {
         try {
             val contentUri = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id)
             val cacheDir = reactApplicationContext.cacheDir
             
             val safeFileName = fileName.replace(Regex("[^a-zA-Z0-9.-]"), "_")
-            val destFile = File(cacheDir, "recorded_call_$safeFileName")
+            val cleanDigits = safeFileName.replace(Regex("[^0-9]"), "")
+            val prefix = if (cleanPhone.isNotEmpty() && !cleanDigits.contains(cleanPhone)) "recorded_call_${cleanPhone}_" else "recorded_call_"
+            val destFile = File(cacheDir, "$prefix$safeFileName")
             
             reactApplicationContext.contentResolver.openInputStream(contentUri)?.use { input ->
                 destFile.outputStream().use { output ->
