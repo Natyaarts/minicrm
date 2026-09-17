@@ -101,7 +101,8 @@ export default function GlobalCallListener() {
       const { state, phoneNumber } = event;
 
       if (state === 'RINGING') {
-        // ── Bug 1 Fix: Show live ringing banner immediately ──
+        // Ensure no active timer is running during ringing/incoming alerts
+        stopTimer();
         isIncomingRef.current = true;
         isOffhookRef.current = false;
         incomingPhoneRef.current = phoneNumber;
@@ -153,6 +154,9 @@ export default function GlobalCallListener() {
         }
       } 
       else if (state === 'IDLE') {
+        // Stop timer IMMEDIATELY on IDLE before ANY asynchronous CallLog/recording processing
+        stopTimer();
+
         // Call ended (answered or missed) — hide banner, show post-call modal
         Animated.timing(bannerAnim, {
           toValue: -120,
@@ -161,8 +165,6 @@ export default function GlobalCallListener() {
         }).start(() => setShowRingingBanner(false));
 
         if (isIncomingRef.current) {
-          stopTimer();
-
           const endTime = Date.now();
           const startTime = callStartTimeRef.current;
           const wasOffhook = isOffhookRef.current;
@@ -247,9 +249,14 @@ export default function GlobalCallListener() {
   };
 
   const startTimer = () => {
+    stopTimer();
     setCallDuration(0);
     timerRef.current = setInterval(() => {
-      setCallDuration(prev => prev + 1);
+      if (callStartTimeRef.current) {
+        setCallDuration(Math.max(0, Math.floor((Date.now() - callStartTimeRef.current) / 1000)));
+      } else {
+        setCallDuration(prev => prev + 1);
+      }
     }, 1000);
   };
 
@@ -372,6 +379,7 @@ export default function GlobalCallListener() {
   };
 
   const resetModal = () => {
+    stopTimer();
     setIsModalVisible(false);
     setPostCallNotes('');
     setRecordedFilePath(null);

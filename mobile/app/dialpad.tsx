@@ -137,22 +137,40 @@ const Dialpad = () => {
 
   const hasDialerAccess = user?.role === 'SALES' || user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';
 
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const startTimer = () => {
+    stopTimer();
+    timerRef.current = setInterval(() => {
+      if (callStartTimeRef.current > 0) {
+        setCallDuration(Math.max(0, Math.floor((Date.now() - callStartTimeRef.current) / 1000)));
+      }
+    }, 1000);
+  };
+
+  const stopTimer = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+
   useEffect(() => {
-    let interval: any;
     if (callStatus === 'ACTIVE') {
-      // If we don't have a start time yet (e.g. manual dial), set it now
       if (callStartTimeRef.current === 0) {
         callStartTimeRef.current = Date.now();
       }
-      interval = setInterval(() => {
-        setCallDuration(Math.floor((Date.now() - callStartTimeRef.current) / 1000));
-      }, 1000);
-    } else if (callStatus === 'IDLE') {
-      // Only reset when returning to idle — preserve duration for POST_CALL review
-      setCallDuration(0);
-      callStartTimeRef.current = 0;
+      startTimer();
+    } else {
+      stopTimer();
+      if (callStatus === 'IDLE') {
+        setCallDuration(0);
+        callStartTimeRef.current = 0;
+      }
     }
-    return () => clearInterval(interval);
+    return () => {
+      stopTimer();
+    };
   }, [callStatus]);
 
   const lastBackgroundTimeRef = useRef(0);
@@ -175,13 +193,14 @@ const Dialpad = () => {
           
           // Only trigger log screen if the app was in the background for at least 3 seconds
           if (timeInBackground > 3000) {
+            stopTimer();
             lastBackgroundTimeRef.current = 0;
             const startTime = callStartTimeRef.current;
             const elapsed = startTime > 0 ? Math.max(1, Math.floor((Date.now() - startTime) / 1000)) : 1;
             setCallDuration(elapsed);
 
             // Query CallLog asynchronously if available
-            if (Platform.OS === 'android' && phoneRef.current) {
+            if (Platform.OS === 'android' && phoneRef.current && startTime > 0) {
               getLatestCallLogDuration(phoneRef.current, startTime, 'OUTGOING').then(logDur => {
                 if (typeof logDur === 'number' && logDur >= 0) {
                   setCallDuration(logDur);
@@ -202,6 +221,7 @@ const Dialpad = () => {
     });
 
     return () => {
+      stopTimer();
       subscription.remove();
     };
   }, []);
@@ -276,18 +296,22 @@ const Dialpad = () => {
           callStarted = true;
           callStartTimeRef.current = Date.now();
           setCallStatus('ACTIVE');
+          startTimer();
           // Automatically start recording when call is active
           const filePath = await startNativeRecording(phoneRef.current);
           console.log("Call auto-started recording. Fallback path:", filePath);
         }
       } else if (state === 'IDLE') {
-        if (callStarted) {
+        // Stop visible timer immediately upon CALL_STATE_IDLE before any async CallLog/recording operations
+        stopTimer();
+
+        if (callStarted || callStatusRef.current === 'CALLING' || callStatusRef.current === 'ACTIVE') {
           callStarted = false;
           const startTime = callStartTimeRef.current;
-          const elapsed = startTime > 0 ? Math.max(1, Math.floor((Date.now() - startTime) / 1000)) : 1;
+          const elapsed = startTime > 0 ? Math.max(0, Math.floor((Date.now() - startTime) / 1000)) : 0;
           let authoritativeDuration = elapsed;
 
-          if (Platform.OS === 'android' && phoneRef.current) {
+          if (Platform.OS === 'android' && phoneRef.current && startTime > 0) {
             try {
               const logDuration = await getLatestCallLogDuration(phoneRef.current, startTime, 'OUTGOING');
               if (typeof logDuration === 'number' && logDuration >= 0) {
@@ -320,6 +344,7 @@ const Dialpad = () => {
     });
 
     return () => {
+      stopTimer();
       unsubscribeEvents();
       unsubscribeState();
     };
@@ -384,6 +409,7 @@ const Dialpad = () => {
   };
 
   const handleEndCall = async () => {
+    stopTimer();
     if (callStartTimeRef.current > 0) {
       const elapsed = Math.max(0, Math.floor((Date.now() - callStartTimeRef.current) / 1000));
       setCallDuration(elapsed);
@@ -400,8 +426,10 @@ const Dialpad = () => {
   };
 
   const handleCancelCall = async () => {
+    stopTimer();
     setCallStatus('IDLE');
     setCallDuration(0);
+    callStartTimeRef.current = 0;
     setRecordedFilePath(null);
     if (Platform.OS === 'android') {
       try {
