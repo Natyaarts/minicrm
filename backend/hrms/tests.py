@@ -410,3 +410,89 @@ class AttendanceComprehensiveTests(APITestCase):
         att = Attendance.objects.get(id=att_id)
         self.assertEqual(att.status, 'HALF_DAY')
         self.assertIn('Left early', att.notes)
+
+    def test_employee_search_returns_all_records_in_date_range_sorted_descending(self):
+        """
+        Verify that:
+        1. Searching for an employee (e.g. 'Sanidhya') across a date range (e.g. 19 days)
+           returns ALL attendance records for that employee together in a single result list.
+        2. Records are sorted newest date first (descending).
+        3. General unfiltered list still preserves standard pagination.
+        """
+        self.client.force_authenticate(user=self.admin_user)
+
+        # Create a specific employee named Sanidhya
+        sanidhya_user = User.objects.create_user(
+            username="sanidhya", first_name="Sanidhya", last_name="Sharma",
+            email="sanidhya@example.com", password="password123", role="EMPLOYEE"
+        )
+        sanidhya_profile = sanidhya_user.hrms_profile
+        sanidhya_profile.employee_id = "EMP-SAN-001"
+        sanidhya_profile.department = self.dept
+        sanidhya_profile.designation = self.emp_desig
+        sanidhya_profile.status = "ACTIVE"
+        sanidhya_profile.save()
+
+        # Create another employee Rahul
+        rahul_user = User.objects.create_user(
+            username="rahul", first_name="Rahul", last_name="Verma",
+            email="rahul@example.com", password="password123", role="EMPLOYEE"
+        )
+        rahul_profile = rahul_user.hrms_profile
+        rahul_profile.employee_id = "EMP-RAH-002"
+        rahul_profile.department = self.dept
+        rahul_profile.designation = self.emp_desig
+        rahul_profile.status = "ACTIVE"
+        rahul_profile.save()
+
+        start_date = datetime.date(2026, 9, 1)
+        end_date = datetime.date(2026, 9, 19)
+
+        # Create attendance records for Sanidhya and Rahul from 2026-09-01 to 2026-09-19 (19 days)
+        cur = start_date
+        while cur <= end_date:
+            Attendance.objects.create(
+                employee=sanidhya_profile,
+                date=cur,
+                clock_in=datetime.time(9, 30, 0),
+                clock_out=datetime.time(18, 30, 0),
+                status='PRESENT'
+            )
+            Attendance.objects.create(
+                employee=rahul_profile,
+                date=cur,
+                clock_in=datetime.time(9, 15, 0),
+                clock_out=datetime.time(18, 15, 0),
+                status='PRESENT'
+            )
+            cur += datetime.timedelta(days=1)
+
+        # 1. Search for Sanidhya within date range
+        res = self.client.get(f'/api/hrms/attendance/?start_date=2026-09-01&end_date=2026-09-19&search=Sanidhya')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        results = res.data.get('results', res.data)
+        # Should return ALL 19 records for Sanidhya in the single page
+        self.assertEqual(len(results), 19)
+        self.assertEqual(res.data.get('count'), 19)
+        self.assertIsNone(res.data.get('next'))
+        self.assertIsNone(res.data.get('previous'))
+
+        # Verify all records belong to Sanidhya
+        for r in results:
+            self.assertEqual(r['employee_name'], 'Sanidhya Sharma')
+            self.assertEqual(r['employee_id_display'], 'EMP-SAN-001')
+
+        # Verify records are sorted newest date first (descending)
+        dates = [r['date'] for r in results]
+        expected_dates = [(start_date + datetime.timedelta(days=i)).strftime('%Y-%m-%d') for i in range(19)]
+        expected_dates.reverse() # Newest first: 2026-09-19, 2026-09-18, ..., 2026-09-01
+        self.assertEqual(dates, expected_dates)
+
+        # 2. General unfiltered list should have standard pagination (page_size = 20)
+        res_unfiltered = self.client.get(f'/api/hrms/attendance/?start_date=2026-09-01&end_date=2026-09-19')
+        self.assertEqual(res_unfiltered.status_code, status.HTTP_200_OK)
+        # Total records = 19 (Sanidhya) + 19 (Rahul) = 38
+        self.assertEqual(res_unfiltered.data.get('count'), 38)
+        self.assertEqual(len(res_unfiltered.data.get('results')), 20)
+        self.assertIsNotNone(res_unfiltered.data.get('next'))

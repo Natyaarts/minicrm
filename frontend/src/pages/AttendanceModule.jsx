@@ -83,9 +83,15 @@ const AttendanceModule = () => {
     }, [authUser]);
 
     useEffect(() => {
-        fetchAttendance(1);
         requestLocation();
-    }, [activeTab, startDate, endDate, filterType]);
+    }, []);
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            fetchAttendance(1, searchTerm);
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [activeTab, startDate, endDate, filterType, searchTerm]);
 
     const requestLocation = () => {
         if ("geolocation" in navigator) {
@@ -108,7 +114,7 @@ const AttendanceModule = () => {
         }
     };
 
-    const fetchAttendance = async (pageNum = page) => {
+    const fetchAttendance = async (pageNum = page, currentSearch = searchTerm) => {
         setLoading(true);
         try {
             let query = `hrms/attendance/?page=${pageNum}`;
@@ -120,6 +126,9 @@ const AttendanceModule = () => {
                 } else {
                     query += `&status=${filterType.toUpperCase()}`;
                 }
+            }
+            if (currentSearch && currentSearch.trim()) {
+                query += `&search=${encodeURIComponent(currentSearch.trim())}&page_size=1000`;
             }
             
             const res = await api.get(query);
@@ -188,6 +197,9 @@ const AttendanceModule = () => {
                 } else {
                     exportUrl += `&status_filter=${filterType.toUpperCase()}`;
                 }
+            }
+            if (searchTerm && searchTerm.trim()) {
+                exportUrl += `&search=${encodeURIComponent(searchTerm.trim())}`;
             }
             const res = await api.get(exportUrl);
             const records = res.data.results || res.data || [];
@@ -263,7 +275,7 @@ const AttendanceModule = () => {
             if (res.data && res.data.is_face_verified === false) {
                 alert("Face verification failed. Please try again with better lighting.");
             }
-            fetchAttendance();
+            fetchAttendance(page, searchTerm);
         } catch (err) {
             console.error("Clock In Error:", err);
             alert(err.response?.data?.error || `Clock-in failed: ${err.message || 'Unknown error'}`);
@@ -280,7 +292,7 @@ const AttendanceModule = () => {
                 latitude: location.latitude,
                 longitude: location.longitude
             });
-            fetchAttendance();
+            fetchAttendance(page, searchTerm);
         } catch (err) {
             alert(err.response?.data?.error || "Clock-out failed");
         } finally {
@@ -291,7 +303,7 @@ const AttendanceModule = () => {
     const handleOverrideStatus = async (logId, newStatus) => {
         try {
             await api.patch(`hrms/attendance/${logId}/override_status/`, { status: newStatus });
-            fetchAttendance();
+            fetchAttendance(page, searchTerm);
         } catch (err) {
             alert(err.response?.data?.error || "Failed to override status");
         }
@@ -300,7 +312,7 @@ const AttendanceModule = () => {
     const handleMarkPresent = async (employeeId) => {
         try {
             await api.post('hrms/attendance/mark_present/', { employee_id: employeeId });
-            fetchAttendance();
+            fetchAttendance(page, searchTerm);
         } catch (err) {
             alert(err.response?.data?.error || "Failed to mark present");
         }
@@ -320,7 +332,7 @@ const AttendanceModule = () => {
             };
             const res = await api.post('hrms/attendance/manual_entry/', payload);
             setManualMsg({ type: 'success', text: res.data.message || 'Attendance saved successfully!' });
-            fetchAttendance();
+            fetchAttendance(page, searchTerm);
             setTimeout(() => { setShowManualEntry(false); setManualMsg(null); }, 1800);
         } catch (err) {
             setManualMsg({ type: 'error', text: err.response?.data?.error || 'Failed to save attendance.' });
@@ -896,10 +908,15 @@ const AttendanceModule = () => {
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
                                         {attendanceLogs
-                                            .filter(log => 
-                                                log.employee_name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                                                log.date.includes(searchTerm)
-                                            )
+                                            .filter(log => {
+                                                if (!searchTerm) return true;
+                                                const term = searchTerm.toLowerCase();
+                                                return (
+                                                    log.employee_name?.toLowerCase().includes(term) ||
+                                                    log.employee_id_display?.toLowerCase().includes(term) ||
+                                                    log.date?.includes(term)
+                                                );
+                                            })
                                             .map((log) => (
                                             <tr key={log.id} className="hover:bg-slate-50/50 transition-colors">
                                                 {activeTab === 'master' && (
@@ -1029,14 +1046,14 @@ const AttendanceModule = () => {
                                     </span>
                                     <div className="flex gap-2">
                                         <button 
-                                            onClick={() => fetchAttendance(page - 1)}
+                                            onClick={() => fetchAttendance(page - 1, searchTerm)}
                                             disabled={!pagination.previous}
                                             className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
                                         >
                                             Previous
                                         </button>
                                         <button 
-                                            onClick={() => fetchAttendance(page + 1)}
+                                            onClick={() => fetchAttendance(page + 1, searchTerm)}
                                             disabled={!pagination.next}
                                             className="px-3 py-1.5 bg-indigo-50 border border-indigo-100 rounded-lg text-xs font-bold text-indigo-600 hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
                                         >

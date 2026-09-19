@@ -35,9 +35,19 @@ class ShiftSettingViewSet(viewsets.ModelViewSet):
             return Response({"error": "Permission denied. Only HR/Admin can modify shift settings."}, status=403)
         return super().destroy(request, *args, **kwargs)
 
+from core.pagination import StandardResultsSetPagination
+
+class AttendancePagination(StandardResultsSetPagination):
+    def get_page_size(self, request):
+        search = request.query_params.get('search')
+        if search and not request.query_params.get(self.page_size_query_param):
+            return 1000
+        return super().get_page_size(request)
+
 class AttendanceViewSet(viewsets.ModelViewSet):
     serializer_class = AttendanceSerializer
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = AttendancePagination
 
     def get_queryset(self):
         user = self.request.user
@@ -58,6 +68,7 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         employee_id = self.request.query_params.get('employee_id') or self.request.query_params.get('employee')
         status_param = self.request.query_params.get('status')
         missed_clock_out = self.request.query_params.get('missed_clock_out') or (self.request.query_params.get('filter_type') == 'missed_clock_out')
+        search_query = self.request.query_params.get('search')
         
         if start_date:
             qs = qs.filter(date__gte=start_date)
@@ -70,6 +81,38 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         if str(missed_clock_out).lower() in ['true', '1']:
             qs = qs.filter(clock_in__isnull=False, clock_out__isnull=True)
             
+        if search_query:
+            search_query = search_query.strip()
+            from django.db.models.functions import Concat
+            from django.db.models import Value, Q
+            qs = qs.annotate(
+                full_name=Concat('employee__user__first_name', Value(' '), 'employee__user__last_name')
+            )
+            words = search_query.split()
+            search_filter = (
+                Q(employee__user__first_name__icontains=search_query) |
+                Q(employee__user__last_name__icontains=search_query) |
+                Q(employee__user__username__icontains=search_query) |
+                Q(employee__employee_id__icontains=search_query) |
+                Q(full_name__icontains=search_query) |
+                Q(date__icontains=search_query) |
+                Q(notes__icontains=search_query)
+            )
+            if len(words) > 1:
+                word_filters = Q()
+                for word in words:
+                    word_filters &= (
+                        Q(employee__user__first_name__icontains=word) |
+                        Q(employee__user__last_name__icontains=word) |
+                        Q(employee__user__username__icontains=word) |
+                        Q(employee__employee_id__icontains=word) |
+                        Q(full_name__icontains=word) |
+                        Q(date__icontains=word) |
+                        Q(notes__icontains=word)
+                    )
+                search_filter = search_filter | word_filters
+            qs = qs.filter(search_filter)
+
         return qs
 
     def create(self, request, *args, **kwargs):
@@ -574,6 +617,9 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         employee_id = request.query_params.get('employee_id') or request.query_params.get('employee')
         status_filter = request.query_params.get('status_filter') or request.query_params.get('status')
         filter_type = request.query_params.get('filter_type')
+        search_query = request.query_params.get('search')
+        if search_query:
+            search_query = search_query.strip().lower()
 
         is_admin = (user.role in ['SUPER_ADMIN', 'ADMIN'] or user.is_superuser)
         
@@ -678,6 +724,11 @@ class AttendanceViewSet(viewsets.ModelViewSet):
 
                 if filter_type == 'missed_clock_out' or str(request.query_params.get('missed_clock_out')).lower() in ['true', '1']:
                     if not is_missed:
+                        continue
+
+                if search_query:
+                    searchable_text = f"{item['employee_name']} {item['employee_id_display']} {item['date']} {item['notes']}".lower()
+                    if search_query not in searchable_text:
                         continue
 
                 results.append(item)

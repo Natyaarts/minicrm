@@ -345,6 +345,14 @@ class StudentSerializer(serializers.ModelSerializer):
             # 1. Normalize and check duplicates
             email = validated_data.get('email')
             mobile = validated_data.get('mobile')
+            program = validated_data.get('program_type')
+            is_nsdc = bool(
+                program and (
+                    getattr(program, 'slug', '') == 'nsdc'
+                    or 'nsdc' in getattr(program, 'name', '').lower()
+                    or 'national skill development' in getattr(program, 'name', '').lower()
+                )
+            )
             
             from crm.services.deduplication import lookup_existing_student, normalize_lead_phone, normalize_lead_email
             clean_phone = normalize_lead_phone(mobile)
@@ -356,7 +364,7 @@ class StudentSerializer(serializers.ModelSerializer):
 
             # Centralized duplicate check
             dup_student, dup_reason = lookup_existing_student(mobile=clean_phone or mobile, email=clean_em or email)
-            if dup_student:
+            if dup_student and not is_nsdc:
                 raise serializers.ValidationError({
                     "mobile": f"A student or lead record already exists with these contact details (CRM ID: {dup_student.crm_student_id})."
                 })
@@ -367,7 +375,23 @@ class StudentSerializer(serializers.ModelSerializer):
             if User.objects.filter(username=username).exists():
                 user = User.objects.get(username=username)
                 if hasattr(user, 'student_profile'):
-                    raise serializers.ValidationError({"mobile": "An application has already been submitted for this mobile number/email."})
+                    if is_nsdc:
+                        # For NSDC application by an existing student, generate a distinct user account
+                        # to preserve 1-to-1 relationship with the new NSDC application
+                        import uuid
+                        unique_suffix = uuid.uuid4().hex[:8]
+                        nsdc_username = f"nsdc_{clean_phone or clean_em or 'student'}_{unique_suffix}"
+                        user = User.objects.create_user(
+                            username=nsdc_username,
+                            email=clean_em or '',
+                            first_name=validated_data.get('first_name', ''),
+                            last_name=validated_data.get('last_name', '')
+                        )
+                        user.set_password('welcome123')
+                        user.role = 'STUDENT'
+                        user.save()
+                    else:
+                        raise serializers.ValidationError({"mobile": "An application has already been submitted for this mobile number/email."})
             else:
                 user = User.objects.create_user(
                     username=username, 
@@ -385,6 +409,20 @@ class StudentSerializer(serializers.ModelSerializer):
             # 3. Create Student
             student = Student.objects.create(user=user, crm_student_id=crm_id, **validated_data)
             
+            # If this is an NSDC application for an existing student, record interaction on original student
+            if is_nsdc and dup_student:
+                try:
+                    from crm.services.deduplication import record_reengagement_interaction
+                    record_reengagement_interaction(
+                        student=dup_student,
+                        source_name="NSDC Application Form",
+                        notes=f"Student submitted a new NSDC Application (Application ID: {crm_id})."
+                    )
+                except Exception as e:
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.warning(f"Could not log NSDC submission on existing student: {e}")
+
             # 4. Handle Documents (Legacy & Dynamic)
             Document = apps.get_model('core', 'Document')
             DynamicField = apps.get_model('forms_builder', 'DynamicField')
