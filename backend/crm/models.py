@@ -71,6 +71,27 @@ class LeadInteraction(models.Model):
         date_str = self.date.strftime('%Y-%m-%d') if self.date else ''
         return f"{self.interaction_type} ({direction}) with {target} on {date_str}"
 
+    def save(self, *args, **kwargs):
+        is_unconnected = (self.call_status or '').upper() in ['MISSED', 'REJECTED', 'UNANSWERED', 'FAILED']
+        if is_unconnected:
+            self.call_duration = 0
+            if self.audio_recording:
+                try:
+                    self.audio_recording.delete(save=False)
+                except Exception:
+                    pass
+                self.audio_recording = None
+            self.recording_url = None
+        elif self.audio_recording:
+            try:
+                from .utils import extract_audio_duration
+                rec_dur = extract_audio_duration(self.audio_recording)
+                if rec_dur > 0:
+                    self.call_duration = rec_dur
+            except Exception:
+                pass
+        super().save(*args, **kwargs)
+
 
 class Campaign(models.Model):
     STATUS_CHOICES = (

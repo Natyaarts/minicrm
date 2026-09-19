@@ -106,3 +106,99 @@ def match_agent_by_phone(raw_phone):
         Q(phone_number=parsed['canonical']) | Q(phone_number__endswith=last10)
     ).first()
     return user
+
+
+def extract_audio_duration(file_obj) -> int:
+    """
+    Extracts the duration of an audio file in integer seconds.
+    Supports M4A/MP4/3GP/AAC, MP3 (ID3v2 TLEN, Xing/Info), WAV, and other audio formats.
+    Works with Django FieldFile, UploadedFile, file paths, or file-like objects.
+    """
+    import struct
+    import io
+    import wave
+
+    if not file_obj:
+        return 0
+    try:
+        data = None
+        if hasattr(file_obj, 'open') and not hasattr(file_obj, 'read'):
+            try:
+                file_obj.open('rb')
+            except Exception:
+                pass
+
+        if hasattr(file_obj, 'read'):
+            pos = file_obj.tell() if hasattr(file_obj, 'tell') else 0
+            data = file_obj.read(1048576)
+            if hasattr(file_obj, 'seek'):
+                file_obj.seek(pos)
+        elif isinstance(file_obj, str):
+            with open(file_obj, 'rb') as f:
+                data = f.read(1048576)
+        elif isinstance(file_obj, bytes):
+            data = file_obj
+
+        if not data or len(data) < 12:
+            return 0
+
+        # 1. WAV
+        if data[:4] == b'RIFF' and data[8:12] == b'WAVE':
+            try:
+                with wave.open(io.BytesIO(data), 'rb') as w:
+                    frames = w.getnframes()
+                    rate = w.getframerate()
+                    if rate > 0:
+                        return int(round(frames / float(rate)))
+            except Exception:
+                pass
+
+        # 2. MP4 / M4A / 3GP / AAC
+        idx = data.find(b'mvhd')
+        if idx != -1 and idx + 24 <= len(data):
+            try:
+                version = data[idx + 4]
+                if version == 0 and idx + 24 <= len(data):
+                    timescale, duration = struct.unpack('>II', data[idx + 16 : idx + 24])
+                    if timescale > 0:
+                        return int(round(duration / float(timescale)))
+                elif version == 1 and idx + 36 <= len(data):
+                    timescale = struct.unpack('>I', data[idx + 24 : idx + 28])[0]
+                    duration = struct.unpack('>Q', data[idx + 28 : idx + 36])[0]
+                    if timescale > 0:
+                        return int(round(duration / float(timescale)))
+            except Exception:
+                pass
+
+        # 3. MP3 ID3v2 TLEN frame (Length in ms)
+        tlen_idx = data.find(b'TLEN')
+        if tlen_idx != -1 and tlen_idx + 14 <= len(data):
+            try:
+                size = struct.unpack('>I', data[tlen_idx + 4 : tlen_idx + 8])[0]
+                frame_data = data[tlen_idx + 10 : tlen_idx + 10 + min(size, 30)]
+                digits = ''.join(chr(b) for b in frame_data if chr(b).isdigit())
+                if digits:
+                    ms = int(digits)
+                    if ms > 0:
+                        return int(round(ms / 1000.0))
+            except Exception:
+                pass
+
+        # 4. MP3 Xing / Info header
+        xing_idx = data.find(b'Xing')
+        if xing_idx == -1:
+            xing_idx = data.find(b'Info')
+        if xing_idx != -1 and xing_idx + 16 <= len(data):
+            try:
+                flags = struct.unpack('>I', data[xing_idx + 4 : xing_idx + 8])[0]
+                if flags & 0x0001:
+                    frames = struct.unpack('>I', data[xing_idx + 8 : xing_idx + 12])[0]
+                    sec = int(round(frames * 1152 / 44100.0))
+                    if sec > 0:
+                        return sec
+            except Exception:
+                pass
+
+    except Exception:
+        pass
+    return 0

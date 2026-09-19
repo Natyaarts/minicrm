@@ -86,14 +86,29 @@ class TelephonyWebhookView(APIView):
         recording_url = payload.get('RecordingUrl') or payload.get('recording_url') or payload.get('audio_url') or payload.get('record_url') or ''
         telephony_provider = payload.get('provider') or payload.get('telephony_provider') or 'TELEPHONY_WEBHOOK'
 
+        is_unconnected = call_status in ['MISSED', 'REJECTED', 'UNANSWERED', 'FAILED']
+        if is_unconnected:
+            duration_sec = 0
+            recording_url = ''
+
         # If existing interaction found, update it (idempotency)
         if existing:
-            if recording_url and not existing.recording_url:
-                existing.recording_url = recording_url
-            if duration_sec > 0 and existing.call_duration == 0:
-                existing.call_duration = duration_sec
-            if call_status and existing.call_status != 'CONNECTED':
+            if call_status:
                 existing.call_status = call_status
+            if is_unconnected:
+                existing.call_duration = 0
+                existing.recording_url = None
+                if existing.audio_recording:
+                    try:
+                        existing.audio_recording.delete(save=False)
+                    except Exception:
+                        pass
+                    existing.audio_recording = None
+            else:
+                if recording_url and not existing.recording_url:
+                    existing.recording_url = recording_url
+                if duration_sec > 0 and existing.call_duration == 0:
+                    existing.call_duration = duration_sec
             existing.save()
             return Response({"status": "updated", "id": existing.id}, status=status.HTTP_200_OK)
 

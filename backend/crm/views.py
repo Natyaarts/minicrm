@@ -451,17 +451,33 @@ class LeadInteractionViewSet(viewsets.ModelViewSet):
             
         if existing:
             # Update with newly provided fields
-            if request.FILES.get('audio_recording'):
-                existing.audio_recording = request.FILES.get('audio_recording')
-            if request.data.get('recording_url'):
-                existing.recording_url = request.data.get('recording_url')
-            if request.data.get('call_duration'):
-                try:
-                    existing.call_duration = int(request.data.get('call_duration'))
-                except (ValueError, TypeError):
-                    pass
             if request.data.get('call_status'):
                 existing.call_status = request.data.get('call_status')
+
+            is_unconn = (existing.call_status or '').upper() in ['MISSED', 'REJECTED', 'UNANSWERED', 'FAILED']
+            if is_unconn:
+                existing.call_duration = 0
+                if existing.audio_recording:
+                    try:
+                        existing.audio_recording.delete(save=False)
+                    except Exception:
+                        pass
+                    existing.audio_recording = None
+                existing.recording_url = None
+            else:
+                if request.FILES.get('audio_recording'):
+                    existing.audio_recording = request.FILES.get('audio_recording')
+                    from .utils import extract_audio_duration
+                    rec_dur = extract_audio_duration(existing.audio_recording)
+                    if rec_dur > 0:
+                        existing.call_duration = rec_dur
+                elif request.data.get('call_duration'):
+                    try:
+                        existing.call_duration = int(request.data.get('call_duration'))
+                    except (ValueError, TypeError):
+                        pass
+                if request.data.get('recording_url'):
+                    existing.recording_url = request.data.get('recording_url')
             if request.data.get('notes'):
                 existing.notes = request.data.get('notes')
             existing.save()
@@ -491,6 +507,18 @@ class LeadInteractionViewSet(viewsets.ModelViewSet):
         except (ValueError, TypeError):
             dur_int = 0
 
+        # Enforce recording duration and unconnected rules
+        is_unconnected = call_status in ['MISSED', 'REJECTED', 'UNANSWERED', 'FAILED']
+        audio_file = request.FILES.get('audio_recording') if not is_unconnected else None
+        rec_url = request.data.get('recording_url') if not is_unconnected else None
+        if is_unconnected:
+            dur_int = 0
+        elif audio_file:
+            from .utils import extract_audio_duration
+            rec_dur = extract_audio_duration(audio_file)
+            if rec_dur > 0:
+                dur_int = rec_dur
+
         # Secondary lead matching: search complete CRM dataset
         student = None
         is_matched = False
@@ -519,13 +547,13 @@ class LeadInteractionViewSet(viewsets.ModelViewSet):
             call_duration=dur_int,
             start_time=request.data.get('start_time'),
             end_time=request.data.get('end_time'),
-            recording_url=request.data.get('recording_url'),
+            recording_url=rec_url,
             provider_call_id=provider_call_id,
             provider_event_id=request.data.get('provider_event_id'),
             telephony_provider=request.data.get('telephony_provider', 'MOBILE_APP'),
             is_matched=is_matched,
             notes=notes,
-            audio_recording=request.FILES.get('audio_recording')
+            audio_recording=audio_file
         )
 
         # Optional pipeline update & follow-up task only if student matched
