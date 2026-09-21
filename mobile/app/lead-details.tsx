@@ -540,21 +540,6 @@ export default function LeadDetailsScreen() {
           </View>
         </View>
 
-        {/* Dynamic Fields */}
-        {student?.dynamic_values_list && student.dynamic_values_list.length > 0 && (
-          <View style={[styles.sectionCard, isDark && styles.darkCard]}>
-            <Text style={styles.sectionTitle}>DYNAMIC FIELDS (FORM DATA)</Text>
-            <View style={styles.grid}>
-              {student.dynamic_values_list.map((field: any, idx: number) => (
-                <View key={idx} style={styles.gridCol}>
-                  <Text style={styles.fieldLabel}>{field.field_label.toUpperCase()}</Text>
-                  <Text style={[styles.fieldValue, isDark && styles.darkText]}>{field.value || '-'}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-
         {/* Action Panel */}
         <View style={styles.actionPanel}>
           <TouchableOpacity 

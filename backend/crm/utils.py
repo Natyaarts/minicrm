@@ -202,3 +202,44 @@ def extract_audio_duration(file_obj) -> int:
     except Exception:
         pass
     return 0
+
+
+def compute_audio_hash(file_obj) -> str:
+    """
+    Computes a SHA-256 hash of the audio content for deduplication.
+    Works with Django FieldFile, UploadedFile, file paths, or file-like objects.
+    """
+    import hashlib
+    if not file_obj:
+        return ""
+    try:
+        h = hashlib.sha256()
+        if hasattr(file_obj, 'open') and not hasattr(file_obj, 'read'):
+            try:
+                file_obj.open('rb')
+            except Exception:
+                pass
+
+        if hasattr(file_obj, 'read'):
+            pos = file_obj.tell() if hasattr(file_obj, 'tell') else 0
+            if hasattr(file_obj, 'seek'):
+                file_obj.seek(0)
+            while True:
+                chunk = file_obj.read(65536)
+                if not chunk:
+                    break
+                h.update(chunk)
+            if hasattr(file_obj, 'seek'):
+                file_obj.seek(pos)
+        elif isinstance(file_obj, str):
+            with open(file_obj, 'rb') as f:
+                while True:
+                    chunk = f.read(65536)
+                    if not chunk:
+                        break
+                    h.update(chunk)
+        elif isinstance(file_obj, bytes):
+            h.update(file_obj)
+        return h.hexdigest()
+    except Exception:
+        return ""

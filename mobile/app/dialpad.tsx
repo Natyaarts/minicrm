@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Notifications from 'expo-notifications';
 import { useLocalSearchParams, router } from 'expo-router';
 import { startNativeRecording, stopNativeRecording, listenToCallEvents, requestCallPermissions, listenToCallState, makeDirectCall, getLatestCallLogDuration } from '../src/utils/CallManager';
-import { generateMobileCallId, queueOfflineCall } from '../src/utils/SyncManager';
+import { generateMobileCallId, queueOfflineCall, markRecordingConsumed } from '../src/utils/SyncManager';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
@@ -322,7 +322,6 @@ const Dialpad = () => {
             }
           }
 
-          setCallDuration(authoritativeDuration);
           setCallStatus('POST_CALL');
           setIsProcessingRecording(true);
           // Automatically stop recording when call hangs up
@@ -330,14 +329,12 @@ const Dialpad = () => {
           if (filePath) {
             console.log("Call auto-stopped recording. Path:", filePath);
             setRecordedFilePath(filePath);
-            // Protect authoritative call duration: only fallback if authoritativeDuration is 0
-            if (authoritativeDuration <= 0) {
-              const exactDuration = await extractDurationFromAudio(filePath);
-              if (exactDuration && exactDuration > 0) {
-                setCallDuration(exactDuration);
-              }
+            const exactDuration = await extractDurationFromAudio(filePath);
+            if (exactDuration && exactDuration > 0) {
+              authoritativeDuration = exactDuration;
             }
           }
+          setCallDuration(authoritativeDuration);
           setIsProcessingRecording(false);
         }
       }
@@ -419,7 +416,13 @@ const Dialpad = () => {
     if (Platform.OS === 'android') {
       setIsProcessingRecording(true);
       const filePath = await stopNativeRecording();
-      if (filePath) setRecordedFilePath(filePath);
+      if (filePath) {
+        setRecordedFilePath(filePath);
+        const exactDuration = await extractDurationFromAudio(filePath);
+        if (exactDuration && exactDuration > 0) {
+          setCallDuration(exactDuration);
+        }
+      }
       console.log("Stopped recording manually:", filePath);
       setIsProcessingRecording(false);
     }
@@ -530,6 +533,8 @@ const Dialpad = () => {
         await client.post('/crm/interactions/', formData, {
           headers: { 'Content-Type': 'multipart/form-data' }
         });
+
+        await markRecordingConsumed(fileUriToUpload);
       } else {
         await client.post('/crm/interactions/', parameters);
       }
@@ -543,7 +548,7 @@ const Dialpad = () => {
               body: `It's time to follow up with ${phoneNumber}!`,
               sound: true,
             },
-            trigger: { type: 'date', date: nextFollowupDate.getTime(), channelId: 'default' },
+            trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: nextFollowupDate, channelId: 'default' },
           });
         }
       }

@@ -261,24 +261,29 @@ class AttendanceComprehensiveTests(APITestCase):
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         data = res.data
 
-        # Total active employees = 27
+        # Total active employees = 27 (26 OFFICE, 1 REMOTE)
         self.assertEqual(data['total_active_employees'], 27)
         # Present count = 10
         self.assertEqual(data['present_count'], 10)
         # On leave count = 5
         self.assertEqual(data['on_leave_count'], 5)
-        # Absent count = 27 - 10 - 5 = 12
-        self.assertEqual(data['absent_count'], 12)
+        # Absent count = 26 office - 10 present - 5 leave = 11 (emp_profile2 is REMOTE and excluded from absent)
+        self.assertEqual(data['absent_count'], 11)
+        self.assertEqual(data['wfh_count'], 1)
 
         # Verify emp_profile1 is in present_list and NOT in absent_list
         present_emp_ids = [p['employee_id'] for p in data['present_list']]
         absent_emp_ids = [a['employee_id'] for a in data['absent_list']]
         leave_emp_ids = [l['employee_id'] for l in data['on_leave_list']]
+        wfh_emp_ids = [w['employee_id'] for w in data['wfh_list']]
 
         self.assertIn("EMP001", present_emp_ids)
         self.assertNotIn("EMP001", absent_emp_ids)
         self.assertIn(extra_employees[9].employee_id, leave_emp_ids)
         self.assertNotIn(extra_employees[9].employee_id, absent_emp_ids)
+        # emp2 is REMOTE -> in wfh_list, NOT in absent_list
+        self.assertIn("EMP002", wfh_emp_ids)
+        self.assertNotIn("EMP002", absent_emp_ids)
 
     def test_approved_leave_source_of_truth_reconciliation(self):
         """
@@ -308,6 +313,90 @@ class AttendanceComprehensiveTests(APITestCase):
         self.assertIn("EMP001", on_leave_ids)
         self.assertNotIn("EMP001", absent_ids)
 
+    def test_permanent_wfh_attendance_and_absentee_logic(self):
+        """
+        Verify Permanent WFH Attendance Logic:
+        1. Permanent WFH + no attendance -> NOT in absent_list, has status 'WFH', in wfh_list.
+        2. Normal employee + no attendance -> shown in absent_list with status 'ABSENT'.
+        3. Permanent WFH + attendance -> works normally (status 'PRESENT', in present_list, not in absent_list).
+        4. Permanent WFH + approved leave -> works normally (status 'ON_LEAVE', in on_leave_list, not in absent_list).
+        """
+        today = timezone.localdate()
+        today_str = today.strftime('%Y-%m-%d')
+
+        # Create another WFH employee
+        wfh_user2 = User.objects.create_user(
+            username="wfh_emp2", email="wfh2@example.com", password="password123", role="EMPLOYEE"
+        )
+        wfh_profile2 = wfh_user2.hrms_profile
+        wfh_profile2.employee_id = "WFH002"
+        wfh_profile2.department = self.dept
+        wfh_profile2.designation = self.emp_desig
+        wfh_profile2.work_location = "REMOTE"
+        wfh_profile2.status = "ACTIVE"
+        wfh_profile2.save()
+
+        # Create another WFH employee on leave
+        wfh_user3 = User.objects.create_user(
+            username="wfh_emp3", email="wfh3@example.com", password="password123", role="EMPLOYEE"
+        )
+        wfh_profile3 = wfh_user3.hrms_profile
+        wfh_profile3.employee_id = "WFH003"
+        wfh_profile3.department = self.dept
+        wfh_profile3.designation = self.emp_desig
+        wfh_profile3.work_location = "REMOTE"
+        wfh_profile3.status = "ACTIVE"
+        wfh_profile3.save()
+
+        # Case 3: wfh_profile2 clocks in (PRESENT)
+        Attendance.objects.create(
+            employee=wfh_profile2,
+            date=today,
+            clock_in=datetime.time(9, 30, 0),
+            clock_out=datetime.time(18, 30, 0),
+            status='PRESENT'
+        )
+
+        # Case 4: wfh_profile3 has approved leave (ON_LEAVE)
+        LeaveRequest.objects.create(
+            employee=wfh_profile3,
+            leave_type=self.leave_type,
+            start_date=today,
+            end_date=today,
+            reason="Medical emergency",
+            status="APPROVED"
+        )
+
+        # Case 1: self.emp_profile2 is REMOTE with NO attendance and NO leave.
+        # Case 2: self.emp_profile1 is OFFICE with NO attendance and NO leave.
+
+        self.client.force_authenticate(user=self.admin_user)
+        res = self.client.get(f'/api/hrms/attendance/daily_summary/?date={today_str}')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        data = res.data
+
+        absent_emp_ids = [a['employee_id'] for a in data['absent_list']]
+        present_emp_ids = [p['employee_id'] for p in data['present_list']]
+        leave_emp_ids = [l['employee_id'] for l in data['on_leave_list']]
+        wfh_emp_ids = [w['employee_id'] for w in data['wfh_list']]
+
+        # 1. Permanent WFH with no attendance (emp_profile2) is NOT in absent_list
+        self.assertNotIn("EMP002", absent_emp_ids)
+        self.assertIn("EMP002", wfh_emp_ids)
+        wfh_emp2_data = next(w for w in data['wfh_list'] if w['employee_id'] == "EMP002")
+        self.assertEqual(wfh_emp2_data['status'], "WFH")
+
+        # 2. Normal employee with no attendance (emp_profile1) is in absent_list
+        self.assertIn("EMP001", absent_emp_ids)
+
+        # 3. Permanent WFH with attendance (wfh_profile2) is PRESENT and NOT in absent_list
+        self.assertIn("WFH002", present_emp_ids)
+        self.assertNotIn("WFH002", absent_emp_ids)
+
+        # 4. Permanent WFH with approved leave (wfh_profile3) is ON_LEAVE and NOT in absent_list
+        self.assertIn("WFH003", leave_emp_ids)
+        self.assertNotIn("WFH003", absent_emp_ids)
+
     def test_date_range_report_complete_matrix(self):
         """
         Verify that date_range_report produces a complete Employee x Date matrix
@@ -316,7 +405,7 @@ class AttendanceComprehensiveTests(APITestCase):
         start_date = timezone.localdate()
         end_date = start_date + datetime.timedelta(days=2) # 3 calendar days
 
-        # Employee 1 is PRESENT on day 1
+        # Employee 1 (OFFICE) is PRESENT on day 1
         Attendance.objects.create(
             employee=self.emp_profile1,
             date=start_date,
@@ -325,7 +414,7 @@ class AttendanceComprehensiveTests(APITestCase):
             status='PRESENT'
         )
 
-        # Employee 2 is ON_LEAVE on day 2
+        # Employee 2 (REMOTE) is ON_LEAVE on day 2
         LeaveRequest.objects.create(
             employee=self.emp_profile2,
             leave_type=self.leave_type,
@@ -354,6 +443,9 @@ class AttendanceComprehensiveTests(APITestCase):
 
         emp2_day2 = next(r for r in report if r['employee_id_display'] == 'EMP002' and r['date'] == (start_date + datetime.timedelta(days=1)).strftime('%Y-%m-%d'))
         self.assertEqual(emp2_day2['status'], 'ON_LEAVE')
+
+        emp2_day1 = next(r for r in report if r['employee_id_display'] == 'EMP002' and r['date'] == start_date.strftime('%Y-%m-%d'))
+        self.assertEqual(emp2_day1['status'], 'WFH')
 
     def test_missed_clock_out(self):
         """

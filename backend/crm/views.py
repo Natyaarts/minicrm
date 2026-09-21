@@ -466,11 +466,18 @@ class LeadInteractionViewSet(viewsets.ModelViewSet):
                 existing.recording_url = None
             else:
                 if request.FILES.get('audio_recording'):
-                    existing.audio_recording = request.FILES.get('audio_recording')
-                    from .utils import extract_audio_duration
-                    rec_dur = extract_audio_duration(existing.audio_recording)
-                    if rec_dur > 0:
-                        existing.call_duration = rec_dur
+                    uploaded_audio = request.FILES.get('audio_recording')
+                    from .utils import extract_audio_duration, compute_audio_hash
+                    file_hash = compute_audio_hash(uploaded_audio)
+                    if file_hash and LeadInteraction.objects.filter(audio_file_hash=file_hash).exclude(pk=existing.pk).exclude(mobile_call_id=existing.mobile_call_id).exists():
+                        # Duplicate binary on another call - do not attach
+                        pass
+                    else:
+                        existing.audio_recording = uploaded_audio
+                        existing.audio_file_hash = file_hash
+                        rec_dur = extract_audio_duration(existing.audio_recording)
+                        if rec_dur > 0:
+                            existing.call_duration = rec_dur
                 elif request.data.get('call_duration'):
                     try:
                         existing.call_duration = int(request.data.get('call_duration'))
@@ -514,10 +521,19 @@ class LeadInteractionViewSet(viewsets.ModelViewSet):
         if is_unconnected:
             dur_int = 0
         elif audio_file:
-            from .utils import extract_audio_duration
-            rec_dur = extract_audio_duration(audio_file)
-            if rec_dur > 0:
-                dur_int = rec_dur
+            from .utils import extract_audio_duration, compute_audio_hash
+            file_hash = compute_audio_hash(audio_file)
+            dup_query = LeadInteraction.objects.filter(audio_file_hash=file_hash)
+            if mobile_call_id:
+                dup_query = dup_query.exclude(mobile_call_id=mobile_call_id)
+            if file_hash and dup_query.exists():
+                # Duplicate audio binary detected on a different call - reject cross-attachment
+                audio_file = None
+            else:
+                rec_dur = extract_audio_duration(audio_file)
+                if rec_dur > 0:
+                    dur_int = rec_dur
+
 
         # Secondary lead matching: search complete CRM dataset
         student = None
@@ -553,7 +569,8 @@ class LeadInteractionViewSet(viewsets.ModelViewSet):
             telephony_provider=request.data.get('telephony_provider', 'MOBILE_APP'),
             is_matched=is_matched,
             notes=notes,
-            audio_recording=audio_file
+            audio_recording=audio_file,
+            audio_file_hash=file_hash if audio_file else None
         )
 
         # Optional pipeline update & follow-up task only if student matched

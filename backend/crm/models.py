@@ -53,6 +53,7 @@ class LeadInteraction(models.Model):
     
     notes = models.TextField(blank=True, default='')
     audio_recording = models.FileField(upload_to='call_recordings/%Y/%m/', null=True, blank=True)
+    audio_file_hash = models.CharField(max_length=64, blank=True, null=True, db_index=True, help_text="SHA-256 hash of audio content to prevent duplicate cross-call attachment")
     recording_url = models.CharField(max_length=1000, blank=True, null=True, help_text="Remote/telephony audio recording URL")
     
     provider_call_id = models.CharField(max_length=150, blank=True, null=True, db_index=True, help_text="Provider call ID")
@@ -82,15 +83,36 @@ class LeadInteraction(models.Model):
                     pass
                 self.audio_recording = None
             self.recording_url = None
+            self.audio_file_hash = None
         elif self.audio_recording:
             try:
-                from .utils import extract_audio_duration
-                rec_dur = extract_audio_duration(self.audio_recording)
-                if rec_dur > 0:
-                    self.call_duration = rec_dur
+                from .utils import extract_audio_duration, compute_audio_hash
+                file_hash = compute_audio_hash(self.audio_recording)
+                # Check for duplicate audio binary on another distinct call
+                if file_hash:
+                    dup_query = LeadInteraction.objects.filter(audio_file_hash=file_hash)
+                    if self.pk:
+                        dup_query = dup_query.exclude(pk=self.pk)
+                    if self.mobile_call_id:
+                        dup_query = dup_query.exclude(mobile_call_id=self.mobile_call_id)
+
+                    if dup_query.exists():
+                        # Duplicate binary detected on a different call - reject cross-attachment!
+                        try:
+                            self.audio_recording.delete(save=False)
+                        except Exception:
+                            pass
+                        self.audio_recording = None
+                        self.audio_file_hash = None
+                    else:
+                        self.audio_file_hash = file_hash
+                        rec_dur = extract_audio_duration(self.audio_recording)
+                        if rec_dur > 0:
+                            self.call_duration = rec_dur
             except Exception:
                 pass
         super().save(*args, **kwargs)
+
 
 
 class Campaign(models.Model):

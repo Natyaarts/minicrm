@@ -540,8 +540,11 @@ class AttendanceViewSet(viewsets.ModelViewSet):
                 else:
                     present_list.append(emp_info)
             else:
-                emp_info["status"] = "ABSENT"
-                absent_list.append(emp_info)
+                if profile.work_location == 'REMOTE':
+                    emp_info["status"] = "WFH"
+                else:
+                    emp_info["status"] = "ABSENT"
+                    absent_list.append(emp_info)
 
         counts_dict = {
             "total_employees": len(all_profiles),
@@ -678,7 +681,10 @@ class AttendanceViewSet(viewsets.ModelViewSet):
                     clock_out = att.clock_out
                     att_id = att.id
                 else:
-                    status = 'ABSENT'
+                    if p.work_location == 'REMOTE':
+                        status = 'WFH'
+                    else:
+                        status = 'ABSENT'
                     notes = ""
                     clock_in = None
                     clock_out = None

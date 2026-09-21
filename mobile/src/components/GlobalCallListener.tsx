@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, TextInput, Platform, ScrollView, Alert, ActivityIndicator, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { listenToCallState, listenToMissedCalls, startNativeRecording, stopNativeRecording, getLatestCallLogDuration } from '../utils/CallManager';
-import { generateMobileCallId, queueOfflineCall } from '../utils/SyncManager';
+import { listenToCallState, listenToMissedCalls, startNativeRecording, stopNativeRecording, getLatestCallLogDuration, extractDurationFromAudio } from '../utils/CallManager';
+import { generateMobileCallId, queueOfflineCall, markRecordingConsumed } from '../utils/SyncManager';
 import client from '../api/client';
 import * as DocumentPicker from 'expo-document-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -187,13 +187,21 @@ export default function GlobalCallListener() {
             }
           }
 
+          if (Platform.OS === 'android' && wasOffhook) {
+            const path = await stopNativeRecording();
+            if (path) {
+              setRecordedFilePath(path);
+              const exactDuration = await extractDurationFromAudio(path);
+              if (exactDuration && exactDuration > 0) {
+                authoritativeDuration = exactDuration;
+              }
+            }
+          } else if (Platform.OS === 'android') {
+            await stopNativeRecording();
+          }
+
           setCallDuration(authoritativeDuration);
           setCallStatusState(wasOffhook ? 'CONNECTED' : 'MISSED');
-          
-          if (Platform.OS === 'android') {
-            const path = await stopNativeRecording();
-            if (path) setRecordedFilePath(path);
-          }
           
           // Show post-call review modal
           setIsModalVisible(true);
@@ -329,6 +337,10 @@ export default function GlobalCallListener() {
       await client.post('/crm/interactions/', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
+
+      if (recordedFilePath) {
+        await markRecordingConsumed(recordedFilePath);
+      }
 
       if (nextFollowupDate && leadInfo?.id) {
         const msUntilFollowup = nextFollowupDate.getTime() - Date.now();

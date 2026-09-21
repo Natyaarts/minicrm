@@ -1,4 +1,4 @@
-import { Platform, Alert, NativeModules, NativeEventEmitter, PermissionsAndroid } from 'react-native';
+import { Platform, Alert, NativeModules, NativeEventEmitter, PermissionsAndroid, Permission } from 'react-native';
 
 const { CallRecordingModule } = NativeModules;
 const callRecordingEmitter = CallRecordingModule ? new NativeEventEmitter(CallRecordingModule) : null;
@@ -6,20 +6,20 @@ const callRecordingEmitter = CallRecordingModule ? new NativeEventEmitter(CallRe
 export const requestCallPermissions = async () => {
     if (Platform.OS !== 'android') return true;
     try {
-        const permissionsToRequest = [
+        const permissionsToRequest: Permission[] = [
             PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE,
             PermissionsAndroid.PERMISSIONS.READ_CALL_LOG,
             PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
             PermissionsAndroid.PERMISSIONS.CALL_PHONE,
         ];
         
-        if (Platform.Version >= 33) {
+        if (Number(Platform.Version) >= 33) {
             permissionsToRequest.push(PermissionsAndroid.PERMISSIONS.READ_MEDIA_AUDIO);
         } else {
             permissionsToRequest.push(PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE);
         }
 
-        const ungranted = [];
+        const ungranted: Permission[] = [];
         for (const p of permissionsToRequest) {
             const granted = await PermissionsAndroid.check(p);
             if (!granted) ungranted.push(p);
@@ -62,7 +62,6 @@ export const listenToMissedCalls = (onMissedCall: (event: { phoneNumber: string;
         sub.remove();
     };
 };
-
 
 export const requestDefaultDialerRole = async () => {
     if (Platform.OS !== 'android') {
@@ -173,4 +172,26 @@ export const listenToCallEvents = (onRecordingStopped: (filePath: string) => voi
         sub2.remove();
         sub3.remove();
     };
+};
+
+export const extractDurationFromAudio = async (fileUri: string): Promise<number | null> => {
+    try {
+        const { Audio } = require('expo-av');
+        let uri = fileUri;
+        if (!uri.startsWith('file://') && !uri.startsWith('content://') && !uri.startsWith('http')) {
+            uri = `file://${uri}`;
+        }
+        const { sound, status } = await Audio.Sound.createAsync(
+            { uri },
+            { shouldPlay: false }
+        );
+        if (status.isLoaded && status.durationMillis && status.durationMillis > 0) {
+            const durationSec = Math.round(status.durationMillis / 1000);
+            await sound.unloadAsync();
+            return durationSec;
+        }
+    } catch (err) {
+        console.log('[CallManager] Failed to read audio file duration:', err);
+    }
+    return null;
 };

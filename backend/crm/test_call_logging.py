@@ -553,3 +553,167 @@ class CallLoggingIntegrationTests(TestCase):
         self.assertEqual(response.data['call_duration'], 185)
         self.assertEqual(response.data['formatted_call_duration'], '3m 5s')
         self.assertIsNone(response.data.get('audio_recording'))
+
+    def test_22_duplicate_audio_binary_cross_call_attachment_prevention(self):
+        """22. Exact same audio binary uploaded for two different calls is blocked by backend from cross-attaching"""
+        shared_audio_binary = make_m4a_audio(434) # 7m 14s recording
+
+        # Call 1 (Sitara_d)
+        audio_file_1 = SimpleUploadedFile("recording_sitara.m4a", shared_audio_binary, content_type="audio/m4a")
+        resp_call_1 = self.client.post('/api/crm/interactions/', {
+            'interaction_type': 'CALL',
+            'call_direction': 'OUTGOING',
+            'receiver_number': '+919515207159',
+            'customer_number': '+919515207159',
+            'call_status': 'CONNECTED',
+            'call_duration': 0,
+            'mobile_call_id': 'mob_sitara_call_001',
+            'audio_recording': audio_file_1
+        }, format='multipart')
+        self.assertEqual(resp_call_1.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(resp_call_1.data['call_duration'], 434)
+        self.assertEqual(resp_call_1.data['formatted_call_duration'], '7m 14s')
+        self.assertIsNotNone(resp_call_1.data['audio_recording'])
+        call_1_id = resp_call_1.data['id']
+
+        # Call 2 (Nandini) - tries to upload the exact same binary payload
+        audio_file_2 = SimpleUploadedFile("recording_nandini.m4a", shared_audio_binary, content_type="audio/m4a")
+        resp_call_2 = self.client.post('/api/crm/interactions/', {
+            'interaction_type': 'CALL',
+            'call_direction': 'OUTGOING',
+            'receiver_number': '+919881760496',
+            'customer_number': '+919881760496',
+            'call_status': 'CONNECTED',
+            'call_duration': 45,
+            'mobile_call_id': 'mob_nandini_call_002',
+            'audio_recording': audio_file_2
+        }, format='multipart')
+        self.assertEqual(resp_call_2.status_code, status.HTTP_201_CREATED)
+        # Call 2 must NOT have the duplicate audio recording attached
+        self.assertIsNone(resp_call_2.data.get('audio_recording'))
+        # Call 2 preserves its own original call duration (45s) instead of adopting Call 1's 7m 14s recording duration
+        self.assertEqual(resp_call_2.data['call_duration'], 45)
+        self.assertEqual(resp_call_2.data['formatted_call_duration'], '45s')
+
+        # Verify DB states
+        call_1_db = LeadInteraction.objects.get(id=call_1_id)
+        call_2_db = LeadInteraction.objects.get(id=resp_call_2.data['id'])
+        self.assertTrue(bool(call_1_db.audio_recording))
+        self.assertFalse(bool(call_2_db.audio_recording))
+        self.assertEqual(call_1_db.call_duration, 434)
+        self.assertEqual(call_2_db.call_duration, 45)
+
+    def test_23_same_phone_different_calls_with_distinct_recordings(self):
+        """23. Two calls to the same phone number with distinct recordings attach their respective recordings"""
+        # Call A: 3m 8s incoming
+        audio_3m8s = SimpleUploadedFile("rec_incoming_3m8s.m4a", make_m4a_audio(188), content_type="audio/m4a")
+        resp_a = self.client.post('/api/crm/interactions/', {
+            'interaction_type': 'CALL',
+            'call_direction': 'INCOMING',
+            'caller_number': '+917593905516',
+            'customer_number': '+917593905516',
+            'call_status': 'CONNECTED',
+            'call_duration': 0,
+            'mobile_call_id': 'mob_nazarin_inc_188s',
+            'audio_recording': audio_3m8s
+        }, format='multipart')
+        self.assertEqual(resp_a.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(resp_a.data['call_duration'], 188)
+        self.assertEqual(resp_a.data['formatted_call_duration'], '3m 8s')
+
+        # Call B: 40s outgoing with separate 40s recording
+        audio_40s = SimpleUploadedFile("rec_outgoing_40s.m4a", make_m4a_audio(40), content_type="audio/m4a")
+        resp_b = self.client.post('/api/crm/interactions/', {
+            'interaction_type': 'CALL',
+            'call_direction': 'OUTGOING',
+            'receiver_number': '+917593905516',
+            'customer_number': '+917593905516',
+            'call_status': 'CONNECTED',
+            'call_duration': 0,
+            'mobile_call_id': 'mob_nazarin_out_40s',
+            'audio_recording': audio_40s
+        }, format='multipart')
+        self.assertEqual(resp_b.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(resp_b.data['call_duration'], 40)
+        self.assertEqual(resp_b.data['formatted_call_duration'], '40s')
+
+        # Verify distinct audio hashes and files in DB
+        db_a = LeadInteraction.objects.get(mobile_call_id='mob_nazarin_inc_188s')
+        db_b = LeadInteraction.objects.get(mobile_call_id='mob_nazarin_out_40s')
+        self.assertNotEqual(db_a.audio_file_hash, db_b.audio_file_hash)
+        self.assertEqual(db_a.call_duration, 188)
+        self.assertEqual(db_b.call_duration, 40)
+
+    def test_24_connected_call_with_5m08s_recording_duration_matches(self):
+        """24. Connected call with a 5:08 (308s) recording sets call duration to 5:08 and attaches recording"""
+        audio_5m08s = SimpleUploadedFile("recording_5m08s.m4a", make_m4a_audio(308), content_type="audio/m4a")
+        response = self.client.post('/api/crm/interactions/', {
+            'interaction_type': 'CALL',
+            'call_direction': 'INCOMING',
+            'caller_number': '+919876543210',
+            'customer_number': '+919876543210',
+            'call_status': 'CONNECTED',
+            'call_duration': 45, # Initially 45s displayed
+            'audio_recording': audio_5m08s,
+            'mobile_call_id': 'mob_call_5m08s'
+        }, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        # Duration is synchronized to the matched 5:08 recording (308s)
+        self.assertEqual(response.data['call_duration'], 308)
+        self.assertEqual(response.data['formatted_call_duration'], '5m 8s')
+        self.assertIsNotNone(response.data['audio_recording'])
+
+    def test_25_retry_same_recording_for_same_call_allowed_but_different_call_blocked(self):
+        """25. Same recording retried for same call is allowed/updated idempotently, but rejected for a different call"""
+        audio_binary_8m36s = make_m4a_audio(516) # 8m 36s (516s)
+        audio_file = SimpleUploadedFile("rec_8m36s.m4a", audio_binary_8m36s, content_type="audio/m4a")
+
+        # Initial call
+        resp_1 = self.client.post('/api/crm/interactions/', {
+            'interaction_type': 'CALL',
+            'call_direction': 'OUTGOING',
+            'receiver_number': '+919876543210',
+            'customer_number': '+919876543210',
+            'call_status': 'CONNECTED',
+            'call_duration': 0,
+            'mobile_call_id': 'mob_call_8m36s_orig',
+            'audio_recording': audio_file
+        }, format='multipart')
+        self.assertEqual(resp_1.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(resp_1.data['call_duration'], 516)
+        self.assertEqual(resp_1.data['formatted_call_duration'], '8m 36s')
+
+        # Retry for SAME call with same mobile_call_id (e.g. offline sync retry)
+        audio_file_retry = SimpleUploadedFile("rec_8m36s.m4a", audio_binary_8m36s, content_type="audio/m4a")
+        resp_retry = self.client.post('/api/crm/interactions/', {
+            'interaction_type': 'CALL',
+            'call_direction': 'OUTGOING',
+            'receiver_number': '+919876543210',
+            'customer_number': '+919876543210',
+            'call_status': 'CONNECTED',
+            'call_duration': 516,
+            'mobile_call_id': 'mob_call_8m36s_orig',
+            'audio_recording': audio_file_retry
+        }, format='multipart')
+        self.assertEqual(resp_retry.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp_retry.data['id'], resp_1.data['id'])
+        self.assertIsNotNone(resp_retry.data['audio_recording'])
+
+        # Attempt to attach same audio to a DIFFERENT call
+        audio_file_diff = SimpleUploadedFile("rec_8m36s.m4a", audio_binary_8m36s, content_type="audio/m4a")
+        resp_diff = self.client.post('/api/crm/interactions/', {
+            'interaction_type': 'CALL',
+            'call_direction': 'OUTGOING',
+            'receiver_number': '+919811122233',
+            'customer_number': '+919811122233',
+            'call_status': 'CONNECTED',
+            'call_duration': 517, # 8m 37s native call duration
+            'mobile_call_id': 'mob_call_8m37s_diff',
+            'audio_recording': audio_file_diff
+        }, format='multipart')
+        self.assertEqual(resp_diff.status_code, status.HTTP_201_CREATED)
+        # Duplicate audio binary is blocked from attaching to the different call
+        self.assertIsNone(resp_diff.data.get('audio_recording'))
+        # Call preserves its native duration (517s = 8m 37s)
+        self.assertEqual(resp_diff.data['call_duration'], 517)
+        self.assertEqual(resp_diff.data['formatted_call_duration'], '8m 37s')

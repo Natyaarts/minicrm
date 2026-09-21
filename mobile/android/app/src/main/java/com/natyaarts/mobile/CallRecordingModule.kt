@@ -250,9 +250,52 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
         return null
     }
 
+    private fun isVerifiedCallRecording(
+        fileName: String,
+        filePath: String,
+        targetPhone: String,
+        startTimeMs: Long,
+        fileLastModified: Long
+    ): Boolean {
+        if (!isAudioRecordingFile(fileName)) return false
+        if (!isCallRecordingKeyword(fileName, filePath)) return false
+
+        val cleanTarget = targetPhone.replace(Regex("[^0-9]"), "").takeLast(10)
+        val cleanDigitsInFile = fileName.replace(Regex("[^0-9]"), "")
+
+        // 1. Check if filename contains a DIFFERENT 10-digit phone number
+        val otherPhoneRegex = Regex("""(?:\+?91|0)?([6-9]\d{9})""")
+        val foundMatch = otherPhoneRegex.find(fileName)
+        if (foundMatch != null) {
+            val foundOtherPhone = foundMatch.groupValues.getOrNull(1) ?: foundMatch.value.replace(Regex("[^0-9]"), "").takeLast(10)
+            if (cleanTarget.length >= 6 && foundOtherPhone.isNotEmpty() && foundOtherPhone != cleanTarget) {
+                return false
+            }
+        }
+
+        val phoneMatches = cleanTarget.length >= 6 && (cleanDigitsInFile.contains(cleanTarget) || fileName.contains(cleanTarget))
+
+        if (phoneMatches) {
+            // Strict timestamp window around call session
+            val windowStart = if (startTimeMs > 0) (startTimeMs - 30_000L) else (System.currentTimeMillis() - 120_000L)
+            val windowEnd = System.currentTimeMillis() + 30_000L
+            return fileLastModified in windowStart..windowEnd
+        }
+
+        // 2. If phone is not in the filename at all (e.g. timestamp-only like Rec_2026-09-19_15-06-18.m4a),
+        // strictly require that the file was created during this active call window
+        if (startTimeMs > 0) {
+            val tightStart = startTimeMs - 5_000L
+            val tightEnd = System.currentTimeMillis() + 15_000L
+            return fileLastModified in tightStart..tightEnd
+        }
+
+        return false
+    }
+
     private fun findRecentSystemRecording(phoneNumber: String, startTimeMs: Long, scanSaf: Boolean): String? {
         val contentResolver = reactApplicationContext.contentResolver
-        val cleanPhone = phoneNumber.replace(Regex("[^0-9]"), "")
+        val cleanPhone = phoneNumber.replace(Regex("[^0-9]"), "").takeLast(10)
         
         // 1. Check custom SAF folder first (user-selected via folder picker)
         val prefs = reactApplicationContext.getSharedPreferences("CallRecordings", Context.MODE_PRIVATE)
@@ -268,15 +311,11 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
                     val dir = File(physicalPath)
                     if (dir.exists() && dir.isDirectory) {
                         var mostRecentFile: File? = null
-                        var maxLastModified = startTimeMs - 900000 // 15 minutes window
+                        var maxLastModified = if (startTimeMs > 0) (startTimeMs - 30_000L) else 0L
                         for (file in (dir.listFiles() ?: emptyArray())) {
                             if (file.isFile && file.lastModified() >= maxLastModified) {
                                 val name = file.name ?: ""
-                                val cleanFileName = name.replace(Regex("[^0-9]"), "")
-                                val phoneMatches = cleanPhone.isNotEmpty() && cleanFileName.isNotEmpty() && 
-                                                   (cleanFileName.contains(cleanPhone) || cleanPhone.contains(cleanFileName.takeLast(10)))
-                                val isAudio = isAudioRecordingFile(name)
-                                if (phoneMatches || isAudio) {
+                                if (isVerifiedCallRecording(name, file.absolutePath, phoneNumber, startTimeMs, file.lastModified())) {
                                     if (file.lastModified() > (mostRecentFile?.lastModified() ?: 0)) {
                                         mostRecentFile = file
                                         maxLastModified = file.lastModified()
@@ -295,19 +334,12 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
                     val documentFile = DocumentFile.fromTreeUri(reactApplicationContext, treeUri)
                     if (documentFile != null && documentFile.isDirectory) {
                         var mostRecentFile: DocumentFile? = null
-                        var maxLastModified = startTimeMs - 900000 // 15 minutes window
+                        var maxLastModified = if (startTimeMs > 0) (startTimeMs - 30_000L) else 0L
                         
                         for (file in documentFile.listFiles()) {
                             if (file.isFile && file.lastModified() >= maxLastModified) {
                                 val name = file.name ?: ""
-                                val cleanFileName = name.replace(Regex("[^0-9]"), "")
-                                
-                                val phoneMatches = cleanPhone.isNotEmpty() && cleanFileName.isNotEmpty() && 
-                                                   (cleanFileName.contains(cleanPhone) || cleanPhone.contains(cleanFileName))
-                                                   
-                                val isAudio = isAudioRecordingFile(name)
-                                               
-                                if (phoneMatches || isAudio) {
+                                if (isVerifiedCallRecording(name, name, phoneNumber, startTimeMs, file.lastModified())) {
                                     if (file.lastModified() > (mostRecentFile?.lastModified() ?: 0)) {
                                         mostRecentFile = file
                                         maxLastModified = file.lastModified()
@@ -326,8 +358,7 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
             }
         }
 
-        // 2. Scan known brand-specific directories on the filesystem
-        //    Different brands save recordings to completely different paths.
+        // 2. Scan known brand-specific directories on the filesystem (Strict OEM call recording locations only)
         val knownPaths = listOf(
             // Samsung
             "/storage/emulated/0/Call",
@@ -358,13 +389,10 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
             "/storage/emulated/0/Sounds/CallRecord",
             // Itel / Tecno / Infinix (common in India)
             "/storage/emulated/0/TelephoneRecord",
-            "/storage/emulated/0/callrecordings",
-            // Generic fallbacks
-            "/storage/emulated/0/Music",
-            "/storage/emulated/0/Download",
+            "/storage/emulated/0/callrecordings"
         )
 
-        val windowStart = startTimeMs - 900000L // 15 minutes window
+        val windowStart = if (startTimeMs > 0) (startTimeMs - 30_000L) else 0L
         var bestFile: File? = null
         var bestModified = windowStart
 
@@ -374,14 +402,9 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
             for (file in (dir.listFiles() ?: emptyArray())) {
                 if (!file.isFile) continue
                 if (file.lastModified() < windowStart) continue
-                if (!isAudioRecordingFile(file.name)) continue
 
-                val cleanFileName = file.name.replace(Regex("[^0-9]"), "")
-                val phoneMatches = cleanPhone.isNotEmpty() && cleanFileName.isNotEmpty() &&
-                    (cleanFileName.contains(cleanPhone) || cleanPhone.contains(cleanFileName.takeLast(10)))
-                val isCallKeyword = isCallRecordingKeyword(file.name, dirPath)
-
-                if (phoneMatches || isCallKeyword) {
+                val name = file.name ?: ""
+                if (isVerifiedCallRecording(name, file.absolutePath, phoneNumber, startTimeMs, file.lastModified())) {
                     if (file.lastModified() > bestModified) {
                         bestFile = file
                         bestModified = file.lastModified()
@@ -400,12 +423,13 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
             MediaStore.Audio.Media._ID,
             MediaStore.Audio.Media.DISPLAY_NAME,
             MediaStore.Audio.Media.DATA,
-            MediaStore.Audio.Media.DATE_ADDED
+            MediaStore.Audio.Media.DATE_ADDED,
+            MediaStore.Audio.Media.DATE_MODIFIED
         )
-        val startTimeSeconds = startTimeMs / 1000 - 900 // 15 minutes window
-        val selection = "${MediaStore.Audio.Media.DATE_ADDED} >= ?"
-        val selectionArgs = arrayOf(startTimeSeconds.toString())
-        val sortOrder = "${MediaStore.Audio.Media.DATE_ADDED} DESC"
+        val startTimeSeconds = if (startTimeMs > 0) (startTimeMs / 1000 - 30) else (System.currentTimeMillis() / 1000 - 120)
+        val selection = "${MediaStore.Audio.Media.DATE_ADDED} >= ? OR ${MediaStore.Audio.Media.DATE_MODIFIED} >= ?"
+        val selectionArgs = arrayOf(startTimeSeconds.toString(), startTimeSeconds.toString())
+        val sortOrder = "${MediaStore.Audio.Media.DATE_MODIFIED} DESC, ${MediaStore.Audio.Media.DATE_ADDED} DESC"
         
         var cursor: Cursor? = null
         try {
@@ -414,18 +438,18 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
                 val idCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
                 val displayNameCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DISPLAY_NAME)
                 val dataCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA)
+                val dateAddedCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_ADDED)
+                val dateModCol = cursor.getColumnIndex(MediaStore.Audio.Media.DATE_MODIFIED)
                 
                 while (cursor.moveToNext()) {
                     val id = cursor.getLong(idCol)
                     val filePath = cursor.getString(dataCol) ?: ""
                     val displayName = cursor.getString(displayNameCol) ?: ""
+                    val dateAddedSec = cursor.getLong(dateAddedCol)
+                    val dateModSec = if (dateModCol != -1) cursor.getLong(dateModCol) else 0L
+                    val fileLastModified = maxOf(dateAddedSec, dateModSec) * 1000L
                     
-                    val isCallPath = isCallRecordingKeyword(displayName, filePath)
-                    val cleanFileName = displayName.replace(Regex("[^0-9]"), "")
-                    val phoneMatches = cleanPhone.isNotEmpty() && cleanFileName.isNotEmpty() &&
-                        (cleanFileName.contains(cleanPhone) || cleanPhone.contains(cleanFileName.takeLast(10)))
-                    
-                    if (isCallPath || phoneMatches) {
+                    if (isVerifiedCallRecording(displayName, filePath, phoneNumber, startTimeMs, fileLastModified)) {
                         return copyUriToCache(id, displayName, cleanPhone)
                     }
                 }

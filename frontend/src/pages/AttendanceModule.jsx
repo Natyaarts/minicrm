@@ -164,7 +164,8 @@ const AttendanceModule = () => {
                 const combined = [
                     ...(summaryData.employees?.present || []),
                     ...(summaryData.employees?.absent || []),
-                    ...(summaryData.employees?.on_leave || [])
+                    ...(summaryData.employees?.on_leave || []),
+                    ...(summaryData.employees?.wfh || [])
                 ];
                 const seen = new Set();
                 const uniqueEmps = [];
@@ -637,7 +638,7 @@ const AttendanceModule = () => {
             </div>
 
             {isAdmin && (
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
                     <div 
                         onClick={() => setSelectedDashboardStat('active')}
                         className={`bg-white p-4 rounded-xl border ${selectedDashboardStat === 'active' ? 'border-emerald-500 shadow-md ring-2 ring-emerald-200' : 'border-slate-200 shadow-sm hover:border-emerald-300 hover:shadow-md'} flex items-center justify-between cursor-pointer transition-all`}
@@ -696,6 +697,18 @@ const AttendanceModule = () => {
                         </div>
                         <div className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-600">
                             <UserX size={18} />
+                        </div>
+                    </div>
+                    <div 
+                        onClick={() => setSelectedDashboardStat('wfh')}
+                        className={`bg-white p-4 rounded-xl border ${selectedDashboardStat === 'wfh' ? 'border-indigo-500 shadow-md ring-2 ring-indigo-200' : 'border-slate-200 shadow-sm hover:border-indigo-400 hover:shadow-md'} flex items-center justify-between cursor-pointer transition-all`}
+                    >
+                        <div>
+                            <p className="text-slate-500 text-[11px] font-semibold uppercase tracking-wider mb-0.5">WFH</p>
+                            <h3 className="text-xl font-bold text-slate-800">{dashboardStats.wfhCount || 0}</h3>
+                        </div>
+                        <div className="w-9 h-9 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600">
+                            <MapPin size={18} />
                         </div>
                     </div>
                     <div 
@@ -861,6 +874,7 @@ const AttendanceModule = () => {
                                         <option value="half_day">Half Day</option>
                                         <option value="on_leave">On Leave</option>
                                         <option value="absent">Absent</option>
+                                        <option value="wfh">WFH</option>
                                         <option value="missed_clock_out">Missed Out</option>
                                     </select>
                                     <div className="relative">
