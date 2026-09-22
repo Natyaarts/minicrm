@@ -164,28 +164,34 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
 
     @ReactMethod
     fun stopRecording(promise: Promise) {
-        // Run on a separate thread to poll for the native recording (up to 10 seconds)
+        // Stop fallback MediaRecorder immediately when call ends so it doesn't keep recording
+        val fallbackPath = stopRecordingInternal(false)
+
+        // Run on a separate thread to poll for the native recording
         Thread {
             try {
                 var systemRecordingPath: String? = null
                 
-        // 1. Scan MediaStore and SAF for native call recording file
-        //    Bug 3 Fix: Retry up to 30 times (30s) — long calls produce large files
-        //    that may take >10s to flush to MediaStore on some devices.
-        for (i in 1..30) {
-            Thread.sleep(1000)
-            // Limit heavy SAF directory listing queries to once every 5 seconds (indices: 1, 6, 11, 16, 21, 26)
-            val scanSaf = (i == 1 || i % 5 == 1)
-            systemRecordingPath = findRecentSystemRecording(targetPhoneNumber, callStartTime, scanSaf)
-            if (systemRecordingPath != null) {
-                break
-            }
-        }
+                // 1. Scan MediaStore and SAF for native call recording file
+                for (i in 1..30) {
+                    Thread.sleep(1000)
+                    // Limit heavy SAF directory listing queries to once every 5 seconds (indices: 1, 6, 11, 16, 21, 26)
+                    val scanSaf = (i == 1 || i % 5 == 1)
+                    systemRecordingPath = findRecentSystemRecording(targetPhoneNumber, callStartTime, scanSaf)
+                    if (systemRecordingPath != null) {
+                        break
+                    }
+                }
                 
-                // Stop fallback recorder (and delete the fallback file if we successfully found the native one)
-                val fallbackPath = stopRecordingInternal(systemRecordingPath != null)
-
                 if (systemRecordingPath != null) {
+                    // Delete the temporary fallback mic recording since genuine system recording was found
+                    if (fallbackPath != null) {
+                        try {
+                            File(fallbackPath).delete()
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
                     sendEvent("onRecordingStopped", systemRecordingPath)
                     promise.resolve(systemRecordingPath)
                 } else if (fallbackPath != null) {
@@ -563,10 +569,10 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
 
                 var matchedDuration: Long? = null
 
-                // Retry up to 4 times (0ms, 300ms, 600ms, 900ms) to allow OS telephony stack to commit the entry
-                for (attempt in 0..3) {
+                // Retry up to 6 times (0ms, 400ms, 800ms, 1200ms, 1600ms, 2000ms) to allow OS telephony stack to commit the entry
+                for (attempt in 0..5) {
                     if (attempt > 0) {
-                        Thread.sleep(300)
+                        Thread.sleep(400)
                     }
 
                     val cursor = reactApplicationContext.contentResolver.query(
@@ -594,7 +600,9 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
                                 "INCOMING" -> type == CallLog.Calls.INCOMING_TYPE || 
                                               type == CallLog.Calls.MISSED_TYPE || 
                                               (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && type == CallLog.Calls.REJECTED_TYPE)
-                                "OUTGOING" -> type == CallLog.Calls.OUTGOING_TYPE
+                                "OUTGOING" -> type == CallLog.Calls.OUTGOING_TYPE ||
+                                              type == CallLog.Calls.MISSED_TYPE ||
+                                              (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && type == CallLog.Calls.REJECTED_TYPE)
                                 else -> true
                             }
 

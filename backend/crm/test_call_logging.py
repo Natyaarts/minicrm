@@ -816,3 +816,33 @@ class CallLoggingIntegrationTests(TestCase):
         self.assertEqual(resp_patch.data['call_status'], 'MISSED')
         self.assertEqual(resp_patch.data['call_duration'], 0)
         self.assertIsNone(resp_patch.data.get('audio_recording'))
+
+    def test_31_outgoing_call_log_zero_offhook_43s_wallclock_regression(self):
+        """31. Regression test: OUTGOING + CallLog duration 0 + Telephony OFFHOOK + 43s fallback duration => MISSED + duration 0 + no audio"""
+        fallback_audio_43s = SimpleUploadedFile("fallback_recording_9876543210_43s.m4a", make_m4a_audio(43), content_type="audio/m4a")
+        
+        # When mobile logs an outgoing call where CallLog duration was 0, status is MISSED and duration is 0
+        response = self.client.post('/api/crm/interactions/', {
+            'interaction_type': 'CALL',
+            'call_direction': 'OUTGOING',
+            'receiver_number': '+919876543210',
+            'customer_number': '+919876543210',
+            'call_status': 'MISSED',
+            'call_duration': 0,
+            'notes': 'Outbound Call to +919876543210 (Unanswered / Missed)',
+            'mobile_call_id': 'mob_out_43s_unanswered_regression',
+            'audio_recording': fallback_audio_43s
+        }, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['call_status'], 'MISSED')
+        self.assertEqual(response.data['call_duration'], 0)
+        self.assertEqual(response.data['formatted_call_duration'], '0s')
+        self.assertIsNone(response.data.get('audio_recording'))
+        self.assertIsNone(response.data.get('recording_file_or_url'))
+
+        # Verify database record
+        db_rec = LeadInteraction.objects.get(mobile_call_id='mob_out_43s_unanswered_regression')
+        self.assertEqual(db_rec.call_status, 'MISSED')
+        self.assertEqual(db_rec.call_duration, 0)
+        self.assertFalse(bool(db_rec.audio_recording))
+

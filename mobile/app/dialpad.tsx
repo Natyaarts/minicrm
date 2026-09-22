@@ -18,7 +18,9 @@ const Dialpad = () => {
   const { leadId, phone } = useLocalSearchParams();
   const [phoneNumber, setPhoneNumber] = useState((phone as string) || '');
   const [callStatus, setCallStatus] = useState<'IDLE' | 'CALLING' | 'ACTIVE' | 'POST_CALL'>('IDLE');
+  const [activeCallTimer, setActiveCallTimer] = useState(0);
   const [callDuration, setCallDuration] = useState(0);
+  const [callStatusState, setCallStatusState] = useState<'CONNECTED' | 'MISSED'>('MISSED');
   const [postCallNotes, setPostCallNotes] = useState('');
   const [pipelineStatus, setPipelineStatus] = useState('');
   const [recordedFilePath, setRecordedFilePath] = useState<string | null>(null);
@@ -53,6 +55,8 @@ const Dialpad = () => {
   const phoneRef = useRef(phoneNumber);
   const callStatusRef = useRef(callStatus);
   const callStartTimeRef = useRef<number>(0);
+  const callDurationRef = useRef<number>(0);
+  const isFinalizingRef = useRef(false);
 
   useEffect(() => {
     phoneRef.current = phoneNumber;
@@ -61,6 +65,10 @@ const Dialpad = () => {
   useEffect(() => {
     callStatusRef.current = callStatus;
   }, [callStatus]);
+
+  useEffect(() => {
+    callDurationRef.current = callDuration;
+  }, [callDuration]);
 
   useEffect(() => {
     loadUser();
@@ -141,9 +149,10 @@ const Dialpad = () => {
 
   const startTimer = () => {
     stopTimer();
+    setActiveCallTimer(0);
     timerRef.current = setInterval(() => {
       if (callStartTimeRef.current > 0) {
-        setCallDuration(Math.max(0, Math.floor((Date.now() - callStartTimeRef.current) / 1000)));
+        setActiveCallTimer(Math.max(0, Math.floor((Date.now() - callStartTimeRef.current) / 1000)));
       }
     }, 1000);
   };
@@ -164,7 +173,9 @@ const Dialpad = () => {
     } else {
       stopTimer();
       if (callStatus === 'IDLE') {
+        setActiveCallTimer(0);
         setCallDuration(0);
+        setCallStatusState('MISSED');
         callStartTimeRef.current = 0;
       }
     }
@@ -172,6 +183,72 @@ const Dialpad = () => {
       stopTimer();
     };
   }, [callStatus]);
+
+  const finalizeCallSession = async () => {
+    if (isFinalizingRef.current) return;
+    isFinalizingRef.current = true;
+
+    stopTimer();
+    const startTime = callStartTimeRef.current;
+    const targetPhone = phoneRef.current;
+
+    // Immediately enter POST_CALL review with initial safe defaults (0 duration, MISSED, no recording)
+    setCallStatus('POST_CALL');
+    setCallDuration(0);
+    setCallStatusState('MISSED');
+    setRecordedFilePath(null);
+    setIsProcessingRecording(true);
+
+    let authoritativeDuration = 0;
+    let isConnected = false;
+
+    // 1. Android CallLog is the single authority for call connection status and duration
+    if (Platform.OS === 'android' && targetPhone) {
+      try {
+        const logDuration = await getLatestCallLogDuration(targetPhone, startTime, 'OUTGOING');
+        if (typeof logDuration === 'number' && logDuration > 0) {
+          authoritativeDuration = logDuration;
+          isConnected = true;
+        } else {
+          authoritativeDuration = 0;
+          isConnected = false;
+        }
+      } catch (err) {
+        console.warn('[dialpad] Failed to query CallLog duration:', err);
+        authoritativeDuration = 0;
+        isConnected = false;
+      }
+    }
+
+    // 2. Handle native call recording
+    if (Platform.OS === 'android') {
+      try {
+        const filePath = await stopNativeRecording();
+        // ONLY attach recording if the call was confirmed CONNECTED with CallLog duration > 0
+        if (filePath && isConnected && authoritativeDuration > 0) {
+          setRecordedFilePath(filePath);
+          // Recording duration may synchronize displayed duration ONLY after call is proven CONNECTED
+          const exactDuration = await extractDurationFromAudio(filePath);
+          if (exactDuration && exactDuration > 0) {
+            authoritativeDuration = exactDuration;
+          }
+        } else {
+          setRecordedFilePath(null);
+        }
+      } catch (recErr) {
+        console.warn('[dialpad] Error stopping recording:', recErr);
+        setRecordedFilePath(null);
+      }
+    }
+
+    const finalDuration = (isConnected && authoritativeDuration > 0) ? authoritativeDuration : 0;
+    const finalStatus = finalDuration > 0 ? 'CONNECTED' : 'MISSED';
+
+    setCallDuration(finalDuration);
+    setCallStatusState(finalStatus);
+    setIsProcessingRecording(false);
+    isFinalizingRef.current = false;
+  };
 
   const lastBackgroundTimeRef = useRef(0);
 
@@ -185,52 +262,15 @@ const Dialpad = () => {
       }
       
       // If the app comes back to the foreground and we were in CALLING/ACTIVE state,
-      // assume the user is done with the system phone app.
+      // conclude call via authoritative CallLog check.
       if (nextAppState === 'active') {
         const currentStatus = callStatusRef.current;
         if ((currentStatus === 'CALLING' || currentStatus === 'ACTIVE') && lastBackgroundTimeRef.current > 0) {
           const timeInBackground = Date.now() - lastBackgroundTimeRef.current;
           
-          // Only trigger log screen if the app was in the background for at least 3 seconds
-          if (timeInBackground > 3000) {
-            stopTimer();
+          if (timeInBackground > 2000) {
             lastBackgroundTimeRef.current = 0;
-            const startTime = callStartTimeRef.current;
-            
-            let authoritativeDuration = 0;
-            let isConnected = false;
-
-            // Query CallLog asynchronously if available (Android CallLog is the authority)
-            if (Platform.OS === 'android' && phoneRef.current && startTime > 0) {
-              try {
-                const logDuration = await getLatestCallLogDuration(phoneRef.current, startTime, 'OUTGOING');
-                if (typeof logDuration === 'number') {
-                  if (logDuration > 0) {
-                    authoritativeDuration = logDuration;
-                    isConnected = true;
-                  } else {
-                    authoritativeDuration = 0;
-                    isConnected = false;
-                  }
-                }
-              } catch (_) {}
-            }
-
-            // Trigger POST_CALL flow to log the call
-            setCallStatus('POST_CALL');
-            setIsProcessingRecording(true);
-            const filePath = await stopNativeRecording();
-            if (filePath && isConnected && authoritativeDuration > 0) {
-              setRecordedFilePath(filePath);
-              const exactDuration = await extractDurationFromAudio(filePath);
-              if (exactDuration && exactDuration > 0) {
-                authoritativeDuration = exactDuration;
-              }
-            } else {
-              setRecordedFilePath(null);
-            }
-            setCallDuration(authoritativeDuration);
-            setIsProcessingRecording(false);
+            await finalizeCallSession();
           }
         }
       }
@@ -241,6 +281,7 @@ const Dialpad = () => {
       subscription.remove();
     };
   }, []);
+
   useEffect(() => {
     if (authLoading || !hasDialerAccess) return;
     const requestPermissions = async () => {
@@ -285,8 +326,8 @@ const Dialpad = () => {
     // 1. Listen for events from our Kotlin MediaStore sync (which runs after stopRecording)
     const unsubscribeEvents = listenToCallEvents(async (path) => {
       console.log("Recording saved at:", path);
-      // Audio recording must ONLY be accepted if the call was confirmed connected with duration > 0
-      if (path && callDuration > 0) {
+      // Audio recording must ONLY be accepted if the call was already confirmed CONNECTED with duration > 0
+      if (path && callStatusRef.current === 'POST_CALL' && callDurationRef.current > 0) {
         setRecordedFilePath(path);
         try {
           const exactDuration = await extractDurationFromAudio(path);
@@ -307,7 +348,9 @@ const Dialpad = () => {
       if (state === 'OFFHOOK') {
         if (callStatusRef.current === 'CALLING' || callStatusRef.current === 'ACTIVE') {
           callStarted = true;
-          callStartTimeRef.current = Date.now();
+          if (callStartTimeRef.current === 0) {
+            callStartTimeRef.current = Date.now();
+          }
           setCallStatus('ACTIVE');
           startTimer();
           // Automatically start recording when call is active
@@ -315,53 +358,9 @@ const Dialpad = () => {
           console.log("Call auto-started recording. Fallback path:", filePath);
         }
       } else if (state === 'IDLE') {
-        // Stop visible timer immediately upon CALL_STATE_IDLE before any async CallLog/recording operations
-        stopTimer();
-
         if (callStarted || callStatusRef.current === 'CALLING' || callStatusRef.current === 'ACTIVE') {
           callStarted = false;
-          const startTime = callStartTimeRef.current;
-          
-          let authoritativeDuration = 0;
-          let isConnected = false;
-
-          // Android CallLog is the single authority for outgoing call connection status
-          if (Platform.OS === 'android' && phoneRef.current && startTime > 0) {
-            try {
-              const logDuration = await getLatestCallLogDuration(phoneRef.current, startTime, 'OUTGOING');
-              if (typeof logDuration === 'number') {
-                if (logDuration > 0) {
-                  authoritativeDuration = logDuration;
-                  isConnected = true;
-                } else {
-                  authoritativeDuration = 0;
-                  isConnected = false;
-                }
-              }
-            } catch (err) {
-              console.warn('[dialpad] Failed to query CallLog duration:', err);
-            }
-          }
-
-          setCallStatus('POST_CALL');
-          setIsProcessingRecording(true);
-          
-          // Automatically stop recording when call hangs up
-          const filePath = await stopNativeRecording();
-          if (filePath && isConnected && authoritativeDuration > 0) {
-            console.log("Call auto-stopped recording. Path:", filePath);
-            setRecordedFilePath(filePath);
-            const exactDuration = await extractDurationFromAudio(filePath);
-            if (exactDuration && exactDuration > 0) {
-              authoritativeDuration = exactDuration;
-            }
-          } else {
-            // Discard recording for unanswered/0-duration calls
-            setRecordedFilePath(null);
-          }
-
-          setCallDuration(authoritativeDuration);
-          setIsProcessingRecording(false);
+          await finalizeCallSession();
         }
       }
     });
@@ -371,7 +370,7 @@ const Dialpad = () => {
       unsubscribeEvents();
       unsubscribeState();
     };
-  }, [authLoading, hasDialerAccess, callDuration]);
+  }, [authLoading, hasDialerAccess]);
 
   if (authLoading) {
     return (
@@ -416,6 +415,16 @@ const Dialpad = () => {
       await requestCallPermissions();
     }
 
+    // Reset all call states before initiating new call
+    stopTimer();
+    setActiveCallTimer(0);
+    setCallDuration(0);
+    setCallStatusState('MISSED');
+    setRecordedFilePath(null);
+    setManualRecordingFile(null);
+    callStartTimeRef.current = Date.now();
+    isFinalizingRef.current = false;
+
     // Launch native system dialer
     try {
       if (Platform.OS === 'android' && NativeModules.CallRecordingModule) {
@@ -432,56 +441,18 @@ const Dialpad = () => {
   };
 
   const handleEndCall = async () => {
-    stopTimer();
-    const startTime = callStartTimeRef.current;
-    let authoritativeDuration = 0;
-    let isConnected = false;
-
-    if (Platform.OS === 'android' && phoneRef.current && startTime > 0) {
-      try {
-        const logDuration = await getLatestCallLogDuration(phoneRef.current, startTime, 'OUTGOING');
-        if (typeof logDuration === 'number') {
-          if (logDuration > 0) {
-            authoritativeDuration = logDuration;
-            isConnected = true;
-          } else {
-            authoritativeDuration = 0;
-            isConnected = false;
-          }
-        }
-      } catch (err) {
-        console.warn('[dialpad] Failed to query CallLog duration:', err);
-      }
-    }
-
-    setCallStatus('POST_CALL');
-    
-    if (Platform.OS === 'android') {
-      setIsProcessingRecording(true);
-      const filePath = await stopNativeRecording();
-      if (filePath && isConnected && authoritativeDuration > 0) {
-        setRecordedFilePath(filePath);
-        const exactDuration = await extractDurationFromAudio(filePath);
-        if (exactDuration && exactDuration > 0) {
-          authoritativeDuration = exactDuration;
-        }
-      } else {
-        setRecordedFilePath(null);
-      }
-      setCallDuration(authoritativeDuration);
-      console.log("Stopped recording manually:", filePath);
-      setIsProcessingRecording(false);
-    } else {
-      setCallDuration(authoritativeDuration);
-    }
+    await finalizeCallSession();
   };
 
   const handleCancelCall = async () => {
     stopTimer();
+    setActiveCallTimer(0);
     setCallStatus('IDLE');
     setCallDuration(0);
+    setCallStatusState('MISSED');
     callStartTimeRef.current = 0;
     setRecordedFilePath(null);
+    isFinalizingRef.current = false;
     if (Platform.OS === 'android') {
       try {
         await stopNativeRecording();
@@ -525,7 +496,7 @@ const Dialpad = () => {
     // UNIFIED RULE:
     // duration > 0 -> CONNECTED
     // duration == 0 -> MISSED / NOT CONNECTED
-    const isConnected = callDuration > 0;
+    const isConnected = callDuration > 0 && callStatusState === 'CONNECTED';
     const status = isConnected ? 'CONNECTED' : 'MISSED';
     const finalDuration = isConnected ? String(callDuration) : '0';
 
@@ -858,7 +829,7 @@ const Dialpad = () => {
           <Text style={styles.callLabel}>VIA SYSTEM PHONE APP</Text>
           {callStatus === 'ACTIVE' && (
             <Text style={{ color: '#10B981', fontSize: 22, fontWeight: '900', marginTop: 8 }}>
-              {formatDuration(callDuration)}
+              {formatDuration(activeCallTimer)}
             </Text>
           )}
           <Text style={{ color: '#94A3B8', fontSize: 13, marginTop: 8, textAlign: 'center', paddingHorizontal: 30 }}>

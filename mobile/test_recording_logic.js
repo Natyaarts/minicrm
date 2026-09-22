@@ -322,6 +322,34 @@ async function runTests() {
   assert(unanswered1sCall.call_duration === 0, '1-second fallback mic file cannot change duration from 0 to > 0');
   assert(unanswered1sCall.call_status === 'MISSED', 'Status remains MISSED regardless of 1s mic file presence');
 
+  // Test 14: Regression Test - Outgoing + CallLog duration 0 + Telephony OFFHOOK + 43-second wall-clock/fallback duration
+  console.log('\n[Suite 14: Outgoing 43s OFFHOOK Unanswered Regression]');
+  const outgoing43sUnanswered = resolveCallPostState({
+    logDuration: 0, // CallLog duration is authoritative 0
+    fallbackRecordingPath: '/cache/fallback_recording_9876543210_dialtone.m4a',
+    fallbackAudioDuration: 43, // 43s fallback mic recording / wall-clock
+    callDirection: 'OUTGOING'
+  });
+  assert(outgoing43sUnanswered.call_status === 'MISSED', 'OUTGOING + CallLog 0 + 43s OFFHOOK has status MISSED');
+  assert(outgoing43sUnanswered.call_duration === 0, 'OUTGOING + CallLog 0 + 43s OFFHOOK has duration exactly 0');
+  assert(outgoing43sUnanswered.recordedFilePath === null, 'OUTGOING + CallLog 0 + 43s OFFHOOK has NO audio attached');
+
+  // Verify that SyncManager matching also strictly rejects attaching any recording to this 43s unanswered call
+  const call43sForSync = {
+    id: 501,
+    customer_number: '+919876543210',
+    call_status: outgoing43sUnanswered.call_status,
+    call_duration: outgoing43sUnanswered.call_duration,
+    date: new Date('2026-09-22T10:00:00Z').toISOString()
+  };
+  const syncMatch43s = findMatchingRecording({
+    call: call43sForSync,
+    files: ['fallback_recording_9876543210_dialtone.m4a', 'saf_recorded_9876543210_call.m4a'],
+    fileDetails: {},
+    consumedSet: new Set()
+  });
+  assert(syncMatch43s === null, 'SyncManager strictly rejects attaching recordings to 43s unanswered call');
+
   console.log(`\n========================================`);
   console.log(`SUMMARY: ${passed}/${total} TESTS PASSED (100%)`);
   console.log(`========================================\n`);

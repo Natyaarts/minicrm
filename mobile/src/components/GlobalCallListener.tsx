@@ -174,24 +174,20 @@ export default function GlobalCallListener() {
           let isConnected = false;
 
           if (wasOffhook && startTime) {
-            const wallClockSec = Math.max(0, Math.round((endTime - startTime) / 1000));
-            authoritativeDuration = wallClockSec;
-            isConnected = wallClockSec > 0;
-
             if (Platform.OS === 'android' && phone) {
               try {
                 const logDuration = await getLatestCallLogDuration(phone, startTime, 'INCOMING');
-                if (typeof logDuration === 'number') {
-                  if (logDuration > 0) {
-                    authoritativeDuration = logDuration;
-                    isConnected = true;
-                  } else {
-                    authoritativeDuration = 0;
-                    isConnected = false;
-                  }
+                if (typeof logDuration === 'number' && logDuration > 0) {
+                  authoritativeDuration = logDuration;
+                  isConnected = true;
+                } else {
+                  authoritativeDuration = 0;
+                  isConnected = false;
                 }
               } catch (err) {
                 console.warn('[GlobalCallListener] Failed to query CallLog duration:', err);
+                authoritativeDuration = 0;
+                isConnected = false;
               }
             }
           }
@@ -298,7 +294,7 @@ export default function GlobalCallListener() {
     // UNIFIED RULE:
     // duration > 0 -> CONNECTED
     // duration == 0 -> MISSED
-    const isConnected = callDuration > 0;
+    const isConnected = callDuration > 0 && callStatusState === 'CONNECTED';
     const status = isConnected ? 'CONNECTED' : 'MISSED';
     const finalDuration = isConnected ? callDuration.toString() : '0';
 
