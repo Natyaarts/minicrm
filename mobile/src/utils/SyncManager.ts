@@ -112,6 +112,11 @@ export const syncPendingCalls = async () => {
 
     for (const item of queue) {
       try {
+        const durNumber = Number(item.call_duration || 0);
+        const isConnected = durNumber > 0 && (item.call_status || '').toUpperCase() === 'CONNECTED';
+        const finalStatus = isConnected ? 'CONNECTED' : 'MISSED';
+        const finalDuration = isConnected ? String(durNumber) : '0';
+
         const formData = new FormData();
         if (item.student && item.student !== '0') formData.append('student', String(item.student));
         formData.append('interaction_type', 'CALL');
@@ -120,13 +125,14 @@ export const syncPendingCalls = async () => {
         if (item.caller_number) formData.append('caller_number', item.caller_number);
         if (item.receiver_number) formData.append('receiver_number', item.receiver_number);
         formData.append('call_direction', item.call_direction || 'OUTGOING');
-        formData.append('call_status', item.call_status || 'CONNECTED');
-        formData.append('call_duration', String(item.call_duration || 0));
+        formData.append('call_status', finalStatus);
+        formData.append('call_duration', finalDuration);
         formData.append('notes', item.notes || `Call Logged via Mobile Sync (${item.call_direction || 'OUTGOING'})`);
         if (item.pipeline_status) formData.append('pipeline_status', String(item.pipeline_status));
         if (item.next_followup_date) formData.append('next_followup_date', item.next_followup_date);
 
-        if (item.recordedFilePath) {
+        // Only attach recording for genuine connected calls with duration > 0
+        if (isConnected && item.recordedFilePath) {
           let finalUri = item.recordedFilePath;
           if (!finalUri.startsWith('file://') && !finalUri.startsWith('content://')) {
             finalUri = `file://${finalUri}`;
@@ -152,7 +158,7 @@ export const syncPendingCalls = async () => {
         console.log(`[SyncManager] Successfully synced offline call: ${item.mobile_call_id}`);
 
         // Mark recording consumed so it cannot be matched to another call; file remains on phone
-        if (item.recordedFilePath) {
+        if (isConnected && item.recordedFilePath) {
           await markRecordingConsumed(item.recordedFilePath);
         }
       } catch (postErr: any) {
@@ -192,9 +198,9 @@ export const syncMissingRecordings = async () => {
     const res = await client.get('/crm/interactions/');
     const interactions = res.data.results || res.data || [];
 
-    // Filter for CONNECTED CALL interactions that are missing audio (Missed calls must not receive recordings)
+    // Filter for CONNECTED CALL interactions with duration > 0 that are missing audio (Missed calls must not receive recordings)
     const missingAudioCalls = interactions.filter((item: any) => {
-      const isConnected = (item.call_status || '').toUpperCase() === 'CONNECTED';
+      const isConnected = (item.call_status || '').toUpperCase() === 'CONNECTED' && Number(item.call_duration || 0) > 0;
       return isConnected && item.interaction_type === 'CALL' && (!item.audio_recording || item.audio_recording === '') && (!item.recording_url || item.recording_url === '');
     });
 

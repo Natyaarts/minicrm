@@ -179,7 +179,7 @@ const Dialpad = () => {
     (async () => {
       await Notifications.requestPermissionsAsync();
     })();
-    const subscription = AppState.addEventListener('change', nextAppState => {
+    const subscription = AppState.addEventListener('change', async nextAppState => {
       if (nextAppState === 'background') {
         lastBackgroundTimeRef.current = Date.now();
       }
@@ -196,25 +196,41 @@ const Dialpad = () => {
             stopTimer();
             lastBackgroundTimeRef.current = 0;
             const startTime = callStartTimeRef.current;
-            const elapsed = startTime > 0 ? Math.max(1, Math.floor((Date.now() - startTime) / 1000)) : 1;
-            setCallDuration(elapsed);
+            
+            let authoritativeDuration = 0;
+            let isConnected = false;
 
-            // Query CallLog asynchronously if available
+            // Query CallLog asynchronously if available (Android CallLog is the authority)
             if (Platform.OS === 'android' && phoneRef.current && startTime > 0) {
-              getLatestCallLogDuration(phoneRef.current, startTime, 'OUTGOING').then(logDur => {
-                if (typeof logDur === 'number' && logDur >= 0) {
-                  setCallDuration(logDur);
+              try {
+                const logDuration = await getLatestCallLogDuration(phoneRef.current, startTime, 'OUTGOING');
+                if (typeof logDuration === 'number') {
+                  if (logDuration > 0) {
+                    authoritativeDuration = logDuration;
+                    isConnected = true;
+                  } else {
+                    authoritativeDuration = 0;
+                    isConnected = false;
+                  }
                 }
-              }).catch(() => {});
+              } catch (_) {}
             }
 
             // Trigger POST_CALL flow to log the call
             setCallStatus('POST_CALL');
             setIsProcessingRecording(true);
-            stopNativeRecording().then(filePath => {
-               if (filePath) setRecordedFilePath(filePath);
-               setIsProcessingRecording(false);
-            });
+            const filePath = await stopNativeRecording();
+            if (filePath && isConnected && authoritativeDuration > 0) {
+              setRecordedFilePath(filePath);
+              const exactDuration = await extractDurationFromAudio(filePath);
+              if (exactDuration && exactDuration > 0) {
+                authoritativeDuration = exactDuration;
+              }
+            } else {
+              setRecordedFilePath(null);
+            }
+            setCallDuration(authoritativeDuration);
+            setIsProcessingRecording(false);
           }
         }
       }
@@ -269,18 +285,15 @@ const Dialpad = () => {
     // 1. Listen for events from our Kotlin MediaStore sync (which runs after stopRecording)
     const unsubscribeEvents = listenToCallEvents(async (path) => {
       console.log("Recording saved at:", path);
-      if (path) {
+      // Audio recording must ONLY be accepted if the call was confirmed connected with duration > 0
+      if (path && callDuration > 0) {
         setRecordedFilePath(path);
-        // Audio recording duration must NOT overwrite a valid call duration.
-        // Only use as last-resort fallback if callDuration is 0 and no start time is tracked.
-        if (callDuration <= 0 && callStartTimeRef.current === 0) {
-          try {
-            const exactDuration = await extractDurationFromAudio(path);
-            if (exactDuration && exactDuration > 0) {
-              setCallDuration(prev => (prev > 0 ? prev : exactDuration));
-            }
-          } catch (_) {}
-        }
+        try {
+          const exactDuration = await extractDurationFromAudio(path);
+          if (exactDuration && exactDuration > 0) {
+            setCallDuration(exactDuration);
+          }
+        } catch (_) {}
       }
     });
 
@@ -308,14 +321,22 @@ const Dialpad = () => {
         if (callStarted || callStatusRef.current === 'CALLING' || callStatusRef.current === 'ACTIVE') {
           callStarted = false;
           const startTime = callStartTimeRef.current;
-          const elapsed = startTime > 0 ? Math.max(0, Math.floor((Date.now() - startTime) / 1000)) : 0;
-          let authoritativeDuration = elapsed;
+          
+          let authoritativeDuration = 0;
+          let isConnected = false;
 
+          // Android CallLog is the single authority for outgoing call connection status
           if (Platform.OS === 'android' && phoneRef.current && startTime > 0) {
             try {
               const logDuration = await getLatestCallLogDuration(phoneRef.current, startTime, 'OUTGOING');
-              if (typeof logDuration === 'number' && logDuration >= 0) {
-                authoritativeDuration = logDuration;
+              if (typeof logDuration === 'number') {
+                if (logDuration > 0) {
+                  authoritativeDuration = logDuration;
+                  isConnected = true;
+                } else {
+                  authoritativeDuration = 0;
+                  isConnected = false;
+                }
               }
             } catch (err) {
               console.warn('[dialpad] Failed to query CallLog duration:', err);
@@ -324,16 +345,21 @@ const Dialpad = () => {
 
           setCallStatus('POST_CALL');
           setIsProcessingRecording(true);
+          
           // Automatically stop recording when call hangs up
           const filePath = await stopNativeRecording();
-          if (filePath) {
+          if (filePath && isConnected && authoritativeDuration > 0) {
             console.log("Call auto-stopped recording. Path:", filePath);
             setRecordedFilePath(filePath);
             const exactDuration = await extractDurationFromAudio(filePath);
             if (exactDuration && exactDuration > 0) {
               authoritativeDuration = exactDuration;
             }
+          } else {
+            // Discard recording for unanswered/0-duration calls
+            setRecordedFilePath(null);
           }
+
           setCallDuration(authoritativeDuration);
           setIsProcessingRecording(false);
         }
@@ -345,7 +371,7 @@ const Dialpad = () => {
       unsubscribeEvents();
       unsubscribeState();
     };
-  }, [authLoading, hasDialerAccess]);
+  }, [authLoading, hasDialerAccess, callDuration]);
 
   if (authLoading) {
     return (
@@ -407,24 +433,46 @@ const Dialpad = () => {
 
   const handleEndCall = async () => {
     stopTimer();
-    if (callStartTimeRef.current > 0) {
-      const elapsed = Math.max(0, Math.floor((Date.now() - callStartTimeRef.current) / 1000));
-      setCallDuration(elapsed);
+    const startTime = callStartTimeRef.current;
+    let authoritativeDuration = 0;
+    let isConnected = false;
+
+    if (Platform.OS === 'android' && phoneRef.current && startTime > 0) {
+      try {
+        const logDuration = await getLatestCallLogDuration(phoneRef.current, startTime, 'OUTGOING');
+        if (typeof logDuration === 'number') {
+          if (logDuration > 0) {
+            authoritativeDuration = logDuration;
+            isConnected = true;
+          } else {
+            authoritativeDuration = 0;
+            isConnected = false;
+          }
+        }
+      } catch (err) {
+        console.warn('[dialpad] Failed to query CallLog duration:', err);
+      }
     }
+
     setCallStatus('POST_CALL');
     
     if (Platform.OS === 'android') {
       setIsProcessingRecording(true);
       const filePath = await stopNativeRecording();
-      if (filePath) {
+      if (filePath && isConnected && authoritativeDuration > 0) {
         setRecordedFilePath(filePath);
         const exactDuration = await extractDurationFromAudio(filePath);
         if (exactDuration && exactDuration > 0) {
-          setCallDuration(exactDuration);
+          authoritativeDuration = exactDuration;
         }
+      } else {
+        setRecordedFilePath(null);
       }
+      setCallDuration(authoritativeDuration);
       console.log("Stopped recording manually:", filePath);
       setIsProcessingRecording(false);
+    } else {
+      setCallDuration(authoritativeDuration);
     }
   };
 
@@ -455,7 +503,7 @@ const Dialpad = () => {
         if (asset.uri) {
           const exactDuration = await extractDurationFromAudio(asset.uri);
           if (exactDuration && exactDuration > 0) {
-            setCallDuration(prev => (prev > 0 ? prev : exactDuration));
+            setCallDuration(exactDuration);
             Alert.alert('Recording Selected', `File: ${asset.name}\nDuration: ${formatDuration(exactDuration)}`);
           } else {
             Alert.alert('Recording Selected', `File: ${asset.name}`);
@@ -467,27 +515,31 @@ const Dialpad = () => {
     }
   };
 
-
-
   const handlePostCallSubmit = async () => {
     if (isSubmitting) return;
     setIsSubmitting(true);
 
     const cleanNumber = (phoneNumber || '').replace(/[\s\-().]/g, '');
     const mobileCallId = generateMobileCallId(cleanNumber, 'OUTGOING');
-    const status = callDuration > 0 ? 'CONNECTED' : 'MISSED';
+    
+    // UNIFIED RULE:
+    // duration > 0 -> CONNECTED
+    // duration == 0 -> MISSED / NOT CONNECTED
+    const isConnected = callDuration > 0;
+    const status = isConnected ? 'CONNECTED' : 'MISSED';
+    const finalDuration = isConnected ? String(callDuration) : '0';
 
     const parameters: Record<string, string> = {
       interaction_type: 'CALL',
       mobile_call_id: mobileCallId,
       customer_number: cleanNumber,
       receiver_number: cleanNumber,
-      call_duration: String(callDuration),
+      call_duration: finalDuration,
       call_direction: 'OUTGOING',
       call_status: status,
       notes: postCallNotes 
         ? `Duration: ${formatDuration(callDuration)}\nNotes: ${postCallNotes}`
-        : `Outbound Call - Duration: ${formatDuration(callDuration)}`
+        : (isConnected ? `Outbound Call - Duration: ${formatDuration(callDuration)}` : `Outbound Call to ${cleanNumber} (Unanswered / Missed)`)
     };
 
     if (leadId && String(leadId) !== '0') {
@@ -501,7 +553,8 @@ const Dialpad = () => {
     let mimeType = 'audio/m4a';
     let fileName = `recording_${Date.now()}.m4a`;
 
-    if (recordedFilePath) {
+    // Only attach recording if call is confirmed CONNECTED with duration > 0
+    if (isConnected && recordedFilePath) {
       fileUriToUpload = recordedFilePath;
       if (!fileUriToUpload.startsWith('file://') && !fileUriToUpload.startsWith('content://')) {
         fileUriToUpload = `file://${fileUriToUpload}`;
@@ -514,7 +567,7 @@ const Dialpad = () => {
       else if (ext === 'wav') mimeType = 'audio/wav';
       else if (ext === 'amr') mimeType = 'audio/amr';
       else if (ext === 'aac') mimeType = 'audio/aac';
-    } else if (manualRecordingFile) {
+    } else if (isConnected && manualRecordingFile) {
       fileUriToUpload = manualRecordingFile.uri;
       mimeType = manualRecordingFile.mimeType || 'audio/mpeg';
       fileName = manualRecordingFile.name || `recording_${Date.now()}.mp3`;
@@ -569,11 +622,11 @@ const Dialpad = () => {
         receiver_number: cleanNumber,
         call_direction: 'OUTGOING',
         call_status: status,
-        call_duration: callDuration,
-        notes: postCallNotes || `Outbound call to ${cleanNumber}`,
+        call_duration: isConnected ? callDuration : 0,
+        notes: postCallNotes || (isConnected ? `Outbound call to ${cleanNumber}` : `Outbound call to ${cleanNumber} (Unanswered / Missed)`),
         pipeline_status: pipelineStatus,
         next_followup_date: nextFollowupDate?.toISOString(),
-        recordedFilePath
+        recordedFilePath: isConnected ? (recordedFilePath || manualRecordingFile?.uri) : null
       });
       Alert.alert('Saved Offline', 'Call logged locally and will sync automatically.');
       setCallStatus('IDLE');

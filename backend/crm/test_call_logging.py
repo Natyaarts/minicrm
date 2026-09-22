@@ -717,3 +717,102 @@ class CallLoggingIntegrationTests(TestCase):
         # Call preserves its native duration (517s = 8m 37s)
         self.assertEqual(resp_diff.data['call_duration'], 517)
         self.assertEqual(resp_diff.data['formatted_call_duration'], '8m 37s')
+
+    def test_26_outgoing_unanswered_call_with_zero_duration_is_missed_and_drops_audio(self):
+        """26. Outgoing unanswered call with duration=0 is saved as MISSED with duration=0 and drops any audio"""
+        dummy_audio = SimpleUploadedFile("fallback_1s.m4a", make_m4a_audio(1), content_type="audio/m4a")
+        response = self.client.post('/api/crm/interactions/', {
+            'interaction_type': 'CALL',
+            'call_direction': 'OUTGOING',
+            'receiver_number': '+919876543210',
+            'customer_number': '+919876543210',
+            'call_duration': 0,
+            'mobile_call_id': 'mob_out_unanswered_001',
+            'audio_recording': dummy_audio
+        }, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['call_status'], 'MISSED')
+        self.assertEqual(response.data['call_duration'], 0)
+        self.assertEqual(response.data['formatted_call_duration'], '0s')
+        self.assertIsNone(response.data.get('audio_recording'))
+
+    def test_27_outgoing_connected_call_with_positive_duration_is_connected(self):
+        """27. Outgoing connected call with duration > 0 is saved as CONNECTED"""
+        response = self.client.post('/api/crm/interactions/', {
+            'interaction_type': 'CALL',
+            'call_direction': 'OUTGOING',
+            'receiver_number': '+919876543210',
+            'customer_number': '+919876543210',
+            'call_duration': 65,
+            'mobile_call_id': 'mob_out_connected_001'
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['call_status'], 'CONNECTED')
+        self.assertEqual(response.data['call_duration'], 65)
+        self.assertEqual(response.data['formatted_call_duration'], '1m 5s')
+
+    def test_28_incoming_missed_call_zero_duration_is_missed_and_drops_audio(self):
+        """28. Incoming call with duration=0 is saved as MISSED with duration=0 and drops any audio"""
+        dummy_audio = SimpleUploadedFile("fallback_incoming_1s.m4a", make_m4a_audio(2), content_type="audio/m4a")
+        response = self.client.post('/api/crm/interactions/', {
+            'interaction_type': 'CALL',
+            'call_direction': 'INCOMING',
+            'caller_number': '+919876543210',
+            'customer_number': '+919876543210',
+            'call_duration': 0,
+            'mobile_call_id': 'mob_inc_missed_001',
+            'audio_recording': dummy_audio
+        }, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['call_status'], 'MISSED')
+        self.assertEqual(response.data['call_duration'], 0)
+        self.assertIsNone(response.data.get('audio_recording'))
+
+    def test_29_patch_update_preserves_existing_valid_recording(self):
+        """29. Updating notes or pipeline on an existing connected call preserves the valid recording"""
+        audio_file = SimpleUploadedFile("valid_connected.m4a", make_m4a_audio(120), content_type="audio/m4a")
+        resp_create = self.client.post('/api/crm/interactions/', {
+            'interaction_type': 'CALL',
+            'call_direction': 'OUTGOING',
+            'receiver_number': '+919876543210',
+            'customer_number': '+919876543210',
+            'call_status': 'CONNECTED',
+            'call_duration': 120,
+            'mobile_call_id': 'mob_preserve_rec_001',
+            'audio_recording': audio_file
+        }, format='multipart')
+        self.assertEqual(resp_create.status_code, status.HTTP_201_CREATED)
+        call_id = resp_create.data['id']
+        self.assertIsNotNone(resp_create.data['audio_recording'])
+
+        # Patch call with updated notes
+        resp_patch = self.client.patch(f'/api/crm/interactions/{call_id}/', {
+            'notes': 'Updated follow-up notes after call review'
+        })
+        self.assertEqual(resp_patch.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp_patch.data['call_status'], 'CONNECTED')
+        self.assertEqual(resp_patch.data['call_duration'], 120)
+        self.assertIsNotNone(resp_patch.data['audio_recording'])
+
+    def test_30_unconnected_call_cannot_receive_audio_via_patch(self):
+        """30. Attempting to attach audio to a MISSED/0-duration call via PATCH is rejected"""
+        resp_create = self.client.post('/api/crm/interactions/', {
+            'interaction_type': 'CALL',
+            'call_direction': 'OUTGOING',
+            'receiver_number': '+919876543210',
+            'customer_number': '+919876543210',
+            'call_status': 'MISSED',
+            'call_duration': 0,
+            'mobile_call_id': 'mob_missed_no_patch_audio'
+        })
+        self.assertEqual(resp_create.status_code, status.HTTP_201_CREATED)
+        call_id = resp_create.data['id']
+
+        audio_file = SimpleUploadedFile("attempt_on_missed.m4a", make_m4a_audio(50), content_type="audio/m4a")
+        resp_patch = self.client.patch(f'/api/crm/interactions/{call_id}/', {
+            'audio_recording': audio_file
+        }, format='multipart')
+        self.assertEqual(resp_patch.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp_patch.data['call_status'], 'MISSED')
+        self.assertEqual(resp_patch.data['call_duration'], 0)
+        self.assertIsNone(resp_patch.data.get('audio_recording'))

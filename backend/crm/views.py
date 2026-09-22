@@ -452,18 +452,20 @@ class LeadInteractionViewSet(viewsets.ModelViewSet):
         if existing:
             # Update with newly provided fields
             if request.data.get('call_status'):
-                existing.call_status = request.data.get('call_status')
+                existing.call_status = request.data.get('call_status').upper()
 
-            is_unconn = (existing.call_status or '').upper() in ['MISSED', 'REJECTED', 'UNANSWERED', 'FAILED']
-            if is_unconn:
+            try:
+                new_dur = int(request.data.get('call_duration')) if request.data.get('call_duration') is not None else None
+            except (ValueError, TypeError):
+                new_dur = None
+
+            if new_dur is not None:
+                existing.call_duration = max(0, new_dur)
+
+            is_unconn = (existing.call_status or '').upper() in ['MISSED', 'REJECTED', 'UNANSWERED', 'FAILED'] or existing.call_duration == 0
+            if is_unconn and (existing.call_status or '').upper() not in ['CONNECTED']:
+                existing.call_status = 'MISSED' if (existing.call_status or '').upper() not in ['REJECTED', 'UNANSWERED', 'FAILED'] else existing.call_status
                 existing.call_duration = 0
-                if existing.audio_recording:
-                    try:
-                        existing.audio_recording.delete(save=False)
-                    except Exception:
-                        pass
-                    existing.audio_recording = None
-                existing.recording_url = None
             else:
                 if request.FILES.get('audio_recording'):
                     uploaded_audio = request.FILES.get('audio_recording')
@@ -478,11 +480,6 @@ class LeadInteractionViewSet(viewsets.ModelViewSet):
                         rec_dur = extract_audio_duration(existing.audio_recording)
                         if rec_dur > 0:
                             existing.call_duration = rec_dur
-                elif request.data.get('call_duration'):
-                    try:
-                        existing.call_duration = int(request.data.get('call_duration'))
-                    except (ValueError, TypeError):
-                        pass
                 if request.data.get('recording_url'):
                     existing.recording_url = request.data.get('recording_url')
             if request.data.get('notes'):
@@ -497,10 +494,22 @@ class LeadInteractionViewSet(viewsets.ModelViewSet):
         caller_number = str(request.data.get('caller_number') or '').strip()
         receiver_number = str(request.data.get('receiver_number') or '').strip()
         call_direction = (request.data.get('call_direction') or 'OUTGOING').upper()
-        call_status = (request.data.get('call_status') or ('CONNECTED' if request.data.get('call_duration') and int(request.data.get('call_duration', 0)) > 0 else 'CONNECTED')).upper()
         call_duration = request.data.get('call_duration', 0)
         notes = request.data.get('notes', '')
         interaction_type = request.data.get('interaction_type', 'CALL')
+
+        try:
+            dur_int = int(call_duration)
+        except (ValueError, TypeError):
+            dur_int = 0
+
+        raw_status = request.data.get('call_status')
+        if raw_status:
+            call_status = str(raw_status).strip().upper()
+        elif dur_int > 0:
+            call_status = 'CONNECTED'
+        else:
+            call_status = 'MISSED'
 
         # Fallback for customer number based on call direction
         if not customer_number:
@@ -509,31 +518,34 @@ class LeadInteractionViewSet(viewsets.ModelViewSet):
             else:
                 customer_number = receiver_number or caller_number
 
-        try:
-            dur_int = int(call_duration)
-        except (ValueError, TypeError):
+        # UNIFIED RULES:
+        # 1. duration == 0 -> MISSED / NOT CONNECTED, duration 0, no audio attached
+        # 2. duration > 0 -> CONNECTED, duration = recording duration if recording attached
+        is_unconnected = call_status in ['MISSED', 'REJECTED', 'UNANSWERED', 'FAILED'] or dur_int == 0
+        if is_unconnected and call_status not in ['CONNECTED']:
+            call_status = 'MISSED' if call_status not in ['REJECTED', 'UNANSWERED', 'FAILED'] else call_status
             dur_int = 0
-
-        # Enforce recording duration and unconnected rules
-        is_unconnected = call_status in ['MISSED', 'REJECTED', 'UNANSWERED', 'FAILED']
-        audio_file = request.FILES.get('audio_recording') if not is_unconnected else None
-        rec_url = request.data.get('recording_url') if not is_unconnected else None
-        if is_unconnected:
-            dur_int = 0
-        elif audio_file:
-            from .utils import extract_audio_duration, compute_audio_hash
-            file_hash = compute_audio_hash(audio_file)
-            dup_query = LeadInteraction.objects.filter(audio_file_hash=file_hash)
-            if mobile_call_id:
-                dup_query = dup_query.exclude(mobile_call_id=mobile_call_id)
-            if file_hash and dup_query.exists():
-                # Duplicate audio binary detected on a different call - reject cross-attachment
-                audio_file = None
-            else:
-                rec_dur = extract_audio_duration(audio_file)
-                if rec_dur > 0:
-                    dur_int = rec_dur
-
+            audio_file = None
+            rec_url = None
+            file_hash = None
+        else:
+            audio_file = request.FILES.get('audio_recording')
+            rec_url = request.data.get('recording_url')
+            file_hash = None
+            if audio_file:
+                from .utils import extract_audio_duration, compute_audio_hash
+                file_hash = compute_audio_hash(audio_file)
+                dup_query = LeadInteraction.objects.filter(audio_file_hash=file_hash)
+                if mobile_call_id:
+                    dup_query = dup_query.exclude(mobile_call_id=mobile_call_id)
+                if file_hash and dup_query.exists():
+                    # Duplicate audio binary detected on a different call - reject cross-attachment
+                    audio_file = None
+                    file_hash = None
+                else:
+                    rec_dur = extract_audio_duration(audio_file)
+                    if rec_dur > 0:
+                        dur_int = rec_dur
 
         # Secondary lead matching: search complete CRM dataset
         student = None
@@ -570,7 +582,7 @@ class LeadInteractionViewSet(viewsets.ModelViewSet):
             is_matched=is_matched,
             notes=notes,
             audio_recording=audio_file,
-            audio_file_hash=file_hash if audio_file else None
+            audio_file_hash=file_hash
         )
 
         # Optional pipeline update & follow-up task only if student matched
@@ -594,6 +606,55 @@ class LeadInteractionViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(interaction)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def partial_update(self, request, *args, **kwargs):
+        return self.update(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        
+        raw_status = request.data.get('call_status')
+        if raw_status:
+            instance.call_status = str(raw_status).strip().upper()
+
+        if request.data.get('call_duration') is not None:
+            try:
+                dur_val = int(request.data.get('call_duration'))
+                instance.call_duration = max(0, dur_val)
+            except (ValueError, TypeError):
+                pass
+
+        is_unconn = (instance.call_status or '').upper() in ['MISSED', 'REJECTED', 'UNANSWERED', 'FAILED'] or instance.call_duration == 0
+        if is_unconn and (instance.call_status or '').upper() not in ['CONNECTED']:
+            instance.call_status = 'MISSED' if (instance.call_status or '').upper() not in ['REJECTED', 'UNANSWERED', 'FAILED'] else instance.call_status
+            instance.call_duration = 0
+            # Do not accept audio recording for unconnected calls
+        else:
+            if request.FILES.get('audio_recording'):
+                uploaded_audio = request.FILES.get('audio_recording')
+                from .utils import extract_audio_duration, compute_audio_hash
+                file_hash = compute_audio_hash(uploaded_audio)
+                if file_hash and LeadInteraction.objects.filter(audio_file_hash=file_hash).exclude(pk=instance.pk).exclude(mobile_call_id=instance.mobile_call_id).exists():
+                    # Duplicate binary on another call - do not attach
+                    pass
+                else:
+                    instance.audio_recording = uploaded_audio
+                    instance.audio_file_hash = file_hash
+                    rec_dur = extract_audio_duration(instance.audio_recording)
+                    if rec_dur > 0:
+                        instance.call_duration = rec_dur
+            if request.data.get('recording_url'):
+                instance.recording_url = request.data.get('recording_url')
+
+        if request.data.get('notes'):
+            instance.notes = request.data.get('notes')
+        if request.data.get('pipeline_status') and instance.student:
+            instance.student.lead_status = request.data.get('pipeline_status')
+            instance.student.save()
+
+        instance.save()
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 class CampaignViewSet(viewsets.ModelViewSet):
     queryset = Campaign.objects.all()

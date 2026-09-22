@@ -171,15 +171,24 @@ export default function GlobalCallListener() {
           const phone = incomingPhoneRef.current || displayPhone;
 
           let authoritativeDuration = 0;
+          let isConnected = false;
+
           if (wasOffhook && startTime) {
             const wallClockSec = Math.max(0, Math.round((endTime - startTime) / 1000));
             authoritativeDuration = wallClockSec;
+            isConnected = wallClockSec > 0;
 
             if (Platform.OS === 'android' && phone) {
               try {
                 const logDuration = await getLatestCallLogDuration(phone, startTime, 'INCOMING');
-                if (typeof logDuration === 'number' && logDuration >= 0) {
-                  authoritativeDuration = logDuration;
+                if (typeof logDuration === 'number') {
+                  if (logDuration > 0) {
+                    authoritativeDuration = logDuration;
+                    isConnected = true;
+                  } else {
+                    authoritativeDuration = 0;
+                    isConnected = false;
+                  }
                 }
               } catch (err) {
                 console.warn('[GlobalCallListener] Failed to query CallLog duration:', err);
@@ -187,7 +196,7 @@ export default function GlobalCallListener() {
             }
           }
 
-          if (Platform.OS === 'android' && wasOffhook) {
+          if (Platform.OS === 'android' && wasOffhook && isConnected && authoritativeDuration > 0) {
             const path = await stopNativeRecording();
             if (path) {
               setRecordedFilePath(path);
@@ -198,10 +207,15 @@ export default function GlobalCallListener() {
             }
           } else if (Platform.OS === 'android') {
             await stopNativeRecording();
+            setRecordedFilePath(null);
           }
 
-          setCallDuration(authoritativeDuration);
-          setCallStatusState(wasOffhook ? 'CONNECTED' : 'MISSED');
+          // Unified rule: duration > 0 -> CONNECTED, duration == 0 -> MISSED
+          const finalDuration = isConnected && authoritativeDuration > 0 ? authoritativeDuration : 0;
+          const finalStatus = finalDuration > 0 ? 'CONNECTED' : 'MISSED';
+
+          setCallDuration(finalDuration);
+          setCallStatusState(finalStatus);
           
           // Show post-call review modal
           setIsModalVisible(true);
@@ -280,7 +294,13 @@ export default function GlobalCallListener() {
     setIsSubmitting(true);
 
     const mobileCallId = generateMobileCallId(displayPhone, 'INCOMING');
-    const status = callDuration > 0 ? 'CONNECTED' : callStatusState;
+    
+    // UNIFIED RULE:
+    // duration > 0 -> CONNECTED
+    // duration == 0 -> MISSED
+    const isConnected = callDuration > 0;
+    const status = isConnected ? 'CONNECTED' : 'MISSED';
+    const finalDuration = isConnected ? callDuration.toString() : '0';
 
     try {
       const formData = new FormData();
@@ -291,13 +311,13 @@ export default function GlobalCallListener() {
       formData.append('customer_number', displayPhone);
       formData.append('caller_number', displayPhone);
       formData.append('interaction_type', 'CALL');
-      formData.append('call_duration', callDuration.toString());
+      formData.append('call_duration', finalDuration);
       formData.append('call_direction', 'INCOMING');
       formData.append('call_status', status);
 
       const notesContent = postCallNotes 
         ? `Incoming Call - Duration: ${formatDuration(callDuration)}\nNotes: ${postCallNotes}`
-        : `Incoming Call from ${displayPhone} (${status}, ${formatDuration(callDuration)})`;
+        : (isConnected ? `Incoming Call from ${displayPhone} (CONNECTED, ${formatDuration(callDuration)})` : `Missed Incoming Call from ${displayPhone}`);
       formData.append('notes', notesContent);
 
       if (pipelineStatus && leadInfo?.id) formData.append('pipeline_status', pipelineStatus);
@@ -305,7 +325,8 @@ export default function GlobalCallListener() {
         formData.append('next_followup_date', nextFollowupDate.toISOString());
       }
 
-      if (recordedFilePath) {
+      // Only attach recording if call is confirmed CONNECTED with duration > 0
+      if (isConnected && recordedFilePath) {
         let finalUri = recordedFilePath;
         if (!finalUri.startsWith('file://') && !finalUri.startsWith('content://')) {
           finalUri = `file://${finalUri}`;
@@ -325,7 +346,7 @@ export default function GlobalCallListener() {
           type: mimeType,
           name: `incoming_record_${cleanPhone ? cleanPhone + '_' : ''}${Date.now()}.${ext}`
         } as any);
-      } else if (manualRecordingFile) {
+      } else if (isConnected && manualRecordingFile) {
         const cleanPhone = (displayPhone || '').replace(/\D/g, '').slice(-10);
         formData.append('audio_recording', {
           uri: manualRecordingFile.uri,
@@ -338,7 +359,7 @@ export default function GlobalCallListener() {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
 
-      if (recordedFilePath) {
+      if (isConnected && recordedFilePath) {
         await markRecordingConsumed(recordedFilePath);
       }
 
@@ -349,24 +370,20 @@ export default function GlobalCallListener() {
           try {
             await Notifications.scheduleNotificationAsync({
               content: {
-                title: '📞 Follow-up Reminder',
-                body: `Time to call back ${leadName} (${displayPhone})`,
+                title: 'Follow-up Reminder',
+                body: `Follow up with ${leadName}`,
                 sound: true,
-                data: { studentId: leadInfo?.id, phone: displayPhone },
               },
               trigger: {
-                type: Notifications.SchedulableTriggerInputTypes.DATE,
-                date: nextFollowupDate,
-                channelId: 'default',
+                type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+                seconds: Math.max(1, Math.floor(msUntilFollowup / 1000)),
               },
             });
-          } catch (notifErr) {
-            console.warn('[GlobalCallListener] Failed to schedule reminder:', notifErr);
-          }
+          } catch (_) {}
         }
       }
-      
-      Alert.alert('✅ Saved', 'Incoming call logged successfully.');
+
+      Alert.alert('✅ Saved', 'Call logged to CRM successfully.');
       resetModal();
     } catch (error: any) {
       console.warn('Failed to upload incoming call log online, queueing offline:', error?.response?.data || error);
@@ -377,11 +394,13 @@ export default function GlobalCallListener() {
         caller_number: displayPhone,
         call_direction: 'INCOMING',
         call_status: status,
-        call_duration: callDuration,
-        notes: postCallNotes ? `Incoming Call - Duration: ${formatDuration(callDuration)}\nNotes: ${postCallNotes}` : `Incoming Call from ${displayPhone} (${status}, ${formatDuration(callDuration)})`,
+        call_duration: isConnected ? callDuration : 0,
+        notes: postCallNotes 
+          ? `Incoming Call - Duration: ${formatDuration(callDuration)}\nNotes: ${postCallNotes}` 
+          : (isConnected ? `Incoming Call from ${displayPhone} (CONNECTED, ${formatDuration(callDuration)})` : `Missed Incoming Call from ${displayPhone}`),
         pipeline_status: pipelineStatus,
         next_followup_date: nextFollowupDate?.toISOString(),
-        recordedFilePath
+        recordedFilePath: isConnected ? recordedFilePath : null
       });
       Alert.alert('Saved Offline', 'Call logged locally and will sync automatically.');
       resetModal();
