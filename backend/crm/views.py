@@ -450,6 +450,24 @@ class LeadInteractionViewSet(viewsets.ModelViewSet):
             existing = LeadInteraction.objects.filter(provider_call_id=provider_call_id).first()
             
         if existing:
+            is_already_connected_with_recording = (
+                (existing.call_status or '').upper() == 'CONNECTED'
+                and (existing.call_duration or 0) > 0
+                and bool(existing.audio_recording or existing.recording_url)
+            )
+
+            if is_already_connected_with_recording:
+                # Rule 3: An already-valid CONNECTED LeadInteraction with call_duration > 0
+                # and existing audio_recording attached must NOT have its genuine recording or status
+                # downgraded merely because a later duplicate/idempotent sync sends call_duration=0 or missed.
+                if request.data.get('notes'):
+                    existing.notes = request.data.get('notes')
+                if request.data.get('customer_name') and request.data.get('customer_name').strip():
+                    existing.customer_name = request.data.get('customer_name').strip()
+                existing.save()
+                serializer = self.get_serializer(existing)
+                return Response(serializer.data, status=status.HTTP_200_OK)
+
             # Update with newly provided fields
             if request.data.get('call_status'):
                 existing.call_status = request.data.get('call_status').upper()
@@ -462,26 +480,33 @@ class LeadInteractionViewSet(viewsets.ModelViewSet):
             if new_dur is not None:
                 existing.call_duration = max(0, new_dur)
 
-            is_unconn = (existing.call_status or '').upper() in ['MISSED', 'REJECTED', 'UNANSWERED', 'FAILED'] or existing.call_duration == 0
-            if is_unconn and (existing.call_status or '').upper() not in ['CONNECTED']:
+            uploaded_audio = request.FILES.get('audio_recording')
+            if uploaded_audio and (existing.call_status or '').upper() not in ['MISSED', 'REJECTED', 'UNANSWERED', 'FAILED']:
+                from .utils import extract_audio_duration, compute_audio_hash
+                file_hash = compute_audio_hash(uploaded_audio)
+                if file_hash and LeadInteraction.objects.filter(audio_file_hash=file_hash).exclude(pk=existing.pk).exclude(mobile_call_id=existing.mobile_call_id).exists():
+                    # Duplicate binary on another call - do not attach
+                    pass
+                else:
+                    existing.audio_recording = uploaded_audio
+                    existing.audio_file_hash = file_hash
+                    rec_dur = extract_audio_duration(existing.audio_recording)
+                    if rec_dur > 0:
+                        existing.call_duration = rec_dur
+
+            # STRICT UNIFIED RULES:
+            # duration == 0 or explicit missed/unanswered/rejected/failed => MISSED, duration 0, no audio
+            if existing.call_duration <= 0 or (existing.call_status or '').upper() in ['MISSED', 'REJECTED', 'UNANSWERED', 'FAILED']:
                 existing.call_status = 'MISSED' if (existing.call_status or '').upper() not in ['REJECTED', 'UNANSWERED', 'FAILED'] else existing.call_status
                 existing.call_duration = 0
+                existing.audio_recording = None
+                existing.audio_file_hash = None
+                existing.recording_url = None
             else:
-                if request.FILES.get('audio_recording'):
-                    uploaded_audio = request.FILES.get('audio_recording')
-                    from .utils import extract_audio_duration, compute_audio_hash
-                    file_hash = compute_audio_hash(uploaded_audio)
-                    if file_hash and LeadInteraction.objects.filter(audio_file_hash=file_hash).exclude(pk=existing.pk).exclude(mobile_call_id=existing.mobile_call_id).exists():
-                        # Duplicate binary on another call - do not attach
-                        pass
-                    else:
-                        existing.audio_recording = uploaded_audio
-                        existing.audio_file_hash = file_hash
-                        rec_dur = extract_audio_duration(existing.audio_recording)
-                        if rec_dur > 0:
-                            existing.call_duration = rec_dur
+                existing.call_status = 'CONNECTED'
                 if request.data.get('recording_url'):
                     existing.recording_url = request.data.get('recording_url')
+
             if request.data.get('notes'):
                 existing.notes = request.data.get('notes')
             existing.save()
@@ -518,17 +543,21 @@ class LeadInteractionViewSet(viewsets.ModelViewSet):
             else:
                 customer_number = receiver_number or caller_number
 
-        # UNIFIED RULES:
-        # 1. duration == 0 -> MISSED / NOT CONNECTED, duration 0, no audio attached
-        # 2. duration > 0 -> CONNECTED, duration = recording duration if recording attached
-        is_unconnected = call_status in ['MISSED', 'REJECTED', 'UNANSWERED', 'FAILED'] or dur_int == 0
-        if is_unconnected and call_status not in ['CONNECTED']:
+        # STRICT UNIFIED RULES:
+        # A call is ONLY confirmed connected if CallLog duration > 0 and call_status is not missed/unanswered/rejected/failed.
+        # If dur_int <= 0 or call_status in ['MISSED', 'REJECTED', 'UNANSWERED', 'FAILED']:
+        # -> Call is UNCONNECTED: MISSED, duration exactly 0, NO audio/recording attached.
+        # -> NEVER use fallback mic or OEM recording duration to determine whether the call connected.
+        if dur_int <= 0 or call_status in ['MISSED', 'REJECTED', 'UNANSWERED', 'FAILED']:
             call_status = 'MISSED' if call_status not in ['REJECTED', 'UNANSWERED', 'FAILED'] else call_status
             dur_int = 0
             audio_file = None
             rec_url = None
             file_hash = None
         else:
+            # Call is confirmed CONNECTED by authoritative CallLog duration > 0.
+            # Recording duration may synchronize the displayed duration only after call is already confirmed CONNECTED.
+            call_status = 'CONNECTED'
             audio_file = request.FILES.get('audio_recording')
             rec_url = request.data.get('recording_url')
             file_hash = None
@@ -612,24 +641,38 @@ class LeadInteractionViewSet(viewsets.ModelViewSet):
 
     def update(self, request, *args, **kwargs):
         instance = self.get_object()
+
+        is_already_connected_with_recording = (
+            (instance.call_status or '').upper() == 'CONNECTED'
+            and (instance.call_duration or 0) > 0
+            and bool(instance.audio_recording or instance.recording_url)
+        )
         
         raw_status = request.data.get('call_status')
         if raw_status:
-            instance.call_status = str(raw_status).strip().upper()
+            # Do not downgrade an already connected interaction with a genuine recording
+            if not (is_already_connected_with_recording and str(raw_status).strip().upper() in ['MISSED', 'REJECTED', 'UNANSWERED', 'FAILED']):
+                instance.call_status = str(raw_status).strip().upper()
 
         if request.data.get('call_duration') is not None:
             try:
                 dur_val = int(request.data.get('call_duration'))
-                instance.call_duration = max(0, dur_val)
+                # Do not overwrite duration to 0 if already connected with a genuine recording
+                if not (is_already_connected_with_recording and dur_val <= 0):
+                    instance.call_duration = max(0, dur_val)
             except (ValueError, TypeError):
                 pass
 
-        is_unconn = (instance.call_status or '').upper() in ['MISSED', 'REJECTED', 'UNANSWERED', 'FAILED'] or instance.call_duration == 0
-        if is_unconn and (instance.call_status or '').upper() not in ['CONNECTED']:
+        # STRICT UNIFIED RULES:
+        if not is_already_connected_with_recording and (instance.call_duration <= 0 or (instance.call_status or '').upper() in ['MISSED', 'REJECTED', 'UNANSWERED', 'FAILED']):
             instance.call_status = 'MISSED' if (instance.call_status or '').upper() not in ['REJECTED', 'UNANSWERED', 'FAILED'] else instance.call_status
             instance.call_duration = 0
+            instance.audio_recording = None
+            instance.audio_file_hash = None
+            instance.recording_url = None
             # Do not accept audio recording for unconnected calls
         else:
+            instance.call_status = 'CONNECTED'
             if request.FILES.get('audio_recording'):
                 uploaded_audio = request.FILES.get('audio_recording')
                 from .utils import extract_audio_duration, compute_audio_hash

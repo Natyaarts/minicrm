@@ -347,8 +347,8 @@ class CallLoggingIntegrationTests(TestCase):
         self.assertEqual(timeline_entry['call_duration'], 51)
 
     def test_14_subsecond_connected_call_and_missed_call_handling(self):
-        """14. Sub-second connected call is saved as CONNECTED with duration=0, while missed call is MISSED"""
-        # Sub-second connected call (answered and immediately hung up)
+        """14. Zero-duration call sent as CONNECTED is normalized to MISSED with duration=0, and missed call is MISSED"""
+        # Call sent with duration 0 is strictly normalized to MISSED with duration 0
         resp_subsecond = self.client.post('/api/crm/interactions/', {
             'interaction_type': 'CALL',
             'call_direction': 'INCOMING',
@@ -356,11 +356,11 @@ class CallLoggingIntegrationTests(TestCase):
             'customer_number': '+919876543210',
             'call_status': 'CONNECTED',
             'call_duration': 0,
-            'notes': 'Incoming Call from +919876543210 (CONNECTED, 00:00)',
+            'notes': 'Incoming Call from +919876543210 (00:00)',
             'mobile_call_id': 'mob_subsecond_001'
         })
         self.assertEqual(resp_subsecond.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(resp_subsecond.data['call_status'], 'CONNECTED')
+        self.assertEqual(resp_subsecond.data['call_status'], 'MISSED')
         self.assertEqual(resp_subsecond.data['call_duration'], 0)
 
         # True missed call
@@ -428,12 +428,12 @@ class CallLoggingIntegrationTests(TestCase):
             'caller_number': '+919876543210',
             'customer_number': '+919876543210',
             'call_status': 'CONNECTED',
-            'call_duration': 0,
-            'mobile_call_id': 'mob_sync_test_initial_0s'
+            'call_duration': 45,
+            'mobile_call_id': 'mob_sync_test_initial_45s'
         })
         self.assertEqual(initial_resp.status_code, status.HTTP_201_CREATED)
         interaction_id = initial_resp.data['id']
-        self.assertEqual(initial_resp.data['call_duration'], 0)
+        self.assertEqual(initial_resp.data['call_duration'], 45)
         self.assertIsNone(initial_resp.data['audio_recording'])
 
         # SyncManager attaches audio later via PATCH with 7:45 (465s) recording
@@ -455,7 +455,7 @@ class CallLoggingIntegrationTests(TestCase):
             'receiver_number': '+919876543210',
             'customer_number': '+919876543210',
             'call_status': 'CONNECTED',
-            'call_duration': 0,
+            'call_duration': 120,
             'mobile_call_id': 'mob_outgoing_120s',
             'audio_recording': outgoing_audio
         }, format='multipart')
@@ -474,7 +474,7 @@ class CallLoggingIntegrationTests(TestCase):
             'caller_number': '+919876543210',
             'customer_number': '+919876543210',
             'call_status': 'CONNECTED',
-            'call_duration': 0,
+            'call_duration': 460, # 460s native duration, synchronized to 465s recording
             'audio_recording': audio_7m45s,
             'mobile_call_id': 'mob_call_7m45s'
         }, format='multipart')
@@ -497,7 +497,7 @@ class CallLoggingIntegrationTests(TestCase):
             'receiver_number': '+919876543210',
             'customer_number': '+919876543210',
             'call_status': 'CONNECTED',
-            'call_duration': 0,
+            'call_duration': 10, # 10s CallLog duration, synchronized to 13s recording
             'audio_recording': audio_13s,
             'mobile_call_id': 'mob_call_13s'
         }, format='multipart')
@@ -566,7 +566,7 @@ class CallLoggingIntegrationTests(TestCase):
             'receiver_number': '+919515207159',
             'customer_number': '+919515207159',
             'call_status': 'CONNECTED',
-            'call_duration': 0,
+            'call_duration': 430,
             'mobile_call_id': 'mob_sitara_call_001',
             'audio_recording': audio_file_1
         }, format='multipart')
@@ -613,7 +613,7 @@ class CallLoggingIntegrationTests(TestCase):
             'caller_number': '+917593905516',
             'customer_number': '+917593905516',
             'call_status': 'CONNECTED',
-            'call_duration': 0,
+            'call_duration': 180,
             'mobile_call_id': 'mob_nazarin_inc_188s',
             'audio_recording': audio_3m8s
         }, format='multipart')
@@ -629,7 +629,7 @@ class CallLoggingIntegrationTests(TestCase):
             'receiver_number': '+917593905516',
             'customer_number': '+917593905516',
             'call_status': 'CONNECTED',
-            'call_duration': 0,
+            'call_duration': 40,
             'mobile_call_id': 'mob_nazarin_out_40s',
             'audio_recording': audio_40s
         }, format='multipart')
@@ -675,7 +675,7 @@ class CallLoggingIntegrationTests(TestCase):
             'receiver_number': '+919876543210',
             'customer_number': '+919876543210',
             'call_status': 'CONNECTED',
-            'call_duration': 0,
+            'call_duration': 510,
             'mobile_call_id': 'mob_call_8m36s_orig',
             'audio_recording': audio_file
         }, format='multipart')
@@ -845,4 +845,118 @@ class CallLoggingIntegrationTests(TestCase):
         self.assertEqual(db_rec.call_status, 'MISSED')
         self.assertEqual(db_rec.call_duration, 0)
         self.assertFalse(bool(db_rec.audio_recording))
+
+    def test_32_outgoing_call_log_zero_offhook_44s_timer_even_if_connected_passed(self):
+        """32. OUTGOING + CallLog duration 0 + OFFHOOK + 44s timer => MISSED + duration 0 + no audio (even if sent as CONNECTED)"""
+        fallback_audio_44s = SimpleUploadedFile("fallback_recording_9876543210_44s.m4a", make_m4a_audio(44), content_type="audio/m4a")
+        
+        # Even if a client mistakenly passes call_status='CONNECTED' with duration 0, backend normalizes to MISSED, duration 0, no audio
+        response = self.client.post('/api/crm/interactions/', {
+            'interaction_type': 'CALL',
+            'call_direction': 'OUTGOING',
+            'receiver_number': '+919876543210',
+            'customer_number': '+919876543210',
+            'call_status': 'CONNECTED',
+            'call_duration': 0,
+            'notes': 'Outbound Call to +919876543210 (44-sec timer)',
+            'mobile_call_id': 'mob_out_44s_timer_regression',
+            'audio_recording': fallback_audio_44s
+        }, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['call_status'], 'MISSED')
+        self.assertEqual(response.data['call_duration'], 0)
+        self.assertEqual(response.data['formatted_call_duration'], '0s')
+        self.assertIsNone(response.data.get('audio_recording'))
+        self.assertIsNone(response.data.get('recording_file_or_url'))
+
+        # Verify database record
+        db_rec = LeadInteraction.objects.get(mobile_call_id='mob_out_44s_timer_regression')
+        self.assertEqual(db_rec.call_status, 'MISSED')
+        self.assertEqual(db_rec.call_duration, 0)
+        self.assertFalse(bool(db_rec.audio_recording))
+
+    def test_33_incoming_call_log_zero_regression(self):
+        """33. INCOMING + CallLog duration 0 => MISSED + duration 0 + no audio"""
+        response = self.client.post('/api/crm/interactions/', {
+            'interaction_type': 'CALL',
+            'call_direction': 'INCOMING',
+            'caller_number': '+919876543210',
+            'customer_number': '+919876543210',
+            'call_status': 'MISSED',
+            'call_duration': 0,
+            'notes': 'Missed incoming call from +919876543210',
+            'mobile_call_id': 'mob_inc_0s_regression'
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['call_status'], 'MISSED')
+        self.assertEqual(response.data['call_duration'], 0)
+        self.assertEqual(response.data['formatted_call_duration'], '0s')
+        self.assertIsNone(response.data.get('audio_recording'))
+        self.assertIsNone(response.data.get('recording_file_or_url'))
+
+        db_rec = LeadInteraction.objects.get(mobile_call_id='mob_inc_0s_regression')
+        self.assertEqual(db_rec.call_status, 'MISSED')
+        self.assertEqual(db_rec.call_duration, 0)
+        self.assertFalse(bool(db_rec.audio_recording))
+
+    def test_34_existing_connected_with_recording_duplicate_duration_zero_preserves_recording(self):
+        """
+        34. Rule: An already-valid CONNECTED LeadInteraction with call_duration > 0 and an attached genuine
+        recording MUST NOT have its recording deleted or status downgraded if a later duplicate/idempotent
+        sync sends call_duration=0 or call_status='MISSED'.
+        """
+        valid_recording = SimpleUploadedFile("Call_9876543210_genuine.m4a", make_m4a_audio(65), content_type="audio/m4a")
+        
+        # Step 1: Initial call connected with duration 65 and recording attached
+        res1 = self.client.post('/api/crm/interactions/', {
+            'interaction_type': 'CALL',
+            'call_direction': 'OUTGOING',
+            'receiver_number': '+919876543210',
+            'customer_number': '+919876543210',
+            'call_status': 'CONNECTED',
+            'call_duration': 65,
+            'mobile_call_id': 'mob_connected_with_recording_001',
+            'audio_recording': valid_recording
+        }, format='multipart')
+        self.assertEqual(res1.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(res1.data['call_status'], 'CONNECTED')
+        self.assertEqual(res1.data['call_duration'], 65)
+        self.assertIsNotNone(res1.data['audio_recording'])
+        initial_audio_path = res1.data['audio_recording']
+
+        # Step 2: Later duplicate/idempotent sync sends call_duration=0 and call_status='MISSED' for same mobile_call_id
+        res2 = self.client.post('/api/crm/interactions/', {
+            'interaction_type': 'CALL',
+            'call_direction': 'OUTGOING',
+            'receiver_number': '+919876543210',
+            'customer_number': '+919876543210',
+            'call_status': 'MISSED',
+            'call_duration': 0,
+            'mobile_call_id': 'mob_connected_with_recording_001',
+            'notes': 'Late sync event with duration 0'
+        })
+        self.assertEqual(res2.status_code, status.HTTP_200_OK)
+        # Must strictly preserve CONNECTED status, duration 65, and the audio recording
+        self.assertEqual(res2.data['call_status'], 'CONNECTED')
+        self.assertEqual(res2.data['call_duration'], 65)
+        self.assertIsNotNone(res2.data['audio_recording'])
+        self.assertEqual(res2.data['audio_recording'], initial_audio_path)
+
+        # Step 3: Verify DB persistence
+        db_rec = LeadInteraction.objects.get(mobile_call_id='mob_connected_with_recording_001')
+        self.assertEqual(db_rec.call_status, 'CONNECTED')
+        self.assertEqual(db_rec.call_duration, 65)
+        self.assertTrue(bool(db_rec.audio_recording))
+
+        # Step 4: Normal PATCH update without call_duration or audio must continue preserving call and recording
+        interaction_id = res1.data['id']
+        patch_res = self.client.patch(f'/api/crm/interactions/{interaction_id}/', {
+            'notes': 'Updated follow-up notes from advisor'
+        })
+        self.assertEqual(patch_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(patch_res.data['call_status'], 'CONNECTED')
+        self.assertEqual(patch_res.data['call_duration'], 65)
+        self.assertEqual(patch_res.data['audio_recording'], initial_audio_path)
+        self.assertEqual(patch_res.data['notes'], 'Updated follow-up notes from advisor')
+
 

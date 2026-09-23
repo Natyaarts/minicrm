@@ -350,6 +350,53 @@ async function runTests() {
   });
   assert(syncMatch43s === null, 'SyncManager strictly rejects attaching recordings to 43s unanswered call');
 
+  // Test 15: Explicit Verification for Both OUTGOING and INCOMING Duration 0 and Duration > 0
+  console.log('\n[Suite 15: Strict Call Classification Regression Verification]');
+  
+  // 1. OUTGOING + CallLog duration 0 + OFFHOOK + 44-second timer => MISSED + duration 0 + no audio
+  const out44sTimer = resolveCallPostState({
+    logDuration: 0,
+    fallbackRecordingPath: '/cache/fallback_recording_9876543210_44s.m4a',
+    fallbackAudioDuration: 44, // 44-second timer/fallback recording
+    callDirection: 'OUTGOING'
+  });
+  assert(out44sTimer.call_status === 'MISSED', 'OUTGOING + CallLog duration 0 + OFFHOOK + 44s timer => MISSED');
+  assert(out44sTimer.call_duration === 0, 'OUTGOING + CallLog duration 0 + OFFHOOK + 44s timer => duration 0');
+  assert(out44sTimer.recordedFilePath === null, 'OUTGOING + CallLog duration 0 + OFFHOOK + 44s timer => no audio attached');
+
+  // 2. INCOMING + CallLog duration 0 => MISSED + duration 0 + no audio
+  const inc0s = resolveCallPostState({
+    logDuration: 0,
+    fallbackRecordingPath: '/cache/incoming_record_9876543210_dial.m4a',
+    fallbackAudioDuration: 15,
+    callDirection: 'INCOMING'
+  });
+  assert(inc0s.call_status === 'MISSED', 'INCOMING + CallLog duration 0 => MISSED');
+  assert(inc0s.call_duration === 0, 'INCOMING + CallLog duration 0 => duration 0');
+  assert(inc0s.recordedFilePath === null, 'INCOMING + CallLog duration 0 => no audio attached');
+
+  // 3. OUTGOING + CallLog duration > 0 => CONNECTED
+  const outConnected = resolveCallPostState({
+    logDuration: 55,
+    fallbackRecordingPath: '/storage/emulated/0/Recordings/Call/Call_9876543210.m4a',
+    fallbackAudioDuration: 55,
+    callDirection: 'OUTGOING'
+  });
+  assert(outConnected.call_status === 'CONNECTED', 'OUTGOING + CallLog duration > 0 => CONNECTED');
+  assert(outConnected.call_duration === 55, 'OUTGOING + CallLog duration > 0 => authoritative duration 55s');
+  assert(outConnected.recordedFilePath !== null, 'OUTGOING + CallLog duration > 0 => audio preserved');
+
+  // 4. INCOMING + CallLog duration > 0 => CONNECTED
+  const incConnected = resolveCallPostState({
+    logDuration: 90,
+    fallbackRecordingPath: '/storage/emulated/0/Recordings/Call/Call_inc_9876543210.m4a',
+    fallbackAudioDuration: 92,
+    callDirection: 'INCOMING'
+  });
+  assert(incConnected.call_status === 'CONNECTED', 'INCOMING + CallLog duration > 0 => CONNECTED');
+  assert(incConnected.call_duration === 92, 'INCOMING + CallLog duration > 0 => synchronized duration 92s');
+  assert(incConnected.recordedFilePath !== null, 'INCOMING + CallLog duration > 0 => audio attached');
+
   console.log(`\n========================================`);
   console.log(`SUMMARY: ${passed}/${total} TESTS PASSED (100%)`);
   console.log(`========================================\n`);

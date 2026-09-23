@@ -56,6 +56,7 @@ const Dialpad = () => {
   const callStatusRef = useRef(callStatus);
   const callStartTimeRef = useRef<number>(0);
   const callDurationRef = useRef<number>(0);
+  const callStatusStateRef = useRef(callStatusState);
   const isFinalizingRef = useRef(false);
 
   useEffect(() => {
@@ -69,6 +70,10 @@ const Dialpad = () => {
   useEffect(() => {
     callDurationRef.current = callDuration;
   }, [callDuration]);
+
+  useEffect(() => {
+    callStatusStateRef.current = callStatusState;
+  }, [callStatusState]);
 
   useEffect(() => {
     loadUser();
@@ -327,7 +332,7 @@ const Dialpad = () => {
     const unsubscribeEvents = listenToCallEvents(async (path) => {
       console.log("Recording saved at:", path);
       // Audio recording must ONLY be accepted if the call was already confirmed CONNECTED with duration > 0
-      if (path && callStatusRef.current === 'POST_CALL' && callDurationRef.current > 0) {
+      if (path && callStatusRef.current === 'POST_CALL' && callDurationRef.current > 0 && callStatusStateRef.current === 'CONNECTED') {
         setRecordedFilePath(path);
         try {
           const exactDuration = await extractDurationFromAudio(path);
@@ -464,6 +469,10 @@ const Dialpad = () => {
 
   const pickRecordingFile = async () => {
     try {
+      if (callStatusStateRef.current !== 'CONNECTED' || callDurationRef.current <= 0) {
+        Alert.alert('Unconnected Call', 'Recordings cannot be attached to missed or unanswered calls.');
+        return;
+      }
       const result = await DocumentPicker.getDocumentAsync({
         type: ['audio/*'],
         copyToCacheDirectory: true,

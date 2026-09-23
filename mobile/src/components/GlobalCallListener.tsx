@@ -19,7 +19,7 @@ export default function GlobalCallListener() {
 
   const [displayPhone, setDisplayPhone] = useState('');
   const [callDuration, setCallDuration] = useState(0);
-  const [callStatusState, setCallStatusState] = useState<'CONNECTED' | 'MISSED'>('CONNECTED');
+  const [callStatusState, setCallStatusState] = useState<'CONNECTED' | 'MISSED'>('MISSED');
   const [recordedFilePath, setRecordedFilePath] = useState<string | null>(null);
   
   const [leadInfo, setLeadInfo] = useState<any>(null); 
@@ -415,11 +415,15 @@ export default function GlobalCallListener() {
     setLeadInfo(null);
     setDisplayPhone('');
     setCallDuration(0);
-    setCallStatusState('CONNECTED');
+    setCallStatusState('MISSED');
   };
 
   const pickRecordingFile = async () => {
     try {
+      if (callStatusState !== 'CONNECTED' || callDuration <= 0) {
+        Alert.alert('Unconnected Call', 'Recordings cannot be attached to missed or unanswered calls.');
+        return;
+      }
       const result = await DocumentPicker.getDocumentAsync({
         type: ['audio/*'],
         copyToCacheDirectory: true,
@@ -570,25 +574,29 @@ export default function GlobalCallListener() {
           </>
         )}
 
-        <Text style={[styles.label, { marginTop: 20 }]}>Call Recording</Text>
-        {(recordedFilePath || manualRecordingFile) ? (
-          <View style={styles.recordingSuccessBox}>
-            <Ionicons name="checkmark-circle" size={20} color="#38A169" />
-            <Text style={{ color: '#276749', fontSize: 13, flex: 1 }} numberOfLines={1}>
-              {recordedFilePath ? `Auto-recorded: ${recordedFilePath.split('/').pop()} ✅` : manualRecordingFile?.name}
-            </Text>
-            <TouchableOpacity onPress={() => { setRecordedFilePath(null); setManualRecordingFile(null); }}>
-              <Ionicons name="trash-outline" size={18} color="#EF4444" />
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <TouchableOpacity onPress={pickRecordingFile} style={styles.uploadBtn}>
-            <Ionicons name="cloud-upload-outline" size={20} color="#3182CE" />
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: '#3182CE', fontWeight: '700', fontSize: 13 }}>Upload Call Recording</Text>
-              <Text style={{ color: '#718096', fontSize: 11, marginTop: 2 }}>Audio not found automatically</Text>
-            </View>
-          </TouchableOpacity>
+        {callStatusState === 'CONNECTED' && (
+          <>
+            <Text style={[styles.label, { marginTop: 20 }]}>Call Recording</Text>
+            {(recordedFilePath || manualRecordingFile) ? (
+              <View style={styles.recordingSuccessBox}>
+                <Ionicons name="checkmark-circle" size={20} color="#38A169" />
+                <Text style={{ color: '#276749', fontSize: 13, flex: 1 }} numberOfLines={1}>
+                  {recordedFilePath ? `Auto-recorded: ${recordedFilePath.split('/').pop()} ✅` : manualRecordingFile?.name}
+                </Text>
+                <TouchableOpacity onPress={() => { setRecordedFilePath(null); setManualRecordingFile(null); }}>
+                  <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity onPress={pickRecordingFile} style={styles.uploadBtn}>
+                <Ionicons name="cloud-upload-outline" size={20} color="#3182CE" />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: '#3182CE', fontWeight: '700', fontSize: 13 }}>Upload Call Recording</Text>
+                  <Text style={{ color: '#718096', fontSize: 11, marginTop: 2 }}>Audio not found automatically</Text>
+                </View>
+              </TouchableOpacity>
+            )}
+          </>
         )}
 
         <TouchableOpacity 
