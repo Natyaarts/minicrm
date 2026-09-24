@@ -194,7 +194,7 @@ const Dialpad = () => {
     isFinalizingRef.current = true;
 
     stopTimer();
-    const startTime = callStartTimeRef.current;
+    const startTime = callStartTimeRef.current > 0 ? callStartTimeRef.current : (Date.now() - 5000);
     const targetPhone = phoneRef.current;
 
     // Immediately enter POST_CALL review with initial safe defaults (0 duration, MISSED, no recording)

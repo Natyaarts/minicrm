@@ -397,9 +397,110 @@ async function runTests() {
   assert(incConnected.call_duration === 92, 'INCOMING + CallLog duration > 0 => synchronized duration 92s');
   assert(incConnected.recordedFilePath !== null, 'INCOMING + CallLog duration > 0 => audio attached');
 
+  // Test 16: CRITICAL REGRESSION: Previous Call (226s, 03:46) + Current Unanswered Call to Same Number
+  console.log('\n[Suite 16: Previous Call 03:46 (226s) + Current Unanswered Call to Same Number]');
+  const T = Date.now();
+  const phoneX = '+919876543210';
+
+  // CallLog contains previous call from T - 10 minutes (duration 226s)
+  const existingCallLogs = [
+    {
+      number: phoneX,
+      date: T - 600000, // 10 minutes ago
+      duration: 226, // 03:46
+      type: 'OUTGOING'
+    }
+  ];
+
+  // Current unanswered call initiated at T
+  const currentCallDurationFromLog = simulateGetLatestCallLogDuration({
+    callLogs: existingCallLogs,
+    targetPhone: phoneX,
+    callStartTimeMs: T,
+    callDirection: 'OUTGOING',
+    currentClockTimeMs: T + 5000 // ended 5s later
+  });
+
+  assert(currentCallDurationFromLog === 0, 'Current unanswered call does NOT pick up previous call 226s (03:46) duration');
+
+  const currentCallPostState = resolveCallPostState({
+    logDuration: currentCallDurationFromLog,
+    fallbackRecordingPath: '/cache/fallback_recording_9876543210_current.m4a',
+    fallbackAudioDuration: 5, // 5s mic audio during ringing
+    callDirection: 'OUTGOING'
+  });
+
+  assert(currentCallPostState.call_duration === 0, 'Current unanswered call duration is strictly 0');
+  assert(currentCallPostState.call_status === 'MISSED', 'Current unanswered call status is strictly MISSED');
+  assert(currentCallPostState.recordedFilePath === null, 'Current unanswered call discards audio recording');
+
+  // Test 17: Previous Connected Call + Recording Followed by New Unanswered Call to Same Number
+  console.log('\n[Suite 17: Previous Connected Call + Recording Followed by New Unanswered Call to Same Number]');
+  const phoneY = '+919988776655';
+  const previousRecordingFile = 'recorded_call_9988776655_prev_call.m4a';
+
+  // Mark previous call's recording as consumed
+  await markRecordingConsumed(previousRecordingFile);
+  const currentConsumedSet = await getConsumedRecordings();
+
+  const newUnansweredCall = {
+    id: 601,
+    customer_number: phoneY,
+    call_status: 'MISSED',
+    call_duration: 0,
+    date: new Date(T).toISOString()
+  };
+
+  const syncMatchForNewCall = findMatchingRecording({
+    call: newUnansweredCall,
+    files: [previousRecordingFile],
+    fileDetails: {
+      [previousRecordingFile]: { exists: true, modificationTime: (T - 600000) / 1000 }
+    },
+    consumedSet: currentConsumedSet
+  });
+
+  assert(syncMatchForNewCall === null, 'New unanswered call NEVER reuses previous call recording');
+
   console.log(`\n========================================`);
   console.log(`SUMMARY: ${passed}/${total} TESTS PASSED (100%)`);
   console.log(`========================================\n`);
+}
+
+// Simulation of getLatestCallLogDuration logic from CallRecordingModule.kt
+function simulateGetLatestCallLogDuration({ callLogs, targetPhone, callStartTimeMs, callDirection, currentClockTimeMs }) {
+  const cleanTarget = (targetPhone || '').replace(/\D/g, '').slice(-10);
+  const startTime = Number(callStartTimeMs || 0);
+  const now = currentClockTimeMs || Date.now();
+
+  // Strictly require CallLog entry to belong to the CURRENT call session (10s tolerance before start time)
+  const minValidDate = startTime > 0 ? (startTime - 10000) : (now - 15000);
+  const maxValidDate = now + 10000;
+
+  // Filter call logs matching current session window
+  const matchingLogs = (callLogs || []).filter(row => {
+    const rowClean = (row.number || '').replace(/\D/g, '').slice(-10);
+    const rowDate = Number(row.date || 0);
+
+    // Strictly reject entries outside current session window
+    if (rowDate < minValidDate || rowDate > maxValidDate) {
+      return false;
+    }
+
+    const numberMatches = !cleanTarget || !rowClean || rowClean === cleanTarget || rowClean.endsWith(cleanTarget) || cleanTarget.endsWith(rowClean);
+    const directionMatches = !callDirection || !row.type || (callDirection.toUpperCase() === 'OUTGOING' && (row.type === 'OUTGOING' || row.type === 'MISSED' || row.type === 'REJECTED')) ||
+                             (callDirection.toUpperCase() === 'INCOMING' && (row.type === 'INCOMING' || row.type === 'MISSED' || row.type === 'REJECTED'));
+
+    return numberMatches && directionMatches;
+  });
+
+  // Sort by date DESC
+  matchingLogs.sort((a, b) => b.date - a.date);
+
+  if (matchingLogs.length > 0) {
+    return matchingLogs[0].duration;
+  }
+  return 0; // No entry for current session
 }
 
 runTests();

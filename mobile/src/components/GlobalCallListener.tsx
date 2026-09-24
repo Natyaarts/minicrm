@@ -166,7 +166,7 @@ export default function GlobalCallListener() {
 
         if (isIncomingRef.current) {
           const endTime = Date.now();
-          const startTime = callStartTimeRef.current;
+          const startTime = callStartTimeRef.current || (Date.now() - 5000);
           const wasOffhook = isOffhookRef.current;
           const phone = incomingPhoneRef.current || displayPhone;
 

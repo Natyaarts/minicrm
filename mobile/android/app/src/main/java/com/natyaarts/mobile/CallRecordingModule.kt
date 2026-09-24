@@ -282,8 +282,8 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
         val phoneMatches = cleanTarget.length >= 6 && (cleanDigitsInFile.contains(cleanTarget) || fileName.contains(cleanTarget))
 
         if (phoneMatches) {
-            // Strict timestamp window around call session
-            val windowStart = if (startTimeMs > 0) (startTimeMs - 30_000L) else (System.currentTimeMillis() - 120_000L)
+            // Strict timestamp window around call session (15s tolerance before start time, 30s after)
+            val windowStart = if (startTimeMs > 0) (startTimeMs - 15_000L) else (System.currentTimeMillis() - 30_000L)
             val windowEnd = System.currentTimeMillis() + 30_000L
             return fileLastModified in windowStart..windowEnd
         }
@@ -317,7 +317,7 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
                     val dir = File(physicalPath)
                     if (dir.exists() && dir.isDirectory) {
                         var mostRecentFile: File? = null
-                        var maxLastModified = if (startTimeMs > 0) (startTimeMs - 30_000L) else 0L
+                        var maxLastModified = if (startTimeMs > 0) (startTimeMs - 15_000L) else (System.currentTimeMillis() - 30_000L)
                         for (file in (dir.listFiles() ?: emptyArray())) {
                             if (file.isFile && file.lastModified() >= maxLastModified) {
                                 val name = file.name ?: ""
@@ -340,7 +340,7 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
                     val documentFile = DocumentFile.fromTreeUri(reactApplicationContext, treeUri)
                     if (documentFile != null && documentFile.isDirectory) {
                         var mostRecentFile: DocumentFile? = null
-                        var maxLastModified = if (startTimeMs > 0) (startTimeMs - 30_000L) else 0L
+                        var maxLastModified = if (startTimeMs > 0) (startTimeMs - 15_000L) else (System.currentTimeMillis() - 30_000L)
                         
                         for (file in documentFile.listFiles()) {
                             if (file.isFile && file.lastModified() >= maxLastModified) {
@@ -398,7 +398,7 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
             "/storage/emulated/0/callrecordings"
         )
 
-        val windowStart = if (startTimeMs > 0) (startTimeMs - 30_000L) else 0L
+        val windowStart = if (startTimeMs > 0) (startTimeMs - 15_000L) else (System.currentTimeMillis() - 30_000L)
         var bestFile: File? = null
         var bestModified = windowStart
 
@@ -432,7 +432,7 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
             MediaStore.Audio.Media.DATE_ADDED,
             MediaStore.Audio.Media.DATE_MODIFIED
         )
-        val startTimeSeconds = if (startTimeMs > 0) (startTimeMs / 1000 - 30) else (System.currentTimeMillis() / 1000 - 120)
+        val startTimeSeconds = if (startTimeMs > 0) (startTimeMs / 1000 - 15) else (System.currentTimeMillis() / 1000 - 30)
         val selection = "${MediaStore.Audio.Media.DATE_ADDED} >= ? OR ${MediaStore.Audio.Media.DATE_MODIFIED} >= ?"
         val selectionArgs = arrayOf(startTimeSeconds.toString(), startTimeSeconds.toString())
         val sortOrder = "${MediaStore.Audio.Media.DATE_MODIFIED} DESC, ${MediaStore.Audio.Media.DATE_ADDED} DESC"
@@ -553,8 +553,11 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
 
                 val cleanTarget = (phoneNumber ?: "").replace(Regex("[^0-9]"), "").takeLast(10)
                 val startTime = callStartTimeMs.toLong()
-                // Look back up to 60s before start time or 10 min if start time is 0
-                val windowStart = if (startTime > 0) (startTime - 60_000) else (System.currentTimeMillis() - 600_000)
+                
+                // Strictly require CallLog entry to belong to the CURRENT call session.
+                // Allow a small 10-second tolerance before startTime for dialer setup / clock skew.
+                val minValidDate = if (startTime > 0) (startTime - 10_000L) else (System.currentTimeMillis() - 15_000L)
+                val maxValidDate = System.currentTimeMillis() + 10_000L
 
                 val projection = arrayOf(
                     CallLog.Calls.NUMBER,
@@ -563,8 +566,8 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
                     CallLog.Calls.TYPE
                 )
 
-                val selection = "${CallLog.Calls.DATE} >= ?"
-                val selectionArgs = arrayOf(windowStart.toString())
+                val selection = "${CallLog.Calls.DATE} >= ? AND ${CallLog.Calls.DATE} <= ?"
+                val selectionArgs = arrayOf(minValidDate.toString(), maxValidDate.toString())
                 val sortOrder = "${CallLog.Calls.DATE} DESC"
 
                 var matchedDuration: Long? = null
@@ -591,8 +594,14 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
 
                         while (c.moveToNext()) {
                             val num = if (numIdx != -1) c.getString(numIdx) ?: "" else ""
+                            val callDate = if (dateIdx != -1) c.getLong(dateIdx) else 0L
                             val dur = if (durIdx != -1) c.getLong(durIdx) else 0L
                             val type = if (typeIdx != -1) c.getInt(typeIdx) else 0
+
+                            // Strictly reject entries outside the current session window
+                            if (callDate < minValidDate || callDate > maxValidDate) {
+                                continue
+                            }
 
                             val rowClean = num.replace(Regex("[^0-9]"), "").takeLast(10)
 
@@ -626,7 +635,8 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
                 if (matchedDuration != null) {
                     promise.resolve(matchedDuration.toDouble())
                 } else {
-                    promise.resolve(null)
+                    // If no CallLog entry belonging to this CURRENT session is found yet, return 0.0
+                    promise.resolve(0.0)
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
