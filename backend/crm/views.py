@@ -49,37 +49,18 @@ class DashboardStatsView(APIView):
             if section_filter and request.user.role in ['SUPER_ADMIN', 'ADMIN']:
                 students = students.filter(Q(sales_section=section_filter) | Q(assigned_to__sales_section=section_filter))
 
-            if request.user.role in ['SALES', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD']:
-                user_section = getattr(request.user, 'sales_section', 'BOTH')
-                if user_section and user_section != 'BOTH':
-                    students = students.filter(
-                        Q(assigned_to__sales_section=user_section) |
-                        Q(sales_section=user_section)
-                    )
-                    
-                is_sales_manager = False
-                if request.user.role in ['SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SUPER_ADMIN', 'ADMIN']:
-                    is_sales_manager = True
-                elif getattr(request.user, 'is_manager', False):
-                    is_sales_manager = True
-                elif hasattr(request.user, 'hrms_profile'):
-                    profile = request.user.hrms_profile
-                    if profile.subordinates.exists():
-                        is_sales_manager = True
-                    elif profile.designation and any(kw in profile.designation.name.lower() for kw in ['lead', 'manager', 'vp', 'head', 'director']):
-                        is_sales_manager = True
-                
-                if not is_sales_manager:
-                    students = students.filter(assigned_to=request.user)
-            
-            assigned_to_param = request.query_params.get('assigned_to')
-            if assigned_to_param:
-                if assigned_to_param == 'unassigned':
-                    students = students.filter(assigned_to__isnull=True)
-                elif assigned_to_param != 'assigned':
-                    students = students.filter(assigned_to_id=assigned_to_param)
-                else:
-                    students = students.filter(assigned_to__isnull=False)
+            if request.user.role == 'SALES':
+                # STRICT ACCESS CONTROL: SALES employee only sees their own assigned leads
+                students = students.filter(assigned_to=request.user)
+            elif request.user.role in ['SUPER_ADMIN', 'ADMIN']:
+                assigned_to_param = request.query_params.get('assigned_to')
+                if assigned_to_param:
+                    if assigned_to_param == 'unassigned':
+                        students = students.filter(assigned_to__isnull=True)
+                    elif assigned_to_param != 'assigned':
+                        students = students.filter(assigned_to_id=assigned_to_param)
+                    else:
+                        students = students.filter(assigned_to__isnull=False)
 
             campaign_id = request.query_params.get('campaign_id')
             if campaign_id:
@@ -145,12 +126,8 @@ class DashboardStatsView(APIView):
             
             # Leaderboard & Call Duration per Sales Rep
             sales_reps = User.objects.filter(Q(role__in=['SALES', 'SALES_HEAD', 'SALES_MANAGER', 'SALES_LEAD', 'MANAGER']) | Q(assigned_leads__isnull=False), is_active=True).distinct()
-            if request.user.role in ['SALES', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD']:
-                user_section = getattr(request.user, 'sales_section', 'BOTH')
-                if user_section and user_section != 'BOTH':
-                    sales_reps = sales_reps.filter(Q(sales_section=user_section) | Q(sales_section='BOTH'))
-                if not is_sales_manager:
-                    sales_reps = sales_reps.filter(id=request.user.id)
+            if request.user.role == 'SALES':
+                sales_reps = sales_reps.filter(id=request.user.id)
             elif section_filter and request.user.role in ['SUPER_ADMIN', 'ADMIN']:
                 sales_reps = sales_reps.filter(Q(sales_section=section_filter) | Q(sales_section='BOTH'))
 
@@ -237,15 +214,8 @@ class DashboardStatsView(APIView):
             leaderboard.sort(key=lambda x: x['total_call_duration'], reverse=True)
             
             revenue_qs = Transaction.objects.all()
-            if request.user.role in ['SALES', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD']:
-                user_section = getattr(request.user, 'sales_section', 'BOTH')
-                if user_section and user_section != 'BOTH':
-                    revenue_qs = revenue_qs.filter(
-                        Q(student__assigned_to__sales_section=user_section) |
-                        Q(student__sales_section=user_section)
-                    )
-                if not is_sales_manager:
-                    revenue_qs = revenue_qs.filter(student__assigned_to=request.user)
+            if request.user.role == 'SALES':
+                revenue_qs = revenue_qs.filter(student__assigned_to=request.user)
             elif section_filter and request.user.role in ['SUPER_ADMIN', 'ADMIN']:
                 revenue_qs = revenue_qs.filter(Q(student__sales_section=section_filter) | Q(student__assigned_to__sales_section=section_filter))
 
@@ -366,6 +336,9 @@ class LeadInteractionViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = LeadInteraction.objects.all()
+        if self.request.user.role == 'SALES':
+            from django.db.models import Q
+            queryset = queryset.filter(Q(student__assigned_to=self.request.user) | Q(author=self.request.user))
         student_id = self.request.query_params.get('student_id', None)
         if student_id is not None:
             if str(student_id).lower() in ['null', 'none', 'unmatched', '0']:
@@ -1054,10 +1027,13 @@ class BDEReportView(APIView):
         from datetime import timedelta
         from django.utils import timezone
         
-        if user_id == 'me' or user_id == 'undefined' or not str(user_id).isdigit():
+        if request.user.role == 'SALES':
             bde = request.user
         else:
-            bde = get_object_or_404(User, id=int(user_id))
+            if user_id == 'me' or user_id == 'undefined' or not str(user_id).isdigit():
+                bde = request.user
+            else:
+                bde = get_object_or_404(User, id=int(user_id))
         date_preset = request.query_params.get('date_preset')
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
@@ -1211,6 +1187,9 @@ class TaskViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
+        if self.request.user.role == 'SALES':
+            from django.db.models import Q
+            queryset = queryset.filter(Q(assigned_to=self.request.user) | Q(student__assigned_to=self.request.user))
         student_id = self.request.query_params.get('student_id', None)
         status_param = self.request.query_params.get('status', None)
         assigned_to_me = self.request.query_params.get('assigned_to_me', None)
@@ -1510,6 +1489,8 @@ class CallAnalyticsView(APIView):
     def get(self, request):
 
         interactions = LeadInteraction.objects.filter(interaction_type='CALL')
+        if request.user.role == 'SALES':
+            interactions = interactions.filter(author=request.user)
 
         start_date_str = request.query_params.get('start_date')
         end_date_str = request.query_params.get('end_date')
@@ -1806,7 +1787,9 @@ class MarketingDashboardView(APIView):
 
         # Sales Team Report
         sales_reps = User.objects.filter(role='SALES')
-        if request.user.role == 'SALES' and getattr(request.user, 'sales_section', 'BOTH') != 'BOTH':
+        if request.user.role == 'SALES':
+            sales_reps = sales_reps.filter(id=request.user.id)
+        elif getattr(request.user, 'sales_section', 'BOTH') != 'BOTH':
             from django.db.models import Q
             sales_reps = sales_reps.filter(Q(sales_section=request.user.sales_section) | Q(sales_section='BOTH'))
 

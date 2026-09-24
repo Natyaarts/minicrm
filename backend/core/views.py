@@ -383,13 +383,17 @@ class StudentViewSet(viewsets.ModelViewSet):
         })
 
     def perform_create(self, serializer):
-        student = serializer.save()
+        user = self.request.user if (self.request.user and self.request.user.is_authenticated) else None
+        if user and user.role == 'SALES':
+            student = serializer.save(assigned_to=user)
+        else:
+            student = serializer.save()
         from notifications.models import Notification
         User = get_user_model()
         staff_users = User.objects.filter(role__in=['ADMIN', 'SUPER_ADMIN'])
-        for user in staff_users:
+        for u in staff_users:
             Notification.objects.create(
-                user=user,
+                user=u,
                 title="New Application Received",
                 message=f"Student {student.first_name} {student.last_name} has applied for {student.program_type.name}.",
                 notification_type='APPLICATION',
@@ -433,24 +437,8 @@ class StudentViewSet(viewsets.ModelViewSet):
                 qs = qs.exclude(lead_status='DUPLICATE')
 
         if user.role == 'SALES':
-            user_section = getattr(user, 'sales_section', 'BOTH')
-            if user_section != 'BOTH':
-                from django.db.models import Q
-                qs = qs.filter(
-                    Q(assigned_to__sales_section=user_section) |
-                    Q(sales_section=user_section)
-                )
-                
-            is_sales_manager = False
-            if hasattr(user, 'hrms_profile'):
-                profile = user.hrms_profile
-                if profile.subordinates.exists():
-                    is_sales_manager = True
-                elif profile.designation and any(kw in profile.designation.name.lower() for kw in ['lead', 'manager', 'vp', 'head', 'director']):
-                    is_sales_manager = True
-            
-            if not is_sales_manager:
-                qs = qs.filter(assigned_to=user)
+            # STRICT ACCESS CONTROL: Logged-in SALES employee can ONLY see leads assigned to them
+            qs = qs.filter(assigned_to=user)
         elif user.role in ['ACADEMIC', 'ACADEMIC_COORDINATOR'] or self.request.query_params.get('group', '').upper() == 'ACADEMIC':
             qs = qs.filter(lead_status__in=converted_stage_ids)
         elif user.role in ['MENTOR', 'TEACHER']:
@@ -465,7 +453,7 @@ class StudentViewSet(viewsets.ModelViewSet):
             else:
                 qs = qs.filter(
                     Q(batch__primary_mentor=user) | 
-                    Q(batch__secondary_mentors=user) |
+                    Q(batch__secondary_mentors=user) | 
                     Q(batch__teacher=user)
                 ).filter(lead_status__in=converted_stage_ids).distinct()
         elif user.role == 'STUDENT':
@@ -491,7 +479,7 @@ class StudentViewSet(viewsets.ModelViewSet):
             qs = qs.filter(batch_id=batch_id)
         
         unassigned = self.request.query_params.get('unassigned')
-        if unassigned == 'true':
+        if unassigned == 'true' and user.role not in ['SALES']:
             qs = qs.filter(batch__isnull=True)
             
         assigned_to = self.request.query_params.get('assigned_to')
@@ -510,15 +498,23 @@ class StudentViewSet(viewsets.ModelViewSet):
             qs = qs.filter(crm_interactions__isnull=True)
             
         new_only = self.request.query_params.get('new_only')
-        if new_only == 'true':
-            # Strictly filter by the name 'New' or 'NEW'
-            from django.db.models import Q
-            qs = qs.filter(Q(lead_status__iexact='NEW') | Q(lead_status='2')) # fallback to 2
-        
         pipeline_only = self.request.query_params.get('pipeline_only')
-        if pipeline_only == 'true':
-            from django.db.models import Q
-            qs = qs.exclude(Q(lead_status__iexact='NEW') | Q(lead_status='2'))
+        if new_only == 'true' or pipeline_only == 'true':
+            new_stage_identifiers = ['NEW', 'New Lead', 'new']
+            try:
+                from crm.models import PipelineStage
+                first_stages = PipelineStage.objects.filter(Q(name__icontains='new') | Q(order=1)).values_list('id', flat=True)
+                for sid in first_stages:
+                    new_stage_identifiers.append(str(sid))
+            except Exception:
+                pass
+            
+            if new_only == 'true':
+                from django.db.models import Q
+                qs = qs.filter(Q(lead_status__in=new_stage_identifiers) | Q(lead_status__iexact='NEW') | Q(lead_status__iexact='New Lead'))
+            elif pipeline_only == 'true':
+                from django.db.models import Q
+                qs = qs.exclude(Q(lead_status__in=new_stage_identifiers) | Q(lead_status__iexact='NEW') | Q(lead_status__iexact='New Lead'))
             
         assigned_only = self.request.query_params.get('assigned_only')
         if assigned_only == 'true':
@@ -2033,7 +2029,7 @@ class DashboardStatsView(APIView):
                 trans_qs = Transaction.objects.none()
         
         elif user.role == 'SALES':
-            # Sales may see all active leads/students, but revenue might be restricted
+            student_qs = student_qs.filter(assigned_to=user)
             if not has_analytics:
                 trans_qs = Transaction.objects.none()
         

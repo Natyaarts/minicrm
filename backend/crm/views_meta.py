@@ -272,7 +272,10 @@ class LeadQualityFeedbackView(APIView):
 
     def patch(self, request, student_id):
         try:
-            student = Student.objects.get(id=student_id)
+            if request.user.role == 'SALES':
+                student = Student.objects.get(id=student_id, assigned_to=request.user)
+            else:
+                student = Student.objects.get(id=student_id)
         except Student.DoesNotExist:
             return Response({"error": "Lead not found"}, status=404)
 

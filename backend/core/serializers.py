@@ -259,6 +259,9 @@ class StudentSerializer(serializers.ModelSerializer):
         model = Student
         fields = '__all__'
         read_only_fields = ('user', 'crm_student_id')
+        extra_kwargs = {
+            'is_active': {'default': True}
+        }
 
     def get_total_paid(self, obj):
         return obj.transactions.aggregate(total=Sum('amount'))['total'] or 0
