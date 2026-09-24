@@ -6,6 +6,7 @@ from rest_framework import status
 from core.models import Student, Program, SubProgram, Course
 from crm.models import PipelineStage, LeadInteraction, Task, Campaign
 from users.models import RolePermission
+from hrms.models import Department, Designation, EmployeeProfile
 
 User = get_user_model()
 
@@ -313,3 +314,113 @@ class SalesLeadAccessControlSecurityTests(TestCase):
         inter_ids_a = [i['id'] for i in res_inter_a.data.get('results', res_inter_a.data)]
         self.assertIn(inter_a.id, inter_ids_a)
         self.assertNotIn(inter_b.id, inter_ids_a)
+
+    # 16. Sales user with "lead" in HRMS designation retains team lead permissions
+    def test_16_sales_team_lead_designation_sees_section_leads_and_stats(self):
+        sales_dept, _ = Department.objects.get_or_create(name='Sales Department')
+        lead_desig, _ = Designation.objects.get_or_create(
+            name='Sales Team Lead',
+            department=sales_dept,
+            defaults={'permission_role': 'SALES'}
+        )
+        lead_user = User.objects.create_user(
+            username='sales_lead_user',
+            email='lead_user@example.com',
+            password='password123',
+            role='SALES'
+        )
+        lead_profile = getattr(lead_user, 'hrms_profile', None)
+        if not lead_profile:
+            lead_profile = EmployeeProfile(user=lead_user)
+        lead_profile.department = sales_dept
+        lead_profile.designation = lead_desig
+        lead_profile.employee_id = 'EMP-LEAD-01'
+        lead_profile.date_of_joining = '2024-01-01'
+        lead_profile.save()
+
+        client_lead = APIClient()
+        client_lead.force_authenticate(user=lead_user)
+
+        # Sales Lead sees all leads in section (both lead A and lead B)
+        res = client_lead.get('/api/students/')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        results = res.data.get('results', res.data)
+        lead_ids = [item['id'] for item in results]
+        self.assertIn(self.lead_a.id, lead_ids)
+        self.assertIn(self.lead_b.id, lead_ids)
+
+        # Sales Lead can see total leads = 2 in dashboard stats
+        res_stats = client_lead.get('/api/crm/dashboard-stats/')
+        self.assertEqual(res_stats.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_stats.data['total_leads'], 2)
+
+    # 17. Sales user with HRMS subordinates retains team lead permissions
+    def test_17_sales_user_with_subordinates_sees_section_leads(self):
+        dept, _ = Department.objects.get_or_create(name='Direct Sales')
+        rep_desig, _ = Designation.objects.get_or_create(
+            name='Sales Executive',
+            department=dept,
+            defaults={'permission_role': 'SALES'}
+        )
+        manager_desig, _ = Designation.objects.get_or_create(
+            name='Sales Supervisor',
+            department=dept,
+            defaults={'permission_role': 'SALES'}
+        )
+        manager_user = User.objects.create_user(
+            username='manager_user',
+            email='manager@example.com',
+            password='password123',
+            role='SALES'
+        )
+        mgr_profile = getattr(manager_user, 'hrms_profile', None)
+        if not mgr_profile:
+            mgr_profile = EmployeeProfile(user=manager_user)
+        mgr_profile.department = dept
+        mgr_profile.designation = manager_desig
+        mgr_profile.employee_id = 'EMP-MGR-01'
+        mgr_profile.date_of_joining = '2024-01-01'
+        mgr_profile.save()
+
+        # Subordinate profile pointing to mgr_profile
+        emp_a_profile = getattr(self.employee_a, 'hrms_profile', None)
+        if not emp_a_profile:
+            emp_a_profile = EmployeeProfile(user=self.employee_a)
+        emp_a_profile.department = dept
+        emp_a_profile.designation = rep_desig
+        emp_a_profile.reporting_to = mgr_profile
+        emp_a_profile.employee_id = 'EMP-REP-01'
+        emp_a_profile.date_of_joining = '2024-01-01'
+        emp_a_profile.save()
+
+        client_mgr = APIClient()
+        client_mgr.force_authenticate(user=manager_user)
+
+        res = client_mgr.get('/api/students/')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        results = res.data.get('results', res.data)
+        lead_ids = [item['id'] for item in results]
+        self.assertIn(self.lead_a.id, lead_ids)
+        self.assertIn(self.lead_b.id, lead_ids)
+
+    # 18. Sales user with is_manager=True sees section leads
+    def test_18_user_with_is_manager_attribute_sees_section_leads(self):
+        lead_mgr_user = User.objects.create_user(
+            username='flag_lead_user',
+            email='flaglead@example.com',
+            password='password123',
+            role='SALES'
+        )
+        # Dynamic property or attribute check
+        lead_mgr_user.is_manager = True
+
+        client_flag_lead = APIClient()
+        client_flag_lead.force_authenticate(user=lead_mgr_user)
+
+        res = client_flag_lead.get('/api/students/')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        results = res.data.get('results', res.data)
+        lead_ids = [item['id'] for item in results]
+        self.assertIn(self.lead_a.id, lead_ids)
+        self.assertIn(self.lead_b.id, lead_ids)
+

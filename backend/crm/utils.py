@@ -243,3 +243,25 @@ def compute_audio_hash(file_obj) -> str:
         return h.hexdigest()
     except Exception:
         return ""
+
+def check_is_sales_manager(user) -> bool:
+    """
+    Checks if a user has Sales Manager / Team Lead / Executive permissions.
+    Preserves the existing business rule:
+    - User has explicit management/lead role (SALES_HEAD, SALES_MANAGER, MANAGER, SUPER_ADMIN, ADMIN, SALES_LEAD)
+    - User has user.is_manager attribute/property set to True
+    - User has HRMS profile with subordinates, or designation name containing 'lead', 'manager', 'vp', 'head', or 'director'
+    """
+    if not user or not user.is_authenticated:
+        return False
+    if getattr(user, 'role', '') in ['SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SUPER_ADMIN', 'ADMIN', 'SALES_LEAD']:
+        return True
+    if getattr(user, 'is_manager', False):
+        return True
+    if hasattr(user, 'hrms_profile'):
+        profile = user.hrms_profile
+        if profile.subordinates.exists():
+            return True
+        if profile.designation and any(kw in profile.designation.name.lower() for kw in ['lead', 'manager', 'vp', 'head', 'director']):
+            return True
+    return False

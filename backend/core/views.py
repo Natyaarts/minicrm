@@ -436,9 +436,19 @@ class StudentViewSet(viewsets.ModelViewSet):
             if self.action not in ['destroy', 'retrieve']:
                 qs = qs.exclude(lead_status='DUPLICATE')
 
-        if user.role == 'SALES':
-            # STRICT ACCESS CONTROL: Logged-in SALES employee can ONLY see leads assigned to them
-            qs = qs.filter(assigned_to=user)
+        if user.role in ['SALES', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD']:
+            user_section = getattr(user, 'sales_section', 'BOTH')
+            if user_section and user_section != 'BOTH':
+                from django.db.models import Q
+                qs = qs.filter(
+                    Q(assigned_to__sales_section=user_section) |
+                    Q(sales_section=user_section)
+                )
+                
+            from crm.utils import check_is_sales_manager
+            if not check_is_sales_manager(user):
+                # STRICT ACCESS CONTROL: Standard SALES employee only sees leads assigned to them
+                qs = qs.filter(assigned_to=user)
         elif user.role in ['ACADEMIC', 'ACADEMIC_COORDINATOR'] or self.request.query_params.get('group', '').upper() == 'ACADEMIC':
             qs = qs.filter(lead_status__in=converted_stage_ids)
         elif user.role in ['MENTOR', 'TEACHER']:
@@ -2028,8 +2038,17 @@ class DashboardStatsView(APIView):
             if not has_analytics:
                 trans_qs = Transaction.objects.none()
         
-        elif user.role == 'SALES':
-            student_qs = student_qs.filter(assigned_to=user)
+        elif user.role in ['SALES', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD']:
+            from crm.utils import check_is_sales_manager
+            if not check_is_sales_manager(user):
+                student_qs = student_qs.filter(assigned_to=user)
+            else:
+                user_section = getattr(user, 'sales_section', 'BOTH')
+                if user_section and user_section != 'BOTH':
+                    student_qs = student_qs.filter(
+                        Q(assigned_to__sales_section=user_section) |
+                        Q(sales_section=user_section)
+                    )
             if not has_analytics:
                 trans_qs = Transaction.objects.none()
         

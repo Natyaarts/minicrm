@@ -21,6 +21,7 @@ from crm.services import (
     normalize_lead_email,
     get_next_assigned_rep,
 )
+from .utils import check_is_sales_manager
 
 
 logger = logging.getLogger(__name__)
@@ -272,7 +273,7 @@ class LeadQualityFeedbackView(APIView):
 
     def patch(self, request, student_id):
         try:
-            if request.user.role == 'SALES':
+            if request.user.role == 'SALES' and not check_is_sales_manager(request.user):
                 student = Student.objects.get(id=student_id, assigned_to=request.user)
             else:
                 student = Student.objects.get(id=student_id)
