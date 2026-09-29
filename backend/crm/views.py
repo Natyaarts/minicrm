@@ -1906,7 +1906,7 @@ class BulkAssignLeadsView(APIView):
 
         try:
             sales_user = User.objects.get(id=sales_user_id, role='SALES')
-            students = Student.objects.filter(id__in=lead_ids)
+            students = Student.objects.filter(id__in=lead_ids).exclude(lead_status='DUPLICATE')
             updated = students.update(assigned_to=sales_user)
             return Response({'message': f'Successfully assigned {updated} leads to {sales_user.username}'})
         except User.DoesNotExist:

@@ -473,3 +473,177 @@ class LeadDeduplicationTestSuite(TestCase):
         # Existing student record updated with LMS ID
         self.seeded_student.refresh_from_db()
         self.assertEqual(self.seeded_student.lms_student_id, "WISE-98765")
+
+    # 17. Duplicate leads query isolation and view-only access
+    def test_duplicate_leads_view_only_query(self):
+        # Create a DUPLICATE lead
+        dup_user = User.objects.create_user(
+            username='user_dup_lead_view',
+            email='dupview@example.com',
+            first_name='Duplicate',
+            last_name='Lead',
+            role='STUDENT'
+        )
+        dup_student = Student.objects.create(
+            user=dup_user,
+            crm_student_id='NATYA-DUP-01',
+            first_name='Duplicate',
+            last_name='Lead',
+            email='dupview@example.com',
+            mobile='+919999000011',
+            program_type=self.program,
+            lead_status='DUPLICATE',
+            is_active=True
+        )
+
+        # Normal lead list (no lead_status filter) must NOT include duplicate leads
+        res_normal = self.client.get('/api/students/')
+        self.assertEqual(res_normal.status_code, status.HTTP_200_OK)
+        normal_ids = [item['id'] for item in res_normal.data.get('results', res_normal.data)]
+        self.assertNotIn(dup_student.id, normal_ids)
+        self.assertIn(self.seeded_student.id, normal_ids)
+
+        # Filtering with lead_status=DUPLICATE returns duplicate leads and isolates normal leads
+        res_dup = self.client.get('/api/students/?lead_status=DUPLICATE')
+        self.assertEqual(res_dup.status_code, status.HTTP_200_OK)
+        dup_ids = [item['id'] for item in res_dup.data.get('results', res_dup.data)]
+        self.assertIn(dup_student.id, dup_ids)
+        self.assertNotIn(self.seeded_student.id, dup_ids)
+
+        # Direct retrieve (view details) is accessible
+        res_detail = self.client.get(f'/api/students/{dup_student.id}/')
+        self.assertEqual(res_detail.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_detail.data['id'], dup_student.id)
+        self.assertEqual(res_detail.data['lead_status'], 'DUPLICATE')
+
+    # 18. Duplicate leads cannot be assigned via CRM bulk_assign API
+    def test_duplicate_leads_cannot_be_bulk_assigned_crm_endpoint(self):
+        dup_user = User.objects.create_user(username='u_dup_crm_bulk', email='dup_crm@example.com', role='STUDENT')
+        dup_student = Student.objects.create(
+            user=dup_user,
+            crm_student_id='NATYA-DUP-02',
+            first_name='DupCRM',
+            mobile='+919999000022',
+            program_type=self.program,
+            lead_status='DUPLICATE',
+            assigned_to=None,
+            is_active=True
+        )
+
+        normal_user = User.objects.create_user(username='u_norm_crm_bulk', email='norm_crm@example.com', role='STUDENT')
+        normal_student = Student.objects.create(
+            user=normal_user,
+            crm_student_id='NATYA-NORM-02',
+            first_name='NormCRM',
+            mobile='+919999000033',
+            program_type=self.program,
+            lead_status='NEW',
+            assigned_to=None,
+            is_active=True
+        )
+
+        res = self.client.post('/api/crm/leads/bulk_assign/', {
+            'lead_ids': [dup_student.id, normal_student.id],
+            'sales_user_id': self.sales_rep.id
+        })
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        # Verify normal lead got assigned
+        normal_student.refresh_from_db()
+        self.assertEqual(normal_student.assigned_to, self.sales_rep)
+
+        # Verify duplicate lead was protected and remained unassigned
+        dup_student.refresh_from_db()
+        self.assertIsNone(dup_student.assigned_to)
+
+    # 19. Duplicate leads cannot be assigned or unassigned via core bulk_assign action
+    def test_duplicate_leads_cannot_be_bulk_assigned_core_endpoint(self):
+        dup_user = User.objects.create_user(username='u_dup_core_bulk', email='dup_core@example.com', role='STUDENT')
+        dup_student = Student.objects.create(
+            user=dup_user,
+            crm_student_id='NATYA-DUP-03',
+            first_name='DupCore',
+            mobile='+919999000044',
+            program_type=self.program,
+            lead_status='DUPLICATE',
+            assigned_to=None,
+            is_active=True
+        )
+
+        normal_user = User.objects.create_user(username='u_norm_core_bulk', email='norm_core@example.com', role='STUDENT')
+        normal_student = Student.objects.create(
+            user=normal_user,
+            crm_student_id='NATYA-NORM-03',
+            first_name='NormCore',
+            mobile='+919999000055',
+            program_type=self.program,
+            lead_status='NEW',
+            assigned_to=None,
+            is_active=True
+        )
+
+        # 1. Bulk assign test
+        res = self.client.post('/api/students/bulk_assign/', {
+            'student_ids': [dup_student.id, normal_student.id],
+            'user_id': self.sales_rep.id
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        # Normal lead got assigned
+        normal_student.refresh_from_db()
+        self.assertEqual(normal_student.assigned_to, self.sales_rep)
+
+        # Duplicate lead remained unassigned
+        dup_student.refresh_from_db()
+        self.assertIsNone(dup_student.assigned_to)
+
+        # 2. Bulk unassign test: Seed an existing assigned duplicate lead
+        dup_assigned_user = User.objects.create_user(username='u_dup_assigned_bulk', email='dup_ass@example.com', role='STUDENT')
+        dup_assigned_student = Student.objects.create(
+            user=dup_assigned_user,
+            crm_student_id='NATYA-DUP-03-ASS',
+            first_name='DupAssigned',
+            mobile='+919999000045',
+            program_type=self.program,
+            lead_status='DUPLICATE',
+            assigned_to=self.sales_rep,
+            is_active=True
+        )
+
+        res_unassign = self.client.post('/api/students/bulk_assign/', {
+            'student_ids': [dup_assigned_student.id, normal_student.id],
+            'user_id': None
+        }, format='json')
+        self.assertEqual(res_unassign.status_code, status.HTTP_200_OK)
+
+        # Normal lead got unassigned
+        normal_student.refresh_from_db()
+        self.assertIsNone(normal_student.assigned_to)
+
+        # Existing assigned duplicate lead was NOT unassigned
+        dup_assigned_student.refresh_from_db()
+        self.assertEqual(dup_assigned_student.assigned_to, self.sales_rep)
+
+    # 20. Single PATCH on DUPLICATE lead cannot assign a sales rep
+    def test_duplicate_leads_cannot_be_single_assigned_patch(self):
+        dup_user = User.objects.create_user(username='u_dup_patch', email='dup_patch@example.com', role='STUDENT')
+        dup_student = Student.objects.create(
+            user=dup_user,
+            crm_student_id='NATYA-DUP-04',
+            first_name='DupPatch',
+            mobile='+919999000066',
+            program_type=self.program,
+            lead_status='DUPLICATE',
+            assigned_to=None,
+            is_active=True
+        )
+
+        res = self.client.patch(f'/api/students/{dup_student.id}/', {
+            'assigned_to': self.sales_rep.id
+        })
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('assigned_to', res.data)
+
+        # Verify database record was not modified
+        dup_student.refresh_from_db()
+        self.assertIsNone(dup_student.assigned_to)

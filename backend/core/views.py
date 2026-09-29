@@ -422,19 +422,18 @@ class StudentViewSet(viewsets.ModelViewSet):
         except Exception:
             pass
 
-        if user.role in ['ADMIN', 'SUPER_ADMIN']:
-            lead_status_param = self.request.query_params.get('lead_status', '')
-            if self.action in ['destroy', 'retrieve', 'partial_update', 'update']:
-                # Allow Admin / SuperAdmin to view and edit individual records by ID even if duplicate
-                pass
-            elif lead_status_param.upper() == 'DUPLICATE':
-                pass # Allow Admin and SuperAdmin to view duplicate leads when filter requested
-            else:
-                qs = qs.exclude(lead_status='DUPLICATE')
+        lead_status_param = self.request.query_params.get('lead_status', '')
+        is_duplicate_requested = str(lead_status_param).upper() == 'DUPLICATE'
+
+        if self.action in ['destroy', 'retrieve', 'partial_update', 'update']:
+            # Allow retrieving/updating/deleting individual records by ID even if duplicate
+            pass
+        elif is_duplicate_requested:
+            # When duplicate leads are explicitly requested (e.g. "View Duplicate Leads"), isolate to duplicate leads only
+            qs = qs.filter(lead_status__iexact='DUPLICATE')
         else:
-            # Exclude duplicates for all non-admin roles in list views
-            if self.action not in ['destroy', 'retrieve']:
-                qs = qs.exclude(lead_status='DUPLICATE')
+            # Normal lead queries: strictly isolate by excluding duplicates for ALL roles
+            qs = qs.exclude(lead_status='DUPLICATE')
 
         if user.role in ['SALES', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD']:
             user_section = getattr(user, 'sales_section', 'BOTH')
@@ -446,7 +445,7 @@ class StudentViewSet(viewsets.ModelViewSet):
                 )
                 
             from crm.utils import check_is_sales_manager
-            if not check_is_sales_manager(user):
+            if not check_is_sales_manager(user) and not is_duplicate_requested:
                 # STRICT ACCESS CONTROL: Standard SALES employee only sees leads assigned to them
                 qs = qs.filter(assigned_to=user)
         elif user.role in ['ACADEMIC', 'ACADEMIC_COORDINATOR'] or self.request.query_params.get('group', '').upper() == 'ACADEMIC':
@@ -584,6 +583,8 @@ class StudentViewSet(viewsets.ModelViewSet):
         if lead_status:
             if lead_status.upper() == 'CONVERTED':
                 qs = qs.filter(lead_status__in=converted_stage_ids)
+            elif lead_status.upper() == 'DUPLICATE':
+                pass  # Already isolated above
             else:
                 qs = qs.filter(lead_status__iexact=lead_status)
 
@@ -1137,7 +1138,8 @@ class StudentViewSet(viewsets.ModelViewSet):
         if not student_ids:
             return Response({'error': 'No student IDs provided'}, status=status.HTTP_400_BAD_REQUEST)
             
-        students = Student.objects.filter(id__in=student_ids)
+        # Secure bulk assignment: DUPLICATE leads can never be assigned or unassigned via bulk operations
+        students = Student.objects.filter(id__in=student_ids).exclude(lead_status='DUPLICATE')
         
         if user_id:
             try:

@@ -1179,7 +1179,7 @@ const SalesModule = () => {
                                     >
                                         {hideConverted ? 'Enrolled Hidden' : 'Hide Enrolled'}
                                     </button>
-                                    {(authUser?.role === 'SUPER_ADMIN' || authUser?.is_superuser) && (
+                                    {(authUser?.role === 'SUPER_ADMIN' || authUser?.role === 'ADMIN' || authUser?.is_superuser || ['SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD', 'SALES'].includes(authUser?.role)) && (
                                         <select 
                                             value={selectedStageFilter}
                                             onChange={(e) => {

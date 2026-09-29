@@ -285,6 +285,17 @@ class StudentSerializer(serializers.ModelSerializer):
     def get_monthly_payment_months(self, obj):
         return [p.month.strftime('%Y-%m-%d') for p in obj.monthly_payments.all()]
 
+    def validate(self, attrs):
+        # Enforce that DUPLICATE leads can never receive an assigned_to value
+        target_status = attrs.get('lead_status', getattr(self.instance, 'lead_status', None))
+        target_assigned_to = attrs.get('assigned_to', getattr(self.instance, 'assigned_to', None))
+
+        if str(target_status).upper() == 'DUPLICATE' and target_assigned_to is not None and attrs.get('assigned_to') is not None:
+            raise serializers.ValidationError({
+                "assigned_to": "Duplicate leads cannot be assigned to any sales representative."
+            })
+        return attrs
+
     def create(self, validated_data):
         dynamic_values = validated_data.pop('dynamic_values', None)
         transaction_details = validated_data.pop('transaction_details', None)
