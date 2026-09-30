@@ -192,3 +192,126 @@ def record_reengagement_interaction(
         notes=full_note
     )
     return interaction
+
+
+def create_duplicate_lead(
+    existing_student: Optional[Student] = None,
+    first_name: Optional[str] = None,
+    last_name: Optional[str] = None,
+    mobile: Optional[str] = None,
+    email: Optional[str] = None,
+    campaign: Optional[object] = None,
+    program: Optional[object] = None,
+    sales_section: Optional[str] = None,
+    source_name: Optional[str] = None,
+    event_id: Optional[str] = None,
+    duplicate_reason: Optional[str] = None,
+    meta_lead_id: Optional[str] = None,
+    extra_fields: Optional[dict] = None,
+    log_reengagement: bool = False,
+) -> Student:
+    """
+    Creates a new Student/CRM lead record for an incoming duplicate lead.
+
+    Guarantees:
+    - lead_status = 'DUPLICATE'
+    - assigned_to = None
+    - Unique User account created (OneToOne with Student)
+    - crm_student_id generated
+    - Preserves campaign, sales_section, program, and source metadata
+    - Optionally logs re-engagement interaction against the original existing_student
+    - Original student remains completely unchanged
+    """
+    from django.contrib.auth import get_user_model
+    from django.db import transaction
+    import uuid
+
+    User = get_user_model()
+
+    clean_mobile = normalize_lead_phone(mobile)
+    clean_email = normalize_lead_email(email)
+
+    # 1. Optionally log re-engagement on the original student
+    if log_reengagement and existing_student and source_name:
+        record_reengagement_interaction(
+            student=existing_student,
+            source_name=source_name,
+            campaign_name=campaign.name if campaign and hasattr(campaign, 'name') else None,
+            event_id=str(event_id) if event_id else None,
+            duplicate_reason=duplicate_reason,
+        )
+
+    fname = (first_name or (existing_student.first_name if existing_student else '') or 'Lead').strip()
+    lname = (last_name or (existing_student.last_name if existing_student else '') or '').strip()
+
+    # 2. Generate unique username for the duplicate Student's User
+    base_ident = clean_mobile or clean_email or fname
+    clean_ident = re.sub(r'[^\w@+\.-]', '_', str(base_ident))
+    unique_suffix = uuid.uuid4().hex[:8]
+    username = f"dup_{clean_ident}_{unique_suffix}"[:150]
+
+    # 3. Resolve Program
+    from core.models import Program
+    resolved_program = program
+    if not resolved_program:
+        if campaign and getattr(campaign, 'section', None) == 'CAREER_ACADEMY':
+            resolved_program = Program.objects.filter(name='Natya Career Academy').first()
+        elif campaign and getattr(campaign, 'section', None) == 'REGULAR':
+            resolved_program = Program.objects.filter(name='Natya').first()
+        if not resolved_program and existing_student and existing_student.program_type:
+            resolved_program = existing_student.program_type
+        if not resolved_program:
+            resolved_program = Program.objects.exclude(name="Wise Import").first() or Program.objects.first()
+
+    # 4. Resolve Sales Section
+    resolved_section = sales_section
+    if not resolved_section:
+        if campaign and getattr(campaign, 'section', None):
+            resolved_section = campaign.section
+        elif existing_student and existing_student.sales_section:
+            resolved_section = existing_student.sales_section
+        else:
+            resolved_section = 'BOTH'
+
+    # 5. Generate unique CRM ID
+    crm_id = Student.generate_next_crm_id()
+
+    with transaction.atomic():
+        user = User.objects.create_user(
+            username=username,
+            email=clean_email or (email if email else '') or '',
+            first_name=fname,
+            last_name=lname,
+            role='STUDENT',
+        )
+        user.set_unusable_password()
+        user.save(update_fields=['password'])
+
+
+        student_kwargs = {
+            'user': user,
+            'crm_student_id': crm_id,
+            'first_name': fname,
+            'last_name': lname,
+            'email': clean_email or (email if email else None),
+            'mobile': clean_mobile or (mobile if mobile else None),
+            'program_type': resolved_program,
+            'campaign': campaign,
+            'sales_section': resolved_section,
+            'lead_status': 'DUPLICATE',
+            'assigned_to': None,
+            'is_active': True,
+        }
+
+        if meta_lead_id:
+            student_kwargs['meta_lead_id'] = meta_lead_id
+
+        if extra_fields:
+            for k, v in extra_fields.items():
+                if hasattr(Student, k):
+                    student_kwargs[k] = v
+
+        duplicate_student = Student.objects.create(**student_kwargs)
+
+    logger.info(f"Created DUPLICATE lead {duplicate_student.crm_student_id} for incoming duplicate (Original CRM ID: {existing_student.crm_student_id if existing_student else 'N/A'})")
+    return duplicate_student

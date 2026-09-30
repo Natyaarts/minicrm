@@ -261,7 +261,7 @@ class GoogleSheetSyncView(APIView):
                 first_name = "Sheet Lead"
                 
             # Sanitize phone and email
-            from crm.services.deduplication import lookup_existing_student, normalize_lead_phone, normalize_lead_email
+            from crm.services.deduplication import lookup_existing_student, normalize_lead_phone, normalize_lead_email, create_duplicate_lead
             cleaned_phone = normalize_lead_phone(mobile)
             clean_em = normalize_lead_email(email)
                 
@@ -270,10 +270,22 @@ class GoogleSheetSyncView(APIView):
                 continue
                 
             # Centralized duplicate check
-            dup_student, _ = lookup_existing_student(mobile=cleaned_phone, email=clean_em)
+            dup_student, dup_reason = lookup_existing_student(mobile=cleaned_phone, email=clean_em)
             if dup_student:
-                skipped_count += 1
+                create_duplicate_lead(
+                    existing_student=dup_student,
+                    first_name=first_name,
+                    last_name=last_name,
+                    mobile=cleaned_phone,
+                    email=clean_em or email,
+                    campaign=campaign,
+                    source_name=f"Google Sheet '{campaign.google_sheet_name or campaign.name}'",
+                    duplicate_reason=dup_reason,
+                    log_reengagement=False
+                )
+                imported_count += 1
                 continue
+
                 
             # Generate temporary username and CRM ID
             from django.contrib.auth import get_user_model

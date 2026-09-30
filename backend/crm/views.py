@@ -11,7 +11,7 @@ from core.models import Student, Program, Transaction, normalize_phone_number
 from .models import PipelineStage, LeadInteraction, Campaign, WebhookEndpoint, WebhookLog, Task
 from .serializers import PipelineStageSerializer, LeadInteractionSerializer, CampaignSerializer, TaskSerializer
 from .utils import normalize_phone_for_matching, match_lead_by_phone, match_agent_by_phone
-from .services.deduplication import lookup_existing_student, record_reengagement_interaction, normalize_lead_phone, normalize_lead_email
+from .services.deduplication import lookup_existing_student, record_reengagement_interaction, normalize_lead_phone, normalize_lead_email, create_duplicate_lead
 from .services.assignment import get_next_assigned_rep
 
 User = get_user_model()
@@ -801,7 +801,20 @@ class CampaignViewSet(viewsets.ModelViewSet):
                     # Centralized duplicate check
                     dup_student, dup_reason = lookup_existing_student(mobile=mobile, email=email)
                     if dup_student:
-                        duplicates_skipped += 1
+                        create_duplicate_lead(
+                            existing_student=dup_student,
+                            first_name=first_name,
+                            last_name=last_name,
+                            mobile=clean_phone or mobile,
+                            email=clean_em or email,
+                            campaign=campaign,
+                            program=default_program,
+                            sales_section=campaign.section if campaign else 'BOTH',
+                            duplicate_reason=dup_reason,
+                            extra_fields={'perm_city': place, 'lms_course_names': tag},
+                            log_reengagement=False
+                        )
+                        leads_created += 1
                         continue
 
                     with transaction.atomic():
@@ -916,11 +929,25 @@ class CampaignViewSet(viewsets.ModelViewSet):
             # Centralized duplicate check
             dup_student, dup_reason = lookup_existing_student(mobile=mobile, email=email)
             if dup_student:
+                new_dup = create_duplicate_lead(
+                    existing_student=dup_student,
+                    first_name=first_name,
+                    last_name=last_name,
+                    mobile=clean_phone or mobile,
+                    email=clean_em or email,
+                    campaign=campaign,
+                    program=default_program,
+                    sales_section=campaign.section if campaign else 'BOTH',
+                    duplicate_reason=dup_reason,
+                    extra_fields={'perm_city': place, 'lms_course_names': tag},
+                    log_reengagement=False
+                )
                 results.append({
-                    'status': 'SKIPPED_DUPLICATE',
+                    'status': 'SUCCESS',
                     'name': f"{first_name} {last_name}".strip() or 'Lead',
-                    'message': dup_reason or f"Duplicate lead (Original CRM ID: {dup_student.crm_student_id})",
-                    'crm_id': dup_student.crm_student_id
+                    'message': f"Duplicate lead created (Original CRM ID: {dup_student.crm_student_id})",
+                    'crm_id': new_dup.crm_student_id,
+                    'is_duplicate': True
                 })
                 continue
 
@@ -1304,7 +1331,7 @@ class WebhookReceiveView(APIView):
                 # Centralized duplicate check
                 dup_student, dup_reason = lookup_existing_student(mobile=clean_phone, email=clean_em)
                 if dup_student:
-                    # Lead already exists! Log re-engagement on original student instead of creating duplicate.
+                    # Lead already exists! Log re-engagement on original student AND create new duplicate lead.
                     event_id = payload.get('event_id') or payload.get('id') or payload.get('lead_id')
                     record_reengagement_interaction(
                         student=dup_student,
@@ -1312,6 +1339,17 @@ class WebhookReceiveView(APIView):
                         campaign_name=campaign.name if campaign else None,
                         event_id=str(event_id) if event_id else None,
                         extra_notes=dup_reason
+                    )
+
+                    new_dup_student = create_duplicate_lead(
+                        existing_student=dup_student,
+                        first_name=first_name,
+                        last_name=last_name,
+                        mobile=clean_phone,
+                        email=clean_em,
+                        campaign=campaign,
+                        duplicate_reason=dup_reason,
+                        log_reengagement=False
                     )
 
                     # Log Success
@@ -1322,9 +1360,10 @@ class WebhookReceiveView(APIView):
                     )
 
                     return Response({
-                        "message": "Lead already exists; re-engagement logged.",
-                        "student_id": dup_student.id,
-                        "crm_id": dup_student.crm_student_id,
+                        "message": "Duplicate lead created and re-engagement logged.",
+                        "student_id": new_dup_student.id,
+                        "crm_id": new_dup_student.crm_student_id,
+                        "original_crm_id": dup_student.crm_student_id,
                         "is_duplicate": True
                     }, status=status.HTTP_200_OK)
 
@@ -1438,12 +1477,30 @@ class CampaignWebhookReceiveView(APIView):
                         extra_notes=dup_reason
                     )
 
+                    program = None
+                    if program_id:
+                        program = Program.objects.filter(id=program_id).first()
+
+                    new_dup_student = create_duplicate_lead(
+                        existing_student=dup_student,
+                        first_name=first_name,
+                        last_name=last_name,
+                        mobile=clean_phone,
+                        email=clean_em,
+                        campaign=campaign,
+                        program=program,
+                        sales_section=campaign.section if campaign else 'BOTH',
+                        duplicate_reason=dup_reason,
+                        log_reengagement=False
+                    )
+
                     return Response({
-                        "message": "Lead already exists; re-engagement logged.",
-                        "student_id": dup_student.id,
-                        "crm_id": dup_student.crm_student_id,
-                        "assigned_to": dup_student.assigned_to.username if dup_student.assigned_to else "Unassigned",
-                        "status": dup_student.lead_status,
+                        "message": "Duplicate lead created and re-engagement logged.",
+                        "student_id": new_dup_student.id,
+                        "crm_id": new_dup_student.crm_student_id,
+                        "original_crm_id": dup_student.crm_student_id,
+                        "assigned_to": "Unassigned",
+                        "status": "DUPLICATE",
                         "is_duplicate": True
                     }, status=status.HTTP_200_OK)
 

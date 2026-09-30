@@ -19,6 +19,7 @@ from crm.services import (
     record_reengagement_interaction,
     normalize_lead_phone,
     normalize_lead_email,
+    create_duplicate_lead,
     get_next_assigned_rep,
 )
 from .utils import check_is_sales_manager
@@ -206,7 +207,23 @@ class MetaLeadWebhookView(APIView):
                                 extra_notes=f"Name: {name}, Phone: {phone}"
                             )
                             logger.info(f"Meta lead {lead_id} matched existing student {dup_student.crm_student_id}. Logged re-engagement note.")
+
+                            new_dup = create_duplicate_lead(
+                                existing_student=dup_student,
+                                first_name=first_name,
+                                last_name=last_name,
+                                mobile=clean_phone,
+                                email=clean_em,
+                                campaign=campaign,
+                                sales_section=campaign.section if campaign else "BOTH",
+                                meta_lead_id=str(lead_id),
+                                duplicate_reason=dup_reason,
+                                log_reengagement=False
+                            )
+                            leads_created += 1
+                            logger.info(f"Created duplicate Meta lead: {new_dup.crm_student_id} - {name} ({clean_phone})")
                             continue
+
 
                         username = f"meta_{lead_id}"[:150]
 

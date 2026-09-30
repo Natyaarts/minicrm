@@ -102,16 +102,28 @@ class Command(BaseCommand):
                     if not first_name:
                         first_name = "Sheet Lead"
                         
-                    from crm.services.deduplication import lookup_existing_student, normalize_lead_phone, normalize_lead_email
+                    from crm.services.deduplication import lookup_existing_student, normalize_lead_phone, normalize_lead_email, create_duplicate_lead
                     cleaned_phone = normalize_lead_phone(mobile)
                     clean_em = normalize_lead_email(email)
                         
                     if not cleaned_phone and not clean_em:
                         continue
                         
-                    dup_student, _ = lookup_existing_student(mobile=cleaned_phone, email=clean_em)
+                    dup_student, dup_reason = lookup_existing_student(mobile=cleaned_phone, email=clean_em)
                     if dup_student:
+                        create_duplicate_lead(
+                            existing_student=dup_student,
+                            first_name=first_name,
+                            last_name=last_name,
+                            mobile=cleaned_phone,
+                            email=clean_em or email,
+                            campaign=campaign,
+                            duplicate_reason=dup_reason,
+                            log_reengagement=False
+                        )
+                        imported_count += 1
                         continue
+
                         
                     temp_username = f"st_{cleaned_phone}"
                     crm_id = Student.generate_next_crm_id()

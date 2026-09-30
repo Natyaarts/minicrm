@@ -64,8 +64,48 @@ class BulkUploadView(views.APIView):
                             success_count += 1
                             continue
                         else:
-                            errors.append(f"Row {index+1}: Skipped duplicate lead ({dup_reason})")
+                            # Resolve Program
+                            program_name = row.get('program_name')
+                            if not program_name or pd.isna(program_name):
+                                program = Program.objects.get(name__iexact='NATYA')
+                            else:
+                                program = Program.objects.filter(name__iexact=program_name).first()
+                            if not program:
+                                program = Program.objects.filter(name__iexact='NATYA').first()
+
+                            sub_program = None
+                            if 'sub_program_name' in row and pd.notna(row['sub_program_name']) and program:
+                                sub_program = SubProgram.objects.filter(name__iexact=row['sub_program_name'], program=program).first()
+
+                            course = None
+                            if 'course_name' in row and pd.notna(row['course_name']):
+                                qs = Course.objects.all()
+                                if sub_program:
+                                    qs = qs.filter(sub_program=sub_program)
+                                course = qs.filter(name__iexact=row['course_name']).first()
+
+                            from crm.services.deduplication import create_duplicate_lead
+                            create_duplicate_lead(
+                                existing_student=dup_student,
+                                first_name=first_name,
+                                last_name=row.get('last_name', '') if pd.notna(row.get('last_name')) else '',
+                                mobile=clean_phone or mobile,
+                                email=clean_em or email,
+                                campaign=campaign_obj,
+                                program=program,
+                                duplicate_reason=dup_reason,
+                                extra_fields={
+                                    'sub_program': sub_program,
+                                    'course': course,
+                                    'dob': row.get('dob', '2000-01-01'),
+                                    'gender': row.get('gender', 'Female'),
+                                    'perm_address': row.get('perm_address', ''),
+                                },
+                                log_reengagement=False
+                            )
+                            success_count += 1
                             continue
+
 
                     # Resolve Program
                     program_name = row.get('program_name')

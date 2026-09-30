@@ -140,7 +140,7 @@ class LeadDeduplicationTestSuite(TestCase):
         unique_student, _ = lookup_existing_student(mobile='9998887776', email='unique@gmail.com')
         self.assertIsNone(unique_student)
 
-    # 5. CSV bulk upload duplicate prevention
+    # 5. CSV bulk upload duplicate handling -> creates DUPLICATE Student record
     def test_csv_upload_duplicate_prevention(self):
         initial_student_count = Student.objects.count()
         initial_user_count = User.objects.count()
@@ -157,12 +157,24 @@ class LeadDeduplicationTestSuite(TestCase):
         response = self.client.post(url, {'file': csv_file}, format='multipart')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        # Exactly 1 new student created (Rahul), 0 for Akshaya
-        self.assertEqual(Student.objects.count(), initial_student_count + 1)
-        self.assertEqual(User.objects.count(), initial_user_count + 1)
-        self.assertIn("Duplicates skipped: 1", response.data['message'])
+        # 2 new students created: 1 normal (Rahul), 1 DUPLICATE (Akshaya)
+        self.assertEqual(Student.objects.count(), initial_student_count + 2)
+        self.assertEqual(User.objects.count(), initial_user_count + 2)
 
-    # 6. Batch JSON upload duplicate prevention
+        # Original seeded student is completely unchanged
+        self.seeded_student.refresh_from_db()
+        self.assertEqual(self.seeded_student.assigned_to, self.sales_rep)
+        self.assertEqual(self.seeded_student.lead_status, str(self.stage_new.id))
+
+        # New duplicate record has lead_status=DUPLICATE, assigned_to=None, and unusable password
+        dup_record = Student.objects.filter(mobile='+917356679007', lead_status='DUPLICATE').first()
+        self.assertIsNotNone(dup_record)
+        self.assertIsNone(dup_record.assigned_to)
+        self.assertEqual(dup_record.campaign, self.campaign)
+        self.assertFalse(dup_record.user.has_usable_password())
+
+
+    # 6. Batch JSON upload duplicate handling -> creates DUPLICATE Student record
     def test_batch_upload_duplicate_prevention(self):
         initial_student_count = Student.objects.count()
         initial_user_count = User.objects.count()
@@ -180,17 +192,24 @@ class LeadDeduplicationTestSuite(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         results = response.data.get('results', [])
         self.assertEqual(len(results), 2)
-        # Row 1 skipped as duplicate
-        self.assertEqual(results[0]['status'], 'SKIPPED_DUPLICATE')
-        self.assertEqual(results[0]['crm_id'], 'NATYA-8119')
-        # Row 2 success
+        # Both rows succeed in creating Student records
+        self.assertEqual(results[0]['status'], 'SUCCESS')
         self.assertEqual(results[1]['status'], 'SUCCESS')
 
-        # Total created = 1
-        self.assertEqual(Student.objects.count(), initial_student_count + 1)
-        self.assertEqual(User.objects.count(), initial_user_count + 1)
+        # Total created = 2 (1 duplicate lead, 1 normal lead)
+        self.assertEqual(Student.objects.count(), initial_student_count + 2)
+        self.assertEqual(User.objects.count(), initial_user_count + 2)
 
-    # 7. Dynamic Webhook duplicate re-engagement
+        # Original student preserved unchanged
+        self.seeded_student.refresh_from_db()
+        self.assertEqual(self.seeded_student.assigned_to, self.sales_rep)
+
+        # Duplicate lead created with DUPLICATE status and no assignment
+        dup_lead = Student.objects.get(crm_student_id=results[0]['crm_id'])
+        self.assertEqual(dup_lead.lead_status, 'DUPLICATE')
+        self.assertIsNone(dup_lead.assigned_to)
+
+    # 7. Dynamic Webhook duplicate re-engagement and DUPLICATE lead creation
     def test_dynamic_webhook_duplicate(self):
         initial_student_count = Student.objects.count()
         initial_user_count = User.objects.count()
@@ -208,16 +227,26 @@ class LeadDeduplicationTestSuite(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(response.data.get('is_duplicate'))
-        self.assertEqual(response.data.get('crm_id'), 'NATYA-8119')
 
-        # No new students or users created
-        self.assertEqual(Student.objects.count(), initial_student_count)
-        self.assertEqual(User.objects.count(), initial_user_count)
+        # 1 new duplicate Student and User created
+        self.assertEqual(Student.objects.count(), initial_student_count + 1)
+        self.assertEqual(User.objects.count(), initial_user_count + 1)
+
+        # Original seeded student preserved unchanged
+        self.seeded_student.refresh_from_db()
+        self.assertEqual(self.seeded_student.assigned_to, self.sales_rep)
+        self.assertEqual(self.seeded_student.lead_status, str(self.stage_new.id))
 
         # Interaction note logged on the existing student
         interaction = LeadInteraction.objects.filter(student=self.seeded_student).first()
         self.assertIsNotNone(interaction)
         self.assertIn("evt_webhook_101", interaction.notes)
+
+        # Newly created duplicate record has lead_status=DUPLICATE and assigned_to=None
+        dup_student = Student.objects.get(id=response.data.get('student_id'))
+        self.assertEqual(dup_student.lead_status, 'DUPLICATE')
+        self.assertIsNone(dup_student.assigned_to)
+        self.assertEqual(dup_student.campaign, self.campaign)
 
     # 8. Webhook Idempotency: repeated webhook does NOT create multiple notes
     def test_webhook_idempotency_on_retry(self):
@@ -240,7 +269,7 @@ class LeadDeduplicationTestSuite(TestCase):
         count_2 = LeadInteraction.objects.filter(student=self.seeded_student, notes__contains='evt_retry_test_999').count()
         self.assertEqual(count_2, 1)
 
-    # 9. Campaign Webhook duplicate re-engagement
+    # 9. Campaign Webhook duplicate re-engagement and DUPLICATE lead creation
     def test_campaign_webhook_duplicate(self):
         initial_student_count = Student.objects.count()
         initial_user_count = User.objects.count()
@@ -257,12 +286,24 @@ class LeadDeduplicationTestSuite(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(response.data.get('is_duplicate'))
-        self.assertEqual(response.data.get('crm_id'), 'NATYA-8119')
+        self.assertEqual(response.data.get('status'), 'DUPLICATE')
+        self.assertEqual(response.data.get('assigned_to'), 'Unassigned')
 
-        self.assertEqual(Student.objects.count(), initial_student_count)
-        self.assertEqual(User.objects.count(), initial_user_count)
+        # 1 new duplicate Student and User created
+        self.assertEqual(Student.objects.count(), initial_student_count + 1)
+        self.assertEqual(User.objects.count(), initial_user_count + 1)
 
-    # 10. Meta Facebook Lead Ads Webhook duplicate re-engagement
+        # Original student preserved unchanged
+        self.seeded_student.refresh_from_db()
+        self.assertEqual(self.seeded_student.assigned_to, self.sales_rep)
+
+        # Duplicate lead created
+        dup_student = Student.objects.get(id=response.data.get('student_id'))
+        self.assertEqual(dup_student.lead_status, 'DUPLICATE')
+        self.assertIsNone(dup_student.assigned_to)
+        self.assertEqual(dup_student.campaign, self.campaign)
+
+    # 10. Meta Facebook Lead Ads Webhook duplicate re-engagement and DUPLICATE lead creation
     def test_meta_webhook_duplicate(self):
         self.campaign.meta_form_id = 'form_123'
         self.campaign.meta_auto_import = True
@@ -306,13 +347,23 @@ class LeadDeduplicationTestSuite(TestCase):
             response = self.client.post(url, payload, format='json')
 
             self.assertEqual(response.status_code, status.HTTP_200_OK)
-            # 0 new students created
-            self.assertEqual(Student.objects.count(), initial_student_count)
-            self.assertEqual(User.objects.count(), initial_user_count)
+            # 1 new duplicate Student created
+            self.assertEqual(Student.objects.count(), initial_student_count + 1)
+            self.assertEqual(User.objects.count(), initial_user_count + 1)
 
-            # Re-engagement note created
+            # Original student preserved unchanged
+            self.seeded_student.refresh_from_db()
+            self.assertEqual(self.seeded_student.assigned_to, self.sales_rep)
+
+            # Re-engagement note created on original student
             interaction = LeadInteraction.objects.filter(student=self.seeded_student, notes__contains='meta_lead_998877').first()
             self.assertIsNotNone(interaction)
+
+            # New duplicate created with DUPLICATE status, unassigned, and matching meta_lead_id
+            dup_student = Student.objects.get(meta_lead_id='meta_lead_998877')
+            self.assertEqual(dup_student.lead_status, 'DUPLICATE')
+            self.assertIsNone(dup_student.assigned_to)
+            self.assertEqual(dup_student.campaign, self.campaign)
 
     # 11. StudentSerializer / Public Application Form validation error on duplicate
     def test_student_serializer_duplicate_prevention(self):
@@ -350,7 +401,7 @@ class LeadDeduplicationTestSuite(TestCase):
         self.assertIn("Inactive Lead", reason)
         self.assertEqual(dup_student.id, self.seeded_student.id)
 
-    # 13. Google Sheets API sync duplicate prevention
+    # 13. Google Sheets API sync duplicate handling -> creates DUPLICATE Student record
     def test_google_sheet_api_sync_duplicate(self):
         from unittest.mock import patch, MagicMock
         initial_student_count = Student.objects.count()
@@ -381,14 +432,23 @@ class LeadDeduplicationTestSuite(TestCase):
             response = self.client.post(url, {'campaign_id': self.campaign.id}, format='json')
 
             self.assertEqual(response.status_code, status.HTTP_200_OK)
-            self.assertEqual(response.data.get('imported'), 1)
-            self.assertEqual(response.data.get('skipped'), 1)
+            self.assertEqual(response.data.get('imported'), 2)
+            self.assertEqual(response.data.get('skipped'), 0)
 
-            # Exactly 1 new student created (Gopika), 0 for Akshaya duplicate
-            self.assertEqual(Student.objects.count(), initial_student_count + 1)
-            self.assertEqual(User.objects.count(), initial_user_count + 1)
+            # 2 new students created: Gopika (normal) and Akshaya (DUPLICATE)
+            self.assertEqual(Student.objects.count(), initial_student_count + 2)
+            self.assertEqual(User.objects.count(), initial_user_count + 2)
 
-    # 14. Google Sheets CLI sync duplicate prevention
+            # Original student preserved unchanged
+            self.seeded_student.refresh_from_db()
+            self.assertEqual(self.seeded_student.assigned_to, self.sales_rep)
+
+            # Duplicate record created
+            dup_record = Student.objects.filter(mobile='+917356679007', lead_status='DUPLICATE').first()
+            self.assertIsNotNone(dup_record)
+            self.assertIsNone(dup_record.assigned_to)
+
+    # 14. Google Sheets CLI sync duplicate handling -> creates DUPLICATE Student record
     def test_google_sheet_cli_sync_duplicate(self):
         from unittest.mock import patch, MagicMock
         from django.core.management import call_command
@@ -419,11 +479,20 @@ class LeadDeduplicationTestSuite(TestCase):
             
             call_command('run_google_sync')
 
-            # Exactly 1 new student created (Haritha), 0 for Akshaya duplicate
-            self.assertEqual(Student.objects.count(), initial_student_count + 1)
-            self.assertEqual(User.objects.count(), initial_user_count + 1)
+            # 2 new students created: Haritha (normal) and Akshaya (DUPLICATE)
+            self.assertEqual(Student.objects.count(), initial_student_count + 2)
+            self.assertEqual(User.objects.count(), initial_user_count + 2)
 
-    # 15. Core Bulk Excel/CSV upload duplicate prevention
+            # Original student preserved unchanged
+            self.seeded_student.refresh_from_db()
+            self.assertEqual(self.seeded_student.assigned_to, self.sales_rep)
+
+            # Duplicate record created
+            dup_record = Student.objects.filter(mobile='+917356679007', lead_status='DUPLICATE').first()
+            self.assertIsNotNone(dup_record)
+            self.assertIsNone(dup_record.assigned_to)
+
+    # 15. Core Bulk Excel/CSV upload duplicate handling -> creates DUPLICATE Student record
     def test_core_bulk_upload_duplicate(self):
         initial_student_count = Student.objects.count()
         initial_user_count = User.objects.count()
@@ -439,13 +508,22 @@ class LeadDeduplicationTestSuite(TestCase):
         response = self.client.post(url, {'file': csv_file}, format='multipart')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data.get('success_count'), 1)
-        self.assertEqual(len(response.data.get('errors', [])), 1)
-        self.assertIn("Skipped duplicate lead", response.data['errors'][0])
+        self.assertEqual(response.data.get('success_count'), 2)
+        self.assertEqual(len(response.data.get('errors', [])), 0)
 
-        # Exactly 1 new student created (Deepa), 0 for Akshaya duplicate
-        self.assertEqual(Student.objects.count(), initial_student_count + 1)
-        self.assertEqual(User.objects.count(), initial_user_count + 1)
+        # 2 new students created: Deepa (normal) and Akshaya (DUPLICATE)
+        self.assertEqual(Student.objects.count(), initial_student_count + 2)
+        self.assertEqual(User.objects.count(), initial_user_count + 2)
+
+        # Original student preserved unchanged
+        self.seeded_student.refresh_from_db()
+        self.assertEqual(self.seeded_student.assigned_to, self.sales_rep)
+
+        # Duplicate record created
+        dup_record = Student.objects.filter(mobile='+917356679007', lead_status='DUPLICATE').first()
+        self.assertIsNotNone(dup_record)
+        self.assertIsNone(dup_record.assigned_to)
+
 
     # 16. Core Bulk upload LMS/Wise ID update for existing student
     def test_core_bulk_upload_lms_id_update_for_existing_student(self):
