@@ -57,13 +57,55 @@ const EmployeeSelfService = () => {
         fetchData();
     }, []);
 
-    const getLocation = () => new Promise((resolve) => {
-        if (!("geolocation" in navigator)) { resolve({ latitude: null, longitude: null }); return; }
-        const t = setTimeout(() => resolve({ latitude: null, longitude: null }), 8000);
+    const getLocation = () => new Promise((resolve, reject) => {
+        if (!("geolocation" in navigator)) {
+            reject(new Error("Geolocation is not supported by your browser. Please enable Location Services and allow location access for Safari/natyaarts.org, then retry."));
+            return;
+        }
+        let isHandled = false;
+        const timer = setTimeout(() => {
+            if (!isHandled) {
+                isHandled = true;
+                reject(new Error("Location request timed out. Please ensure Location Services are enabled and allow location access for Safari/natyaarts.org, then retry."));
+            }
+        }, 16000);
+
         navigator.geolocation.getCurrentPosition(
-            pos => { clearTimeout(t); resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }); },
-            () => { clearTimeout(t); resolve({ latitude: null, longitude: null }); },
-            { enableHighAccuracy: true, timeout: 7000, maximumAge: 0 }
+            pos => {
+                if (!isHandled) {
+                    isHandled = true;
+                    clearTimeout(timer);
+                    if (pos?.coords?.latitude != null && pos?.coords?.longitude != null) {
+                        resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude });
+                    } else {
+                        reject(new Error("Unable to retrieve valid GPS coordinates. Please enable Location Services and allow location access for Safari/natyaarts.org, then retry."));
+                    }
+                }
+            },
+            error => {
+                if (!isHandled) {
+                    isHandled = true;
+                    clearTimeout(timer);
+                    let message = "Unable to retrieve your location. Please enable Location Services and allow location access for Safari/natyaarts.org, then retry.";
+                    if (error) {
+                        switch (error.code) {
+                            case error.PERMISSION_DENIED:
+                                message = "Location permission denied. Please enable Location Services in iOS Settings and allow location access for Safari/natyaarts.org, then retry.";
+                                break;
+                            case error.POSITION_UNAVAILABLE:
+                                message = "Location information is unavailable. Please ensure GPS/Location Services are enabled and allow location access for Safari/natyaarts.org, then retry.";
+                                break;
+                            case error.TIMEOUT:
+                                message = "Location request timed out. Please ensure Location Services are enabled and allow location access for Safari/natyaarts.org, then retry.";
+                                break;
+                            default:
+                                break;
+                        }
+                    }
+                    reject(new Error(message));
+                }
+            },
+            { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
         );
     });
 
@@ -92,7 +134,7 @@ const EmployeeSelfService = () => {
             }
         } catch (err) {
             console.error("Clock action error:", err);
-            const msg = err.response?.data?.error || `Failed: ${err.message || 'Unknown error'}`;
+            const msg = err.response?.data?.error || err.message || 'Failed: Unknown error';
             // Show error in a visible way (not just alert which can be blocked on iOS)
             alert(msg);
         }
