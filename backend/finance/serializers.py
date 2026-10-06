@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from core.validators import validate_receipt_file
 from .models import Expense, ExpenseCategory
 
 class ExpenseCategorySerializer(serializers.ModelSerializer):
@@ -19,3 +20,8 @@ class ExpenseSerializer(serializers.ModelSerializer):
     class Meta:
         model = Expense
         fields = '__all__'
+
+    def validate_receipt(self, value):
+        if value:
+            return validate_receipt_file(value)
+        return value

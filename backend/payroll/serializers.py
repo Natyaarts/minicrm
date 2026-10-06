@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from core.validators import validate_tax_proof_file
 from .models import SalaryStructure, Payslip, BonusDeduction, EmployeeLoan, TaxDeclaration
 
 class SalaryStructureSerializer(serializers.ModelSerializer):
@@ -39,3 +40,8 @@ class TaxDeclarationSerializer(serializers.ModelSerializer):
     class Meta:
         model = TaxDeclaration
         fields = '__all__'
+
+    def validate_proof_file(self, value):
+        if value:
+            return validate_tax_proof_file(value)
+        return value

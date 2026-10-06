@@ -1,4 +1,5 @@
 
+import logging
 from rest_framework import views, response, permissions
 from core.models import Student
 from .utils import WiseService
@@ -7,6 +8,8 @@ from .serializers import IntegrationSettingSerializer
 import random
 import razorpay
 from django.db import models
+
+logger = logging.getLogger(__name__)
 
 class LMSProxyView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -199,7 +202,8 @@ class LinkWiseView(views.APIView):
         except Student.DoesNotExist:
             return response.Response({"error": "Student not found"}, status=404)
         except Exception as e:
-            return response.Response({"error": str(e)}, status=500)
+            logger.error(f"Wise linking error: {e}")
+            return response.Response({"error": "Failed to link LMS account. Please try again later."}, status=500)
 
 class SyncWiseStudentsView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -653,8 +657,8 @@ class SyncWiseBatchView(views.APIView):
                 "stats": stats
             })
         except Exception as e:
-            print(f"SyncWiseBatch Error: {str(e)}")
-            return response.Response({"error": f"Sync failed: {str(e)}"}, status=500)
+            logger.error(f"SyncWiseBatch Error: {e}")
+            return response.Response({"error": "Batch synchronization failed. Please try again later."}, status=500)
 
 
 class ConsumeWiseCreditsView(views.APIView):
@@ -698,7 +702,8 @@ class ConsumeWiseCreditsView(views.APIView):
         except Student.DoesNotExist:
              return response.Response({"error": "Student not found"}, status=404)
         except Exception as e:
-             return response.Response({"error": str(e)}, status=500)
+             logger.error(f"ConsumeWiseCredits Error: {e}")
+             return response.Response({"error": "Failed to process credits. Please try again later."}, status=500)
 
 class IntegrationSettingViewSet(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -793,8 +798,8 @@ class RazorpayOrderView(views.APIView):
         except IntegrationSetting.DoesNotExist:
             return response.Response({"error": "Razorpay integration is not configured or is inactive"}, status=503)
         except Exception as e:
-            print(f"Razorpay Error: {str(e)}")
-            return response.Response({"error": f"Gateway Error: {str(e)}"}, status=500)
+            logger.error(f"Razorpay Error: {e}")
+            return response.Response({"error": "Payment gateway processing error. Please try again later."}, status=500)
 
 class SyncWiseAttendanceView(views.APIView):
     """

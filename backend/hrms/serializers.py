@@ -1,4 +1,9 @@
 from rest_framework import serializers
+from core.validators import (
+    validate_employee_document_file,
+    validate_profile_photo_file,
+    validate_receipt_file
+)
 from .models import Department, Designation, EmployeeProfile, CustomField, Attendance, ShiftSetting, Task, TaskComment, CompanyPost, EmployeeDocument, Asset, Expense, PerformanceReview, Offboarding
 
 class ShiftSettingSerializer(serializers.ModelSerializer):
@@ -93,6 +98,11 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'status']
 
+    def validate_profile_photo(self, value):
+        if value:
+            return validate_profile_photo_file(value)
+        return value
+
     def validate(self, attrs):
         # On create, check that required user fields are present
         if not self.instance:
@@ -125,7 +135,21 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         user = instance.user
+        request = self.context.get('request')
+        is_admin = bool(
+            request and request.user and request.user.is_authenticated
+            and (request.user.role in ['SUPER_ADMIN', 'ADMIN'] or request.user.is_superuser)
+        )
         
+        # If not admin, strip privileged fields
+        if not is_admin:
+            privileged_fields = [
+                'base_salary', 'designation', 'department', 'employee_id',
+                'employment_type', 'date_of_joining', 'reporting_to', 'status'
+            ]
+            for field in privileged_fields:
+                validated_data.pop(field, None)
+
         # Extract user data
         username = validated_data.pop('username', None)
         email = validated_data.pop('email', None)
@@ -134,7 +158,7 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
         password = validated_data.pop('password', None)
         
         # Update user fields
-        if username:
+        if username and is_admin:
             user.username = username
         if email:
             user.email = email
@@ -151,11 +175,12 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
             setattr(instance, attr, value)
         instance.save()
         
-        # Keep SalaryStructure in sync
-        from payroll.models import SalaryStructure
-        salary_structure, created = SalaryStructure.objects.get_or_create(employee=instance)
-        salary_structure.base_salary = instance.base_salary
-        salary_structure.save()
+        # Keep SalaryStructure in sync if base_salary was legitimately changed by admin
+        if is_admin and 'base_salary' in validated_data:
+            from payroll.models import SalaryStructure
+            salary_structure, created = SalaryStructure.objects.get_or_create(employee=instance)
+            salary_structure.base_salary = instance.base_salary
+            salary_structure.save()
         
         return instance
 
@@ -206,6 +231,11 @@ class EmployeeDocumentSerializer(serializers.ModelSerializer):
         model = EmployeeDocument
         fields = '__all__'
 
+    def validate_file(self, value):
+        if value:
+            return validate_employee_document_file(value)
+        return value
+
 class AssetSerializer(serializers.ModelSerializer):
     assigned_to_name = serializers.ReadOnlyField(source='assigned_to.user.get_full_name')
 
@@ -219,6 +249,11 @@ class ExpenseSerializer(serializers.ModelSerializer):
     class Meta:
         model = Expense
         fields = '__all__'
+
+    def validate_receipt(self, value):
+        if value:
+            return validate_receipt_file(value)
+        return value
 
 class PerformanceReviewSerializer(serializers.ModelSerializer):
     employee_name = serializers.ReadOnlyField(source='employee.user.get_full_name')
@@ -253,3 +288,8 @@ class FestiveGreetingSerializer(serializers.ModelSerializer):
         model = FestiveGreeting
         fields = '__all__'
         read_only_fields = ['created_by', 'created_at', 'updated_at']
+
+    def validate_banner_image(self, value):
+        if value:
+            return validate_profile_photo_file(value)
+        return value

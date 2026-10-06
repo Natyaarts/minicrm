@@ -5,6 +5,7 @@ from django.apps import apps
 from django.db import transaction as db_transaction
 from django.db.models import Sum, Count
 from .models import Program, SubProgram, Course, Batch, Student, Transaction, Document, SyllabusPart, ClassSession, Attendance, BatchResource, Exam, ExamResult, Question, QuestionOption, StudentSubmission, MonthlyPayment, StudentTeacherHandover, normalize_phone_number
+from .validators import validate_student_document_file, validate_batch_resource_file
 
 User = get_user_model()
 
@@ -56,6 +57,11 @@ class BatchResourceSerializer(serializers.ModelSerializer):
     class Meta:
         model = BatchResource
         fields = '__all__'
+
+    def validate_file(self, value):
+        if value:
+            return validate_batch_resource_file(value)
+        return value
 
 class StudentSubmissionSerializer(serializers.ModelSerializer):
     class Meta:
@@ -166,6 +172,11 @@ class DocumentSerializer(serializers.ModelSerializer):
         model = Document
         fields = '__all__'
 
+    def validate_file(self, value):
+        if value:
+            return validate_student_document_file(value)
+        return value
+
 class StudentDynamicValueReadSerializer(serializers.ModelSerializer):
     field_label = serializers.CharField(source='field.label', read_only=True)
     field_group = serializers.CharField(source='field.field_group', read_only=True)
@@ -242,6 +253,29 @@ class StudentSerializer(serializers.ModelSerializer):
     transactions_list = TransactionSerializer(source='transactions', many=True, read_only=True)
     monthly_payments_list = MonthlyPaymentSerializer(source='monthly_payments', many=True, read_only=True)
     teacher_handovers_list = StudentTeacherHandoverSerializer(source='teacher_handovers', many=True, read_only=True)
+
+    def validate_passport_photo(self, value):
+        if value:
+            return validate_student_document_file(value)
+        return value
+
+    def validate_aadhar_card(self, value):
+        if value:
+            return validate_student_document_file(value)
+        return value
+
+    def validate_marklist(self, value):
+        if value:
+            return validate_student_document_file(value)
+        return value
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        if request and request.FILES:
+            for key, file_obj in request.FILES.items():
+                if key.startswith('dynamic_file_'):
+                    validate_student_document_file(file_obj)
+        return attrs
     
     # Financial fields
     total_paid = serializers.SerializerMethodField()

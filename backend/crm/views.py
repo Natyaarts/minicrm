@@ -1,3 +1,6 @@
+import logging
+import traceback
+import uuid
 from rest_framework import viewsets, permissions, status, serializers
 from rest_framework.decorators import action
 from rest_framework.views import APIView
@@ -5,14 +8,14 @@ from rest_framework.response import Response
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Sum
-import traceback
-import uuid
 from core.models import Student, Program, Transaction, normalize_phone_number
 from .models import PipelineStage, LeadInteraction, Campaign, WebhookEndpoint, WebhookLog, Task
 from .serializers import PipelineStageSerializer, LeadInteractionSerializer, CampaignSerializer, TaskSerializer
 from .utils import normalize_phone_for_matching, match_lead_by_phone, match_agent_by_phone
 from .services.deduplication import lookup_existing_student, record_reengagement_interaction, normalize_lead_phone, normalize_lead_email, create_duplicate_lead
 from .services.assignment import get_next_assigned_rep
+
+logger = logging.getLogger(__name__)
 
 User = get_user_model()
 from django.shortcuts import get_object_or_404
@@ -280,8 +283,8 @@ class DashboardStatsView(APIView):
                 "revenue": revenue
             })
         except Exception as e:
-            traceback.print_exc()
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.error(f"Dashboard stats error: {e}")
+            return Response({"error": "Failed to load dashboard metrics. Please try again later."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class MentorDashboardStatsView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -741,6 +744,13 @@ class CampaignViewSet(viewsets.ModelViewSet):
         if not file:
             return Response({'error': 'No file provided'}, status=status.HTTP_400_BAD_REQUEST)
         
+        from core.validators import validate_spreadsheet_file
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        try:
+            validate_spreadsheet_file(file)
+        except DjangoValidationError as ve:
+            return Response({'error': ve.messages if hasattr(ve, 'messages') else str(ve)}, status=status.HTTP_400_BAD_REQUEST)
+
         from core.models import Program
         if program_id:
             default_program = Program.objects.filter(id=program_id).first()
@@ -871,7 +881,8 @@ class CampaignViewSet(viewsets.ModelViewSet):
                 'message': f'CSV upload processed. Total rows: {total_rows}. Successful additions: {leads_created}. Duplicates skipped: {duplicates_skipped}. Skipped (invalid): {skipped_leads}.'
             })
         except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            logger.error(f"Upload leads CSV error: {e}")
+            return Response({'error': 'Failed to process CSV file. Please verify format and column structure.'}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=True, methods=['post'])
     def bulk_upload_batch(self, request, pk=None):
@@ -1426,15 +1437,16 @@ class WebhookReceiveView(APIView):
                 }, status=status.HTTP_201_CREATED)
 
         except Exception as e:
-            # Log Failure
+            # Log Failure internally in DB and logger
             error_msg = str(e) + "\n" + traceback.format_exc()
+            logger.error(f"Webhook processing error: {e}")
             WebhookLog.objects.create(
                 endpoint=endpoint,
                 payload=payload,
                 status='FAILED',
                 error_message=error_msg
             )
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "Failed to process webhook payload."}, status=status.HTTP_400_BAD_REQUEST)
 
 class CampaignWebhookReceiveView(APIView):
     permission_classes = [permissions.AllowAny] # Authenticated via campaign secret_token in URL
@@ -1580,7 +1592,8 @@ class CampaignWebhookReceiveView(APIView):
                 }, status=status.HTTP_201_CREATED)
 
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            logger.error(f"Campaign lead webhook error: {e}")
+            return Response({"error": "Failed to process campaign lead."}, status=status.HTTP_400_BAD_REQUEST)
 
 
 
@@ -1967,6 +1980,7 @@ class BulkAssignLeadsView(APIView):
             updated = students.update(assigned_to=sales_user)
             return Response({'message': f'Successfully assigned {updated} leads to {sales_user.username}'})
         except User.DoesNotExist:
-            return Response({'error': 'Sales user not found'}, status=status.HTTP_404_BAD_REQUEST)
+            return Response({'error': 'Sales user not found'}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.error(f"Bulk lead assignment error: {e}")
+            return Response({'error': 'Failed to assign leads. Please try again.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

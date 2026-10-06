@@ -1,4 +1,6 @@
 from rest_framework import viewsets, permissions
+from users.permissions import IsAdminOrSuperAdmin, IsAdminOrReadOnly
+from rest_framework.exceptions import PermissionDenied
 from .models import Department, Designation, EmployeeProfile, CustomField, Attendance, ShiftSetting, Task, TaskComment, CompanyPost, EmployeeDocument, Asset, Expense, PerformanceReview, Offboarding
 from .serializers import (
     DepartmentSerializer, DesignationSerializer, EmployeeProfileSerializer, 
@@ -13,7 +15,7 @@ from datetime import datetime
 class ShiftSettingViewSet(viewsets.ModelViewSet):
     queryset = ShiftSetting.objects.all()
     serializer_class = ShiftSettingSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAdminOrReadOnly]
 
     def create(self, request, *args, **kwargs):
         if not (request.user.role in ['SUPER_ADMIN', 'ADMIN'] or request.user.is_superuser):
@@ -749,32 +751,59 @@ class AttendanceViewSet(viewsets.ModelViewSet):
 class DepartmentViewSet(viewsets.ModelViewSet):
     queryset = Department.objects.all()
     serializer_class = DepartmentSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAdminOrReadOnly]
 
 class CustomFieldViewSet(viewsets.ModelViewSet):
     queryset = CustomField.objects.all()
     serializer_class = CustomFieldSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAdminOrReadOnly]
 
 class DesignationViewSet(viewsets.ModelViewSet):
     queryset = Designation.objects.all()
     serializer_class = DesignationSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAdminOrReadOnly]
 
 class EmployeeProfileViewSet(viewsets.ModelViewSet):
     serializer_class = EmployeeProfileSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def get_permissions(self):
+        if self.action in ['create', 'destroy']:
+            return [IsAdminOrSuperAdmin()]
+        return [permissions.IsAuthenticated()]
+
     def get_queryset(self):
         user = self.request.user
+        if not user.is_authenticated:
+            return EmployeeProfile.objects.none()
         qs = EmployeeProfile.objects.select_related(
             'user', 'department', 'designation', 'reporting_to', 'reporting_to__user'
         ).prefetch_related('documents')
         
-        if user.role == 'SUPER_ADMIN' or user.is_superuser:
+        if user.role in ['SUPER_ADMIN', 'ADMIN'] or user.is_superuser:
             return qs.all().order_by('-id')
         # Non-admins can only see their own profile
         return qs.filter(user=user).order_by('-id')
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        if not (user.role in ['SUPER_ADMIN', 'ADMIN'] or user.is_superuser):
+            raise PermissionDenied("Only Administrators can create employee profiles.")
+        serializer.save()
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        instance = serializer.instance
+        if not (user.role in ['SUPER_ADMIN', 'ADMIN'] or user.is_superuser):
+            if instance.user != user:
+                raise PermissionDenied("You can only modify your own employee profile.")
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        user = self.request.user
+        if not (user.role in ['SUPER_ADMIN', 'ADMIN'] or user.is_superuser):
+            raise PermissionDenied("Only Administrators can delete employee profiles.")
+        instance.delete()
 
     @action(detail=False, methods=['get'])
     def celebrations(self, request):
@@ -846,6 +875,15 @@ class EmployeeDocumentViewSet(viewsets.ModelViewSet):
         if user.role in ['SUPER_ADMIN', 'ADMIN'] or user.is_superuser:
             return EmployeeDocument.objects.all().order_by('-uploaded_at')
         return EmployeeDocument.objects.filter(employee__user=user).order_by('-uploaded_at')
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        if not (user.role in ['SUPER_ADMIN', 'ADMIN'] or user.is_superuser):
+            employee = serializer.validated_data.get('employee')
+            if employee and employee.user != user:
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied("You do not have permission to upload documents for other employees.")
+        serializer.save()
 
 class AssetViewSet(viewsets.ModelViewSet):
     queryset = Asset.objects.all()

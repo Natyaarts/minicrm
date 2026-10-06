@@ -1,6 +1,12 @@
 from django.db import models
 from django.conf import settings
 from django.utils import timezone
+from core.validators import (
+    validate_employee_document_file,
+    validate_profile_photo_file,
+    validate_receipt_file
+)
+
 
 class Department(models.Model):
     name = models.CharField(max_length=100, unique=True)
@@ -75,7 +81,7 @@ class EmployeeProfile(models.Model):
     # Personal Information
     date_of_birth = models.DateField(null=True, blank=True)
     gender = models.CharField(max_length=10, blank=True)
-    profile_photo = models.ImageField(upload_to='profiles/', null=True, blank=True)
+    profile_photo = models.ImageField(upload_to='profiles/', null=True, blank=True, validators=[validate_profile_photo_file])
     
     # Job Information
     date_of_joining = models.DateField()
@@ -145,7 +151,7 @@ class Attendance(models.Model):
     clock_out_longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     
     # Verification Data
-    clock_in_photo = models.ImageField(upload_to='attendance_photos/', null=True, blank=True)
+    clock_in_photo = models.ImageField(upload_to='attendance_photos/', null=True, blank=True, validators=[validate_profile_photo_file])
     is_face_verified = models.BooleanField(default=False)
     verification_confidence = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     
@@ -215,7 +221,7 @@ class CompanyPost(models.Model):
 class EmployeeDocument(models.Model):
     employee = models.ForeignKey(EmployeeProfile, on_delete=models.CASCADE, related_name='documents')
     document_type = models.CharField(max_length=100) # e.g. Resume, ID Proof, Contract
-    file = models.FileField(upload_to='employee_docs/')
+    file = models.FileField(upload_to='employee_docs/', validators=[validate_employee_document_file])
     uploaded_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -250,7 +256,7 @@ class Expense(models.Model):
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     category = models.CharField(max_length=50) # Travel, Internet, Meals
     description = models.TextField()
-    receipt = models.FileField(upload_to='expense_receipts/', null=True, blank=True)
+    receipt = models.FileField(upload_to='expense_receipts/', null=True, blank=True, validators=[validate_receipt_file])
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
     submitted_date = models.DateField(auto_now_add=True)
 
@@ -328,7 +334,7 @@ class FestiveGreeting(models.Model):
     title = models.CharField(max_length=200, help_text="e.g. Happy Onam! 🌸")
     sub_title = models.CharField(max_length=255, blank=True, null=True, help_text="e.g. Wishing you abundance and joy!")
     message = models.TextField(help_text="Detailed wish or greeting message")
-    banner_image = models.ImageField(upload_to='festive_greetings/', null=True, blank=True, help_text="Upload custom festive banner image")
+    banner_image = models.ImageField(upload_to='festive_greetings/', null=True, blank=True, help_text="Upload custom festive banner image", validators=[validate_profile_photo_file])
     theme = models.CharField(max_length=30, choices=THEME_CHOICES, default='ONAM')
     target_audience = models.CharField(max_length=30, choices=TARGET_ROLE_CHOICES, default='ALL')
     

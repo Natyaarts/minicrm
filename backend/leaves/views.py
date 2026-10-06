@@ -2,6 +2,7 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.utils import timezone
+from users.permissions import IsAdminOrSuperAdmin, IsAdminOrReadOnly
 from .models import LeaveType, LeaveBalance, LeaveRequest, Holiday
 from .serializers import LeaveTypeSerializer, LeaveBalanceSerializer, LeaveRequestSerializer, HolidaySerializer
 from hrms.models import EmployeeProfile
@@ -9,12 +10,12 @@ from hrms.models import EmployeeProfile
 class HolidayViewSet(viewsets.ModelViewSet):
     queryset = Holiday.objects.all()
     serializer_class = HolidaySerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAdminOrReadOnly]
 
 class LeaveTypeViewSet(viewsets.ModelViewSet):
     queryset = LeaveType.objects.all()
     serializer_class = LeaveTypeSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAdminOrReadOnly]
 
 class LeaveBalanceViewSet(viewsets.ModelViewSet):
     serializer_class = LeaveBalanceSerializer
@@ -27,6 +28,11 @@ class LeaveBalanceViewSet(viewsets.ModelViewSet):
         if user.role in ['SUPER_ADMIN', 'ADMIN'] or user.is_superuser:
             return LeaveBalance.objects.all()
         return LeaveBalance.objects.filter(employee__user=user)
+
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [IsAdminOrSuperAdmin()]
+        return [permissions.IsAuthenticated()]
 
 class LeaveRequestViewSet(viewsets.ModelViewSet):
     serializer_class = LeaveRequestSerializer

@@ -102,7 +102,7 @@ class MetaLeadWebhookView(APIView):
             logger.info("Meta webhook verified successfully.")
             return HttpResponse(challenge, content_type="text/plain")
 
-        logger.warning(f"Meta webhook verification failed. mode={mode}, token={token}")
+        logger.warning(f"Meta webhook verification failed. mode={mode}, token=[REDACTED]")
         return HttpResponse("Verification failed", status=403)
 
     def post(self, request):
@@ -276,7 +276,7 @@ class MetaLeadWebhookView(APIView):
 
         except Exception as e:
             logger.error(f"Meta webhook error: {e}")
-            return Response({"status": "error", "message": str(e)}, status=500)
+            return Response({"status": "error", "message": "Failed to process Meta webhook."}, status=500)
 
 
 class LeadQualityFeedbackView(APIView):

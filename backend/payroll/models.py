@@ -1,5 +1,6 @@
 from django.db import models
 from hrms.models import EmployeeProfile
+from core.validators import validate_tax_proof_file
 
 class SalaryStructure(models.Model):
     employee = models.OneToOneField(EmployeeProfile, on_delete=models.CASCADE, related_name='salary_structure')
@@ -131,7 +132,7 @@ class TaxDeclaration(models.Model):
     landlord_pan = models.CharField(max_length=10, blank=True, null=True)
     
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='PENDING')
-    proof_file = models.FileField(upload_to='tax_proofs/', blank=True, null=True)
+    proof_file = models.FileField(upload_to='tax_proofs/', blank=True, null=True, validators=[validate_tax_proof_file])
     notes = models.TextField(blank=True, null=True)
     
     created_at = models.DateTimeField(auto_now_add=True)

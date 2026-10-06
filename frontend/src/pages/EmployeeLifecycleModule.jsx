@@ -98,7 +98,8 @@ const EmployeeLifecycleModule = () => {
             setNewDoc({ document_type: '', file: null });
             fetchData();
         } catch (error) {
-            alert("Failed to upload document.");
+            const errMsg = error.response?.data?.file?.[0] || error.response?.data?.error || error.response?.data?.detail || "Failed to upload document.";
+            alert(errMsg);
         }
     };
 
@@ -331,7 +332,8 @@ const EmployeeLifecycleModule = () => {
                                 </div>
                                 <div>
                                     <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">File</label>
-                                    <input required type="file" onChange={e => setNewDoc({...newDoc, file: e.target.files[0]})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none" />
+                                    <input required type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" onChange={e => setNewDoc({...newDoc, file: e.target.files[0]})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none" />
+                                    <p className="text-[11px] text-slate-400 mt-1">Allowed formats: PDF, PNG, JPG, JPEG, DOC, DOCX (Max 25MB). SVG files are prohibited.</p>
                                 </div>
                                 <div className="flex gap-2 mt-6">
                                     <button type="button" onClick={() => setDocUploadModal(false)} className="w-1/2 py-2 border border-slate-200 text-slate-600 rounded-lg font-semibold hover:bg-slate-50 text-sm">Cancel</button>

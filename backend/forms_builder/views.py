@@ -1,12 +1,13 @@
 
 from rest_framework import viewsets, permissions
+from users.permissions import IsAdminOrSuperAdmin
 from .models import DynamicField, StudentDynamicValue
 from .serializers import DynamicFieldSerializer, StudentDynamicValueSerializer
 
 class DynamicFieldViewSet(viewsets.ModelViewSet):
     queryset = DynamicField.objects.all()
     serializer_class = DynamicFieldSerializer
-    permission_classes = [permissions.IsAuthenticated] # Or IsAdminUser for mutations
+    permission_classes = [permissions.IsAuthenticated]
     pagination_class = None
 
     def get_queryset(self):
@@ -58,5 +59,5 @@ class DynamicFieldViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
-            return [permissions.IsAdminUser()]
+            return [IsAdminOrSuperAdmin()]
         return [permissions.AllowAny()] # Allow fetching fields for forms publicly/authenticated

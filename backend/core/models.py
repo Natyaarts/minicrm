@@ -1,6 +1,8 @@
 from django.db import models
 from django.conf import settings
 import datetime
+from .validators import validate_student_document_file, validate_batch_resource_file
+
 
 class Program(models.Model):
     name = models.CharField(max_length=100) # e.g., Natya, Natya Career Academy
@@ -226,7 +228,7 @@ class Transaction(models.Model):
 class Document(models.Model):
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='documents')
     document_type = models.CharField(max_length=50) # e.g., Photo, Aadhar, Marklist
-    file = models.FileField(upload_to='student_docs/')
+    file = models.FileField(upload_to='student_docs/', validators=[validate_student_document_file])
     uploaded_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -274,7 +276,7 @@ class Attendance(models.Model):
 class BatchResource(models.Model):
     batch = models.ForeignKey(Batch, on_delete=models.CASCADE, related_name='resources')
     title = models.CharField(max_length=200)
-    file = models.FileField(upload_to='batch_resources/')
+    file = models.FileField(upload_to='batch_resources/', validators=[validate_batch_resource_file])
     uploaded_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

@@ -28,14 +28,17 @@ load_dotenv(os.path.join(BASE_DIR, '.env'))
 SECRET_KEY = 'django-insecure-q0=@&zybkaavtq6)7%17@25lg6-@pa3haej28@dju-s6m9n_1m'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv('DEBUG', 'False').lower() in ('true', '1', 't')
 
 ALLOWED_HOSTS = ['*']
 
-# Security Settings for Secure Cookies & HTTPS
+# Security Settings for Secure Cookies, HTTPS & Clickjacking Protection (VA-003)
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
+X_FRAME_OPTIONS = 'DENY'
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
 
 
 # Application definition
@@ -75,6 +78,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'core.middleware.SecurityHeadersMiddleware',
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -158,35 +162,52 @@ STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 
-# CORS Settings
-CORS_ALLOW_ALL_ORIGINS = True
+# CORS Settings (VA-004 Remediation: Enforce strict origin allowlist)
+CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOW_CREDENTIALS = True
 
-CORS_ALLOWED_ORIGINS = [
-    "http://13.232.192.160:5173",
-    "https://natyaarts.org",
-    "https://www.natyaarts.org",
-    "http://natyaarts.org",
-    "http://www.natyaarts.org",
-]
+# Helper to load trusted origins from environment or fall back to verified CRM origins
+_env_cors_origins = os.getenv('CORS_ALLOWED_ORIGINS', '')
+if _env_cors_origins:
+    CORS_ALLOWED_ORIGINS = [origin.strip() for origin in _env_cors_origins.split(',') if origin.strip()]
+else:
+    CORS_ALLOWED_ORIGINS = [
+        # Production & Custom Domains
+        "https://natyaarts.org",
+        "https://www.natyaarts.org",
+        "http://natyaarts.org",
+        "http://www.natyaarts.org",
+        # UAT / Staging Server
+        "http://13.232.192.160:5173",
+        "http://13.232.192.160",
+        # Local Development
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
 
-CORS_ORIGIN_WHITELIST = [
-    "http://13.232.192.160:5173",
-    "https://natyaarts.org",
-    "https://www.natyaarts.org",
-    "http://natyaarts.org",
-    "http://www.natyaarts.org",
-]
+# CSRF Trusted Origins
+_env_csrf_origins = os.getenv('CSRF_TRUSTED_ORIGINS', '')
+if _env_csrf_origins:
+    CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in _env_csrf_origins.split(',') if origin.strip()]
+else:
+    CSRF_TRUSTED_ORIGINS = [
+        "https://natyaarts.org",
+        "https://www.natyaarts.org",
+        "http://natyaarts.org",
+        "http://www.natyaarts.org",
+        "http://13.232.192.160:5173",
+        "http://13.232.192.160",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
 
-CSRF_TRUSTED_ORIGINS = [
-    "http://13.232.192.160:5173",
-    "https://natyaarts.org",
-    "https://www.natyaarts.org",
-    "http://natyaarts.org",
-    "http://www.natyaarts.org",
-]
+from corsheaders.defaults import default_headers, default_methods
 
-from corsheaders.defaults import default_headers
+CORS_ALLOW_METHODS = list(default_methods)
 
 CORS_ALLOW_HEADERS = list(default_headers) + [
     'content-type',
@@ -194,11 +215,57 @@ CORS_ALLOW_HEADERS = list(default_headers) + [
     'x-csrftoken',
 ]
 
+# Security Headers & SSL Settings (VA-006 Remediation)
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = 'DENY'
+SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
 
-# REST Framework Settings
+# HSTS Settings (applied in HTTPS production)
+_enable_hsts = os.getenv('ENABLE_HSTS', 'False').lower() in ('true', '1', 't')
+if _enable_hsts:
+    SECURE_HSTS_SECONDS = int(os.getenv('SECURE_HSTS_SECONDS', '31536000'))
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = False
+else:
+    SECURE_HSTS_SECONDS = 0
+
+# Cookie & Session Security Settings (VA-002 Remediation)
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_SAMESITE = 'Lax'
+
+if _enable_hsts:
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+else:
+    SESSION_COOKIE_SECURE = False
+    CSRF_COOKIE_SECURE = False
+# Cache Configuration for Rate Limiting (VA-010 Remediation)
+REDIS_URL = os.getenv('REDIS_URL', '')
+if REDIS_URL:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+            'LOCATION': REDIS_URL,
+            'KEY_PREFIX': 'minicrm_cache',
+            'TIMEOUT': 300,
+        }
+    }
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'minicrm-rate-limit-cache',
+            'TIMEOUT': 300,
+        }
+    }
+
+# REST Framework Settings (VA-005 & VA-010 Remediation)
 REST_FRAMEWORK = {
+    'EXCEPTION_HANDLER': 'core.exceptions.custom_exception_handler',
     'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework.authentication.TokenAuthentication',
+        'users.authentication.ExpiringTokenAuthentication',
         'rest_framework.authentication.SessionAuthentication',
         'rest_framework.authentication.BasicAuthentication',
     ),
@@ -207,7 +274,23 @@ REST_FRAMEWORK = {
     ),
     'DEFAULT_PAGINATION_CLASS': 'core.pagination.StandardResultsSetPagination',
     'PAGE_SIZE': 20,
+    'DEFAULT_THROTTLE_CLASSES': [
+        'core.throttling.SecureAnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '100/min',
+        'user': '1000/min',
+        'auth_login': '5/min',
+        'auth_password_change': '5/min',
+        'public_form': '20/min',
+        'analytics': '60/min',
+        'bulk_upload': '10/min',
+    },
 }
+
+# Token Expiration Settings (24 hours default)
+AUTH_TOKEN_EXPIRATION_HOURS = 24
 
 # Media files
 if os.getenv('USE_AWS_S3') == 'True':

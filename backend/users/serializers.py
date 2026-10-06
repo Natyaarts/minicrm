@@ -48,7 +48,25 @@ class UserSerializer(serializers.ModelSerializer):
             'delete': p.can_delete
         } for p in perms}
 
+    def validate_role(self, value):
+        request = self.context.get('request')
+        if request and hasattr(request, 'user') and request.user.is_authenticated:
+            req_user = request.user
+            if not (req_user.role in ['ADMIN', 'SUPER_ADMIN'] or req_user.is_superuser):
+                raise serializers.ValidationError("You do not have permission to assign or change user roles.")
+            if req_user.role == 'ADMIN' and not req_user.is_superuser:
+                if value == 'SUPER_ADMIN':
+                    raise serializers.ValidationError("Only Super Admins can assign the Super Admin role.")
+        return value
+
     def create(self, validated_data):
+        request = self.context.get('request')
+        if request and hasattr(request, 'user') and request.user.is_authenticated:
+            req_user = request.user
+            if not (req_user.role == 'SUPER_ADMIN' or req_user.is_superuser):
+                validated_data.pop('is_superuser', None)
+                validated_data.pop('is_staff', None)
+
         password = validated_data.pop('password', None)
         user = User(**validated_data)
         if password:
@@ -59,13 +77,30 @@ class UserSerializer(serializers.ModelSerializer):
         return user
 
     def update(self, instance, validated_data):
+        request = self.context.get('request')
+        if request and hasattr(request, 'user') and request.user.is_authenticated:
+            req_user = request.user
+            # Protect Super Admin accounts from modification by regular Admins
+            if instance.role == 'SUPER_ADMIN' and req_user.role != 'SUPER_ADMIN' and not req_user.is_superuser:
+                raise serializers.ValidationError({"error": "Only Super Admins can modify Super Admin accounts."})
+
+            # Non-admins cannot modify privileged attributes
+            if not (req_user.role in ['ADMIN', 'SUPER_ADMIN'] or req_user.is_superuser):
+                validated_data.pop('role', None)
+                validated_data.pop('is_staff', None)
+                validated_data.pop('is_superuser', None)
+                validated_data.pop('is_active', None)
+
         password = validated_data.pop('password', None)
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         if password:
             instance.set_password(password)
+            from rest_framework.authtoken.models import Token
+            Token.objects.filter(user=instance).delete()
         instance.save()
         return instance
+
 
 class RolePermissionSerializer(serializers.ModelSerializer):
     class Meta:

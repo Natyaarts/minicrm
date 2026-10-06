@@ -6,6 +6,8 @@ from django.utils import timezone
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from users.permissions import IsAdminOrSuperAdmin, IsAdminOrReadOnly
+from rest_framework.exceptions import PermissionDenied
 from hrms.models import EmployeeProfile, Attendance
 from .models import SalaryStructure, Payslip, BonusDeduction, EmployeeLoan, TaxDeclaration
 from .serializers import SalaryStructureSerializer, PayslipSerializer, BonusDeductionSerializer, EmployeeLoanSerializer, TaxDeclarationSerializer
@@ -13,9 +15,21 @@ from .utils import render_to_pdf, number_to_words
 from .tax_calculator import calculate_monthly_tds
 
 class SalaryStructureViewSet(viewsets.ModelViewSet):
-    queryset = SalaryStructure.objects.all()
     serializer_class = SalaryStructureSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if not user.is_authenticated:
+            return SalaryStructure.objects.none()
+        if user.role in ['SUPER_ADMIN', 'ADMIN'] or user.is_superuser:
+            return SalaryStructure.objects.all()
+        return SalaryStructure.objects.filter(employee__user=user)
+
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [IsAdminOrSuperAdmin()]
+        return [permissions.IsAuthenticated()]
 
 class BonusDeductionViewSet(viewsets.ModelViewSet):
     serializer_class = BonusDeductionSerializer
@@ -23,9 +37,16 @@ class BonusDeductionViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if user.role == 'SUPER_ADMIN' or user.is_superuser:
+        if not user.is_authenticated:
+            return BonusDeduction.objects.none()
+        if user.role in ['SUPER_ADMIN', 'ADMIN'] or user.is_superuser:
             return BonusDeduction.objects.all()
         return BonusDeduction.objects.filter(employee__user=user)
+
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [IsAdminOrSuperAdmin()]
+        return [permissions.IsAuthenticated()]
 
 class EmployeeLoanViewSet(viewsets.ModelViewSet):
     queryset = EmployeeLoan.objects.all()
@@ -34,9 +55,27 @@ class EmployeeLoanViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if user.role == 'SUPER_ADMIN' or user.is_superuser:
+        if not user.is_authenticated:
+            return EmployeeLoan.objects.none()
+        if user.role in ['SUPER_ADMIN', 'ADMIN'] or user.is_superuser:
             return EmployeeLoan.objects.all()
         return EmployeeLoan.objects.filter(employee__user=user)
+
+    def get_permissions(self):
+        if self.action in ['update', 'partial_update', 'destroy']:
+            return [IsAdminOrSuperAdmin()]
+        return [permissions.IsAuthenticated()]
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        if not (user.role in ['SUPER_ADMIN', 'ADMIN'] or user.is_superuser):
+            try:
+                profile = user.hrms_profile
+            except Exception:
+                raise PermissionDenied("No employee profile found for this user.")
+            serializer.save(employee=profile, status='PENDING')
+        else:
+            serializer.save()
 
 class PayslipViewSet(viewsets.ModelViewSet):
     serializer_class = PayslipSerializer
@@ -44,12 +83,21 @@ class PayslipViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if user.role == 'SUPER_ADMIN' or user.is_superuser:
+        if not user.is_authenticated:
+            return Payslip.objects.none()
+        if user.role in ['SUPER_ADMIN', 'ADMIN'] or user.is_superuser:
             return Payslip.objects.all()
         return Payslip.objects.filter(employee__user=user)
 
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy', 'generate_all', 'mark_paid']:
+            return [IsAdminOrSuperAdmin()]
+        return [permissions.IsAuthenticated()]
+
     @action(detail=False, methods=['post'])
     def generate_all(self, request):
+        if not (request.user.role in ['SUPER_ADMIN', 'ADMIN'] or request.user.is_superuser):
+            return Response({"error": "Permission denied. Only HR/Admin can generate payslips."}, status=403)
         month = int(request.data.get('month'))
         year = int(request.data.get('year'))
         

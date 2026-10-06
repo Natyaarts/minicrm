@@ -33,10 +33,16 @@ urlpatterns = [
     path('api/', include('core.urls')),
 ]
 
-from django.views.static import serve
+from core.media_views import safe_media_serve
 from django.urls import re_path
 
 urlpatterns += [
-    re_path(r'^api/media/(?P<path>.*)$', serve, {'document_root': settings.MEDIA_ROOT}),
-    re_path(r'^media/(?P<path>.*)$', serve, {'document_root': settings.MEDIA_ROOT}),
+    re_path(r'^api/media/(?P<path>.*)$', safe_media_serve, {'document_root': settings.MEDIA_ROOT}),
+    re_path(r'^media/(?P<path>.*)$', safe_media_serve, {'document_root': settings.MEDIA_ROOT}),
 ]
+
+# Global HTTP Error Handlers (VA-005 Remediation)
+handler400 = 'core.error_views.custom_bad_request_view'
+handler403 = 'core.error_views.custom_permission_denied_view'
+handler404 = 'core.error_views.custom_page_not_found_view'
+handler500 = 'core.error_views.custom_server_error_view'

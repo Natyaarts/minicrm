@@ -227,7 +227,8 @@ const HRMSModule = () => {
             alert("Document uploaded successfully!");
         } catch (err) {
             console.error("Upload error:", err.response?.data || err);
-            alert("Failed to upload document. " + (err.response?.data?.file?.[0] || ""));
+            const errMsg = err.response?.data?.file?.[0] || err.response?.data?.error || err.response?.data?.detail || "Failed to upload document.";
+            alert(errMsg);
         } finally {
             e.target.value = '';
         }

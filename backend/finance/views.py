@@ -2,6 +2,7 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from django.db.models import Sum
+from users.permissions import IsAdminOrSuperAdmin, IsAdminOrReadOnly
 from .models import Expense, ExpenseCategory
 from .serializers import ExpenseSerializer, ExpenseCategorySerializer
 from datetime import datetime, timedelta
@@ -9,12 +10,17 @@ from datetime import datetime, timedelta
 class ExpenseCategoryViewSet(viewsets.ModelViewSet):
     queryset = ExpenseCategory.objects.all()
     serializer_class = ExpenseCategorySerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAdminOrReadOnly]
 
 class ExpenseViewSet(viewsets.ModelViewSet):
     queryset = Expense.objects.all()
     serializer_class = ExpenseSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_permissions(self):
+        if self.action in ['destroy']:
+            return [IsAdminOrSuperAdmin()]
+        return [permissions.IsAuthenticated()]
 
     @action(detail=False, methods=['get'])
     def summary(self, request):

@@ -2,6 +2,7 @@ import uuid
 from django.db import models
 from django.conf import settings
 from core.models import Student
+from core.validators import validate_audio_recording_file
 
 class PipelineStage(models.Model):
     name = models.CharField(max_length=50) # e.g. "New Lead", "Follow-up", "In Discussion", "Enrolled", "Dropped"
@@ -52,7 +53,7 @@ class LeadInteraction(models.Model):
     end_time = models.DateTimeField(null=True, blank=True)
     
     notes = models.TextField(blank=True, default='')
-    audio_recording = models.FileField(upload_to='call_recordings/%Y/%m/', null=True, blank=True)
+    audio_recording = models.FileField(upload_to='call_recordings/%Y/%m/', null=True, blank=True, validators=[validate_audio_recording_file])
     audio_file_hash = models.CharField(max_length=64, blank=True, null=True, db_index=True, help_text="SHA-256 hash of audio content to prevent duplicate cross-call attachment")
     recording_url = models.CharField(max_length=1000, blank=True, null=True, help_text="Remote/telephony audio recording URL")
     

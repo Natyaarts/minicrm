@@ -23,4 +23,22 @@ api.interceptors.request.use((config) => {
     return config;
 });
 
+api.interceptors.response.use(
+    (response) => response,
+    (error) => {
+        if (error.response && error.response.status === 401) {
+            const requestUrl = error.config?.url || '';
+            const isLoginRequest = requestUrl.includes('auth/login');
+            if (!isLoginRequest) {
+                localStorage.removeItem('token');
+                // Redirect if currently on a protected page
+                if (window.location.pathname !== '/login') {
+                    window.location.href = '/login';
+                }
+            }
+        }
+        return Promise.reject(error);
+    }
+);
+
 export default api;

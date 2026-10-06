@@ -2,6 +2,13 @@
 from rest_framework import permissions
 from django.apps import apps
 import logging
+from users.permissions import (
+    IsSuperAdminUser,
+    IsAdminOrSuperAdmin,
+    IsAdminOrReadOnly,
+    IsSelfOrAdmin
+)
+
 
 logger = logging.getLogger(__name__)
 

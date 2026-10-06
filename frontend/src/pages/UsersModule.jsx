@@ -18,6 +18,7 @@ const UsersModule = () => {
     const [userPage, setUserPage] = useState(1);
     const [userPagination, setUserPagination] = useState({ count: 0, next: null, previous: null });
     const [searchQuery, setSearchQuery] = useState('');
+    const [accessDenied, setAccessDenied] = useState(false);
 
     const tabs = [
         { label: 'Administrators', role: 'ADMIN', icon: Shield, color: 'text-rose-600', bg: 'bg-rose-50' },
@@ -69,8 +70,12 @@ const UsersModule = () => {
         try {
             const res = await api.get(`auth/management/permissions/?role=${selectedRoleForPerms}`);
             setRolePermissions(Array.isArray(res.data) ? res.data : (res.data?.results || []));
+            setAccessDenied(false);
         } catch (err) {
             console.error(err);
+            if (err.response?.status === 403) {
+                setAccessDenied(true);
+            }
         } finally {
             setLoading(false);
         }
@@ -115,8 +120,12 @@ const UsersModule = () => {
                 setUsers(Array.isArray(data) ? data : []);
                 setUserPagination({ count: data.length, next: null, previous: null });
             }
+            setAccessDenied(false);
         } catch (err) {
             console.error(err);
+            if (err.response?.status === 403) {
+                setAccessDenied(true);
+            }
         } finally {
             setLoading(false);
         }
@@ -178,6 +187,28 @@ const UsersModule = () => {
     };
 
     const currentTab = tabs.find(t => t.role === activeTab);
+
+    if (accessDenied) {
+        return (
+            <div className="p-8 max-w-2xl mx-auto my-12 bg-white rounded-2xl border border-rose-100 shadow-sm text-center space-y-4">
+                <div className="w-14 h-14 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center mx-auto">
+                    <Shield size={28} />
+                </div>
+                <h2 className="text-xl font-bold text-slate-800">Access Denied (403 Forbidden)</h2>
+                <p className="text-slate-600 text-sm">
+                    You do not have administrative privileges to access the User Management portal. Server-side authorization has blocked this request.
+                </p>
+                <div className="pt-2">
+                    <a
+                        href="/dashboard"
+                        className="inline-flex items-center px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold rounded-lg transition-colors"
+                    >
+                        Return to Dashboard
+                    </a>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="p-6 max-w-6xl mx-auto space-y-6 animate-fadeIn">

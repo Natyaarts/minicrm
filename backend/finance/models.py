@@ -1,4 +1,5 @@
 from django.db import models
+from core.validators import validate_receipt_file
 
 class ExpenseCategory(models.Model):
     name = models.CharField(max_length=100, unique=True)
@@ -24,7 +25,7 @@ class Expense(models.Model):
     date = models.DateField()
     payment_method = models.CharField(max_length=20, choices=PAYMENT_METHODS, default='BANK_TRANSFER')
     description = models.TextField(blank=True)
-    receipt = models.FileField(upload_to='receipts/', blank=True, null=True)
+    receipt = models.FileField(upload_to='receipts/', blank=True, null=True, validators=[validate_receipt_file])
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

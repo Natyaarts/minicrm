@@ -1,13 +1,19 @@
 
+import logging
 from rest_framework import views, permissions, response, status
 import pandas as pd
 from django.db import transaction as db_transaction
 from django.contrib.auth import get_user_model
 from .models import Student, Program, SubProgram, Course
 
+logger = logging.getLogger(__name__)
+
 User = get_user_model()
 
 from .permissions import DynamicRolePermission
+
+from django.core.exceptions import ValidationError
+from .validators import validate_spreadsheet_file
 
 class BulkUploadView(views.APIView):
     permission_classes = [DynamicRolePermission]
@@ -19,12 +25,13 @@ class BulkUploadView(views.APIView):
             return response.Response({'error': 'No file uploaded'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            if file.name.endswith('.csv'):
-                df = pd.read_csv(file)
-            else:
-                df = pd.read_excel(file)
+            validate_spreadsheet_file(file)
+        except ValidationError as ve:
+            return response.Response({'error': ve.messages if hasattr(ve, 'messages') else str(ve)}, status=status.HTTP_400_BAD_REQUEST)
+
         except Exception as e:
-            return response.Response({'error': f'Failed to process file: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+            logger.error(f"Bulk spreadsheet parsing error: {e}")
+            return response.Response({'error': 'Failed to process spreadsheet file. Please check file format and encoding.'}, status=status.HTTP_400_BAD_REQUEST)
 
         # Basic Required Columns (Customize based on Template)
         required_cols = ['first_name', 'last_name', 'email', 'mobile', 'program_name']
@@ -171,8 +178,11 @@ class BulkUploadView(views.APIView):
                     )
                     success_count += 1
                     
+                except ValidationError as ve:
+                    errors.append(f"Row {index+1}: {ve.messages if hasattr(ve, 'messages') else str(ve)}")
                 except Exception as e:
-                    errors.append(f"Row {index+1}: {str(e)}")
+                    logger.error(f"Bulk row import error at row {index+1}: {e}")
+                    errors.append(f"Row {index+1}: Invalid row data or duplicate record.")
 
         return response.Response({
             'success_count': success_count,
