@@ -323,15 +323,25 @@ export default function ModuleDetailScreen() {
     try {
       const cached = await AsyncStorage.getItem('userInfo');
       if (cached) {
-        setUser(JSON.parse(cached));
+        try {
+          const parsed = JSON.parse(cached);
+          if (parsed && (parsed.role || parsed.username)) {
+            setUser(parsed);
+          }
+        } catch (parseErr) {
+          console.warn('[ModuleScreen] Failed to parse cached userInfo:', parseErr);
+        }
       }
-      const res = await client.get('/auth/me/');
-      if (res.data) {
-        setUser(res.data);
-        await AsyncStorage.setItem('userInfo', JSON.stringify(res.data));
+      const token = await AsyncStorage.getItem('userToken');
+      if (token) {
+        const res = await client.get('/auth/me/');
+        if (res.data && res.data.role && (res.data.username || res.data.id)) {
+          setUser(res.data);
+          await AsyncStorage.setItem('userInfo', JSON.stringify(res.data));
+        }
       }
     } catch (err) {
-      console.log('Failed to fetch user details:', err);
+      console.log('[ModuleScreen] Failed to refresh user details from API, keeping cached state:', err);
     }
   };
 

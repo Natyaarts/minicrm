@@ -4,6 +4,7 @@ import { Text, View } from '@/components/Themed';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import client from '../src/api/client';
 import { logoutUser } from '../src/api/auth';
 
 export default function ProfileScreen() {
@@ -19,10 +20,31 @@ export default function ProfileScreen() {
     try {
       const userData = await AsyncStorage.getItem('userInfo');
       if (userData) {
-        setUser(JSON.parse(userData));
+        try {
+          const parsed = JSON.parse(userData);
+          if (parsed && (parsed.role || parsed.username)) {
+            setUser(parsed);
+          }
+        } catch (parseErr) {
+          console.warn('[ProfileScreen] Failed to parse cached userInfo:', parseErr);
+        }
+      }
+
+      // Refresh latest profile info from server if token is present
+      const token = await AsyncStorage.getItem('userToken');
+      if (token) {
+        try {
+          const res = await client.get('/auth/me/');
+          if (res.data && res.data.role && (res.data.username || res.data.id)) {
+            setUser(res.data);
+            await AsyncStorage.setItem('userInfo', JSON.stringify(res.data));
+          }
+        } catch (apiErr) {
+          console.log('[ProfileScreen] Failed to refresh user profile from server, keeping cached profile:', apiErr);
+        }
       }
     } catch (e) {
-      console.error(e);
+      console.error('[ProfileScreen] Error loading user profile:', e);
     } finally {
       setLoading(false);
     }
@@ -59,9 +81,9 @@ export default function ProfileScreen() {
       {/* Avatar Section */}
       <View style={styles.avatarContainer}>
         <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{user?.username?.[0]?.toUpperCase() || 'U'}</Text>
+          <Text style={styles.avatarText}>{(user?.first_name?.[0] || user?.username?.[0] || 'U').toUpperCase()}</Text>
         </View>
-        <Text style={styles.name}>{user?.username || 'User'}</Text>
+        <Text style={styles.name}>{user?.first_name ? `${user.first_name} ${user.last_name || ''}`.trim() : (user?.username || 'User')}</Text>
         <View style={styles.roleBadge}>
           <Text style={styles.roleText}>{user?.role || 'Staff Member'}</Text>
         </View>

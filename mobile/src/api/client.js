@@ -29,9 +29,16 @@ client.interceptors.request.use(
       config.url = config.url.slice(1);
     }
 
-    const token = await AsyncStorage.getItem('userToken');
-    if (token) {
-      config.headers.Authorization = `Token ${token}`;
+    try {
+      const token = await AsyncStorage.getItem('userToken');
+      if (token && token.trim()) {
+        if (!config.headers) {
+          config.headers = {};
+        }
+        config.headers.Authorization = `Token ${token.trim()}`;
+      }
+    } catch (storageErr) {
+      console.warn('[API Client] Error reading userToken from storage:', storageErr);
     }
     return config;
   },
@@ -40,16 +47,22 @@ client.interceptors.request.use(
   }
 );
 
-// Interceptor to handle 401 (stale/expired token) globally
+// Interceptor to handle auth and network failures with safe dev logging
 client.interceptors.response.use(
   (response) => response,
   async (error) => {
-    if (error.response?.status === 401) {
-      // Token is invalid or expired — clear it silently
-      await AsyncStorage.multiRemove(['userToken', 'userInfo']);
-      // Don't re-throw as a hard error — return null-like rejection
-      // The caller's catch block will handle it gracefully
+    const status = error.response?.status;
+    const url = error.config?.url || 'unknown';
+
+    if (status === 401) {
+      // Safe development logging without exposing sensitive tokens or credentials
+      console.warn(`[API Auth] 401 Unauthorized received for endpoint: ${url}`);
+    } else if (status === 403) {
+      console.warn(`[API Auth] 403 Forbidden received for endpoint: ${url}`);
+    } else if (!error.response) {
+      console.warn(`[API Network] Network/Connection failure for endpoint: ${url}`);
     }
+
     return Promise.reject(error);
   }
 );

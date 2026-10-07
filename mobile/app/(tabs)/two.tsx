@@ -85,14 +85,26 @@ export default function SalesScreen() {
   const loadUser = async () => {
     try {
       const cached = await AsyncStorage.getItem('userInfo');
-      if (cached) setUser(JSON.parse(cached));
-      const res = await client.get('/auth/me/');
-      if (res.data) {
-        setUser(res.data);
-        await AsyncStorage.setItem('userInfo', JSON.stringify(res.data));
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (parsed && (parsed.role || parsed.username)) {
+            setUser(parsed);
+          }
+        } catch (parseErr) {
+          console.warn('[SalesScreen] Failed to parse cached userInfo:', parseErr);
+        }
+      }
+      const token = await AsyncStorage.getItem('userToken');
+      if (token) {
+        const res = await client.get('/auth/me/');
+        if (res.data && res.data.role && (res.data.username || res.data.id)) {
+          setUser(res.data);
+          await AsyncStorage.setItem('userInfo', JSON.stringify(res.data));
+        }
       }
     } catch (e) {
-      console.log('loadUser error:', e);
+      console.log('[SalesScreen] Failed to refresh user details from API, keeping cached state:', e);
     } finally {
       setAuthLoading(false);
     }
