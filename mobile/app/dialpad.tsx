@@ -636,8 +636,10 @@ const Dialpad = () => {
   };
 
   const formatPhoneNumber = (num: string) => {
+    if (!num) return '';
+    if (num.startsWith('+')) return num;
     if (num.length > 3 && num.length <= 6) return `${num.slice(0, 3)}-${num.slice(3)}`;
-    if (num.length > 6) return `${num.slice(0, 3)}-${num.slice(3, 6)}-${num.slice(6, 10)}`;
+    if (num.length > 6) return `${num.slice(0, 3)}-${num.slice(3, 6)}-${num.slice(6)}`;
     return num;
   };
 
@@ -1081,9 +1083,18 @@ const Dialpad = () => {
       {activeTab === 'dialer' ? (
         <>
           <View style={styles.numberDisplay}>
-            <Text style={styles.numberText} numberOfLines={1} adjustsFontSizeToFit>
-              {formatPhoneNumber(phoneNumber)}
-            </Text>
+            <TextInput
+              style={[styles.numberText, { width: '100%', textAlign: 'center' }]}
+              value={formatPhoneNumber(phoneNumber)}
+              onChangeText={(text) => {
+                const sanitized = text.replace(/[^0-9+*#]/g, '');
+                setPhoneNumber(sanitized);
+              }}
+              showSoftInputOnFocus={false}
+              contextMenuHidden={false}
+              selectTextOnFocus
+              keyboardType="phone-pad"
+            />
           </View>
 
           <View style={styles.padContainer}>
