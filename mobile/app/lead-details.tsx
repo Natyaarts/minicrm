@@ -35,7 +35,19 @@ interface InteractionItem {
 }
 
 export default function LeadDetailsScreen() {
-  const { leadId } = useLocalSearchParams();
+  const {
+    leadId,
+    initialFirstName,
+    initialLastName,
+    initialName,
+    initialPhone,
+    initialMobile,
+    initialEmail,
+    initialProgramName,
+    initialCourseName,
+    initialLeadStatus,
+    initialCrmId
+  } = useLocalSearchParams();
   const router = useRouter();
   const colorScheme = useColorScheme();
   const isDark = false;
@@ -231,23 +243,26 @@ export default function LeadDetailsScreen() {
       }
     } catch (err) {
       console.log('Failed to fetch student details:', err);
-      // Fallback dummy for design testing
-      setStudent({
-        id: leadId,
-        first_name: 'Lead',
-        last_name: 'Details',
-        crm_student_id: 'NAT-2026-003',
-        phone: '+91 98765 43212',
-        mobile: '+91 98765 43212',
-        email: 'lead@example.com',
-        program_name: 'Natya Career Academy',
-        course_name: 'Bharathanatyam Advanced',
-        status: 'NEW',
-        dynamic_values_list: [
-          { field_label: 'Date of Birth', value: '1998-05-15', field_group: 'INITIAL' },
-          { field_label: 'Previous Experience', value: '3 years in classical dance', field_group: 'INITIAL' },
-        ]
-      });
+      // If retrieve returns 404 (e.g. unassigned lead), preserve only legitimate data passed from originating screen
+      const validPhone = (initialMobile as string) || (initialPhone as string) || '';
+      const validName = (initialFirstName as string) || (initialName as string) || '';
+      if (validPhone || validName || initialEmail) {
+        setStudent({
+          id: leadId,
+          first_name: validName,
+          last_name: (initialLastName as string) || '',
+          crm_student_id: (initialCrmId as string) || '',
+          mobile: validPhone,
+          phone: validPhone,
+          email: (initialEmail as string) || '',
+          program_name: (initialProgramName as string) || '',
+          course_name: (initialCourseName as string) || '',
+          lead_status: (initialLeadStatus as string) || 'NEW',
+          status: (initialLeadStatus as string) || 'NEW'
+        });
+      } else {
+        setStudent(null);
+      }
     } finally {
       setLoading(false);
     }
@@ -361,7 +376,7 @@ export default function LeadDetailsScreen() {
     );
   }
 
-  const phoneNum = student?.phone || student?.mobile || '';
+  const phoneNum = student?.mobile || student?.phone || (initialMobile as string) || (initialPhone as string) || '';
 
   // Calculate Call statistics dynamically from timeline interactions history
   const callInteractions = interactions.filter(i => i.interaction_type === 'CALL');

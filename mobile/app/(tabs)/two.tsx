@@ -283,7 +283,14 @@ export default function SalesScreen() {
         style={[styles.historyCard, isDark && styles.darkCard]}
         onPress={() => {
           if (item.student) {
-            router.push(`/lead-details?leadId=${item.student}` as any);
+            router.push({
+              pathname: '/lead-details',
+              params: {
+                leadId: String(item.student),
+                initialName: item.student_name || '',
+                initialMobile: item.student_phone || item.customer_number || ''
+              }
+            } as any);
           }
         }}
       >
@@ -375,7 +382,20 @@ export default function SalesScreen() {
     return (
       <TouchableOpacity
         style={[styles.leadRow, isDark && styles.leadRowDark]}
-        onPress={() => router.push({ pathname: '/lead-details', params: { leadId: item.id } } as any)}
+        onPress={() => router.push({
+          pathname: '/lead-details',
+          params: {
+            leadId: String(item.id),
+            initialFirstName: item.first_name || '',
+            initialLastName: item.last_name || '',
+            initialMobile: item.mobile || item.phone || '',
+            initialEmail: item.email || '',
+            initialProgramName: item.program_name || item.program || '',
+            initialCourseName: item.course_name || item.course || '',
+            initialLeadStatus: item.lead_status || item.status || '',
+            initialCrmId: item.crm_student_id || ''
+          }
+        } as any)}
         activeOpacity={0.6}
       >
         {/* Left stage stripe */}
