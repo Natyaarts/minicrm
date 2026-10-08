@@ -58,12 +58,44 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
             from rest_framework.exceptions import ValidationError
             raise ValidationError({"error": "Your user account is not linked to an Employee Profile. Please contact HR."})
 
+    def _apply_final_approval(self, leave, user):
+        """Helper to apply final approval, deduct balance if paid, and sync attendance."""
+        if leave.leave_type.is_paid:
+            balance, created = LeaveBalance.objects.get_or_create(
+                employee=leave.employee,
+                leave_type=leave.leave_type,
+                defaults={'total_days': leave.leave_type.max_days_per_year}
+            )
+            duration = leave.duration
+            balance.used_days += duration
+            balance.save()
+
+        leave.status = 'APPROVED'
+        leave.approved_by = EmployeeProfile.objects.filter(user=user).first()
+        leave.save()
+
+        # Synchronize with Attendance records
+        from hrms.models import Attendance
+        import datetime as dt
+        cur_d = leave.start_date
+        while cur_d <= leave.end_date:
+            Attendance.objects.update_or_create(
+                employee=leave.employee,
+                date=cur_d,
+                defaults={
+                    'status': 'ON_LEAVE',
+                    'notes': f"Approved Leave ({leave.leave_type.name}): {leave.reason}"
+                }
+            )
+            cur_d += dt.timedelta(days=1)
+
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
         leave = self.get_object()
         user = request.user
         
         is_manager = bool(leave.employee.reporting_to and leave.employee.reporting_to.user == user)
+        is_super_admin = bool(user.role == 'SUPER_ADMIN' or user.is_superuser)
         is_hr = bool(user.role in ['SUPER_ADMIN', 'ADMIN'] or user.is_superuser)
         
         if not (is_manager or is_hr):
@@ -71,7 +103,10 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
 
         # Stage 1: PENDING_MANAGER
         if leave.status == 'PENDING_MANAGER':
-            if is_manager:
+            if is_super_admin:
+                self._apply_final_approval(leave, user)
+                return Response({"status": "Leave approved by Super Admin."})
+            elif is_manager:
                 leave.status = 'PENDING_HR'
                 leave.manager_approved_by = EmployeeProfile.objects.filter(user=user).first()
                 leave.save()
@@ -82,36 +117,7 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
         # Stage 2: PENDING_HR
         if leave.status == 'PENDING_HR':
             if is_hr:
-                if leave.leave_type.is_paid:
-                    balance, created = LeaveBalance.objects.get_or_create(
-                        employee=leave.employee,
-                        leave_type=leave.leave_type,
-                        defaults={'total_days': leave.leave_type.max_days_per_year}
-                    )
-                    
-                    duration = leave.duration
-                    balance.used_days += duration
-                    balance.save()
-
-                leave.status = 'APPROVED'
-                leave.approved_by = EmployeeProfile.objects.filter(user=user).first()
-                leave.save()
-
-                # Synchronize with Attendance records
-                from hrms.models import Attendance
-                import datetime as dt
-                cur_d = leave.start_date
-                while cur_d <= leave.end_date:
-                    Attendance.objects.update_or_create(
-                        employee=leave.employee,
-                        date=cur_d,
-                        defaults={
-                            'status': 'ON_LEAVE',
-                            'notes': f"Approved Leave ({leave.leave_type.name}): {leave.reason}"
-                        }
-                    )
-                    cur_d += dt.timedelta(days=1)
-
+                self._apply_final_approval(leave, user)
                 return Response({"status": "Leave approved by HR."})
             else:
                 return Response({"error": "You do not have permission to give final HR approval for this leave."}, status=status.HTTP_403_FORBIDDEN)
@@ -124,6 +130,7 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
         user = request.user
         
         is_manager = bool(leave.employee.reporting_to and leave.employee.reporting_to.user == user)
+        is_super_admin = bool(user.role == 'SUPER_ADMIN' or user.is_superuser)
         is_hr = bool(user.role in ['SUPER_ADMIN', 'ADMIN'] or user.is_superuser)
         
         if not (is_manager or is_hr):
@@ -131,6 +138,12 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
             
         if leave.status not in ['PENDING_MANAGER', 'PENDING_HR']:
             return Response({"error": "Only pending leaves can be rejected."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if leave.status == 'PENDING_MANAGER' and not (is_manager or is_super_admin):
+            return Response({"error": "This leave request is currently awaiting direct manager approval."}, status=status.HTTP_403_FORBIDDEN)
+
+        if leave.status == 'PENDING_HR' and not is_hr:
+            return Response({"error": "You do not have permission to reject this leave at HR stage."}, status=status.HTTP_403_FORBIDDEN)
             
         reason = request.data.get('rejection_reason', 'No reason provided')
         leave.status = 'REJECTED'

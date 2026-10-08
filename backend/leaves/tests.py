@@ -24,8 +24,9 @@ class LeaveManagementFlowTests(APITestCase):
         self.super_admin_profile = self.super_admin_user.hrms_profile
         self.super_admin_profile.employee_id = "EMP-001"
         self.super_admin_profile.department = self.dept
-        self.super_admin_profile.designation = self.admin_desig
         self.super_admin_profile.save()
+        self.super_admin_user.role = "SUPER_ADMIN"
+        self.super_admin_user.save()
 
         # 2. Admin (HR) user
         self.admin_user = User.objects.create_user(
@@ -303,3 +304,230 @@ class LeaveManagementFlowTests(APITestCase):
         # Balance should not be deducted
         self.emp2_cl_balance.refresh_from_db()
         self.assertEqual(self.emp2_cl_balance.used_days, 0)
+
+    def test_super_admin_can_approve_pending_manager_directly(self):
+        """SUPER_ADMIN approving PENDING_MANAGER should directly set status to APPROVED, not PENDING_HR."""
+        start = date.today() + timedelta(days=15)
+        end = date.today() + timedelta(days=16)
+        req = LeaveRequest.objects.create(
+            employee=self.emp1_profile, leave_type=self.casual_leave,
+            start_date=start, end_date=end, reason="Direct Super Admin approval test", status="PENDING_MANAGER"
+        )
+
+        self.client.force_authenticate(user=self.super_admin_user)
+        response = self.client.post(f"/api/leaves/requests/{req.id}/approve/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data.get("status"), "Leave approved by Super Admin.")
+
+        req.refresh_from_db()
+        self.assertEqual(req.status, "APPROVED")
+        self.assertEqual(req.approved_by, self.super_admin_profile)
+
+    def test_super_admin_direct_approval_deducts_balance_and_syncs_attendance(self):
+        """When SUPER_ADMIN directly approves PENDING_MANAGER, leave balance is deducted and attendance is synced."""
+        from hrms.models import Attendance
+        start = date.today() + timedelta(days=(7 - date.today().weekday()) + 7) # Next Monday week
+        end = start + timedelta(days=1)
+        req = LeaveRequest.objects.create(
+            employee=self.emp1_profile, leave_type=self.casual_leave,
+            start_date=start, end_date=end, reason="Balance test", status="PENDING_MANAGER"
+        )
+
+        initial_used = self.emp1_cl_balance.used_days
+        self.client.force_authenticate(user=self.super_admin_user)
+        response = self.client.post(f"/api/leaves/requests/{req.id}/approve/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        self.emp1_cl_balance.refresh_from_db()
+        self.assertEqual(self.emp1_cl_balance.used_days, initial_used + req.duration)
+
+        # Check attendance synchronization
+        att_records = Attendance.objects.filter(employee=self.emp1_profile, date__range=[start, end])
+        self.assertEqual(att_records.count(), req.duration)
+        for att in att_records:
+            self.assertEqual(att.status, "ON_LEAVE")
+
+    def test_super_admin_can_reject_pending_manager(self):
+        """SUPER_ADMIN can reject PENDING_MANAGER requests."""
+        start = date.today() + timedelta(days=15)
+        end = date.today() + timedelta(days=16)
+        req = LeaveRequest.objects.create(
+            employee=self.emp1_profile, leave_type=self.casual_leave,
+            start_date=start, end_date=end, reason="Super admin rejection test", status="PENDING_MANAGER"
+        )
+
+        self.client.force_authenticate(user=self.super_admin_user)
+        response = self.client.post(f"/api/leaves/requests/{req.id}/reject/", {"rejection_reason": "Not feasible"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        req.refresh_from_db()
+        self.assertEqual(req.status, "REJECTED")
+        self.assertEqual(req.rejection_reason, "Not feasible")
+        self.assertEqual(req.approved_by, self.super_admin_profile)
+
+    def test_super_admin_can_reject_pending_hr(self):
+        """SUPER_ADMIN can reject PENDING_HR requests."""
+        start = date.today() + timedelta(days=15)
+        end = date.today() + timedelta(days=16)
+        req = LeaveRequest.objects.create(
+            employee=self.emp2_profile, leave_type=self.casual_leave,
+            start_date=start, end_date=end, reason="HR rejection test", status="PENDING_HR"
+        )
+
+        self.client.force_authenticate(user=self.super_admin_user)
+        response = self.client.post(f"/api/leaves/requests/{req.id}/reject/", {"rejection_reason": "Staff shortage"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        req.refresh_from_db()
+        self.assertEqual(req.status, "REJECTED")
+        self.assertEqual(req.rejection_reason, "Staff shortage")
+
+    def test_manager_cannot_approve_pending_hr(self):
+        """Manager cannot give final approval to a PENDING_HR request."""
+        start = date.today() + timedelta(days=15)
+        end = date.today() + timedelta(days=16)
+        req = LeaveRequest.objects.create(
+            employee=self.emp1_profile, leave_type=self.casual_leave,
+            start_date=start, end_date=end, reason="Manager HR approval attempt", status="PENDING_HR"
+        )
+
+        self.client.force_authenticate(user=self.manager_user)
+        response = self.client.post(f"/api/leaves/requests/{req.id}/approve/")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+        req.refresh_from_db()
+        self.assertEqual(req.status, "PENDING_HR")
+
+    def test_admin_cannot_approve_pending_manager(self):
+        """Regular ADMIN cannot approve PENDING_MANAGER (only Manager or SUPER_ADMIN)."""
+        start = date.today() + timedelta(days=15)
+        end = date.today() + timedelta(days=16)
+        req = LeaveRequest.objects.create(
+            employee=self.emp1_profile, leave_type=self.casual_leave,
+            start_date=start, end_date=end, reason="Admin pending manager attempt", status="PENDING_MANAGER"
+        )
+
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.post(f"/api/leaves/requests/{req.id}/approve/")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+        req.refresh_from_db()
+        self.assertEqual(req.status, "PENDING_MANAGER")
+
+    def test_admin_cannot_reject_pending_manager(self):
+        """Regular ADMIN cannot reject PENDING_MANAGER (only Manager or SUPER_ADMIN)."""
+        start = date.today() + timedelta(days=15)
+        end = date.today() + timedelta(days=16)
+        req = LeaveRequest.objects.create(
+            employee=self.emp1_profile, leave_type=self.casual_leave,
+            start_date=start, end_date=end, reason="Admin pending manager reject", status="PENDING_MANAGER"
+        )
+
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.post(f"/api/leaves/requests/{req.id}/reject/", {"rejection_reason": "Not allowed"})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+        req.refresh_from_db()
+        self.assertEqual(req.status, "PENDING_MANAGER")
+
+    def test_regular_employee_cannot_approve_or_reject(self):
+        """Regular employees cannot approve or reject any leave requests."""
+        start = date.today() + timedelta(days=15)
+        end = date.today() + timedelta(days=16)
+        req1 = LeaveRequest.objects.create(
+            employee=self.emp1_profile, leave_type=self.casual_leave,
+            start_date=start, end_date=end, reason="Emp approve test 1", status="PENDING_MANAGER"
+        )
+        req2 = LeaveRequest.objects.create(
+            employee=self.emp2_profile, leave_type=self.casual_leave,
+            start_date=start, end_date=end, reason="Emp approve test 2", status="PENDING_HR"
+        )
+
+        # 1. Employee trying to approve own request
+        self.client.force_authenticate(user=self.emp1_user)
+        res1 = self.client.post(f"/api/leaves/requests/{req1.id}/approve/")
+        self.assertEqual(res1.status_code, status.HTTP_403_FORBIDDEN)
+        res_rej = self.client.post(f"/api/leaves/requests/{req1.id}/reject/", {"rejection_reason": "Self reject"})
+        self.assertEqual(res_rej.status_code, status.HTTP_403_FORBIDDEN)
+
+        # 2. Employee trying to approve another employee's request (not visible in queryset)
+        self.client.force_authenticate(user=self.emp2_user)
+        res2 = self.client.post(f"/api/leaves/requests/{req1.id}/approve/")
+        self.assertEqual(res2.status_code, status.HTTP_404_NOT_FOUND)
+        res3 = self.client.post(f"/api/leaves/requests/{req1.id}/reject/", {"rejection_reason": "Cross reject"})
+        self.assertEqual(res3.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_cannot_approve_or_reject_finalized_leaves(self):
+        """Already APPROVED or REJECTED leaves cannot be approved or rejected again."""
+        start = date.today() + timedelta(days=15)
+        end = date.today() + timedelta(days=16)
+        approved_req = LeaveRequest.objects.create(
+            employee=self.emp1_profile, leave_type=self.casual_leave,
+            start_date=start, end_date=end, reason="Already approved", status="APPROVED"
+        )
+        rejected_req = LeaveRequest.objects.create(
+            employee=self.emp1_profile, leave_type=self.casual_leave,
+            start_date=start, end_date=end, reason="Already rejected", status="REJECTED"
+        )
+
+        self.client.force_authenticate(user=self.super_admin_user)
+        # Attempt to approve already approved
+        res1 = self.client.post(f"/api/leaves/requests/{approved_req.id}/approve/")
+        self.assertEqual(res1.status_code, status.HTTP_400_BAD_REQUEST)
+        # Attempt to reject already rejected
+        res2 = self.client.post(f"/api/leaves/requests/{rejected_req.id}/reject/", {"rejection_reason": "Again"})
+        self.assertEqual(res2.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_serializer_can_approve_can_reject_flags(self):
+        """LeaveRequestSerializer returns correct can_approve and can_reject flags per role."""
+        from leaves.serializers import LeaveRequestSerializer
+        from rest_framework.test import APIRequestFactory
+        factory = APIRequestFactory()
+
+        start = date.today() + timedelta(days=15)
+        end = date.today() + timedelta(days=16)
+        mgr_req = LeaveRequest.objects.create(
+            employee=self.emp1_profile, leave_type=self.casual_leave,
+            start_date=start, end_date=end, reason="Flags test", status="PENDING_MANAGER"
+        )
+        hr_req = LeaveRequest.objects.create(
+            employee=self.emp1_profile, leave_type=self.casual_leave,
+            start_date=start, end_date=end, reason="Flags test 2", status="PENDING_HR"
+        )
+
+        # 1. Super Admin context
+        request = factory.get('/')
+        request.user = self.super_admin_user
+        mgr_data = LeaveRequestSerializer(mgr_req, context={'request': request}).data
+        hr_data = LeaveRequestSerializer(hr_req, context={'request': request}).data
+        self.assertTrue(mgr_data['can_approve'])
+        self.assertTrue(mgr_data['can_reject'])
+        self.assertTrue(hr_data['can_approve'])
+        self.assertTrue(hr_data['can_reject'])
+
+        # 2. Manager context
+        request.user = self.manager_user
+        mgr_data = LeaveRequestSerializer(mgr_req, context={'request': request}).data
+        hr_data = LeaveRequestSerializer(hr_req, context={'request': request}).data
+        self.assertTrue(mgr_data['can_approve'])
+        self.assertTrue(mgr_data['can_reject'])
+        self.assertFalse(hr_data['can_approve'])
+        self.assertFalse(hr_data['can_reject'])
+
+        # 3. Admin context
+        request.user = self.admin_user
+        mgr_data = LeaveRequestSerializer(mgr_req, context={'request': request}).data
+        hr_data = LeaveRequestSerializer(hr_req, context={'request': request}).data
+        self.assertFalse(mgr_data['can_approve'])
+        self.assertFalse(mgr_data['can_reject'])
+        self.assertTrue(hr_data['can_approve'])
+        self.assertTrue(hr_data['can_reject'])
+
+        # 4. Regular Employee context
+        request.user = self.emp2_user
+        mgr_data = LeaveRequestSerializer(mgr_req, context={'request': request}).data
+        hr_data = LeaveRequestSerializer(hr_req, context={'request': request}).data
+        self.assertFalse(mgr_data['can_approve'])
+        self.assertFalse(mgr_data['can_reject'])
+        self.assertFalse(hr_data['can_approve'])
+        self.assertFalse(hr_data['can_reject'])

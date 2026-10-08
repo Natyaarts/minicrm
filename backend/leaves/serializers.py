@@ -66,11 +66,13 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
         if not user or not user.is_authenticated:
             return False
         is_manager = bool(obj.employee.reporting_to and obj.employee.reporting_to.user == user)
-        is_hr = bool(user.role in ['SUPER_ADMIN', 'ADMIN'] or user.is_superuser)
+        is_super_admin = bool(user.role == 'SUPER_ADMIN' or user.is_superuser)
+        is_admin = bool(user.role == 'ADMIN')
+
         if obj.status == 'PENDING_MANAGER':
-            return is_manager
+            return is_super_admin or is_manager
         if obj.status == 'PENDING_HR':
-            return is_hr
+            return is_super_admin or is_admin
         return False
 
     def get_can_reject(self, obj):
@@ -79,11 +81,13 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
         if not user or not user.is_authenticated:
             return False
         is_manager = bool(obj.employee.reporting_to and obj.employee.reporting_to.user == user)
-        is_hr = bool(user.role in ['SUPER_ADMIN', 'ADMIN'] or user.is_superuser)
+        is_super_admin = bool(user.role == 'SUPER_ADMIN' or user.is_superuser)
+        is_admin = bool(user.role == 'ADMIN')
+
         if obj.status == 'PENDING_MANAGER':
-            return is_manager or is_hr
+            return is_super_admin or is_manager
         if obj.status == 'PENDING_HR':
-            return is_hr
+            return is_super_admin or is_admin
         return False
     
     class Meta:

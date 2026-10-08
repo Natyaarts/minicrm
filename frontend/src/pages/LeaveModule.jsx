@@ -542,13 +542,16 @@ const LeaveModule = () => {
                                 }
 
                                 return filteredRequests.map((req) => {
+                                    const isSuperAdmin = authUser?.role === 'SUPER_ADMIN' || authUser?.is_superuser;
                                     const canApprove = req.can_approve ?? (
+                                        isSuperAdmin ||
                                         (req.status === 'PENDING_HR' && isHRAdmin) ||
                                         (req.status === 'PENDING_MANAGER' && req.user_id !== authUser?.id)
                                     );
                                     const canReject = req.can_reject ?? (
+                                        isSuperAdmin ||
                                         (req.status === 'PENDING_HR' && isHRAdmin) ||
-                                        (req.status === 'PENDING_MANAGER' && (isHRAdmin || req.user_id !== authUser?.id))
+                                        (req.status === 'PENDING_MANAGER' && (isSuperAdmin || req.user_id !== authUser?.id))
                                     );
 
                                     return (
@@ -589,15 +592,22 @@ const LeaveModule = () => {
                                                         {canApprove && (
                                                             <button 
                                                                 onClick={() => {
-                                                                    const confirmMsg = req.status === 'PENDING_MANAGER' 
-                                                                        ? "Approve this request as Manager? (Will advance to Pending HR)" 
-                                                                        : "Grant final HR approval for this leave?";
+                                                                    let confirmMsg;
+                                                                    if (isSuperAdmin) {
+                                                                        confirmMsg = req.status === 'PENDING_MANAGER'
+                                                                            ? "Approve this leave request as SUPER_ADMIN? This will be final approval."
+                                                                            : "Grant final approval for this leave as SUPER_ADMIN?";
+                                                                    } else if (req.status === 'PENDING_MANAGER') {
+                                                                        confirmMsg = "Approve this request as Manager? (Will advance to Pending HR)";
+                                                                    } else {
+                                                                        confirmMsg = "Grant final HR approval for this leave?";
+                                                                    }
                                                                     if (window.confirm(confirmMsg)) {
                                                                         handleAction(req.id, 'approve');
                                                                     }
                                                                 }}
                                                                 className="p-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-md transition-colors shadow-xs"
-                                                                title={req.status === 'PENDING_MANAGER' ? "Manager Approve" : "HR Approve"}
+                                                                title={isSuperAdmin ? "Super Admin Approve (Final)" : (req.status === 'PENDING_MANAGER' ? "Manager Approve" : "HR Approve")}
                                                             >
                                                                 <Check size={16} strokeWidth={2.5} />
                                                             </button>
