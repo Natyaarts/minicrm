@@ -98,6 +98,17 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'status']
 
+    def to_internal_value(self, data):
+        # Defensive fix: If profile_photo is passed as a string (such as an existing photo URL/path echoed back by clients),
+        # strip it so DRF's ImageField does not reject it as an invalid file, preserving the existing photo on partial update.
+        if isinstance(data, dict) and 'profile_photo' in data and isinstance(data['profile_photo'], str):
+            data = data.copy()
+            data.pop('profile_photo', None)
+        elif hasattr(data, '_mutable') and 'profile_photo' in data and isinstance(data.get('profile_photo'), str):
+            data = data.copy()
+            data.pop('profile_photo', None)
+        return super().to_internal_value(data)
+
     def validate_profile_photo(self, value):
         if value:
             return validate_profile_photo_file(value)
@@ -124,12 +135,19 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
         # Create the user with the EMPLOYEE role
         user = User.objects.create_user(**user_data, password=password, role='EMPLOYEE')
         
-        # Create the profile linked to the user
-        profile = EmployeeProfile.objects.create(user=user, **validated_data)
+        # The post_save signal on User creates an EmployeeProfile automatically.
+        # Retrieve and update it with the provided validated_data, or create if not present.
+        profile = getattr(user, 'hrms_profile', None)
+        if profile:
+            for attr, value in validated_data.items():
+                setattr(profile, attr, value)
+            profile.save()
+        else:
+            profile = EmployeeProfile.objects.create(user=user, **validated_data)
         
         # Auto-create the salary structure for the new employee
         from payroll.models import SalaryStructure
-        SalaryStructure.objects.create(employee=profile, base_salary=profile.base_salary)
+        SalaryStructure.objects.get_or_create(employee=profile, defaults={'base_salary': profile.base_salary})
         
         return profile
 

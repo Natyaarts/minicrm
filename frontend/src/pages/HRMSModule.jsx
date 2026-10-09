@@ -133,6 +133,15 @@ const HRMSModule = () => {
                 delete payload.password;
             }
 
+            // Omit profile_photo if it is not a newly selected File object (e.g. existing URL string or null),
+            // so the backend preserves the existing photo without DRF ImageField rejection.
+            if (!(payload.profile_photo instanceof File)) {
+                delete payload.profile_photo;
+            }
+
+            // Remove read-only presentation fields if present
+            delete payload.documents;
+
             if (isEditMode) {
                 await api.patch(`hrms/employees/${newEmployee.id}/`, payload);
             } else {

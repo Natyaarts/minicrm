@@ -282,3 +282,97 @@ class DocumentSecurityComprehensiveTests(APITestCase):
             'file': pdf_file
         }, format='multipart')
         self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+
+    # -------------------------------------------------------------
+    # TEST G: Employee Profile Photo upload and partial update tests
+    # -------------------------------------------------------------
+    def test_patch_employee_with_existing_photo_url_preserves_photo(self):
+        self.client.force_authenticate(user=self.admin_user)
+        self.emp_profile1.profile_photo = self._create_valid_jpeg()
+        self.emp_profile1.save()
+        initial_photo_name = self.emp_profile1.profile_photo.name
+        self.assertTrue(bool(initial_photo_name))
+
+        # Send PATCH containing existing photo URL string and updated first_name
+        res = self.client.patch(
+            f'/api/hrms/employees/{self.emp_profile1.id}/',
+            {
+                'first_name': 'UpdatedFirst',
+                'profile_photo': self.emp_profile1.profile_photo.url,
+            },
+            format='json'
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.emp_profile1.refresh_from_db()
+        self.assertEqual(self.emp_profile1.user.first_name, 'UpdatedFirst')
+        self.assertEqual(self.emp_profile1.profile_photo.name, initial_photo_name)
+
+    def test_patch_employee_without_profile_photo_preserves_photo(self):
+        self.client.force_authenticate(user=self.admin_user)
+        self.emp_profile1.profile_photo = self._create_valid_jpeg()
+        self.emp_profile1.save()
+        initial_photo_name = self.emp_profile1.profile_photo.name
+
+        # Send PATCH without profile_photo field
+        res = self.client.patch(
+            f'/api/hrms/employees/{self.emp_profile1.id}/',
+            {
+                'work_location': 'REMOTE',
+            },
+            format='json'
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.emp_profile1.refresh_from_db()
+        self.assertEqual(self.emp_profile1.work_location, 'REMOTE')
+        self.assertEqual(self.emp_profile1.profile_photo.name, initial_photo_name)
+
+    def test_patch_employee_with_valid_new_photo_upload_succeeds(self):
+        self.client.force_authenticate(user=self.admin_user)
+        new_photo = self._create_valid_png()
+
+        res = self.client.patch(
+            f'/api/hrms/employees/{self.emp_profile1.id}/',
+            {
+                'profile_photo': new_photo,
+            },
+            format='multipart'
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.emp_profile1.refresh_from_db()
+        self.assertTrue(bool(self.emp_profile1.profile_photo.name))
+
+    def test_patch_employee_with_invalid_photo_rejected(self):
+        self.client.force_authenticate(user=self.admin_user)
+        svg_content = b'<svg xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="40"/></svg>'
+        svg_file = SimpleUploadedFile("avatar.svg", svg_content, content_type="image/svg+xml")
+
+        res = self.client.patch(
+            f'/api/hrms/employees/{self.emp_profile1.id}/',
+            {
+                'profile_photo': svg_file,
+            },
+            format='multipart'
+        )
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('profile_photo', res.data)
+
+    def test_employee_creation_remains_functional(self):
+        self.client.force_authenticate(user=self.admin_user)
+        res = self.client.post(
+            '/api/hrms/employees/',
+            {
+                'username': 'new_emp_regression',
+                'email': 'new_emp_regression@example.com',
+                'password': 'SecurePassword123!',
+                'first_name': 'NewFirst',
+                'last_name': 'NewLast',
+                'employee_id': 'EMP-REG-100',
+                'department': self.dept.id,
+                'designation': self.emp_desig.id,
+                'date_of_joining': '2026-02-01',
+                'base_salary': 45000,
+            },
+            format='json'
+        )
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(EmployeeProfile.objects.filter(employee_id='EMP-REG-100').exists())
