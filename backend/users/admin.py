@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from .models import User, RolePermission, Teacher
+from .models import User, RolePermission, Teacher, UserAuthToken
 
 @admin.register(User)
 class CustomUserAdmin(UserAdmin):
@@ -19,3 +19,14 @@ class RolePermissionAdmin(admin.ModelAdmin):
 class TeacherAdmin(CustomUserAdmin):
     def get_queryset(self, request):
         return super().get_queryset(request).filter(role='TEACHER')
+
+@admin.register(UserAuthToken)
+class UserAuthTokenAdmin(admin.ModelAdmin):
+    list_display = ('key_preview', 'user', 'device_name', 'created')
+    list_filter = ('created',)
+    search_fields = ('user__username', 'user__email', 'device_name', 'key')
+    readonly_fields = ('key', 'created')
+
+    def key_preview(self, obj):
+        return f"{obj.key[:10]}..." if obj.key else ""
+    key_preview.short_description = "Token Key"

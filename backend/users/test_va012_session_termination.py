@@ -2,29 +2,31 @@ from datetime import timedelta
 from django.utils import timezone
 from django.core.cache import cache
 from django.contrib.auth import get_user_model
+from django.test import override_settings
 from rest_framework import status
 from rest_framework.test import APITestCase
-from rest_framework.authtoken.models import Token
+from users.models import UserAuthToken as Token
 
 User = get_user_model()
 
 
+
 class SessionTerminationSecurityTests(APITestCase):
     """
-    Automated Security Verification for VA-012: Improper Session Termination.
+    Automated Security Verification for VA-012: Improper Session Termination & Multi-Device Sessions.
     Verifies:
     1. Login creates a valid authenticated session/token.
     2. Authenticated requests succeed with active token.
-    3. Logout revokes token and terminates session server-side.
+    3. Logout revokes token and terminates session server-side for that device only.
     4. Revoked token immediately fails on subsequent requests with HTTP 401.
     5. Direct API calls with revoked/stale tokens are rejected.
     6. Expired tokens are rejected with HTTP 401.
-    7. Password change invalidates previous authentication tokens.
+    7. Password change invalidates previous authentication tokens across all devices.
     8. Newly issued tokens after password change/login work properly.
     9. Repeated logout calls are handled safely without 500 errors or leaks.
     10. Invalid/revoked token responses do not expose internal implementation details.
     11. Protected endpoints across modules remain strictly inaccessible after logout.
-    12. Token rotation on login ensures only the latest session token is valid.
+    12. Multi-device login ensures distinct sessions are maintained simultaneously.
     13. Django session invalidation flushes session data upon logout.
     """
 
@@ -102,6 +104,7 @@ class SessionTerminationSecurityTests(APITestCase):
         self.assertEqual(reuse_resp.status_code, status.HTTP_401_UNAUTHORIZED)
         self.assertIn('Invalid or revoked', reuse_resp.data.get('error', ''))
 
+    @override_settings(AUTH_TOKEN_EXPIRATION_HOURS=24)
     def test_05_expired_token_rejected_with_401(self):
         """Test 5: Expired tokens (>24h) are rejected with HTTP 401."""
         token = Token.objects.create(user=self.user)
@@ -157,33 +160,36 @@ class SessionTerminationSecurityTests(APITestCase):
         )
         self.assertEqual(new_token_res.status_code, status.HTTP_200_OK)
 
-    def test_07_token_rotation_on_relogin(self):
-        """Test 7: Re-logging in destroys previous token for the user."""
-        # 1st Login
+    def test_07_multi_device_login_preserves_sessions(self):
+        """Test 7: Re-logging in on another device issues a new token while preserving existing device tokens."""
+        # 1st Login (Device A)
         resp1 = self.client.post('/api/auth/login/', {
             'username': 'session_test_user',
-            'password': self.password
+            'password': self.password,
+            'device_name': 'Device A'
         }, format='json')
         token1 = resp1.data['token']
 
-        # 2nd Login
+        # 2nd Login (Device B)
         resp2 = self.client.post('/api/auth/login/', {
             'username': 'session_test_user',
-            'password': self.password
+            'password': self.password,
+            'device_name': 'Device B'
         }, format='json')
         token2 = resp2.data['token']
 
         self.assertNotEqual(token1, token2)
 
-        # token1 must be deleted
-        self.assertFalse(Token.objects.filter(key=token1).exists())
+        # Both tokens must remain in DB
+        self.assertTrue(Token.objects.filter(key=token1).exists())
+        self.assertTrue(Token.objects.filter(key=token2).exists())
 
-        # token1 receives 401
+        # token1 works
         resp_t1 = self.client.get(
             '/api/auth/me/',
             HTTP_AUTHORIZATION=f'Token {token1}'
         )
-        self.assertEqual(resp_t1.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(resp_t1.status_code, status.HTTP_200_OK)
 
         # token2 works
         resp_t2 = self.client.get(

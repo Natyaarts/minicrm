@@ -289,8 +289,9 @@ REST_FRAMEWORK = {
     },
 }
 
-# Token Expiration Settings (24 hours default)
-AUTH_TOKEN_EXPIRATION_HOURS = 24
+# Token Expiration Settings (None = no forced 24h expiration; active sessions persist until explicit logout/password change)
+AUTH_TOKEN_EXPIRATION_HOURS = None
+
 
 # Media files
 if os.getenv('USE_AWS_S3') == 'True':

@@ -5,7 +5,7 @@ from django.core.cache import cache
 from django.http import HttpResponse, JsonResponse
 from django.conf import settings
 from rest_framework import status
-from rest_framework.authtoken.models import Token
+from users.models import UserAuthToken as Token
 from core.middleware import SecurityHeadersMiddleware
 
 User = get_user_model()

@@ -1,7 +1,7 @@
 from django.test import TestCase, Client, override_settings
 from django.contrib.auth import get_user_model
 from rest_framework import status
-from rest_framework.authtoken.models import Token
+from users.models import UserAuthToken as Token
 
 User = get_user_model()
 

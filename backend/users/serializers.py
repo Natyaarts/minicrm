@@ -96,8 +96,8 @@ class UserSerializer(serializers.ModelSerializer):
             setattr(instance, attr, value)
         if password:
             instance.set_password(password)
-            from rest_framework.authtoken.models import Token
-            Token.objects.filter(user=instance).delete()
+            from .models import UserAuthToken
+            UserAuthToken.objects.filter(user=instance).delete()
         instance.save()
         return instance
 

@@ -1,5 +1,6 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from django.utils import timezone
 
 class User(AbstractUser):
     ROLE_CHOICES = (
@@ -89,3 +90,37 @@ class Teacher(User):
     def save(self, *args, **kwargs):
         self.role = 'TEACHER'
         super().save(*args, **kwargs)
+
+
+class UserAuthToken(models.Model):
+    """
+    Multi-device / multi-session authentication token.
+    Allows multiple active tokens per user across different devices/phones.
+    """
+    key = models.CharField(max_length=64, primary_key=True, db_index=True)
+    user = models.ForeignKey(
+        'users.User',
+        related_name='auth_tokens',
+        on_delete=models.CASCADE
+    )
+    created = models.DateTimeField(default=timezone.now)
+    device_name = models.CharField(max_length=255, blank=True, default='')
+
+    class Meta:
+        ordering = ['-created']
+        verbose_name = 'User Auth Token'
+        verbose_name_plural = 'User Auth Tokens'
+
+    def save(self, *args, **kwargs):
+        if not self.key:
+            self.key = self.generate_key()
+        return super().save(*args, **kwargs)
+
+    @classmethod
+    def generate_key(cls):
+        import binascii
+        import os
+        return binascii.hexlify(os.urandom(20)).decode()
+
+    def __str__(self):
+        return f"{self.user.username} ({self.key[:8]}...)"

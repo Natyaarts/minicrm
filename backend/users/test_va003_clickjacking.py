@@ -3,7 +3,7 @@ from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.http import HttpResponse
 from rest_framework import status
-from rest_framework.authtoken.models import Token
+from users.models import UserAuthToken as Token
 from core.middleware import SecurityHeadersMiddleware
 
 User = get_user_model()

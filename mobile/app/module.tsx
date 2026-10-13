@@ -1441,6 +1441,10 @@ export default function ModuleDetailScreen() {
         if (res.data) setAttLogs(prev => [res.data, ...prev]);
         Alert.alert('Clocked In ✅', 'Attendance recorded at ' + new Date().toLocaleTimeString());
     } catch (e: any) {
+        if (e.response?.status === 401) {
+          // Handled globally by client interceptor and session expiry redirect
+          return;
+        }
         const errMsg = e.response?.data?.detail || e.response?.data?.error || e.message || 'Clock-in failed. Try again.';
         Alert.alert('Clock In Info', errMsg);
     } finally {

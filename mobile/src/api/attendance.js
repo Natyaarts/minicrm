@@ -26,6 +26,9 @@ export const clockIn = async (latitude, longitude, photo) => {
     const response = await client.post('/hrms/attendance/clock_in/', payload);
     return { success: true, data: response.data };
   } catch (error) {
+    if (error.response?.status === 401) {
+      return { success: false, error: 'Session expired. Please log in again.' };
+    }
     console.warn('Clock in API error:', error.message, error.response?.status, error.response?.data);
     let errorMsg = 'Clock in failed';
     if (error.response?.data) {
@@ -50,7 +53,10 @@ export const clockOut = async () => {
     const response = await client.post('/hrms/attendance/clock_out/');
     return { success: true, data: response.data };
   } catch (error) {
-    const errorMsg = error.response?.data?.error || 'Clock out failed';
+    if (error.response?.status === 401) {
+      return { success: false, error: 'Session expired. Please log in again.' };
+    }
+    const errorMsg = error.response?.data?.error || error.response?.data?.detail || 'Clock out failed';
     return { success: false, error: errorMsg };
   }
 };

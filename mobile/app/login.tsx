@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { loginUser } from '../src/api/auth';
+import client from '../src/api/client';
 import { FontAwesome5 } from '@expo/vector-icons';
 
 const { height, width } = Dimensions.get('window');
@@ -28,13 +29,44 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
+    let isMounted = true;
     const checkToken = async () => {
-      const token = await AsyncStorage.getItem('userToken');
-      if (token) {
-        router.replace('/(tabs)');
+      try {
+        const token = await AsyncStorage.getItem('userToken');
+        const userInfo = await AsyncStorage.getItem('userInfo');
+        if (token && userInfo) {
+          // Verify session validity with backend before transitioning into tabs
+          try {
+            const res = await client.get('/auth/me/');
+            if (res.data && res.data.role && isMounted) {
+              await AsyncStorage.setItem('userInfo', JSON.stringify(res.data));
+              router.replace('/(tabs)');
+              return;
+            }
+          } catch (apiErr: any) {
+            if (apiErr.response?.status === 401) {
+              // Token is revoked/expired on server: clean up and remain on login
+              await AsyncStorage.multiRemove(['userToken', 'userInfo']);
+              return;
+            }
+            // Offline / network failure: allow access with cached session
+            if (isMounted) {
+              router.replace('/(tabs)');
+              return;
+            }
+          }
+        } else {
+          // No valid token: clean up any orphaned userInfo and remain on login
+          await AsyncStorage.multiRemove(['userToken', 'userInfo']);
+        }
+      } catch (err) {
+        console.warn('[LoginScreen] Error checking cached authentication token:', err);
       }
     };
     checkToken();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const handleLogin = async () => {

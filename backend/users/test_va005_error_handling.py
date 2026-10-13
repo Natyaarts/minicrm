@@ -4,7 +4,7 @@ from django.test import TestCase, Client, override_settings
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError, DatabaseError, OperationalError
 from rest_framework import status
-from rest_framework.authtoken.models import Token
+from users.models import UserAuthToken as Token
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from core.exceptions import custom_exception_handler, sanitize_message, sanitize_error_data

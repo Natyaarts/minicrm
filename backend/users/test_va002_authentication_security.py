@@ -1,10 +1,10 @@
 from datetime import timedelta
-from django.test import TestCase, Client, RequestFactory
+from django.test import TestCase, Client, RequestFactory, override_settings
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.conf import settings
 from rest_framework import status
-from rest_framework.authtoken.models import Token
+from users.models import UserAuthToken as Token
 from users.serializers import UserSerializer
 
 User = get_user_model()
@@ -135,6 +135,7 @@ class VA002AuthenticationSecurityTests(TestCase):
         res_after = self.client.get('/api/auth/me/', **self.auth_headers)
         self.assertEqual(res_after.status_code, status.HTTP_401_UNAUTHORIZED)
 
+    @override_settings(AUTH_TOKEN_EXPIRATION_HOURS=24)
     def test_08_expired_token_is_rejected(self):
         """Test 8: ExpiringTokenAuthentication rejects tokens older than configured TTL."""
         expired_user = User.objects.create_user(

@@ -2,6 +2,8 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
+import { handleSessionExpired } from './session';
+
 const getBaseUrl = () => {
   // Point to the live production server domain
   return 'https://natyaarts.org/api/';
@@ -47,6 +49,16 @@ client.interceptors.request.use(
   }
 );
 
+// Helper to identify public authentication endpoints that should not trigger session expiry handling on 401
+const isPublicAuthEndpoint = (url) => {
+  if (typeof url !== 'string') return false;
+  const cleanPath = url.split('?')[0].split('#')[0].trim().replace(/\/+$/, '');
+  return (
+    /^(?:https?:\/\/[^\/]+)?(?:\/api)?\/auth\/login$/i.test(cleanPath) ||
+    /^(?:api\/)?auth\/login$/i.test(cleanPath)
+  );
+};
+
 // Interceptor to handle auth and network failures with safe dev logging
 client.interceptors.response.use(
   (response) => response,
@@ -57,6 +69,9 @@ client.interceptors.response.use(
     if (status === 401) {
       // Safe development logging without exposing sensitive tokens or credentials
       console.warn(`[API Auth] 401 Unauthorized received for endpoint: ${url}`);
+      if (!isPublicAuthEndpoint(url)) {
+        handleSessionExpired();
+      }
     } else if (status === 403) {
       console.warn(`[API Auth] 403 Forbidden received for endpoint: ${url}`);
     } else if (!error.response) {

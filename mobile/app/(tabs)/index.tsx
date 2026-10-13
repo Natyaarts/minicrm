@@ -54,6 +54,13 @@ export default function AttendanceScreen() {
 
   const loadUser = async () => {
     try {
+      const token = await AsyncStorage.getItem('userToken');
+      if (!token || !token.trim()) {
+        await AsyncStorage.multiRemove(['userToken', 'userInfo']);
+        router.replace('/login');
+        return;
+      }
+
       const cached = await AsyncStorage.getItem('userInfo');
       if (cached) {
         try {
@@ -65,13 +72,11 @@ export default function AttendanceScreen() {
           console.warn('[Dashboard] Failed to parse cached userInfo:', parseErr);
         }
       }
-      const token = await AsyncStorage.getItem('userToken');
-      if (token) {
-        const res = await client.get('/auth/me/');
-        if (res.data && res.data.role && (res.data.username || res.data.id)) {
-          setUser(res.data);
-          await AsyncStorage.setItem('userInfo', JSON.stringify(res.data));
-        }
+
+      const res = await client.get('/auth/me/');
+      if (res.data && res.data.role && (res.data.username || res.data.id)) {
+        setUser(res.data);
+        await AsyncStorage.setItem('userInfo', JSON.stringify(res.data));
       }
     } catch (err) {
       console.log('[Dashboard] Failed to refresh user details from API, keeping cached state:', err);
@@ -249,7 +254,9 @@ export default function AttendanceScreen() {
           Alert.alert('Success', 'Clocked in successfully!');
           await fetchStatus();
         } else {
-          Alert.alert('Error', res.error);
+          if (res.error !== 'Session expired. Please log in again.') {
+            Alert.alert('Error', res.error);
+          }
         }
     } catch (error: any) {
       console.error('Clock in error:', error);

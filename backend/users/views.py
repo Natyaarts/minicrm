@@ -1,10 +1,9 @@
 
 from rest_framework import status, views, viewsets, generics, filters
 from rest_framework.response import Response
-from rest_framework.authtoken.models import Token
 from django.contrib.auth import authenticate, logout as django_logout
 from .serializers import UserSerializer, RolePermissionSerializer
-from .models import RolePermission
+from .models import RolePermission, UserAuthToken
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from .permissions import IsAdminOrSuperAdmin
 from .authentication import get_token_ttl
@@ -41,13 +40,13 @@ class LoginView(views.APIView):
             if hasattr(request, 'session') and request.session:
                 request.session.flush()
 
-            # Token Rotation: Delete any existing token so previous sessions are invalidated
-            Token.objects.filter(user=user).delete()
-
-            # Create fresh token with current timestamp
-            token = Token.objects.create(user=user)
+            # Multi-Device Support: Create a fresh token for this session/device
+            # without invalidating other active devices/phones.
+            device_name = request.data.get('device_name', '') if isinstance(request.data, dict) else ''
+            token = UserAuthToken.objects.create(user=user, device_name=str(device_name)[:255])
             serializer = UserSerializer(user, context={'request': request})
-            ttl_seconds = int(get_token_ttl().total_seconds())
+            ttl = get_token_ttl()
+            ttl_seconds = int(ttl.total_seconds()) if ttl is not None else None
 
             return Response({
                 'token': token.key,
@@ -61,13 +60,14 @@ class LogoutView(views.APIView):
 
     def post(self, request):
         """
-        Invalidates the authenticated user's session token and Django session on the server (VA-012).
+        Invalidates ONLY the authenticated user's current session token and Django session on the server (VA-012).
+        Other active device sessions for this user remain unaffected.
         """
-        # 1. Server-side DRF Token revocation
-        if request.auth and isinstance(request.auth, Token):
+        # 1. Server-side per-device UserAuthToken revocation
+        if request.auth and isinstance(request.auth, UserAuthToken):
             request.auth.delete()
-        elif request.user and request.user.is_authenticated:
-            Token.objects.filter(user=request.user).delete()
+        elif request.auth and hasattr(request.auth, 'delete'):
+            request.auth.delete()
 
         # 2. Server-side Django Session invalidation
         if hasattr(request, 'session') and request.session:
@@ -85,7 +85,8 @@ class PasswordChangeView(views.APIView):
         """
         Allows authenticated users to securely change their password (VA-002 & VA-012).
         Requires old_password and new_password in request payload body.
-        Rotates authentication token upon password change and invalidates previous sessions.
+        Revokes all existing session tokens across all devices for security, and issues
+        a new token for the current active session.
         """
         if request.query_params.get('password') or request.query_params.get('old_password') or request.query_params.get('new_password'):
             return Response(
@@ -106,9 +107,9 @@ class PasswordChangeView(views.APIView):
         user.set_password(new_password)
         user.save()
 
-        # Invalidate old tokens and issue fresh token
-        Token.objects.filter(user=user).delete()
-        new_token = Token.objects.create(user=user)
+        # Invalidate ALL existing tokens across all devices on password change for security
+        UserAuthToken.objects.filter(user=user).delete()
+        new_token = UserAuthToken.objects.create(user=user)
 
         # Invalidate any old Django session
         if hasattr(request, 'session') and request.session:

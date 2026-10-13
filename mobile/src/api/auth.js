@@ -1,9 +1,13 @@
 import client from './client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
+export { handleSessionExpired } from './session';
 
 export const loginUser = async (username, password) => {
   try {
-    const response = await client.post('/auth/login/', { username, password });
+    const deviceName = Platform.OS === 'android' ? 'Android Mobile' : Platform.OS === 'ios' ? 'iOS Mobile' : 'Mobile App';
+    const response = await client.post('/auth/login/', { username, password, device_name: deviceName });
+
     
     if (response.data && response.data.token) {
       // Store token and user info

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { Link, Tabs } from 'expo-router';
+import { Link, Tabs, router } from 'expo-router';
 import { Pressable, View } from 'react-native';
 
 import Colors from '@/constants/Colors';
@@ -29,6 +29,13 @@ export default function TabLayout() {
 
   const loadUser = async () => {
     try {
+      const token = await AsyncStorage.getItem('userToken');
+      if (!token || !token.trim()) {
+        await AsyncStorage.multiRemove(['userToken', 'userInfo']);
+        router.replace('/login');
+        return;
+      }
+
       const cached = await AsyncStorage.getItem('userInfo');
       if (cached) {
         try {
@@ -40,13 +47,11 @@ export default function TabLayout() {
           console.warn('[TabLayout] Failed to parse cached userInfo:', parseErr);
         }
       }
-      const token = await AsyncStorage.getItem('userToken');
-      if (token) {
-        const res = await client.get('/auth/me/');
-        if (res.data && res.data.role && (res.data.username || res.data.id)) {
-          setUser(res.data);
-          await AsyncStorage.setItem('userInfo', JSON.stringify(res.data));
-        }
+
+      const res = await client.get('/auth/me/');
+      if (res.data && res.data.role && (res.data.username || res.data.id)) {
+        setUser(res.data);
+        await AsyncStorage.setItem('userInfo', JSON.stringify(res.data));
       }
     } catch (err) {
       console.log('[TabLayout] Failed to refresh user details from API, keeping cached state:', err);

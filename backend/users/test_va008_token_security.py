@@ -1,11 +1,11 @@
 from django.core.cache import cache
 from datetime import timedelta
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework import status
-from rest_framework.authtoken.models import Token
+from users.models import UserAuthToken as Token
 from users.authentication import get_token_ttl
 
 User = get_user_model()
@@ -42,15 +42,13 @@ class VA008TokenSecurityTests(TestCase):
     # Test A: Successful Login Returns Valid Token and Expiry Metadata
     # ----------------------------------------------------------------------
     def test_login_returns_valid_token_and_expires_in(self):
-        """POST /api/auth/login/ returns 200 with token and expiration metadata."""
+        """POST /api/auth/login/ returns 200 with token."""
         response = self.client.post('/api/auth/login/', {
             'username': self.employee.username,
             'password': self.password
         })
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('token', response.data)
-        self.assertIn('expires_in', response.data)
-        self.assertGreater(response.data['expires_in'], 0)
         self.assertTrue(Token.objects.filter(key=response.data['token']).exists())
 
     # ----------------------------------------------------------------------
@@ -71,15 +69,16 @@ class VA008TokenSecurityTests(TestCase):
         self.assertEqual(res.data['username'], self.employee.username)
 
     # ----------------------------------------------------------------------
-    # Test C & J & K: Server-Side Token Expiration -> HTTP 401
+    # Test C & J & K: Server-Side Token Expiration -> HTTP 401 (When Configured)
     # ----------------------------------------------------------------------
+    @override_settings(AUTH_TOKEN_EXPIRATION_HOURS=24)
     def test_expired_token_rejected_with_401(self):
         """
-        A token whose age exceeds the TTL (e.g. 24h) is rejected with HTTP 401
-        and purged from the database, regardless of any client-side headers.
+        When expiration is configured (e.g. 24h), a token whose age exceeds TTL
+        is rejected with HTTP 401 and purged from the database.
         """
         token = Token.objects.create(user=self.employee)
-        
+
         # Simulate time passing past expiration threshold (e.g. 25 hours ago)
         ttl = get_token_ttl()
         token.created = timezone.now() - (ttl + timedelta(hours=1))
@@ -93,6 +92,20 @@ class VA008TokenSecurityTests(TestCase):
 
         # Confirm the expired token was removed server-side
         self.assertFalse(Token.objects.filter(key=token.key).exists())
+
+    def test_unexpired_token_persists_without_forced_logout(self):
+        """
+        By default (no forced 24h expiration), active tokens older than 24h remain valid.
+        """
+        token = Token.objects.create(user=self.employee)
+        Token.objects.filter(key=token.key).update(
+            created=timezone.now() - timedelta(hours=48)
+        )
+
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {token.key}')
+        res = self.client.get('/api/auth/me/')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['username'], self.employee.username)
 
     # ----------------------------------------------------------------------
     # Test D: Invalid Token -> HTTP 401
@@ -134,42 +147,44 @@ class VA008TokenSecurityTests(TestCase):
         self.assertEqual(res_after_logout.status_code, status.HTTP_401_UNAUTHORIZED)
 
     # ----------------------------------------------------------------------
-    # Test F & G: Token Rotation on New Login
+    # Test F & G: Multi-Device Login Supports Simultaneous Active Sessions
     # ----------------------------------------------------------------------
-    def test_login_rotates_tokens_and_invalidates_previous_session(self):
+    def test_multi_device_login_supports_simultaneous_sessions(self):
         """
-        A new login produces a new token and deletes the old token,
-        preventing permanent static credential reuse.
+        A new login produces a unique token and allows both devices to authenticate concurrently.
         """
-        # Session 1: Login
+        # Session 1: Login Device 1
         res1 = self.client.post('/api/auth/login/', {
             'username': self.employee.username,
-            'password': self.password
+            'password': self.password,
+            'device_name': 'Phone 1'
         })
         token1 = res1.data['token']
 
-        # Session 2: Login again with the same user
+        # Session 2: Login Device 2 with the same user
         res2 = self.client.post('/api/auth/login/', {
             'username': self.employee.username,
-            'password': self.password
+            'password': self.password,
+            'device_name': 'Phone 2'
         })
         token2 = res2.data['token']
 
-        # Tokens must be different (Token rotation)
+        # Tokens must be distinct
         self.assertNotEqual(token1, token2)
 
-        # Old Token 1 must no longer exist in the database
-        self.assertFalse(Token.objects.filter(key=token1).exists())
+        # Both tokens must exist in DB
+        self.assertTrue(Token.objects.filter(key=token1).exists())
+        self.assertTrue(Token.objects.filter(key=token2).exists())
 
-        # Old Token 1 must fail when used
+        # Token 1 must succeed
         self.client.credentials(HTTP_AUTHORIZATION=f'Token {token1}')
-        res_old = self.client.get('/api/auth/me/')
-        self.assertEqual(res_old.status_code, status.HTTP_401_UNAUTHORIZED)
+        res_t1 = self.client.get('/api/auth/me/')
+        self.assertEqual(res_t1.status_code, status.HTTP_200_OK)
 
-        # New Token 2 must succeed
+        # Token 2 must succeed
         self.client.credentials(HTTP_AUTHORIZATION=f'Token {token2}')
-        res_new = self.client.get('/api/auth/me/')
-        self.assertEqual(res_new.status_code, status.HTTP_200_OK)
+        res_t2 = self.client.get('/api/auth/me/')
+        self.assertEqual(res_t2.status_code, status.HTTP_200_OK)
 
     # ----------------------------------------------------------------------
     # Test H: Password Change Invalidates Existing Tokens
@@ -208,8 +223,9 @@ class VA008TokenSecurityTests(TestCase):
     # ----------------------------------------------------------------------
     # Test L: Admin and Employee Share Same Expiration Rules
     # ----------------------------------------------------------------------
+    @override_settings(AUTH_TOKEN_EXPIRATION_HOURS=24)
     def test_admin_tokens_also_expire_properly(self):
-        """Admin accounts are also subject to server-side token expiration."""
+        """Admin accounts are also subject to server-side token expiration when configured."""
         admin_token = Token.objects.create(user=self.admin)
         ttl = get_token_ttl()
         admin_token.created = timezone.now() - (ttl + timedelta(minutes=10))
