@@ -870,20 +870,27 @@ class EmployeeDocumentViewSet(viewsets.ModelViewSet):
     serializer_class = EmployeeDocumentSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-    def get_queryset(self):
-        user = self.request.user
-        if user.role in ['SUPER_ADMIN', 'ADMIN'] or user.is_superuser:
-            return EmployeeDocument.objects.all().order_by('-uploaded_at')
-        return EmployeeDocument.objects.filter(employee__user=user).order_by('-uploaded_at')
+    def _is_admin(self):
+        u = self.request.user
+        return u.role in ['SUPER_ADMIN', 'ADMIN'] or u.is_superuser
 
-    def perform_create(self, serializer):
-        user = self.request.user
-        if not (user.role in ['SUPER_ADMIN', 'ADMIN'] or user.is_superuser):
-            employee = serializer.validated_data.get('employee')
-            if employee and employee.user != user:
-                from rest_framework.exceptions import PermissionDenied
-                raise PermissionDenied("You do not have permission to upload documents for other employees.")
-        serializer.save()
+    def get_queryset(self):
+        qs = EmployeeDocument.objects.select_related('employee', 'employee__user')
+        if self._is_admin():
+            return qs.order_by('-uploaded_at')
+        return qs.filter(employee__user=self.request.user).order_by('-uploaded_at')
+
+    def get_serializer(self, *args, **kwargs):
+        # For non-admin uploads, force employee to the caller's own profile
+        if self.request.method == 'POST' and 'data' in kwargs and not self._is_admin():
+            profile = getattr(self.request.user, 'hrms_profile', None)
+            if profile is None:
+                raise PermissionDenied("No employee profile found. Contact HR.")
+            # plain dict (avoids QueryDict.copy() deep-copying uploaded files)
+            data = {k: v for k, v in self.request.data.items()}
+            data['employee'] = profile.id
+            kwargs['data'] = data
+        return super().get_serializer(*args, **kwargs)
 
 class AssetViewSet(viewsets.ModelViewSet):
     queryset = Asset.objects.all()

@@ -11,7 +11,10 @@ from django.db.models import Sum
 from core.models import Student, Program, Transaction, normalize_phone_number
 from .models import PipelineStage, LeadInteraction, Campaign, WebhookEndpoint, WebhookLog, Task
 from .serializers import PipelineStageSerializer, LeadInteractionSerializer, CampaignSerializer, TaskSerializer
-from .utils import normalize_phone_for_matching, match_lead_by_phone, match_agent_by_phone
+from .utils import (
+    normalize_phone_for_matching, match_lead_by_phone, match_agent_by_phone,
+    get_converted_stage_values, get_new_stage_values,
+)
 from .services.deduplication import lookup_existing_student, record_reengagement_interaction, normalize_lead_phone, normalize_lead_email, create_duplicate_lead
 from .services.assignment import get_next_assigned_rep
 
@@ -89,6 +92,11 @@ class DashboardStatsView(APIView):
             if campaign_id:
                 students = students.filter(campaign_id=campaign_id)
 
+            campaign_only = request.query_params.get('campaign_only') == 'true'
+            hide_converted = request.query_params.get('hide_converted') == 'true'
+            if campaign_only:
+                students = students.filter(campaign__isnull=False)
+
             # Date Presets (today, yesterday, this_week, this_month, custom)
             date_preset = request.query_params.get('date_preset')
             start_date = request.query_params.get('start_date')
@@ -123,29 +131,49 @@ class DashboardStatsView(APIView):
                     students = students.filter(Q(created_at__date__lte=parsed_end) | Q(user__date_joined__date__lte=parsed_end))
             
             # Identify converted/enrolled leads to exclude them from active totals
-            converted_stages = ['ENROLLED', 'CONVERTED', 'enrolled', 'converted', 'Enrolled', 'Converted']
-            try:
-                from .models import PipelineStage
-                for stage in PipelineStage.objects.filter(name__icontains='convert') | PipelineStage.objects.filter(name__icontains='enroll'):
-                    converted_stages.append(str(stage.id))
-                    if stage.name:
-                        converted_stages.append(stage.name)
-            except Exception:
-                pass
+            converted_stages = get_converted_stage_values()
+            new_stages = get_new_stage_values()
 
-            # Total leads matching filters (inclusive of all statuses)
+            open_students = students.exclude(lead_status__in=converted_stages)
+
             total_leads = students.count()
-
-            # Converted Leads count
             converted_leads = students.filter(lead_status__in=converted_stages).count()
 
-            # Assignment metrics
-            unassigned_leads = students.filter(assigned_to__isnull=True).count()
-            assigned_leads = students.filter(assigned_to__isnull=False).count()
-            
-            # Contacted vs Pending
-            contacted_leads = students.filter(crm_interactions__isnull=False).distinct().count()
-            pending_leads = max(0, total_leads - contacted_leads)
+            unassigned_leads = open_students.filter(assigned_to__isnull=True).count()
+            assigned_leads = open_students.filter(assigned_to__isnull=False).count()
+
+            contacted_leads = (
+                open_students
+                .exclude(lead_status__in=new_stages)
+                .filter(crm_interactions__isnull=False)
+                .distinct()
+                .count()
+            )
+            pending_leads = max(0, open_students.count() - contacted_leads)
+
+            # Total leads matching filters (inclusive of all statuses)
+            # open_students = students.exclude(lead_status__in=converted_stages) if hide_converted else students
+
+            # total_leads = open_students.count()
+            # converted_leads = students.filter(lead_status__in=converted_stages).count()
+
+            # unassigned_leads = open_students.filter(assigned_to__isnull=True).count()
+            # assigned_leads = open_students.filter(assigned_to__isnull=False).count()
+
+            # contacted_leads = open_students.filter(crm_interactions__isnull=False).distinct().count()
+            # pending_leads = max(0, total_leads - contacted_leads)
+
+            # Leads still being worked (converted ones excluded)
+            # open_students = students.exclude(lead_status__in=converted_stages)
+
+            # total_leads = students.count()   # everything, converted included
+            # converted_leads = students.filter(lead_status__in=converted_stages).count()
+
+            # unassigned_leads = open_students.filter(assigned_to__isnull=True).count()
+            # assigned_leads = open_students.filter(assigned_to__isnull=False).count()
+
+            # contacted_leads = open_students.filter(crm_interactions__isnull=False).distinct().count()
+            # pending_leads = max(0, open_students.count() - contacted_leads)
             
             # Leaderboard & Call Duration per Sales Rep
             sales_reps = User.objects.filter(Q(role__in=['SALES', 'SALES_HEAD', 'SALES_MANAGER', 'SALES_LEAD', 'MANAGER']) | Q(assigned_leads__isnull=False), is_active=True).distinct()
@@ -208,7 +236,8 @@ class DashboardStatsView(APIView):
             leaderboard = []
             for rep in sales_reps:
                 # Count leads assigned to this rep within the selected date range
-                rep_leads = students.filter(assigned_to=rep).count()
+                rep_students = students.filter(assigned_to=rep)
+                rep_leads = rep_students.count()
                 
                 # Filter interactions strictly by author (sales rep) and call date
                 rep_interactions = LeadInteraction.objects.filter(author=rep, interaction_type='CALL')
@@ -221,7 +250,8 @@ class DashboardStatsView(APIView):
                     if parsed_end:
                         rep_interactions = rep_interactions.filter(date__date__lte=parsed_end)
                 
-                rep_contacted = rep_interactions.values('student').distinct().count()
+                rep_contacted = (
+                rep_students.exclude(lead_status__in=converted_stages).exclude(lead_status__in=new_stages).filter(crm_interactions__isnull=False).distinct().count())
                 rep_duration_sec = rep_interactions.aggregate(total_sec=Sum('call_duration'))['total_sec'] or 0
                 rep_call_count = rep_interactions.count()
                 rep_connected = rep_interactions.filter(Q(call_status='CONNECTED') | Q(call_duration__gt=0)).count()

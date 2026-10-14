@@ -228,7 +228,10 @@ const HRMSModule = () => {
         formData.append('file', file);
 
         try {
-            const res = await api.post('hrms/documents/', formData);
+            // const res = await api.post('hrms/documents/', formData);
+            const res = await api.post('hrms/documents/', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
             setNewEmployee({
                 ...newEmployee,
                 documents: [...(newEmployee.documents || []), res.data]

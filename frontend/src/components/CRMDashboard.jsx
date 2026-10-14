@@ -30,13 +30,12 @@ const CRMDashboard = ({ onStatClick, onBdeClick }) => {
     const [totalFollowupsCount, setTotalFollowupsCount] = useState(0);
 
     const fetchStats = async () => {
-        setLoading(true);
-        try {
-            let statsUrl = '/crm/dashboard-stats/';
-            if (isAdmin && sectionFilter) {
-                statsUrl += `?sales_section=${sectionFilter}`;
-            }
-            const res = await api.get(statsUrl);
+    setLoading(true);
+    try {
+            const params = new URLSearchParams({ campaign_only: 'true', hide_converted: 'true' });
+            if (isAdmin && sectionFilter) params.append('sales_section', sectionFilter);
+            const res = await api.get(`/crm/dashboard-stats/?${params.toString()}`);
+            console.log('leaderboard', res.data.leaderboard);
             setStats(res.data);
         } catch (error) {
             console.error("Failed to fetch dashboard stats", error);

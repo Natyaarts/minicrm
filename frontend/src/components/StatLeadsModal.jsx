@@ -22,58 +22,59 @@ const StatLeadsModal = ({ config, onClose, onViewLead, salesSectionFilter, pipel
     }, [searchTerm]);
 
     const fetchLeads = async (currentPage, search = debouncedSearchTerm, status = statusFilter, assignee = assigneeFilter) => {
-        setLoading(true);
-        try {
-            const params = new URLSearchParams({
-                is_active: 'true',
-                page: currentPage.toString()
-            });
+    setLoading(true);
+    try {
+        const params = new URLSearchParams({
+            is_active: 'true',
+            page: currentPage.toString(),
+            campaign_only: 'true'          // same as dashboard
+        });
 
-            if (search) params.append('search', search);
+        if (search) params.append('search', search);
 
-            if (salesSectionFilter && salesSectionFilter !== 'ALL') {
-                params.append('sales_section', salesSectionFilter);
-            }
-
-            if (config.type === 'stage') {
-                params.append('lead_status', config.value);
-            } else {
-                if (status) params.append('lead_status', status);
-                else if (config.type === 'status') {
-                    params.append('lead_status', 'CONVERTED');
-                }
-            }
-
-            if (config.type === 'assignee') {
-                params.append('assigned_to', config.value);
-            } else {
-                if (assignee) {
-                    if (assignee === 'unassigned') params.append('unassigned', 'true');
-                    else params.append('assigned_to', assignee);
-                }
-            }
-
-            if (config.type === 'contacted') {
-                params.append('contacted', config.value);
-            }
-
-            if (config.type === 'all') {
-                params.append('hide_converted', 'true');
-            }
-
-            const res = await api.get(`students/?${params.toString()}`);
-            setLeads(res.data.results || []);
-            setPagination({
-                count: res.data.count,
-                next: res.data.next,
-                previous: res.data.previous
-            });
-        } catch (error) {
-            console.error("Failed to fetch stat leads", error);
-        } finally {
-            setLoading(false);
+        if (salesSectionFilter && salesSectionFilter !== 'ALL') {
+            params.append('sales_section', salesSectionFilter);
         }
-    };
+
+        // Stage / converted handling
+        const convertedStage = pipelineStages.find(s => /enroll|convert/i.test(s.name || ''));
+        const openOnlyTypes = ['assignee', 'contacted'];   // assigned, unassigned, contacted, pending cards
+
+        if (config.type === 'stage') {
+            params.append('lead_status', config.value);
+        } else if (config.type === 'status') {
+            // Converted card
+            params.append('lead_status', status || (convertedStage ? String(convertedStage.id) : 'ENROLLED'));
+        } else if (status) {
+            params.append('lead_status', status);
+        } else if (openOnlyTypes.includes(config.type)) {
+            params.append('hide_converted', 'true');   // these dashboard cards exclude converted leads
+        }
+
+        // Assignee handling
+        if (config.type === 'assignee') {
+            params.append('assigned_to', config.value);     // 'assigned' | 'unassigned' | <id>
+        } else if (assignee) {
+            params.append('assigned_to', assignee);         // 'unassigned' | <id>
+        }
+
+        if (config.type === 'contacted') {
+            params.append('contacted', config.value);
+        }
+
+        const res = await api.get(`students/?${params.toString()}`);
+        setLeads(res.data.results || []);
+        setPagination({
+            count: res.data.count,
+            next: res.data.next,
+            previous: res.data.previous
+        });
+    } catch (error) {
+        console.error("Failed to fetch stat leads", error);
+    } finally {
+        setLoading(false);
+    }
+};
 
     useEffect(() => {
         if (config) {
@@ -168,6 +169,7 @@ const StatLeadsModal = ({ config, onClose, onViewLead, salesSectionFilter, pipel
                                     <option value="unassigned">Unassigned</option>
                                     {salesUsers.map(u => (
                                         <option key={u.id} value={u.id}>{u.first_name} {u.last_name}</option>
+                                        // <option key={u.id} value={u.id}>{u.name || u.username}</option>
                                     ))}
                                 </select>
                             )}

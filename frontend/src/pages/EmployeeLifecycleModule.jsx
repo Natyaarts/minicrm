@@ -17,6 +17,7 @@ import { useAuth } from '../context/AuthContext';
 
 const EmployeeLifecycleModule = () => {
     const { user: authUser } = useAuth();
+    const isAdmin = ['SUPER_ADMIN', 'ADMIN'].includes(authUser?.role);
     const [activeTab, setActiveTab] = useState('documents');
     
     // Document Vault State
@@ -39,36 +40,32 @@ const EmployeeLifecycleModule = () => {
     const [loading, setLoading] = useState(true);
 
     const fetchData = async () => {
+        if (!authUser) return;               // wait until the user is loaded
         setLoading(true);
         try {
             const promises = [
                 api.get('hrms/documents/'),
                 api.get('hrms/offboarding/')
             ];
-            
-            // Only admins need the full employee list
-            if (authUser?.role === 'SUPER_ADMIN' || authUser?.role === 'ADMIN' || !authUser?.role) {
+
+            if (isAdmin) {
                 promises.push(api.get('hrms/employees/?page_size=500&ordering=id'));
             }
 
             const results = await Promise.all(promises);
             setDocuments(results[0].data.results || results[0].data);
             setOffboardings(results[1].data.results || results[1].data);
-            
-            if (results[2]) {
+
+            if (isAdmin) {
                 setEmployees(results[2].data.results || results[2].data);
             } else {
-                // For regular employees, set themselves as the only employee in the list
-                setEmployees([{
-                    id: authUser?.hrms_profile_id || authUser?.id,
-                    full_name: authUser?.full_name || authUser?.first_name || authUser?.username,
-                    designation_name: authUser?.role
-                }]);
-                // Auto-select themselves
-                setSelectedEmployee({
-                    id: authUser?.hrms_profile_id || authUser?.id,
-                    full_name: authUser?.full_name || authUser?.first_name || authUser?.username
-                });
+                const me = {
+                    id: authUser.hrms_profile_id ?? 'me',   // no fallback to authUser.id
+                    full_name: authUser.full_name || authUser.first_name || authUser.username,
+                    designation_name: authUser.role
+                };
+                setEmployees([me]);
+                setSelectedEmployee(me);
             }
         } catch (error) {
             console.error("Error fetching lifecycle data", error);
@@ -79,16 +76,16 @@ const EmployeeLifecycleModule = () => {
 
     useEffect(() => {
         fetchData();
-    }, []);
+    }, [authUser]);   // was []
 
     const handleUploadDoc = async (e) => {
         e.preventDefault();
         if (!newDoc.file || !newDoc.document_type || !selectedEmployee) return;
 
         const formData = new FormData();
-        formData.append('employee', selectedEmployee.id);
-        formData.append('document_type', newDoc.document_type);
-        formData.append('file', newDoc.file);
+if (isAdmin) formData.append('employee', selectedEmployee.id);
+formData.append('document_type', newDoc.document_type);
+formData.append('file', newDoc.file);
 
         try {
             await api.post('hrms/documents/', formData, {
@@ -144,7 +141,10 @@ const EmployeeLifecycleModule = () => {
     };
 
     const renderDocumentVault = () => {
-        const isAdmin = authUser?.role === 'SUPER_ADMIN' || authUser?.role === 'ADMIN';
+        // const isAdmin = authUser?.role === 'SUPER_ADMIN' || authUser?.role === 'ADMIN';
+        const visibleDocs = isAdmin
+        ? documents.filter(d => d.employee === selectedEmployee?.id)
+        : documents;
         return (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {isAdmin && (
@@ -186,14 +186,14 @@ const EmployeeLifecycleModule = () => {
                             </button>
                         </div>
                         <div className="p-6 flex-1 overflow-y-auto">
-                            {documents.filter(d => d.employee === selectedEmployee.id).length === 0 ? (
+                            {visibleDocs.length === 0 ? (
                                 <div className="h-full flex flex-col items-center justify-center text-slate-400">
                                     <FolderClosed size={48} className="mb-4 opacity-50" />
                                     <p className="text-sm font-medium">No documents uploaded yet.</p>
                                 </div>
                             ) : (
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    {documents.filter(d => d.employee === selectedEmployee.id).map(doc => (
+                                    {visibleDocs.map(doc => (
                                         <div key={doc.id} className="p-4 border border-slate-200 rounded-xl hover:shadow-md transition-shadow group flex items-start justify-between">
                                             <div className="flex items-start gap-3">
                                                 <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg">

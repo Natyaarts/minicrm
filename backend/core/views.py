@@ -475,13 +475,12 @@ class StudentViewSet(viewsets.ModelViewSet):
         
         hide_converted = self.request.query_params.get('hide_converted')
         if hide_converted == 'true':
-            # ensure all variations of enrolled/converted are excluded
-            exclude_statuses = converted_stage_ids + ['ENROLLED', 'CONVERTED', 'enrolled', 'converted', 'Enrolled', 'Converted']
-            qs = qs.exclude(lead_status__in=exclude_statuses)
+            from crm.utils import get_converted_stage_values
+            qs = qs.exclude(lead_status__in=get_converted_stage_values())
 
-        sales_section_filter = self.request.query_params.get('sales_section')
-        if sales_section_filter and sales_section_filter.upper() != 'ALL':
-            qs = qs.filter(sales_section=sales_section_filter.upper())
+        # sales_section_filter = self.request.query_params.get('sales_section')
+        # if sales_section_filter and sales_section_filter.upper() != 'ALL':
+        #     qs = qs.filter(sales_section=sales_section_filter.upper())
 
         batch_id = self.request.query_params.get('batch')
         if batch_id:
@@ -501,10 +500,19 @@ class StudentViewSet(viewsets.ModelViewSet):
                 qs = qs.filter(assigned_to_id=assigned_to)
 
         contacted = self.request.query_params.get('contacted')
-        if contacted == 'true':
-            qs = qs.filter(crm_interactions__isnull=False).distinct()
-        elif contacted == 'false':
-            qs = qs.filter(crm_interactions__isnull=True)
+        if contacted in ('true', 'false'):
+            from crm.utils import get_converted_stage_values, get_new_stage_values
+            open_qs = qs.exclude(lead_status__in=get_converted_stage_values())
+            contacted_ids = (
+                open_qs
+                .exclude(lead_status__in=get_new_stage_values())
+                .filter(crm_interactions__isnull=False)
+                .values('id')
+            )
+            if contacted == 'true':
+                qs = open_qs.filter(id__in=contacted_ids)
+            else:
+                qs = open_qs.exclude(id__in=contacted_ids)
             
         new_only = self.request.query_params.get('new_only')
         pipeline_only = self.request.query_params.get('pipeline_only')
@@ -582,7 +590,8 @@ class StudentViewSet(viewsets.ModelViewSet):
         lead_status = self.request.query_params.get('lead_status')
         if lead_status:
             if lead_status.upper() == 'CONVERTED':
-                qs = qs.filter(lead_status__in=converted_stage_ids)
+                from crm.utils import get_converted_stage_values
+                qs = qs.filter(lead_status__in=get_converted_stage_values())
             elif lead_status.upper() == 'DUPLICATE':
                 pass  # Already isolated above
             else:

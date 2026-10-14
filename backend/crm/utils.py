@@ -265,3 +265,28 @@ def check_is_sales_manager(user) -> bool:
         if profile.designation and any(kw in profile.designation.name.lower() for kw in ['lead', 'manager', 'vp', 'head', 'director']):
             return True
     return False
+
+
+
+
+def get_converted_stage_values():
+    """All lead_status values that mean converted/enrolled (ids, codes, names)."""
+    from .models import PipelineStage
+    values = {'ENROLLED', 'CONVERTED', 'enrolled', 'converted', 'Enrolled', 'Converted'}
+    for stage in PipelineStage.objects.filter(
+        Q(name__icontains='convert') | Q(name__icontains='enroll')
+    ):
+        values.add(str(stage.id))
+        if stage.name:
+            values.add(stage.name)
+    return list(values)
+
+
+def get_new_stage_values():
+    """All lead_status values that mean the lead is still in the NEW stage."""
+    from .models import PipelineStage
+    values = {'NEW', 'new', 'New', 'New Lead', 'NEW LEAD', 'new lead'}
+    for stage in PipelineStage.objects.filter(name__iregex=r'^new( lead)?$'):
+        values.add(str(stage.id))
+        values.add(stage.name)
+    return list(values)
