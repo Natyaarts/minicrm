@@ -113,6 +113,8 @@ const SalesModule = () => {
         }
     }, [searchParams]);
     const [pendingPipelineStatus, setPendingPipelineStatus] = useState('');
+    const [creUpdate, setCreUpdate] = useState('');
+    const [savingCreUpdate, setSavingCreUpdate] = useState(false);
     const [selectedLeadIds, setSelectedLeadIds] = useState([]);
     const [showBulkAssignModal, setShowBulkAssignModal] = useState(false);
     const [bulkAssignTo, setBulkAssignTo] = useState('');
@@ -136,11 +138,13 @@ const SalesModule = () => {
     useEffect(() => {
         if (selectedStudentProfile?.id) {
             setPendingPipelineStatus(selectedStudentProfile.lead_status || 'NEW');
+            setCreUpdate(selectedStudentProfile.cre_update || '');
             fetchLiveWiseData(selectedStudentProfile.id);
             fetchInteractions(selectedStudentProfile.id);
             fetchStudentTasks(selectedStudentProfile.id);
         } else {
             setPendingPipelineStatus('');
+            setCreUpdate('');
             setWiseData(null);
             setInteractions([]);
             setStudentTasks([]);
@@ -199,6 +203,28 @@ const SalesModule = () => {
             console.error("Failed to update status", error);
             setToast({ title: "Error", description: "Failed to update status.", type: 'error' });
             setTimeout(() => setToast(null), 3000);
+        }
+    };
+
+    const handleSaveCreUpdate = async () => {
+        if (!selectedStudentProfile?.id) return;
+        setSavingCreUpdate(true);
+        try {
+            const res = await api.patch(`students/${selectedStudentProfile.id}/`, {
+                cre_update: creUpdate
+            });
+            const updatedVal = res.data?.cre_update !== undefined ? res.data.cre_update : creUpdate;
+            setSelectedStudentProfile(prev => prev ? ({ ...prev, cre_update: updatedVal }) : null);
+            setStudentList(prev => prev.map(s => s.id === selectedStudentProfile.id ? { ...s, cre_update: updatedVal } : s));
+            setToast({ title: "Success", description: "CRE Update saved successfully.", type: 'success' });
+            setTimeout(() => setToast(null), 3000);
+        } catch (error) {
+            console.error("Failed to save CRE update", error);
+            const errMsg = error.response?.data?.detail || "Failed to save CRE Update.";
+            setToast({ title: "Error", description: errMsg, type: 'error' });
+            setTimeout(() => setToast(null), 3000);
+        } finally {
+            setSavingCreUpdate(false);
         }
     };
 
@@ -2285,6 +2311,47 @@ const SalesModule = () => {
                                     )}
                                 </div>
                             )}
+
+                            {/* CRE Update */}
+                            <div className="md:col-span-2 text-left bg-slate-50 border border-slate-200 rounded-xl p-4 mt-2">
+                                <div className="flex justify-between items-center mb-2">
+                                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">CRE Update</h3>
+                                    {selectedStudentProfile.cre_update && (
+                                        <span className="text-[10px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full font-semibold border border-emerald-200">
+                                            Recorded
+                                        </span>
+                                    )}
+                                </div>
+                                <textarea
+                                    value={creUpdate}
+                                    onChange={(e) => setCreUpdate(e.target.value)}
+                                    placeholder="Enter CRE update..."
+                                    rows={3}
+                                    className="w-full text-xs p-2.5 border border-slate-200 rounded-lg outline-none focus:border-indigo-400 bg-white text-slate-800 resize-y mb-2.5"
+                                />
+                                <div className="flex justify-between items-center">
+                                    <span className="text-[10px] text-slate-400 italic">Optional field</span>
+                                    <div className="flex gap-2">
+                                        {creUpdate !== (selectedStudentProfile.cre_update || '') && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setCreUpdate(selectedStudentProfile.cre_update || '')}
+                                                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-500 hover:bg-slate-200 transition-colors"
+                                            >
+                                                Reset
+                                            </button>
+                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={handleSaveCreUpdate}
+                                            disabled={savingCreUpdate}
+                                            className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition-colors shadow-sm flex items-center gap-1.5"
+                                        >
+                                            {savingCreUpdate ? 'Saving...' : 'Save CRE Update'}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
 
                             {/* Activity Log / Interactions */}
                             <div className="md:col-span-2 text-left bg-slate-50 border border-slate-200 rounded-xl p-4 mt-2">
