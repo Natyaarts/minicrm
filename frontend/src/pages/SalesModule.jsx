@@ -911,6 +911,168 @@ const SalesModule = () => {
     const hasSubPrograms = subPrograms.length > 0;
     const hasCourses = courses.length > 0;
 
+    // Create Lead Modal State
+    const [showCreateModal, setShowCreateModal] = useState(false);
+    const [createFormData, setCreateFormData] = useState({
+        first_name: '',
+        last_name: '',
+        mobile: '',
+        email: '',
+        assigned_to: '',
+        program_type: '',
+        sub_program: '',
+        course: '',
+        cre_update: '',
+        dynamic_values: {}
+    });
+    const [createSubPrograms, setCreateSubPrograms] = useState([]);
+    const [createCourses, setCreateCourses] = useState([]);
+    const [createDynamicFields, setCreateDynamicFields] = useState([]);
+    const [creatingLead, setCreatingLead] = useState(false);
+
+    const handleOpenCreateModal = () => {
+        setCreateFormData({
+            first_name: '',
+            last_name: '',
+            mobile: '',
+            email: '',
+            assigned_to: authUser?.id || '',
+            program_type: '',
+            sub_program: '',
+            course: '',
+            cre_update: '',
+            dynamic_values: {}
+        });
+        setCreateSubPrograms([]);
+        setCreateCourses([]);
+        setCreateDynamicFields([]);
+        setShowCreateModal(true);
+    };
+
+    const fetchCreateDynamicFields = async (param, id) => {
+        try {
+            const res = await api.get(`forms/fields/?${param}=${id}&field_group=INITIAL`);
+            const data = Array.isArray(res.data) ? res.data : (res.data?.results || []);
+            const sorted = data.sort((a, b) => a.order - b.order);
+            setCreateDynamicFields(sorted);
+        } catch (err) {
+            console.error("Failed to load form fields", err);
+        }
+    };
+
+    const handleCreateProgramChange = async (e) => {
+        const progId = e.target.value;
+        setCreateFormData(prev => ({ ...prev, program_type: progId, sub_program: '', course: '', dynamic_values: {} }));
+        setCreateSubPrograms([]);
+        setCreateCourses([]);
+        setCreateDynamicFields([]);
+
+        if (progId) {
+            try {
+                const subRes = await api.get(`sub-programs/?program=${progId}`);
+                setCreateSubPrograms(subRes.data);
+                fetchCreateDynamicFields('program', progId);
+            } catch (err) { console.error(err); }
+        }
+    };
+
+    const handleCreateSubProgramChange = async (e) => {
+        const subId = e.target.value;
+        setCreateFormData(prev => ({ ...prev, sub_program: subId, course: '' }));
+        setCreateCourses([]);
+
+        if (subId) {
+            try {
+                const res = await api.get(`courses/?sub_program=${subId}`);
+                setCreateCourses(res.data);
+                fetchCreateDynamicFields('sub_program', subId);
+            } catch (err) { console.error(err); }
+        } else if (createFormData.program_type) {
+            fetchCreateDynamicFields('program', createFormData.program_type);
+        }
+    };
+
+    const handleCreateCourseChange = (e) => {
+        const courseId = e.target.value;
+        setCreateFormData(prev => ({ ...prev, course: courseId }));
+        if (courseId) {
+            fetchCreateDynamicFields('course', courseId);
+        } else if (createFormData.sub_program) {
+            fetchCreateDynamicFields('sub_program', createFormData.sub_program);
+        } else if (createFormData.program_type) {
+            fetchCreateDynamicFields('program', createFormData.program_type);
+        }
+    };
+
+    const handleCreateDynamicChange = (fieldId, value) => {
+        setCreateFormData(prev => ({
+            ...prev,
+            dynamic_values: {
+                ...prev.dynamic_values,
+                [fieldId]: value
+            }
+        }));
+    };
+
+    const handleCreateLeadSubmit = async (e) => {
+        e.preventDefault();
+        setCreatingLead(true);
+
+        const payload = {
+            first_name: createFormData.first_name,
+            last_name: createFormData.last_name || '',
+            mobile: createFormData.mobile,
+            email: createFormData.email || '',
+            program_type: createFormData.program_type,
+            lead_status: 'NEW',
+            is_active: true
+        };
+
+        if (createFormData.sub_program) {
+            payload.sub_program = createFormData.sub_program;
+        }
+        if (createFormData.course) {
+            payload.course = createFormData.course;
+        }
+        if (createFormData.assigned_to) {
+            payload.assigned_to = createFormData.assigned_to;
+        } else if (authUser?.role === 'SALES') {
+            payload.assigned_to = authUser.id;
+        }
+        if (createFormData.cre_update) {
+            payload.cre_update = createFormData.cre_update;
+        }
+        if (createFormData.dynamic_values && Object.keys(createFormData.dynamic_values).length > 0) {
+            payload.dynamic_values = createFormData.dynamic_values;
+        }
+
+        try {
+            await api.post('students/', payload);
+            setShowCreateModal(false);
+            setToast({ title: "Success", description: "New lead created successfully.", type: 'success' });
+            setTimeout(() => setToast(null), 3000);
+            fetchStudents();
+        } catch (error) {
+            console.error("Failed to create lead", error);
+            let errorMsg = "Failed to create lead. Please check your inputs.";
+            if (error.response?.data) {
+                const data = error.response.data;
+                if (typeof data === 'string') {
+                    errorMsg = data;
+                } else if (data.detail) {
+                    errorMsg = data.detail;
+                } else if (typeof data === 'object') {
+                    const firstError = Object.values(data).flat()[0];
+                    if (firstError) errorMsg = firstError;
+                }
+            }
+            setToast({ title: "Error", description: errorMsg, type: 'error' });
+            setTimeout(() => setToast(null), 4000);
+        } finally {
+            setCreatingLead(false);
+        }
+    };
+
     // Filtered Students
     const filteredStudents = studentList;
 
@@ -1065,7 +1227,7 @@ const SalesModule = () => {
                                 </h3>
                                 <div className="hidden lg:flex items-center gap-2">
                                     <button
-                                        onClick={() => setActiveTab('single')}
+                                        onClick={handleOpenCreateModal}
                                         className="px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-semibold hover:bg-indigo-100 transition-colors"
                                     >
                                         + New Lead
@@ -2752,6 +2914,226 @@ const SalesModule = () => {
                                             <span>Saving...</span>
                                         </div>
                                     ) : 'Update Details'}
+                                </button>
+                            </div>
+                        </form>
+                    </motion.div>
+                </div>
+            )}
+
+            {/* New Lead Modal */}
+            {showCreateModal && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
+                    <motion.div
+                        initial={{ scale: 0.95, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        className="bg-white rounded-xl p-4 sm:p-6 border border-slate-200 w-full max-w-xl shadow-lg max-h-[90vh] overflow-y-auto custom-scrollbar"
+                    >
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                                <User className="text-indigo-600" size={16} />
+                                New CRM Lead
+                            </h2>
+                            <button onClick={() => setShowCreateModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
+                                <X size={16} />
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleCreateLeadSubmit} className="space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+                                <div className="md:col-span-2 bg-slate-50 p-4 rounded-xl border border-slate-200 text-left">
+                                    <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Program Selection</h4>
+                                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-left">
+                                        <div>
+                                            <label className="text-[10px] font-semibold text-slate-600 mb-1 block">Program <span className="text-red-500">*</span></label>
+                                            <div className="relative">
+                                                <select
+                                                    className="w-full px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs outline-none focus:border-indigo-500 shadow-sm appearance-none"
+                                                    value={createFormData.program_type || ''}
+                                                    onChange={handleCreateProgramChange}
+                                                    required
+                                                >
+                                                    <option value="">Select Program</option>
+                                                    {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                                </select>
+                                                <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-slate-400">
+                                                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="text-[10px] font-semibold text-slate-600 mb-1 block">Sub-Program</label>
+                                            <div className="relative">
+                                                <select
+                                                    className="w-full px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs outline-none focus:border-indigo-500 shadow-sm appearance-none"
+                                                    value={createFormData.sub_program || ''}
+                                                    onChange={handleCreateSubProgramChange}
+                                                >
+                                                    <option value="">Select Sub-Program</option>
+                                                    {createSubPrograms.map(sp => <option key={sp.id} value={sp.id}>{sp.name}</option>)}
+                                                </select>
+                                                <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-slate-400">
+                                                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="text-[10px] font-semibold text-slate-600 mb-1 block">Course</label>
+                                            <div className="relative">
+                                                <select
+                                                    className="w-full px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs outline-none focus:border-indigo-500 shadow-sm appearance-none"
+                                                    value={createFormData.course || ''}
+                                                    onChange={handleCreateCourseChange}
+                                                >
+                                                    <option value="">Select Course</option>
+                                                    {createCourses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                                </select>
+                                                <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-slate-400">
+                                                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="text-[10px] font-semibold text-slate-600 mb-1 block">Assigned To</label>
+                                            <div className="relative">
+                                                <select
+                                                    className="w-full px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs outline-none focus:border-indigo-500 shadow-sm appearance-none"
+                                                    value={createFormData.assigned_to || ''}
+                                                    onChange={(e) => setCreateFormData(prev => ({ ...prev, assigned_to: e.target.value }))}
+                                                >
+                                                    <option value="">Unassigned</option>
+                                                    {salesUsers.map(u => <option key={u.id} value={u.id}>{u.name || (u.first_name ? `${u.first_name} ${u.last_name || ''}`.trim() : u.username)}</option>)}
+                                                </select>
+                                                <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-slate-400">
+                                                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="md:col-span-2 border-b border-slate-100 pb-1.5 text-left">
+                                    <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Core Information</h4>
+                                </div>
+
+                                <div className="text-left">
+                                    <label className="text-[10px] font-semibold text-slate-600 mb-1 block">First Name <span className="text-red-500">*</span></label>
+                                    <input
+                                        type="text"
+                                        name="first_name"
+                                        value={createFormData.first_name || ''}
+                                        onChange={(e) => setCreateFormData(prev => ({ ...prev, first_name: e.target.value }))}
+                                        required
+                                        placeholder="Enter First Name"
+                                        className="w-full px-3 py-1.5 rounded-lg bg-white border border-slate-200 focus:border-indigo-500 outline-none text-xs text-slate-700 shadow-sm"
+                                    />
+                                </div>
+                                <div className="text-left">
+                                    <label className="text-[10px] font-semibold text-slate-600 mb-1 block">Last Name</label>
+                                    <input
+                                        type="text"
+                                        name="last_name"
+                                        value={createFormData.last_name || ''}
+                                        onChange={(e) => setCreateFormData(prev => ({ ...prev, last_name: e.target.value }))}
+                                        placeholder="Enter Last Name"
+                                        className="w-full px-3 py-1.5 rounded-lg bg-white border border-slate-200 focus:border-indigo-500 outline-none text-xs text-slate-700 shadow-sm"
+                                    />
+                                </div>
+                                <div className="text-left">
+                                    <label className="text-[10px] font-semibold text-slate-600 mb-1 block">Mobile Number <span className="text-red-500">*</span></label>
+                                    <input
+                                        type="tel"
+                                        name="mobile"
+                                        value={createFormData.mobile || ''}
+                                        onChange={(e) => setCreateFormData(prev => ({ ...prev, mobile: e.target.value }))}
+                                        required
+                                        placeholder="Enter Mobile Number"
+                                        className="w-full px-3 py-1.5 rounded-lg bg-white border border-slate-200 focus:border-indigo-500 outline-none text-xs text-slate-700 shadow-sm"
+                                    />
+                                </div>
+                                <div className="text-left">
+                                    <label className="text-[10px] font-semibold text-slate-600 mb-1 block">Email Address</label>
+                                    <input
+                                        type="email"
+                                        name="email"
+                                        value={createFormData.email || ''}
+                                        onChange={(e) => setCreateFormData(prev => ({ ...prev, email: e.target.value }))}
+                                        placeholder="Enter Email Address"
+                                        className="w-full px-3 py-1.5 rounded-lg bg-white border border-slate-200 focus:border-indigo-500 outline-none text-xs text-slate-700 shadow-sm"
+                                    />
+                                </div>
+
+                                {createDynamicFields.length > 0 && (
+                                    <>
+                                        <div className="md:col-span-2 border-b border-slate-100 pt-3 pb-1.5 text-left">
+                                            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Application Details</h4>
+                                        </div>
+                                        {createDynamicFields.map(field => (
+                                            <div key={field.id} className={field.field_type === 'file' ? 'md:col-span-2 text-left' : 'text-left'}>
+                                                <label className="text-[10px] font-semibold text-slate-600 mb-1 block">
+                                                    {field.label} {field.is_required && <span className="text-red-500">*</span>}
+                                                </label>
+                                                {field.field_type === 'dropdown' ? (
+                                                    <div className="relative">
+                                                        <select
+                                                            className="w-full px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs outline-none focus:border-indigo-500 shadow-sm appearance-none"
+                                                            value={createFormData.dynamic_values?.[field.id] || ''}
+                                                            onChange={(e) => handleCreateDynamicChange(field.id, e.target.value)}
+                                                            required={field.is_required}
+                                                        >
+                                                            <option value="">Select {field.label}</option>
+                                                            {field.options?.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                                        </select>
+                                                        <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-slate-400">
+                                                            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                                                        </div>
+                                                    </div>
+                                                ) : field.field_type !== 'file' ? (
+                                                    <input
+                                                        type={field.field_type}
+                                                        className="w-full px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs outline-none focus:border-indigo-500 shadow-sm"
+                                                        value={createFormData.dynamic_values?.[field.id] || ''}
+                                                        onChange={(e) => handleCreateDynamicChange(field.id, e.target.value)}
+                                                        required={field.is_required}
+                                                        placeholder={`Enter ${field.label}`}
+                                                    />
+                                                ) : null}
+                                            </div>
+                                        ))}
+                                    </>
+                                )}
+
+                                <div className="md:col-span-2 text-left">
+                                    <label className="text-[10px] font-semibold text-slate-600 mb-1 block">CRE Update (Optional)</label>
+                                    <textarea
+                                        value={createFormData.cre_update || ''}
+                                        onChange={(e) => setCreateFormData({ ...createFormData, cre_update: e.target.value })}
+                                        placeholder="Optional notes or initial CRE update..."
+                                        rows={2}
+                                        className="w-full px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs outline-none focus:border-indigo-500 shadow-sm resize-y"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="pt-4 flex gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowCreateModal(false)}
+                                    className="flex-1 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-semibold hover:bg-slate-200 transition-all"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={creatingLead}
+                                    className="flex-1 py-2 bg-indigo-600 text-white rounded-lg text-xs font-semibold hover:bg-indigo-700 transition-all disabled:opacity-50"
+                                >
+                                    {creatingLead ? (
+                                        <div className="flex items-center justify-center gap-1.5">
+                                            <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                            <span>Creating Lead...</span>
+                                        </div>
+                                    ) : 'Create Lead'}
                                 </button>
                             </div>
                         </form>
