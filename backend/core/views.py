@@ -367,7 +367,17 @@ class StudentViewSet(viewsets.ModelViewSet):
             self.request.query_params['ordering'] = '-id'
             self.request.query_params._mutable = False
         return super().filter_queryset(queryset)
-    
+
+    def update(self, request, *args, **kwargs):
+        if 'cre_update' in request.data:
+            user = request.user
+            if not user or not user.is_authenticated:
+                return Response({'detail': 'Authentication required to modify CRE Update.'}, status=status.HTTP_401_UNAUTHORIZED)
+            allowed_roles = ['SALES', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD', 'ADMIN', 'SUPER_ADMIN']
+            if user.role not in allowed_roles and not user.is_superuser and not user.is_staff:
+                return Response({'detail': 'You do not have permission to modify CRE Update.'}, status=status.HTTP_403_FORBIDDEN)
+        return super().update(request, *args, **kwargs)
+
     def perform_update(self, serializer):
         instance = self.get_object()
         old_status = getattr(instance, 'lead_status', None)

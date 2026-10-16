@@ -424,3 +424,88 @@ class SalesLeadAccessControlSecurityTests(TestCase):
         self.assertIn(self.lead_a.id, lead_ids)
         self.assertIn(self.lead_b.id, lead_ids)
 
+    # 19. A SALES user can enter and submit a CRE Update
+    def test_19_sales_user_can_enter_and_submit_cre_update(self):
+        res = self.client_a.patch(f'/api/students/{self.lead_a.id}/', {
+            'cre_update': 'Parent requested evening Kathak slot. Follow-up tomorrow.'
+        })
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data.get('cre_update'), 'Parent requested evening Kathak slot. Follow-up tomorrow.')
+        self.lead_a.refresh_from_db()
+        self.assertEqual(self.lead_a.cre_update, 'Parent requested evening Kathak slot. Follow-up tomorrow.')
+
+    # 20. A SALES user can edit and resubmit an existing update
+    def test_20_sales_user_can_edit_and_resubmit_cre_update(self):
+        self.lead_a.cre_update = 'Old CRE note'
+        self.lead_a.save()
+
+        res = self.client_a.patch(f'/api/students/{self.lead_a.id}/', {
+            'cre_update': 'Revised CRE note: Confirmed for batch A.'
+        })
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data.get('cre_update'), 'Revised CRE note: Confirmed for batch A.')
+        self.lead_a.refresh_from_db()
+        self.assertEqual(self.lead_a.cre_update, 'Revised CRE note: Confirmed for batch A.')
+
+    # 21. Saved CRE Update remains visible when retrieving lead details
+    def test_21_saved_cre_update_remains_visible_on_retrieve(self):
+        self.lead_a.cre_update = 'Saved details for lead A.'
+        self.lead_a.save()
+
+        res = self.client_a.get(f'/api/students/{self.lead_a.id}/')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data.get('cre_update'), 'Saved details for lead A.')
+
+    # 22. An empty CRE Update does not prevent saving a lead
+    def test_22_empty_cre_update_does_not_prevent_saving_lead(self):
+        # Update without cre_update field
+        res_no_field = self.client_a.patch(f'/api/students/{self.lead_a.id}/', {
+            'first_name': 'AnanyaUpdated'
+        })
+        self.assertEqual(res_no_field.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_no_field.data.get('first_name'), 'AnanyaUpdated')
+
+        # Update with empty string cre_update
+        res_empty = self.client_a.patch(f'/api/students/{self.lead_a.id}/', {
+            'cre_update': ''
+        })
+        self.assertEqual(res_empty.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_empty.data.get('cre_update'), '')
+
+    # 23. Updating one lead does not affect another lead's CRE Update
+    def test_23_updating_one_lead_does_not_affect_another_lead(self):
+        self.lead_b.cre_update = 'Original note for Lead B'
+        self.lead_b.save()
+
+        # Update lead A
+        res_a = self.client_a.patch(f'/api/students/{self.lead_a.id}/', {
+            'cre_update': 'Brand new note for Lead A'
+        })
+        self.assertEqual(res_a.status_code, status.HTTP_200_OK)
+
+        # Verify lead B is completely unchanged
+        self.lead_b.refresh_from_db()
+        self.assertEqual(self.lead_b.cre_update, 'Original note for Lead B')
+
+    # 24. Sales user cannot access or patch other rep's CRE Update
+    def test_24_sales_user_cannot_patch_other_rep_lead_cre_update(self):
+        res = self.client_a.patch(f'/api/students/{self.lead_b.id}/', {
+            'cre_update': 'Attempting unauthorized tamper'
+        })
+        self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND)
+
+    # 25. Unauthorized users cannot bypass backend permissions to modify cre_update
+    def test_25_unauthorized_users_cannot_modify_cre_update(self):
+        unauth_client = APIClient()
+        res_unauth = unauth_client.patch(f'/api/students/{self.lead_a.id}/', {
+            'cre_update': 'Tamper from unauthenticated'
+        })
+        self.assertEqual(res_unauth.status_code, status.HTTP_401_UNAUTHORIZED)
+
+        student_client = APIClient()
+        student_client.force_authenticate(user=self.u_lead_a)
+        res_student = student_client.patch(f'/api/students/{self.lead_a.id}/', {
+            'cre_update': 'Tamper from student'
+        })
+        self.assertEqual(res_student.status_code, status.HTTP_403_FORBIDDEN)
+
