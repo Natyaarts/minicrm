@@ -37,7 +37,7 @@ function Dashboard() {
                     students: res.data.students || 0,
                     batches: res.data.batches || 0,
                     revenue: res.data.revenue || 0,
-                    leads: 0,
+                    leads: res.data.leads || 0,
                     revenue_distribution: res.data.revenue_distribution || [],
                     this_month_expected: res.data.this_month_expected || 0,
                     this_month_collected: res.data.this_month_collected || 0,

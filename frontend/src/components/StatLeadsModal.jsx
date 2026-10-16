@@ -32,9 +32,11 @@ const StatLeadsModal = ({ config, onClose, onViewLead, salesSectionFilter, pipel
 
         if (search) params.append('search', search);
 
-        if (salesSectionFilter && salesSectionFilter !== 'ALL') {
-            params.append('sales_section', salesSectionFilter);
-        }
+        const section = String(salesSectionFilter || '').trim().toUpperCase();
+
+if (section && section !== 'ALL') {
+    params.set('sales_section', section);
+}
 
         // Stage / converted handling
         const convertedStage = pipelineStages.find(s => /enroll|convert/i.test(s.name || ''));

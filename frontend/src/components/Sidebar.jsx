@@ -90,6 +90,7 @@ function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }) {
     const { user, logout } = useAuth();
     const [openSections, setOpenSections] = useState({
         Academics: true,
+        'CRM Module': true,
         'HRMS Module': true,
         Administrative: true
     });

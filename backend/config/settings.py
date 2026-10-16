@@ -312,7 +312,8 @@ if os.getenv('USE_AWS_S3') == 'True':
         },
     }
 else:
-    MEDIA_URL = 'https://natyaarts.org/api/media/'
+    # MEDIA_URL = 'https://natyaarts.org/api/media/'
+    MEDIA_URL = os.getenv('MEDIA_URL', '/api/media/')
     MEDIA_ROOT = BASE_DIR / 'media'
 
 # Custom User Model

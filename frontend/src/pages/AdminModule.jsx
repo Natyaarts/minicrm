@@ -5,7 +5,7 @@ import {
     ChevronRight, ChevronDown, Book, Layers, GraduationCap,
     Settings, ListPlus, Info, Eye, ExternalLink, Search,
     UserCircle, Shield, Globe, Terminal, Box, Database,
-    UserPlus, Users, Key, Settings2, ArrowRight, Send, FileText, Check
+    UserPlus, Users, Key, Settings2, ArrowRight, Send, FileText, Check, Power
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { copyToClipboard } from '../utils/clipboard';
@@ -39,6 +39,7 @@ const AdminModule = () => {
     const [programModalOpen, setProgramModalOpen] = useState(false);
     const [newProgramName, setNewProgramName] = useState('');
     const [newCourse, setNewCourse] = useState({ name: '', fee_amount: 0 });
+    const [showInactive, setShowInactive] = useState(false);
 
     // Razorpay Integration State
     const [razorpayConfig, setRazorpayConfig] = useState({ key_id: '', key_secret: '', is_active: false });
@@ -48,7 +49,7 @@ const AdminModule = () => {
     useEffect(() => {
         if (activeTab === 'fields') fetchHierarchy();
         if (activeTab === 'integrations') fetchRazorpayConfig();
-    }, [activeTab]);
+    }, [activeTab, showInactive]);
 
     useEffect(() => {
         if (selectedNode) {
@@ -57,20 +58,32 @@ const AdminModule = () => {
     }, [selectedNode]);
 
     const fetchHierarchy = async () => {
-        setLoading(true);
-        try {
-            const res = await api.get('programs/hierarchy/');
-            setHierarchy(res.data);
-            if (!selectedNode && res.data.length > 0) {
-                const first = res.data[0];
-                setSelectedNode({ type: 'program', id: first.id, name: first.name, data: first });
-            }
-        } catch (err) {
-            console.error("Failed to fetch hierarchy", err);
-        } finally {
-            setLoading(false);
+    setLoading(true);
+    try {
+        const res = await api.get(`programs/hierarchy/${showInactive ? '?include_inactive=true' : ''}`);
+
+        // Checked = inactive brands only. Unchecked = active brands only.
+        const list = showInactive
+            ? res.data.filter(p => p.is_active === false)
+            : res.data;
+        setHierarchy(list);
+
+        const stillThere = selectedNode && (
+            selectedNode.type !== 'program' ||
+            list.some(p => p.id === selectedNode.id)
+        );
+        if ((!selectedNode || !stillThere) && list.length > 0) {
+            const first = list[0];
+            setSelectedNode({ type: 'program', id: first.id, name: first.name, data: first });
+        } else if (list.length === 0) {
+            setSelectedNode(null);
         }
-    };
+    } catch (err) {
+        console.error("Failed to fetch hierarchy", err);
+    } finally {
+        setLoading(false);
+    }
+};
 
     useEffect(() => {
         if (selectedSubProgram) {
@@ -116,13 +129,30 @@ const AdminModule = () => {
     };
 
     const handleDeleteProgram = async (id) => {
-        if (!window.confirm("Delete program and all its contents?")) return;
+        if (!window.confirm("Delete this brand and all its categories/courses?")) return;
         try {
             await api.delete(`programs/${id}/`);
-            fetchHierarchy();
             if (selectedNode?.id === id) setSelectedNode(null);
+            await fetchHierarchy();
         } catch (err) {
-            console.error(err);
+            const data = err.response?.data;
+            const msg = typeof data === 'string' ? data : (data?.error || data?.detail || JSON.stringify(data));
+            alert(`Cannot delete brand: ${msg || err.message}`);
+        }
+    };
+
+
+    const handleToggleProgram = async (program) => {
+        const action = program.is_active === false ? 'activate' : 'deactivate';
+        if (!window.confirm(`Do you want to ${action} "${program.name}"?`)) return;
+        try {
+            await api.post(`programs/${program.id}/toggle_active/`);
+            await fetchHierarchy();
+            setToast({ message: `Brand ${action}d` });
+            setTimeout(() => setToast(null), 3000);
+        } catch (err) {
+            const data = err.response?.data;
+            alert(`Failed: ${data?.error || data?.detail || err.message}`);
         }
     };
 
@@ -365,13 +395,23 @@ const AdminModule = () => {
                                 <Database size={16} className="text-slate-500" />
                                 Brands
                             </h3>
-                            <button
-                                onClick={() => setProgramModalOpen(true)}
-                                className="p-1.5 bg-slate-100 text-slate-600 rounded-md hover:bg-slate-200 transition shadow-sm"
-                                title="Add New Brand"
-                            >
-                                <Plus size={16} />
-                            </button>
+                            <div className="flex items-center gap-3">
+                                <label className="flex items-center gap-1.5 text-[10px] font-bold uppercase text-slate-500 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={showInactive}
+                                        onChange={e => setShowInactive(e.target.checked)}
+                                    />
+                                    Show inactive
+                                </label>
+                                <button
+                                    onClick={() => setProgramModalOpen(true)}
+                                    className="p-1.5 bg-slate-100 text-slate-600 rounded-md hover:bg-slate-200 transition shadow-sm"
+                                    title="Add New Brand"
+                                >
+                                    <Plus size={16} />
+                                </button>
+                            </div>
                         </div>
                         <div className="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-2">
                             {hierarchy.map(program => (
@@ -392,11 +432,13 @@ const AdminModule = () => {
                                         <div className={`p-1.5 rounded-md border ${selectedNode?.id === program.id && selectedNode?.type === 'program' ? 'bg-slate-700 border-slate-600' : 'bg-white border-slate-200'}`}>
                                             <GraduationCap size={16} />
                                         </div>
-                                        <span className="font-semibold text-sm truncate flex-1">{program.name}</span>
+                                        <span className={`font-semibold text-sm truncate flex-1`}>
+                                            {program.name}
+                                        </span>
 
                                         <div className="flex items-center gap-1">
                                             <button
-                                                onClick={(e) => { e.stopPropagation(); setSelectedNode({ type: 'program', id: program.id }); setSubProgramModalOpen(true); }}
+                                                onClick={(e) => { e.stopPropagation(); setSelectedNode({ type: 'program', id: program.id, name: program.name, data: program }); setSubProgramModalOpen(true); }}
                                                 className={`p-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-all ${selectedNode?.id === program.id && selectedNode?.type === 'program' ? 'hover:bg-slate-600 text-slate-200' : 'hover:bg-slate-200 text-slate-500'}`}
                                             >
                                                 <ListPlus size={14} />
@@ -406,6 +448,17 @@ const AdminModule = () => {
                                                 className={`p-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-all ${selectedNode?.id === program.id && selectedNode?.type === 'program' ? 'hover:bg-rose-500 hover:text-white text-slate-200' : 'hover:bg-rose-50 hover:text-rose-500 text-slate-300'}`}
                                             >
                                                 <Trash2 size={14} />
+                                            </button>
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); handleToggleProgram(program); }}
+                                                title={program.is_active === false ? 'Activate brand' : 'Deactivate brand'}
+                                                className={`p-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-all ${
+                                                    program.is_active === false
+                                                        ? 'hover:bg-emerald-50 text-emerald-500'
+                                                        : 'hover:bg-amber-50 text-slate-400 hover:text-amber-600'
+                                                }`}
+                                            >
+                                                <Power size={14} />
                                             </button>
                                         </div>
                                     </div>

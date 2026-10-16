@@ -301,15 +301,19 @@ User = get_user_model()
 
 @receiver(post_save, sender=User)
 def create_employee_profile(sender, instance, created, **kwargs):
-    if created and getattr(instance, 'role', 'STUDENT') != 'STUDENT':
-        if not hasattr(instance, 'hrms_profile'):
-            emp_id = f'EMP-{instance.id}-{random.randint(1000, 9999)}'
-            EmployeeProfile.objects.create(
-                user=instance,
-                employee_id=emp_id,
-                date_of_joining=timezone.now().date(),
-                status='ACTIVE'
-            )
+    role = getattr(instance, 'role', 'STUDENT')
+    # Students don't need an HR profile, but superusers always do
+    if role == 'STUDENT' and not instance.is_superuser:
+        return
+    if EmployeeProfile.objects.filter(user=instance).exists():
+        return
+    emp_id = f'EMP-{instance.id}-{random.randint(1000, 9999)}'
+    EmployeeProfile.objects.create(
+        user=instance,
+        employee_id=emp_id,
+        date_of_joining=timezone.now().date(),
+        status='ACTIVE'
+    )
 
 class FestiveGreeting(models.Model):
     THEME_CHOICES = (

@@ -10,6 +10,7 @@ class Program(models.Model):
     slug = models.SlugField(unique=True, blank=True, null=True)
     require_payment = models.BooleanField(default=False)
     registration_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    is_active = models.BooleanField(default=True)
 
     def save(self, *args, **kwargs):
         if not self.slug and self.name:

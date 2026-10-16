@@ -9,6 +9,7 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 from decimal import Decimal, InvalidOperation
 import pandas as pd
+from django.db.models import ProtectedError
 
 from .models import Program, SubProgram, Course, Batch, Student, Transaction, Document, SyllabusPart, ClassSession, Attendance, BatchResource, Exam, ExamResult, Question, QuestionOption, StudentSubmission, MonthlyPayment, StudentTeacherHandover
 from .serializers import (
@@ -45,6 +46,56 @@ class ProgramViewSet(viewsets.ModelViewSet):
         programs = self.get_queryset()
         serializer = ProgramHierarchySerializer(programs, many=True)
         return Response(serializer.data)
+
+
+    def destroy(self, request, *args, **kwargs):
+        program = self.get_object()
+
+        linked_students = Student.objects.filter(
+            Q(program_type=program) |
+            Q(sub_program__program=program) |
+            Q(course__sub_program__program=program)
+        ).count()
+
+        if linked_students:
+            return Response(
+                {"error": f"Cannot delete '{program.name}': {linked_students} student(s)/lead(s) are linked to this brand."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            program.delete()
+        except ProtectedError:
+            return Response(
+                {"error": "This brand is linked to other records and cannot be deleted."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+    def get_queryset(self):
+        qs = Program.objects.all()
+        user = self.request.user
+
+        # Management actions always see everything
+        if self.action in ['update', 'partial_update', 'destroy', 'toggle_active']:
+            return qs
+
+        # Only logged-in staff can ask for inactive brands (used by the admin screen)
+        include_inactive = (
+            self.request.query_params.get('include_inactive') == 'true'
+            and user.is_authenticated
+        )
+        if not include_inactive:
+            qs = qs.filter(is_active=True)
+        return qs
+
+    @action(detail=True, methods=['post'])
+    def toggle_active(self, request, pk=None):
+        program = self.get_object()
+        program.is_active = not program.is_active
+        program.save(update_fields=['is_active'])
+        return Response({'id': program.id, 'is_active': program.is_active})
 
 class SubProgramViewSet(viewsets.ModelViewSet):
     queryset = SubProgram.objects.all()
@@ -383,11 +434,20 @@ class StudentViewSet(viewsets.ModelViewSet):
         })
 
     def perform_create(self, serializer):
+        from rest_framework.exceptions import ValidationError
+
         user = self.request.user if (self.request.user and self.request.user.is_authenticated) else None
+
+        # Block public submissions to a deactivated brand (staff can still add leads internally)
+        program = serializer.validated_data.get('program_type')
+        if program and not program.is_active and not user:
+            raise ValidationError({"error": "This brand is not accepting applications."})
+
         if user and user.role == 'SALES':
             student = serializer.save(assigned_to=user)
         else:
             student = serializer.save()
+
         from notifications.models import Notification
         User = get_user_model()
         staff_users = User.objects.filter(role__in=['ADMIN', 'SUPER_ADMIN'])
@@ -1246,82 +1306,71 @@ class StudentViewSet(viewsets.ModelViewSet):
     def break_metrics(self, request):
         from core.models import StudentBreakHistory
         from datetime import datetime, date
-        
-        start_date_str = request.query_params.get('start_date')
-        end_date_str = request.query_params.get('end_date')
-        
+
+        def parse(d):
+            try:
+                return datetime.strptime(d, '%Y-%m-%d').date() if d else None
+            except ValueError:
+                return None
+
+        start_date = parse(request.query_params.get('start_date'))
+        end_date = parse(request.query_params.get('end_date'))
+
         qs = self.get_queryset()
-        
-        # Parse dates if provided
-        start_date = None
-        end_date = None
-        try:
-            if start_date_str:
-                start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
-            if end_date_str:
-                end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
-        except ValueError:
-            pass
-        # Students on break filtering
-        on_break_qs = qs.filter(academic_status='ON_BREAK')
-        # To filter by when they took the break, we can look at the StudentBreakHistory
-        
-        # Rejoined filtering
-        rejoined_qs = StudentBreakHistory.objects.filter(
-            student__in=qs,
-            is_active_break=False
-        )
-        
-        # Discontinued filtering
+
+        on_break_students = qs.filter(academic_status='ON_BREAK')
         discontinued_qs = qs.filter(academic_status='DISCONTINUED')
-        
-        if start_date and end_date:
-            on_break_qs = on_break_qs.filter(
-                studentbreakhistory__break_start_date__gte=start_date,
-                studentbreakhistory__break_start_date__lte=end_date,
-                studentbreakhistory__is_active_break=True
-            ).distinct()
-            
-            rejoined_qs = rejoined_qs.filter(
-                rejoin_date__gte=start_date,
-                rejoin_date__lte=end_date
-            )
-        else:
-            # Default behavior if no dates: Rejoined this month
+
+        break_history_qs = StudentBreakHistory.objects.filter(
+            student__in=on_break_students, is_active_break=True
+        ).select_related('student')
+
+        rejoined_qs = StudentBreakHistory.objects.filter(
+            student__in=qs, is_active_break=False
+        ).select_related('student')
+
+        if start_date:
+            break_history_qs = break_history_qs.filter(break_start_date__gte=start_date)
+            rejoined_qs = rejoined_qs.filter(rejoin_date__gte=start_date)
+            discontinued_qs = discontinued_qs.filter(discontinued_date__gte=start_date)
+        if end_date:
+            break_history_qs = break_history_qs.filter(break_start_date__lte=end_date)
+            rejoined_qs = rejoined_qs.filter(rejoin_date__lte=end_date)
+            discontinued_qs = discontinued_qs.filter(discontinued_date__lte=end_date)
+
+        if not start_date and not end_date:
             today = date.today()
             rejoined_qs = rejoined_qs.filter(
-                rejoin_date__year=today.year,
-                rejoin_date__month=today.month
+                rejoin_date__year=today.year, rejoin_date__month=today.month
             )
 
-        # Build responses
         on_break_data = []
-        for s in on_break_qs:
-            history = StudentBreakHistory.objects.filter(student=s, is_active_break=True).first()
+        for h in break_history_qs:
+            s = h.student
             on_break_data.append({
                 'id': s.id,
                 'name': f"{s.first_name} {s.last_name}",
                 'crm_student_id': s.crm_student_id,
                 'mobile': s.mobile,
                 'email': s.email,
-                'reason': history.reason if history else '',
-                'date': history.break_start_date.strftime('%Y-%m-%d') if history and history.break_start_date else ''
+                'reason': h.reason,
+                'date': h.break_start_date.strftime('%Y-%m-%d') if h.break_start_date else ''
             })
-            
+
         rejoined_data = []
-        for history in rejoined_qs:
-            s = history.student
+        for h in rejoined_qs:
+            s = h.student
             rejoined_data.append({
                 'id': s.id,
                 'name': f"{s.first_name} {s.last_name}",
                 'crm_student_id': s.crm_student_id,
                 'mobile': s.mobile,
                 'email': s.email,
-                'reason': history.reason,
-                'break_date': history.break_start_date.strftime('%Y-%m-%d') if history.break_start_date else '',
-                'rejoin_date': history.rejoin_date.strftime('%Y-%m-%d') if history.rejoin_date else ''
+                'reason': h.reason,
+                'break_date': h.break_start_date.strftime('%Y-%m-%d') if h.break_start_date else '',
+                'rejoin_date': h.rejoin_date.strftime('%Y-%m-%d') if h.rejoin_date else ''
             })
-            
+
         discontinued_data = []
         for s in discontinued_qs:
             discontinued_data.append({
@@ -1333,7 +1382,7 @@ class StudentViewSet(viewsets.ModelViewSet):
                 'reason': 'Discontinued',
                 'date': s.discontinued_date.strftime('%Y-%m-%d') if s.discontinued_date else ''
             })
-            
+
         return Response({
             'on_break': on_break_data,
             'rejoined': rejoined_data,
@@ -2026,6 +2075,14 @@ class DashboardStatsView(APIView):
         except Exception:
             pass
 
+        new_stage_ids = ['NEW', 'New', 'new']
+        try:
+            from crm.models import PipelineStage
+            for stage in PipelineStage.objects.filter(name__iexact='new'):
+                new_stage_ids.append(str(stage.id))
+        except Exception:
+            pass
+
         student_qs = Student.objects.filter(is_active=True, lead_status__in=converted_stage_ids)
         batch_qs = Batch.objects.all()
         trans_qs = Transaction.objects.all()
@@ -2080,6 +2137,43 @@ class DashboardStatsView(APIView):
                 if str(mentor_id) == str(user.id) or any(str(sub.id) == str(mentor_id) for sub in subordinates):
                     student_qs = student_qs.filter(batch__primary_mentor_id=mentor_id).distinct()
                     batch_qs = batch_qs.filter(primary_mentor_id=mentor_id).distinct()
+
+
+        # --- Date range filter (counts only) ---
+        from django.utils.dateparse import parse_date
+        start_date = parse_date(request.query_params.get('start_date') or '')
+        end_date = parse_date(request.query_params.get('end_date') or '')
+
+        students_count_qs = student_qs
+        batches_count_qs = batch_qs
+
+        if start_date:
+            students_count_qs = students_count_qs.filter(created_at__date__gte=start_date)
+            # batch still running on/after start (no end date = ongoing)
+            batches_count_qs = batches_count_qs.filter(
+                Q(end_date__isnull=True) | Q(end_date__gte=start_date)
+            )
+        if end_date:
+            students_count_qs = students_count_qs.filter(created_at__date__lte=end_date)
+            batches_count_qs = batches_count_qs.filter(start_date__lte=end_date)
+
+
+
+        lead_qs = Student.objects.filter(is_active=True, lead_status__in=new_stage_ids, campaign__isnull=False,)
+
+        if user.role in ['SALES', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD']:
+            from crm.utils import check_is_sales_manager
+            if not check_is_sales_manager(user):
+                lead_qs = lead_qs.filter(assigned_to=user)
+            else:
+                user_section = getattr(user, 'sales_section', 'BOTH')
+                if user_section and user_section != 'BOTH':
+                    lead_qs = lead_qs.filter(
+                        Q(assigned_to__sales_section=user_section) |
+                        Q(sales_section=user_section)
+                    )
+        elif user.role in ['MENTOR', 'TEACHER']:
+            lead_qs = lead_qs.none()
 
         # Finance Integration
         from finance.models import Expense
@@ -2144,10 +2238,10 @@ class DashboardStatsView(APIView):
             })
 
         stats = {
-            "students": student_qs.count(),
-            "batches": batch_qs.count(),
+            "students": students_count_qs.distinct().count(),
+            "batches": batches_count_qs.distinct().count(),
             "revenue": trans_qs.aggregate(total=Sum('amount'))['total'] or 0,
-            "leads": Student.objects.filter(is_active=True, batch__isnull=True).count(),
+            "leads": lead_qs.count(),
             "distribution": list(student_qs.values(name=F('program_type__name')).annotate(value=Count('id'))),
             "revenue_distribution": list(trans_qs.values(name=F('student__program_type__name')).annotate(value=Sum('amount'))),
             "expenses": float(monthly_expenses),

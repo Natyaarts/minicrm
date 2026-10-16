@@ -28,6 +28,8 @@ const PublicApplicationForm = () => {
     const [processingFiles, setProcessingFiles] = useState(0);
     const [lookupError, setLookupError] = useState('');
     const [validationError, setValidationError] = useState(null);
+
+    const [notAvailable, setNotAvailable] = useState(false);
     
     // Auto-clear validation error
     useEffect(() => {
@@ -119,10 +121,11 @@ const PublicApplicationForm = () => {
 
     const fetchApplicationContext = async () => {
         setLoading(true);
+        setNotAvailable(false);
         try {
             // 1. Fetch Hierarchy to find program by slug
             const hRes = await api.get('programs/hierarchy/');
-            const prog = hRes.data.find(p => p.slug === programSlug || p.id.toString() === programSlug || (p.name && p.name.toLowerCase().includes(programSlug.toLowerCase())));
+            const prog = hRes.data.find(p => p.slug === programSlug || p.id.toString() === programSlug);
 
             if (!prog) throw new Error("Program not found");
             setProgram(prog);
@@ -198,6 +201,7 @@ const PublicApplicationForm = () => {
             }
         } catch (err) {
             console.error("Link invalid", err);
+            setNotAvailable(true);
         } finally {
             setLoading(false);
         }
@@ -602,6 +606,17 @@ const PublicApplicationForm = () => {
         <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 gap-4">
             <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
             <p className="font-black text-slate-400 uppercase tracking-widest text-xs">Preparing Application...</p>
+        </div>
+    );
+
+    if (notAvailable) return (
+        <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
+            <div className="bg-white p-12 rounded-[40px] shadow-2xl border border-slate-100 max-w-lg text-center">
+                <h1 className="text-3xl font-black text-slate-900 mb-4 tracking-tight">Applications closed</h1>
+                <p className="text-slate-500 font-medium">
+                    This program is not accepting applications right now. Please contact the institute for details.
+                </p>
+            </div>
         </div>
     );
 

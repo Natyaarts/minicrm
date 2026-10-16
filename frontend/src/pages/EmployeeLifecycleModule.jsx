@@ -95,7 +95,27 @@ formData.append('file', newDoc.file);
             setNewDoc({ document_type: '', file: null });
             fetchData();
         } catch (error) {
-            const errMsg = error.response?.data?.file?.[0] || error.response?.data?.error || error.response?.data?.detail || "Failed to upload document.";
+            console.error('Upload failed:', {
+                hasResponse: !!error.response,
+                status: error.response?.status,
+                code: error.code,
+                message: error.message,
+                fileSize: newDoc.file?.size,
+                fileType: newDoc.file?.type,
+            });
+
+            let errMsg;
+            if (!error.response) {
+                errMsg = 'Network error: the upload was interrupted. Please try again.';
+            } else if (error.response.status === 413) {
+                errMsg = 'File is too large for the server.';
+            } else {
+                errMsg =
+                    error.response.data?.file?.[0] ||
+                    error.response.data?.error ||
+                    error.response.data?.detail ||
+                    `Upload failed (HTTP ${error.response.status}).`;
+            }
             alert(errMsg);
         }
     };

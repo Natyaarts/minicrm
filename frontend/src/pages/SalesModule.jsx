@@ -307,7 +307,7 @@ const SalesModule = () => {
 
     const [isTrashView, setIsTrashView] = useState(false);
     const [hideConverted, setHideConverted] = useState(true);
-    const [salesSectionFilter, setSalesSectionFilter] = useState('ALL');
+    const [salesSectionFilter, setSalesSectionFilter] = useState('');
     const [editingStudent, setEditingStudent] = useState(null);
     const [editFormData, setEditFormData] = useState({});
     const [editSubPrograms, setEditSubPrograms] = useState([]);
@@ -1632,22 +1632,28 @@ const SalesModule = () => {
                         </div>
                     ) : activeTab === 'dashboard' && isAuthenticated ? (
                         <div className="bg-slate-50 min-h-[500px]">
-                            <CRMDashboard 
-                                onStatClick={async (type, value, title) => {
-                                    if (type === 'single') {
-                                        try {
-                                            const res = await api.get(`students/${value}/`);
-                                            setSelectedStudentProfile(res.data);
-                                        } catch(e) {
-                                            console.error("Failed to load student profile", e);
-                                        }
-                                        return;
-                                    }
-                                    // Open Stat Modal
-                                    setStatModalConfig({ type, value, title: title || (type === 'stage' ? value : 'Leads') });
-                                }}
-                                onBdeClick={setSelectedBdeId}
-                            />
+                            <CRMDashboard
+    onStatClick={async (type, value, title) => {
+        if (type === 'single') {
+            try {
+                const res = await api.get(`students/${value}/`);
+                setSelectedStudentProfile(res.data);
+            } catch (e) {
+                console.error("Failed to load student profile", e);
+            }
+            return;
+        }
+
+        setStatModalConfig({
+            type,
+            value,
+            title: title || (type === 'stage' ? value : 'Leads')
+        });
+    }}
+    onBdeClick={setSelectedBdeId}
+    sectionFilter={salesSectionFilter}
+    setSectionFilter={setSalesSectionFilter}
+/>
                         </div>
                     ) : activeTab === 'tasks' && isAuthenticated ? (
                         <div className="bg-slate-50 min-h-[500px]">
@@ -2705,21 +2711,21 @@ const SalesModule = () => {
                 }}
             />
             
-            <StatLeadsModal 
-                config={statModalConfig} 
-                onClose={() => setStatModalConfig(null)} 
-                onViewLead={async (id) => {
-                    try {
-                        const res = await api.get(`students/${id}/`);
-                        setSelectedStudentProfile(res.data);
-                    } catch(e) {
-                        console.error("Failed to load student profile", e);
-                    }
-                }}
-                salesSectionFilter={salesSectionFilter}
-                pipelineStages={pipelineStages}
-                salesUsers={salesUsers}
-            />
+            <StatLeadsModal
+    config={statModalConfig}
+    onClose={() => setStatModalConfig(null)}
+    onViewLead={async (id) => {
+        try {
+            const res = await api.get(`students/${id}/`);
+            setSelectedStudentProfile(res.data);
+        } catch (e) {
+            console.error("Failed to load student profile", e);
+        }
+    }}
+    salesSectionFilter={salesSectionFilter}
+    pipelineStages={pipelineStages}
+    salesUsers={salesUsers}
+/>
 
         </div>
     );

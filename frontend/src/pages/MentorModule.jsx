@@ -106,6 +106,8 @@ const MentorModule = () => {
     const [breakStudentId, setBreakStudentId] = useState(null);
     const [breakStartDate, setBreakStartDate] = useState('');
     const [breakEndDate, setBreakEndDate] = useState('');
+    const [filterStartDate, setFilterStartDate] = useState('');
+    const [filterEndDate, setFilterEndDate] = useState('');
     const [isBreakListModalOpen, setIsBreakListModalOpen] = useState(false);
     const [breakListModalType, setBreakListModalType] = useState('on_break'); // 'on_break', 'rejoined', 'discontinued'
     const [modalSearchQuery, setModalSearchQuery] = useState('');
@@ -373,42 +375,42 @@ const MentorModule = () => {
     }, [viewTab, studentPage]);
 
     useEffect(() => {
-        if (viewTab === 'dashboard') {
-            fetchBreakMetrics();
-            fetchFeeDefaulters();
-            fetchCollectedFees();
-        }
-    }, [breakStartDate, breakEndDate]);
+    if (viewTab !== 'dashboard') return;
+    if (filterStartDate && filterEndDate && filterEndDate < filterStartDate) return;
+    fetchBreakMetrics();
+    fetchFeeDefaulters();
+    fetchCollectedFees();
+    fetchDashboardStats();
+}, [filterStartDate, filterEndDate]);
+
+
+
+    const buildDateParams = () => {
+    const params = new URLSearchParams();
+    if (filterStartDate) params.append('start_date', filterStartDate);
+    if (filterEndDate) params.append('end_date', filterEndDate);
+    if (selectedTeamMentor) params.append('mentor_id', selectedTeamMentor);
+    const qs = params.toString();
+    return qs ? `?${qs}` : '';
+};
 
     const fetchFeeDefaulters = async () => {
-        try {
-            let url = 'students/fee_defaulters/';
-            const params = [];
-            if (breakStartDate) params.push(`start_date=${breakStartDate}`);
-            if (breakEndDate) params.push(`end_date=${breakEndDate}`);
-            if (params.length > 0) url += `?${params.join('&')}`;
-            
-            const res = await api.get(url);
-            setFeeDefaulters(res.data);
-        } catch (err) {
-            console.error("Failed to fetch fee defaulters", err);
-        }
-    };
+    try {
+        const res = await api.get(`students/fee_defaulters/${buildDateParams()}`);
+        setFeeDefaulters(res.data);
+    } catch (err) {
+        console.error("Failed to fetch fee defaulters", err);
+    }
+};
 
-    const fetchCollectedFees = async () => {
-        try {
-            let url = 'students/collected_fees/';
-            const params = [];
-            if (breakStartDate) params.push(`start_date=${breakStartDate}`);
-            if (breakEndDate) params.push(`end_date=${breakEndDate}`);
-            if (params.length > 0) url += `?${params.join('&')}`;
-            
-            const res = await api.get(url);
-            setCollectedFees(res.data);
-        } catch (err) {
-            console.error("Failed to fetch collected fees", err);
-        }
-    };
+const fetchCollectedFees = async () => {
+    try {
+        const res = await api.get(`students/collected_fees/${buildDateParams()}`);
+        setCollectedFees(res.data);
+    } catch (err) {
+        console.error("Failed to fetch collected fees", err);
+    }
+};
 
     const exportDefaultersCSV = (defaultersList) => {
         try {
@@ -473,13 +475,13 @@ const MentorModule = () => {
     };
 
     const fetchDashboardStats = async () => {
-        try {
-            const res = await api.get(`dashboard-stats/${selectedTeamMentor ? `?mentor_id=${selectedTeamMentor}` : ''}`);
-            setDashboardStats(res.data);
-        } catch (err) {
-            console.error("Failed to fetch dashboard stats", err);
-        }
-    };
+    try {
+        const res = await api.get(`dashboard-stats/${buildDateParams()}`);
+        setDashboardStats(res.data);
+    } catch (err) {
+        console.error("Failed to fetch dashboard stats", err);
+    }
+};
 
     const updateStudentPaymentState = (studentId, monthsList, isPaid) => {
         const updateList = (list) => 
@@ -593,19 +595,14 @@ const MentorModule = () => {
     };
 
     const fetchBreakMetrics = async () => {
-        try {
-            let url = 'students/break_metrics/';
-            const params = new URLSearchParams();
-            if (breakStartDate) params.append('start_date', breakStartDate);
-            if (breakEndDate) params.append('end_date', breakEndDate);
-            if (params.toString()) url += `?${params.toString()}`;
-            
-            const res = await api.get(url);
-            setBreakMetrics(res.data);
-        } catch (err) {
-            console.error("Failed to fetch break metrics", err);
-        }
-    };
+    try {
+        const res = await api.get(`students/break_metrics/${buildDateParams()}`);
+        setBreakMetrics(res.data);
+    } catch (err) {
+        console.error("Failed to fetch break metrics", err);
+    }
+};
+
 
     const getCurrentBreakList = () => {
         if (breakListModalType === 'on_break') return breakMetrics.on_break || [];
@@ -718,10 +715,15 @@ const MentorModule = () => {
 
     // Re-fetch data when team mentor filter changes
     useEffect(() => {
-        if (viewTab === 'dashboard') fetchDashboardStats();
-        if (viewTab === 'batches') fetchBatches();
-        if (viewTab === 'all-students') fetchStudentsWithPagination();
-    }, [selectedTeamMentor]);
+    if (viewTab === 'dashboard') {
+        fetchDashboardStats();
+        fetchBreakMetrics();
+        fetchFeeDefaulters();
+        fetchCollectedFees();
+    }
+    if (viewTab === 'batches') fetchBatches();
+    if (viewTab === 'all-students') fetchStudentsWithPagination();
+}, [selectedTeamMentor]);
 
     // Handle viewTab changes with debounce
     useEffect(() => {
@@ -1395,11 +1397,37 @@ const MentorModule = () => {
             {/* Content Logic */}
             {viewTab === 'dashboard' && !selectedBatch && (
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+                    <div className="flex flex-wrap items-center justify-end gap-3">
+    <input
+        type="date"
+        value={filterStartDate}
+        max={filterEndDate || undefined}
+        onChange={(e) => setFilterStartDate(e.target.value)}
+        className="px-3 py-1.5 text-sm rounded-lg border border-slate-200 bg-white"
+    />
+    <span className="text-slate-400">to</span>
+    <input
+        type="date"
+        value={filterEndDate}
+        min={filterStartDate || undefined}
+        onChange={(e) => setFilterEndDate(e.target.value)}
+        className="px-3 py-1.5 text-sm rounded-lg border border-slate-200 bg-white"
+    />
+    {(filterStartDate || filterEndDate) && (
+        <button
+            onClick={() => { setFilterStartDate(''); setFilterEndDate(''); }}
+            className="px-3 py-1.5 text-xs font-bold text-slate-500 bg-slate-200 hover:bg-slate-300 rounded-lg"
+        >
+            Clear
+        </button>
+    )}
+</div>
+
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between hover:shadow-md transition-all">
                             <div>
                                 <p className="text-sm font-semibold text-slate-500 mb-1">Total Batches</p>
-                                <p className="text-3xl font-black text-slate-800">{dashboardStats?.batches || batchPagination?.count || batches?.length || 0}</p>
+                                <p className="text-3xl font-black text-slate-800">{dashboardStats?.batches ?? 0}</p>
                             </div>
                             <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600">
                                 <BookOpen size={24} />
@@ -1407,26 +1435,12 @@ const MentorModule = () => {
                         </div>
 
                         {/* Date Filter for Break Metrics */}
-                        <div className="col-span-1 sm:col-span-2 lg:col-span-4 flex items-center justify-end gap-3 mb-2">
-                            <input 
-                                type="date" 
-                                value={breakStartDate} 
-                                onChange={(e) => setBreakStartDate(e.target.value)}
-                                className="px-3 py-1.5 text-sm rounded-lg border border-slate-200 bg-white"
-                            />
-                            <span className="text-slate-400">to</span>
-                            <input 
-                                type="date" 
-                                value={breakEndDate} 
-                                onChange={(e) => setBreakEndDate(e.target.value)}
-                                className="px-3 py-1.5 text-sm rounded-lg border border-slate-200 bg-white"
-                            />
-                        </div>
+                        
 
                         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between hover:shadow-md transition-all">
                             <div>
                                 <p className="text-sm font-semibold text-slate-500 mb-1">Total Students</p>
-                                <p className="text-3xl font-black text-slate-800">{dashboardStats?.students || 0}</p>
+                                <p className="text-3xl font-black text-slate-800">{dashboardStats?.students ?? 0}</p>
                             </div>
                             <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600">
                                 <Users size={24} />
@@ -3583,7 +3597,7 @@ const MentorModule = () => {
                                     {breakListModalType === 'on_break' ? 'Students On Break' : (breakListModalType === 'rejoined' ? 'Rejoined Students' : 'Discontinued Students')}
                                 </h2>
                                 <p className="text-sm text-slate-500 mt-1">
-                                    {breakStartDate && breakEndDate ? `Showing records from ${breakStartDate} to ${breakEndDate}` : 'Showing all records for the selected period'}
+                                    {filterStartDate && filterEndDate ? `Showing records from ${filterStartDate} to ${filterEndDate}` : 'Showing all records for the selected period'}
                                 </p>
                             </div>
                             <div className="flex items-center gap-3">

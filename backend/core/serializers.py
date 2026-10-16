@@ -17,7 +17,7 @@ class UserSerializer(serializers.ModelSerializer):
 class ProgramSerializer(serializers.ModelSerializer):
     class Meta:
         model = Program
-        fields = ('id', 'name', 'description', 'slug', 'require_payment', 'registration_fee')
+        fields = ('id', 'name', 'description', 'slug', 'require_payment', 'registration_fee', 'is_active')
 
 class SubProgramSerializer(serializers.ModelSerializer):
     class Meta:
@@ -39,7 +39,7 @@ class ProgramHierarchySerializer(serializers.ModelSerializer):
     sub_programs = SubProgramHierarchySerializer(many=True, read_only=True)
     class Meta:
         model = Program
-        fields = ('id', 'name', 'description', 'slug', 'sub_programs', 'require_payment', 'registration_fee')
+        fields = ('id', 'name', 'description', 'slug', 'sub_programs', 'require_payment', 'registration_fee', 'is_active')
 
 class SyllabusPartSerializer(serializers.ModelSerializer):
     class Meta:

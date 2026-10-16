@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
+import { formatApiError } from '../utils/apiError';
 
 const PayrollModule = () => {
     const { user: authUser } = useAuth();
@@ -243,7 +244,8 @@ const PayrollModule = () => {
             fetchData();
             alert("Tax declaration submitted!");
         } catch (err) {
-            alert(err.response?.data?.error || "Failed to submit declaration");
+            console.error('Declaration failed', err.response?.status, err.response?.data);
+            alert(formatApiError(err, 'Failed to submit declaration'));
         } finally {
             setLoading(false);
         }

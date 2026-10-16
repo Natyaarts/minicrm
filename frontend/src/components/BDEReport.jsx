@@ -32,6 +32,14 @@ const BDEReport = ({ bdeId, onClose, onLeadClick }) => {
             }
         };
         fetchReport();
+
+        const previousOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+
+        return () => {
+            document.body.style.overflow = previousOverflow;
+        };
+    
     }, [bdeId, startDate, endDate]);
 
     const clearFilters = () => {
@@ -48,8 +56,11 @@ const BDEReport = ({ bdeId, onClose, onLeadClick }) => {
     ) || [];
 
     return (
-        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-            <div className="bg-slate-50 w-full max-w-4xl rounded-2xl shadow-xl flex flex-col max-h-[90vh]">
+        <div
+    className="fixed inset-0 z-[100] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4"
+    onWheel={(e) => e.stopPropagation()}
+>
+    <div className="bg-slate-50 w-full max-w-4xl rounded-2xl shadow-xl flex flex-col h-[85vh] min-h-0 overflow-hidden">
                 
                 {/* Header */}
                 <div className="flex justify-between items-center p-4 md:p-6 bg-white rounded-t-2xl border-b border-slate-200">
@@ -113,7 +124,7 @@ const BDEReport = ({ bdeId, onClose, onLeadClick }) => {
                         <p className="text-sm font-medium text-rose-500">Failed to load report data.</p>
                     </div>
                 ) : (
-                    <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
+                    <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 md:p-6 space-y-6">
                         
                         {/* Metrics */}
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -176,7 +187,7 @@ const BDEReport = ({ bdeId, onClose, onLeadClick }) => {
                                         className="w-full text-xs px-2.5 py-1.5 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 bg-white"
                                     />
                                 </div>
-                                <div className="p-4 flex-1 overflow-y-auto max-h-[400px] space-y-3">
+                                <div className="p-4 space-y-3">
                                     {filteredLeads.map(lead => (
                                         <div 
                                             key={lead.id} 
@@ -204,7 +215,7 @@ const BDEReport = ({ bdeId, onClose, onLeadClick }) => {
                                         <Headphones size={12} /> Contains Call Recordings
                                     </span>
                                 </div>
-                                <div className="p-4 md:p-6 flex-1 overflow-y-auto max-h-[400px] space-y-6">
+                                <div className="p-4 md:p-6 space-y-6">
                                     {report.timeline.map((item, index) => (
                                         <div key={item.id} className="relative pl-6">
                                             {/* Timeline Line */}

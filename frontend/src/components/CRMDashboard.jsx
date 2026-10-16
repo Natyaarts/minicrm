@@ -6,10 +6,10 @@ import { useAuth } from '../context/AuthContext';
 
 const COLORS = ['#4f46e5', '#0ea5e9', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6', '#ec4899'];
 
-const CRMDashboard = ({ onStatClick, onBdeClick }) => {
+const CRMDashboard = ({ onStatClick, onBdeClick, sectionFilter, setSectionFilter }) => {
     const { user } = useAuth();
     const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
-    const [sectionFilter, setSectionFilter] = useState('');
+    // const [sectionFilter, setSectionFilter] = useState('');
 
     const [stats, setStats] = useState({
         total_leads: 0,
@@ -251,7 +251,7 @@ const CRMDashboard = ({ onStatClick, onBdeClick }) => {
                                         cursor={{ fill: '#f8fafc' }}
                                         contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                                     />
-                                    <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '20px' }} />
+                                    <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '20px', bottom:'0' }} />
                                     <Bar 
                                         dataKey="assigned" 
                                         name="Assigned Leads" 
