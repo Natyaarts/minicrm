@@ -26,6 +26,10 @@ class BulkUploadView(views.APIView):
 
         try:
             validate_spreadsheet_file(file)
+            if file.name.endswith('.csv'):
+                df = pd.read_csv(file)
+            else:
+                df = pd.read_excel(file)
         except ValidationError as ve:
             return response.Response({'error': ve.messages if hasattr(ve, 'messages') else str(ve)}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -158,6 +162,7 @@ class BulkUploadView(views.APIView):
                     lms_id = row.get('lms_id') or row.get('wise_id')
                     lms_student_id = str(lms_id).strip() if lms_id and pd.notna(lms_id) else None
 
+                    from crm.utils import get_canonical_new_lead_stage_id
                     Student.objects.create(
                         user=user,
                         crm_student_id=crm_id,
@@ -174,6 +179,7 @@ class BulkUploadView(views.APIView):
                         perm_address=row.get('perm_address', ''),
                         lms_student_id=lms_student_id,
                         campaign=campaign_obj,
+                        lead_status=get_canonical_new_lead_stage_id(),
                         is_active=True
                     )
                     success_count += 1

@@ -3,7 +3,255 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import client from '../api/client';
 
 const PENDING_CALLS_STORAGE_KEY = '@pending_call_queue';
+const PENDING_RECORDINGS_STORAGE_KEY = '@pending_recordings_queue';
+const UNLINKED_RECORDINGS_STORAGE_KEY = '@unlinked_recordings_archive';
 const CONSUMED_RECORDINGS_STORAGE_KEY = '@consumed_recordings_set';
+
+export interface PendingRecordingItem {
+  interactionId: number | string;
+  mobileCallId?: string;
+  fileUri: string;
+  mimeType: string;
+  fileName: string;
+  queued_at?: number;
+}
+
+export interface UnlinkedRecordingItem {
+  interactionId: number | string;
+  mobileCallId?: string;
+  fileUri: string;
+  mimeType: string;
+  fileName: string;
+  failedAt: number;
+  statusCode: number;
+  error: string;
+}
+
+export interface UploadRecordingResult {
+  success: boolean;
+  permanentError?: boolean;
+  statusCode?: number;
+  error?: string;
+}
+
+/**
+ * Loads the queue of pending recording uploads from AsyncStorage.
+ */
+export const getPendingRecordings = async (): Promise<PendingRecordingItem[]> => {
+  try {
+    const raw = await AsyncStorage.getItem(PENDING_RECORDINGS_STORAGE_KEY);
+    if (!raw) return [];
+    const list = JSON.parse(raw);
+    return Array.isArray(list) ? list : [];
+  } catch (err) {
+    console.error('[SyncManager] Failed to load pending recordings:', err);
+    return [];
+  }
+};
+
+/**
+ * Loads archived unlinked recordings from AsyncStorage.
+ * Retains recordings whose server interaction returned permanent errors (404/410).
+ */
+export const getUnlinkedRecordings = async (): Promise<UnlinkedRecordingItem[]> => {
+  try {
+    const raw = await AsyncStorage.getItem(UNLINKED_RECORDINGS_STORAGE_KEY);
+    if (!raw) return [];
+    const list = JSON.parse(raw);
+    return Array.isArray(list) ? list : [];
+  } catch (err) {
+    console.error('[SyncManager] Failed to load unlinked recordings archive:', err);
+    return [];
+  }
+};
+
+/**
+ * Archives a recording that permanently failed to attach to a server interaction (e.g. 404 / 410).
+ * Preserves the file reference and call metadata for investigation and manual recovery without looping.
+ */
+export const archiveUnlinkedRecording = async (item: UnlinkedRecordingItem) => {
+  try {
+    const current = await getUnlinkedRecordings();
+    const exists = current.some(
+      (p) => String(p.interactionId) === String(item.interactionId) && p.fileUri === item.fileUri
+    );
+    if (!exists) {
+      current.push(item);
+      await AsyncStorage.setItem(UNLINKED_RECORDINGS_STORAGE_KEY, JSON.stringify(current));
+      console.log(`[SyncManager] Safely archived unlinked recording for interaction ${item.interactionId}`);
+    }
+  } catch (err) {
+    console.error('[SyncManager] Failed to archive unlinked recording:', err);
+  }
+};
+
+/**
+ * Queues a recording file for background upload linked to an interaction ID.
+ */
+export const queuePendingRecording = async (item: PendingRecordingItem) => {
+  try {
+    const current = await getPendingRecordings();
+    const exists = current.some(
+      (p) => (item.interactionId && String(p.interactionId) === String(item.interactionId)) ||
+             (item.mobileCallId && p.mobileCallId === item.mobileCallId)
+    );
+    if (!exists) {
+      current.push({
+        ...item,
+        queued_at: item.queued_at || Date.now(),
+      });
+      await AsyncStorage.setItem(PENDING_RECORDINGS_STORAGE_KEY, JSON.stringify(current));
+      console.log(`[SyncManager] Queued pending recording for interaction ID: ${item.interactionId}`);
+    }
+  } catch (err) {
+    console.error('[SyncManager] Failed to queue pending recording:', err);
+  }
+};
+
+/**
+ * Removes a successfully uploaded recording from the pending queue.
+ */
+export const removePendingRecording = async (interactionId: number | string) => {
+  try {
+    const current = await getPendingRecordings();
+    const filtered = current.filter((p) => String(p.interactionId) !== String(interactionId));
+    await AsyncStorage.setItem(PENDING_RECORDINGS_STORAGE_KEY, JSON.stringify(filtered));
+  } catch (err) {
+    console.error('[SyncManager] Failed to remove pending recording:', err);
+  }
+};
+
+const activeUploadsSet = new Set<string>();
+let isSyncingPendingRecordingsInProgress = false;
+
+/**
+ * Uploads a single recording to its existing interaction via PATCH.
+ * Returns UploadRecordingResult. Retains recording on temporary error.
+ * Archives unlinked recording on permanent 404/410 error.
+ */
+export const uploadSingleRecording = async (item: PendingRecordingItem): Promise<UploadRecordingResult> => {
+  if (!item || !item.interactionId || !item.fileUri) {
+    return { success: false, error: 'Invalid recording item' };
+  }
+
+  const uploadKey = String(item.interactionId);
+  if (activeUploadsSet.has(uploadKey)) {
+    console.log(`[SyncManager] Upload already in progress for interaction ${item.interactionId}, skipping concurrent upload.`);
+    return { success: false, error: 'Upload in progress' };
+  }
+  activeUploadsSet.add(uploadKey);
+
+  try {
+    let finalUri = item.fileUri;
+    if (!finalUri.startsWith('file://') && !finalUri.startsWith('content://')) {
+      finalUri = `file://${finalUri}`;
+    }
+
+    // Check if recording file physically exists on the device
+    try {
+      const fileInfo = await FileSystem.getInfoAsync(finalUri);
+      if (fileInfo && fileInfo.exists === false) {
+        console.warn(`[SyncManager] Recording file no longer exists at ${finalUri}. Removing from queue to prevent infinite retries.`);
+        await removePendingRecording(item.interactionId);
+        return { success: false, permanentError: true, error: 'File does not exist' };
+      }
+    } catch (_) {
+      // Proceed if URI scheme cannot be checked via getInfoAsync
+    }
+
+    const formData = new FormData();
+    formData.append('audio_recording', {
+      uri: finalUri,
+      type: item.mimeType || 'audio/m4a',
+      name: item.fileName || `recording_${Date.now()}.m4a`,
+    } as any);
+
+    await client.patch(`/crm/interactions/${item.interactionId}/`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    console.log(`[SyncManager] Successfully uploaded recording for interaction ${item.interactionId}`);
+
+    // Mark consumed in persistent storage and remove from pending queue
+    await markRecordingConsumed(item.fileUri);
+    await removePendingRecording(item.interactionId);
+    return { success: true };
+  } catch (err: any) {
+    const statusCode = err?.response?.status;
+    console.warn(`[SyncManager] Upload failed for recording on interaction ${item.interactionId}:`, err?.message || err);
+
+    // If interaction was deleted or not found on the server (404/410):
+    // 1. Do NOT silently delete the file or mark it consumed.
+    // 2. Archive into @unlinked_recordings_archive so it can be investigated/recovered.
+    // 3. Remove from @pending_recordings_queue to prevent indefinite retry loops.
+    if (statusCode === 404 || statusCode === 410) {
+      console.warn(`[SyncManager] Interaction ${item.interactionId} not found on server (${statusCode}). Archiving unlinked recording.`);
+      await archiveUnlinkedRecording({
+        interactionId: item.interactionId,
+        mobileCallId: item.mobileCallId,
+        fileUri: item.fileUri,
+        mimeType: item.mimeType,
+        fileName: item.fileName,
+        failedAt: Date.now(),
+        statusCode,
+        error: `Server interaction not found (${statusCode})`,
+      });
+      await removePendingRecording(item.interactionId);
+      return { success: false, permanentError: true, statusCode, error: `Interaction not found (${statusCode})` };
+    }
+
+    return { success: false, permanentError: false, statusCode, error: err?.message || 'Upload error' };
+  } finally {
+    activeUploadsSet.delete(uploadKey);
+  }
+};
+
+/**
+ * Retries any pending recording uploads in AsyncStorage with concurrency protection.
+ */
+export const syncPendingRecordings = async () => {
+  if (isSyncingPendingRecordingsInProgress) {
+    console.log('[SyncManager] syncPendingRecordings already in progress, skipping concurrent run.');
+    return;
+  }
+  isSyncingPendingRecordingsInProgress = true;
+
+  try {
+    const list = await getPendingRecordings();
+    if (!Array.isArray(list) || list.length === 0) return;
+
+    console.log(`[SyncManager] Processing ${list.length} pending recordings in background...`);
+    for (const item of list) {
+      await uploadSingleRecording(item);
+    }
+  } catch (err) {
+    console.error('[SyncManager] Error syncing pending recordings:', err);
+  } finally {
+    isSyncingPendingRecordingsInProgress = false;
+  }
+};
+
+/**
+ * Asynchronously queues and uploads a call recording without blocking UI.
+ */
+export const uploadCallRecordingAsync = async (
+  item: PendingRecordingItem,
+  onStatusChange?: (status: 'uploading' | 'success' | 'failed' | 'permanent_failure') => void
+): Promise<UploadRecordingResult> => {
+  await queuePendingRecording(item);
+  if (onStatusChange) onStatusChange('uploading');
+
+  const result = await uploadSingleRecording(item);
+  if (onStatusChange) {
+    if (result.success) {
+      onStatusChange('success');
+    } else if (result.permanentError) {
+      onStatusChange('permanent_failure');
+    } else {
+      onStatusChange('failed');
+    }
+  }
+  return result;
+};
 
 /**
  * Loads the set of consumed recording identifiers / paths / names from AsyncStorage.
@@ -48,8 +296,8 @@ export const markRecordingConsumed = async (identifiers: string | string[]) => {
 /**
  * Checks if a recording path or filename is already consumed.
  */
-export const isRecordingConsumed = (filePathOrName: string, consumedSet: Set<string>): boolean => {
-  if (!filePathOrName) return false;
+export const isRecordingConsumed = (filePathOrName: string, consumedSet?: Set<string>): boolean => {
+  if (!filePathOrName || !consumedSet) return false;
   if (consumedSet.has(filePathOrName)) return true;
   const basename = filePathOrName.split('/').pop();
   if (basename && consumedSet.has(basename)) return true;
@@ -191,6 +439,9 @@ export const syncMissingRecordings = async () => {
   try {
     // 1. Sync pending queued calls first
     await syncPendingCalls();
+
+    // 2. Sync pending recording uploads
+    await syncPendingRecordings();
 
     console.log('[SyncManager] Starting background sync check for missing call recordings...');
 

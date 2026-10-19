@@ -251,6 +251,7 @@ class MetaLeadWebhookView(APIView):
                             # Auto-assign lead using centralized assignment service
                             assigned_to_user = get_next_assigned_rep(campaign)
 
+                            from .utils import get_canonical_new_lead_stage_id
                             student = Student.objects.create(
                                 user=user,
                                 crm_student_id=crm_id,
@@ -259,7 +260,7 @@ class MetaLeadWebhookView(APIView):
                                 last_name=last_name,
                                 email=clean_em or None,
                                 mobile=clean_phone or None,
-                                lead_status="NEW",
+                                lead_status=get_canonical_new_lead_stage_id(),
                                 meta_lead_id=str(lead_id),
                                 campaign=campaign,
                                 sales_section=campaign.section if campaign else "BOTH",

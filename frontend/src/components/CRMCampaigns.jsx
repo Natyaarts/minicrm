@@ -222,13 +222,13 @@ const CRMCampaigns = ({ onLeadClick }) => {
         }
     }, [activeTab, currentPage, leadsStartDate, leadsEndDate, selectedAssigneeFilter, searchTerm, selectedStageFilter, selectedSectionFilter, selectedCampaignFilter]);
 
-    const fetchDashboardData = async () => {
+    const fetchDashboardData = async (start = dashboardStartDate, end = dashboardEndDate) => {
         setDashboardLoading(true);
         try {
             let url = 'crm/marketing-dashboard/';
             const params = new URLSearchParams();
-            if (dashboardStartDate) params.append('start_date', dashboardStartDate);
-            if (dashboardEndDate) params.append('end_date', dashboardEndDate);
+            if (start) params.append('start_date', start);
+            if (end) params.append('end_date', end);
             if (params.toString()) url += `?${params.toString()}`;
             
             const res = await api.get(url);
@@ -368,8 +368,6 @@ const CRMCampaigns = ({ onLeadClick }) => {
                 
                 if (type === 'contacted') {
                     url += `&contacted=true`;
-                } else if (type === 'pending') {
-                    url += `&contacted=false`;
                 } else if (type === 'converted') {
                     url += `&lead_status=ENROLLED`;
                 }
@@ -759,8 +757,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                 onClick={() => {
                                     setDashboardStartDate('');
                                     setDashboardEndDate('');
-                                    // small timeout to allow state to clear before fetching
-                                    setTimeout(() => fetchDashboardData(), 0);
+                                    fetchDashboardData('', '');
                                 }}
                                 className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm font-medium rounded-lg transition-colors"
                             >
@@ -1047,7 +1044,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
                 {activeTab === 'assigned' && (
                     <div className="space-y-5">
                         {/* KPI Summary Cards */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                             {/* Total Assigned */}
                             <div 
                                 onClick={() => openPopup('assigned')}
@@ -1093,21 +1090,6 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                     <p className="text-[10px] text-indigo-600 font-medium mt-0.5">Calls logged by team</p>
                                 </div>
                                 <div className="w-10 h-10 bg-indigo-100 text-indigo-700 rounded-xl flex items-center justify-center font-bold shadow-xs">
-                                    <Clock className="w-5 h-5" />
-                                </div>
-                            </div>
-
-                            {/* Pending Contact */}
-                            <div 
-                                onClick={() => openPopup('pending')}
-                                className="bg-white p-4.5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between cursor-pointer hover:border-amber-300 hover:shadow-md hover:scale-[1.01] active:scale-[0.99] transition-all"
-                            >
-                                <div>
-                                    <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Pending Contact</p>
-                                    <h3 className="text-xl font-bold text-amber-600 mt-1">{assignedStats?.pending_leads || 0}</h3>
-                                    <p className="text-[10px] text-amber-600 font-medium mt-0.5">Awaiting initial call</p>
-                                </div>
-                                <div className="w-10 h-10 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center font-bold">
                                     <Clock className="w-5 h-5" />
                                 </div>
                             </div>
@@ -2517,7 +2499,6 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                             <Users className="w-5 h-5 text-indigo-600" />
                                             {activePopupType === 'assigned' && 'Assigned Leads List'}
                                             {activePopupType === 'contacted' && 'Contacted Leads List'}
-                                            {activePopupType === 'pending' && 'Pending Contact Leads List'}
                                             {activePopupType === 'converted' && 'Converted Leads List'}
                                         </>
                                     )}

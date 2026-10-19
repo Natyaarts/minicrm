@@ -224,9 +224,9 @@ class GoogleSheetSyncView(APIView):
         imported_count = 0
         skipped_count = 0
         
-        # Get default stage ID
-        new_stage = PipelineStage.objects.filter(name__iexact='New Lead').first() or PipelineStage.objects.filter(is_default=True).first()
-        new_stage_id = str(new_stage.id) if new_stage else 'NEW'
+        # Get canonical New Lead stage ID
+        from .utils import get_canonical_new_lead_stage_id
+        new_stage_id = get_canonical_new_lead_stage_id()
         
         # Import data starting from configured last row
         start_row_index = max(1, campaign.google_last_synced_row)

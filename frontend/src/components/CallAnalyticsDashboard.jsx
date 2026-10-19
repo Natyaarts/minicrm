@@ -123,28 +123,43 @@ const CallAnalyticsDashboard = () => {
             {/* Filters Row */}
             <div className="mb-6 flex flex-wrap items-center justify-between gap-4 bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
                 <div className="flex flex-wrap items-center gap-3">
-                    <select value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} className="px-3 py-1.5 text-sm border border-slate-300 rounded bg-slate-50 outline-none text-slate-700 focus:border-orange-500 focus:ring-1 focus:ring-orange-500">
+                    <select value={employeeId} onChange={(e) => { setEmployeeId(e.target.value); setCurrentPage(1); }} className="px-3 py-1.5 text-sm border border-slate-300 rounded bg-slate-50 outline-none text-slate-700 focus:border-orange-500 focus:ring-1 focus:ring-orange-500">
                         <option value="">All Employees</option>
                         {salesUsers.map(u => (
                             <option key={u.id} value={u.id}>{u.name}</option>
                         ))}
                     </select>
-                    <select value={direction} onChange={(e) => setDirection(e.target.value)} className="px-3 py-1.5 text-sm border border-slate-300 rounded bg-slate-50 outline-none text-slate-700 focus:border-orange-500 focus:ring-1 focus:ring-orange-500">
+                    <select value={direction} onChange={(e) => { setDirection(e.target.value); setCurrentPage(1); }} className="px-3 py-1.5 text-sm border border-slate-300 rounded bg-slate-50 outline-none text-slate-700 focus:border-orange-500 focus:ring-1 focus:ring-orange-500">
                         <option value="">All Directions</option>
                         <option value="INCOMING">Incoming</option>
                         <option value="OUTGOING">Outgoing</option>
                     </select>
-                    <select value={status} onChange={(e) => setStatus(e.target.value)} className="px-3 py-1.5 text-sm border border-slate-300 rounded bg-slate-50 outline-none text-slate-700 focus:border-orange-500 focus:ring-1 focus:ring-orange-500">
+                    <select value={status} onChange={(e) => { setStatus(e.target.value); setCurrentPage(1); }} className="px-3 py-1.5 text-sm border border-slate-300 rounded bg-slate-50 outline-none text-slate-700 focus:border-orange-500 focus:ring-1 focus:ring-orange-500">
                         <option value="">All Statuses</option>
                         <option value="CONNECTED">Connected</option>
                         <option value="MISSED">Missed/Unanswered</option>
                         <option value="REJECTED">Rejected</option>
                     </select>
                     <div className="flex items-center bg-slate-50 border border-slate-300 rounded overflow-hidden focus-within:border-orange-500 focus-within:ring-1 focus-within:ring-orange-500">
-                        <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="px-3 py-1.5 text-sm outline-none bg-transparent border-r border-slate-300 text-slate-700" />
+                        <input type="date" value={startDate} onChange={(e) => { setStartDate(e.target.value); setCurrentPage(1); }} className="px-3 py-1.5 text-sm outline-none bg-transparent border-r border-slate-300 text-slate-700" />
                         <span className="px-2 text-slate-400 text-sm">to</span>
-                        <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="px-3 py-1.5 text-sm outline-none bg-transparent text-slate-700" />
+                        <input type="date" value={endDate} onChange={(e) => { setEndDate(e.target.value); setCurrentPage(1); }} className="px-3 py-1.5 text-sm outline-none bg-transparent text-slate-700" />
                     </div>
+                    {(employeeId || direction || status || startDate || endDate) && (
+                        <button
+                            onClick={() => {
+                                setEmployeeId('');
+                                setDirection('');
+                                setStatus('');
+                                setStartDate('');
+                                setEndDate('');
+                                setCurrentPage(1);
+                            }}
+                            className="px-3 py-1.5 text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded border border-rose-200 transition-colors"
+                        >
+                            Clear Filters
+                        </button>
+                    )}
                 </div>
                 <div>
                     <button onClick={exportToCSV} className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded shadow-sm transition-colors flex items-center gap-2">

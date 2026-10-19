@@ -499,15 +499,9 @@ class SyncWiseBatchView(views.APIView):
             if not class_details:
                  return response.Response({"error": "Class not found in Wise LMS"}, status=404)
             
-            # Resolve 'CONVERTED' stage ID
-            converted_stage_id = 'CONVERTED'
-            try:
-                from crm.models import PipelineStage
-                stage = PipelineStage.objects.filter(name__iexact='CONVERTED').first()
-                if stage:
-                    converted_stage_id = str(stage.id)
-            except Exception:
-                pass
+            # Resolve canonical 'CONVERTED' stage ID
+            from crm.utils import get_canonical_converted_stage_id
+            converted_stage_id = get_canonical_converted_stage_id()
             
             # 2. Ensure Course exists
             program, _ = Program.objects.get_or_create(name="Wise Courses", defaults={"slug": "wise-courses"})
@@ -556,9 +550,18 @@ class SyncWiseBatchView(views.APIView):
             with transaction.atomic():
                 for p in participants:
                     p_id = p.get('_id') or p.get('id')
-                    p_name = p.get('name', 'Wise Student')
                     phone = p.get('phoneNumber') or p.get('mobile') or ''
                     email = p.get('email') or f"wise_{p_id}@example.com"
+
+                    # Independent Name Parsing for current participant
+                    p_name = (p.get('name') or '').strip()
+                    if not p_name or "@" in p_name:
+                        first_name = "Wise"
+                        last_name = "Student"
+                    else:
+                        name_parts = p_name.split(' ')
+                        first_name = name_parts[0]
+                        last_name = ' '.join(name_parts[1:]) if len(name_parts) > 1 else 'Student'
                     
                     # Clean phone
                     clean_phone = str(phone).replace(" ", "")
@@ -584,16 +587,6 @@ class SyncWiseBatchView(views.APIView):
                         if User.objects.filter(username=username).exists():
                              import uuid
                              username = f"wise_{base_username_id}_{str(uuid.uuid4())[:4]}"
-
-                        # Improved Name Parsing
-                        p_name = p.get('name', '').strip()
-                        if not p_name or "@" in p_name:
-                            first_name = "Wise"
-                            last_name = "Student"
-                        else:
-                            name_parts = p_name.split(' ')
-                            first_name = name_parts[0]
-                            last_name = ' '.join(name_parts[1:]) if len(name_parts) > 1 else 'Student'
 
                         user, u_created = User.objects.get_or_create(
                             username=username,

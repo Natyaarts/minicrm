@@ -23,7 +23,8 @@ const FinanceModule = () => {
     const [expenses, setExpenses] = useState([]);
     const [categories, setCategories] = useState([]);
     const [summary, setSummary] = useState({ monthly_total: 0, all_time_total: 0, breakdown: [] });
-    const [revenue, setRevenue] = useState(0);
+    const [monthlyRevenue, setMonthlyRevenue] = useState(0);
+    const [allTimeRevenue, setAllTimeRevenue] = useState(0);
     const [searchTerm, setSearchTerm] = useState('');
     
     const [showModal, setShowModal] = useState(false);
@@ -49,7 +50,8 @@ const FinanceModule = () => {
             setExpenses(expRes.data.results || expRes.data || []);
             setCategories(catRes.data.results || catRes.data || []);
             setSummary(sumRes.data);
-            setRevenue(revRes.data.revenue || 0);
+            setMonthlyRevenue(revRes.data.this_month_collected || 0);
+            setAllTimeRevenue(revRes.data.revenue || 0);
         } catch (err) {
             console.error("Failed to fetch finance data", err);
         } finally {
@@ -92,7 +94,7 @@ const FinanceModule = () => {
         }
     };
 
-    const netProfit = revenue - summary.monthly_total;
+    const netProfit = monthlyRevenue - summary.monthly_total;
 
     return (
         <div className="min-h-screen bg-[#FDFCFB] pb-20 px-4 md:px-8">
@@ -114,7 +116,7 @@ const FinanceModule = () => {
             {/* Financial Stats */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                 {[
-                    { label: 'Total Revenue', value: revenue, icon: DollarSign, color: 'emerald', trend: 'UP' },
+                    { label: 'Revenue (This Month)', value: monthlyRevenue, icon: DollarSign, color: 'emerald', trend: 'UP' },
                     { label: 'Total Expenses', value: summary.monthly_total, icon: TrendingDown, color: 'rose', trend: 'DOWN' },
                     { label: 'Net Profit', value: netProfit, icon: Wallet, color: 'indigo', trend: netProfit >= 0 ? 'UP' : 'DOWN' }
                 ].map((stat, idx) => (

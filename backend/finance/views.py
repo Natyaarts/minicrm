@@ -24,18 +24,30 @@ class ExpenseViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def summary(self, request):
-        # Get total expenses for current month
-        today = datetime.now()
-        first_day = today.replace(day=1)
+        import calendar
+        from django.utils import timezone
+
+        # Get total expenses bounded strictly to current month
+        today = timezone.now().date()
+        first_day_of_month = today.replace(day=1)
+        _, last_day_num = calendar.monthrange(today.year, today.month)
+        last_day_of_month = today.replace(day=last_day_num)
         
-        monthly_total = Expense.objects.filter(date__gte=first_day).aggregate(Sum('amount'))['amount__sum'] or 0
+        monthly_total = Expense.objects.filter(
+            date__gte=first_day_of_month,
+            date__lte=last_day_of_month
+        ).aggregate(Sum('amount'))['amount__sum'] or 0
         all_time_total = Expense.objects.aggregate(Sum('amount'))['amount__sum'] or 0
         
-        # Get category breakdown
+        # Get category breakdown bounded strictly to current month
         categories = ExpenseCategory.objects.all()
         breakdown = []
         for cat in categories:
-            total = Expense.objects.filter(category=cat, date__gte=first_day).aggregate(Sum('amount'))['amount__sum'] or 0
+            total = Expense.objects.filter(
+                category=cat,
+                date__gte=first_day_of_month,
+                date__lte=last_day_of_month
+            ).aggregate(Sum('amount'))['amount__sum'] or 0
             if total > 0:
                 breakdown.append({
                     "name": cat.name,
