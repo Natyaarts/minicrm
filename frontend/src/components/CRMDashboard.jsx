@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, TrendingUp, DollarSign, Activity, UserMinus, UserCheck, PhoneCall, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Users, TrendingUp, DollarSign, Activity, UserMinus, UserCheck, PhoneCall, Clock, ChevronLeft, ChevronRight, Sparkles, UserX } from 'lucide-react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from 'recharts';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
@@ -9,15 +9,20 @@ const COLORS = ['#4f46e5', '#0ea5e9', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6'
 const CRMDashboard = ({ onStatClick, onBdeClick }) => {
     const { user } = useAuth();
     const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
+    const canFilterSection = isAdmin || (['SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD'].includes(user?.role) && (user?.sales_section === 'BOTH' || !user?.sales_section));
     const [sectionFilter, setSectionFilter] = useState('');
+    const [datePreset, setDatePreset] = useState('');
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
 
     const [stats, setStats] = useState({
         total_leads: 0,
         unassigned_leads: 0,
         assigned_leads: 0,
+        fresh_leads: 0,
         contacted_leads: 0,
-        pending_leads: 0,
         converted_leads: 0,
+        dropped_leads: 0,
         pipeline_stages: [],
         leaderboard: [],
         revenue: 0
@@ -30,12 +35,14 @@ const CRMDashboard = ({ onStatClick, onBdeClick }) => {
     const [totalFollowupsCount, setTotalFollowupsCount] = useState(0);
 
     const fetchStats = async () => {
-    setLoading(true);
-    try {
-            const params = new URLSearchParams({ campaign_only: 'true', hide_converted: 'true' });
-            if (isAdmin && sectionFilter) params.append('sales_section', sectionFilter);
+        setLoading(true);
+        try {
+            const params = new URLSearchParams();
+            if (canFilterSection && sectionFilter) params.append('sales_section', sectionFilter);
+            if (datePreset) params.append('date_preset', datePreset);
+            if (startDate) params.append('start_date', startDate);
+            if (endDate) params.append('end_date', endDate);
             const res = await api.get(`/crm/dashboard-stats/?${params.toString()}`);
-            console.log('leaderboard', res.data.leaderboard);
             setStats(res.data);
         } catch (error) {
             console.error("Failed to fetch dashboard stats", error);
@@ -65,7 +72,7 @@ const CRMDashboard = ({ onStatClick, onBdeClick }) => {
 
     useEffect(() => {
         fetchStats();
-    }, [sectionFilter, isAdmin]);
+    }, [sectionFilter, canFilterSection, datePreset, startDate, endDate]);
 
     useEffect(() => {
         fetchFollowups(followupsPage);
@@ -99,83 +106,157 @@ const CRMDashboard = ({ onStatClick, onBdeClick }) => {
 
     return (
         <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between mb-6 gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
                 <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
                     <Activity className="text-indigo-600" />
                     Sales Analytics & Performance
                 </h2>
                 
-                {isAdmin && (
-                    <div className="flex items-center gap-2">
-                        <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">View Section:</label>
-                        <select 
-                            value={sectionFilter} 
-                            onChange={(e) => setSectionFilter(e.target.value)}
-                            className="text-sm border border-slate-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-indigo-500 outline-none font-medium text-slate-700 bg-white"
+                <div className="flex flex-wrap items-center gap-3">
+                    {canFilterSection && (
+                        <div className="flex items-center gap-1.5">
+                            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Section:</label>
+                            <select
+                                value={sectionFilter}
+                                onChange={(e) => setSectionFilter(e.target.value)}
+                                className="text-sm border border-slate-300 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-indigo-500 outline-none font-medium text-slate-700 bg-slate-50"
+                            >
+                                <option value="">All Sections</option>
+                                <option value="REGULAR">Regular</option>
+                                <option value="CAREER_ACADEMY">Career Academy</option>
+                            </select>
+                        </div>
+                    )}
+
+                    <div className="flex items-center gap-1.5">
+                        <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Period:</label>
+                        <select
+                            value={datePreset}
+                            onChange={(e) => {
+                                const val = e.target.value;
+                                setDatePreset(val);
+                                if (val !== 'custom') {
+                                    setStartDate('');
+                                    setEndDate('');
+                                }
+                            }}
+                            className="text-sm border border-slate-300 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-indigo-500 outline-none font-medium text-slate-700 bg-slate-50"
                         >
-                            <option value="">All Sections</option>
-                            <option value="REGULAR">Regular</option>
-                            <option value="CAREER_ACADEMY">Career Academy</option>
+                            <option value="">All Time</option>
+                            <option value="today">Today</option>
+                            <option value="yesterday">Yesterday</option>
+                            <option value="this_week">This Week</option>
+                            <option value="this_month">This Month</option>
+                            <option value="last_7_days">Last 7 Days</option>
+                            <option value="last_30_days">Last 30 Days</option>
+                            <option value="last_month">Last Month</option>
+                            <option value="custom">Custom Range</option>
                         </select>
                     </div>
-                )}
+
+                    {(datePreset === 'custom' || startDate || endDate) && (
+                        <div className="flex items-center bg-slate-50 border border-slate-300 rounded-lg overflow-hidden text-sm">
+                            <input
+                                type="date"
+                                value={startDate}
+                                onChange={(e) => {
+                                    setStartDate(e.target.value);
+                                    if (datePreset !== 'custom') setDatePreset('custom');
+                                }}
+                                className="px-2 py-1 bg-transparent border-r border-slate-300 text-slate-700 text-xs outline-none"
+                            />
+                            <span className="px-1.5 text-slate-400 text-xs">to</span>
+                            <input
+                                type="date"
+                                value={endDate}
+                                onChange={(e) => {
+                                    setEndDate(e.target.value);
+                                    if (datePreset !== 'custom') setDatePreset('custom');
+                                }}
+                                className="px-2 py-1 bg-transparent text-slate-700 text-xs outline-none"
+                            />
+                        </div>
+                    )}
+
+                    {(sectionFilter || datePreset || startDate || endDate) && (
+                        <button
+                            onClick={() => {
+                                setSectionFilter('');
+                                setDatePreset('');
+                                setStartDate('');
+                                setEndDate('');
+                            }}
+                            className="px-2.5 py-1.5 text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg border border-rose-200 transition-colors"
+                        >
+                            Clear
+                        </button>
+                    )}
+                </div>
             </div>
             
             {/* Top Stat Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4 mb-6">
-                <StatCard 
-                    title="Total Leads" 
-                    value={stats.total_leads} 
-                    icon={<Users size={24} />} 
-                    bg="bg-indigo-50" 
+            <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-4 mb-6">
+                <StatCard
+                    title="Total Leads"
+                    value={stats.total_leads}
+                    icon={<Users size={24} />}
+                    bg="bg-indigo-50"
                     text="text-indigo-600"
-                    onClick={() => onStatClick('all', '', 'Total Leads')}
+                    onClick={() => onStatClick('all', '', 'Total Leads', { sales_section: sectionFilter, start_date: startDate, end_date: endDate })}
                 />
-                <StatCard 
-                    title="Unassigned Leads" 
-                    value={stats.unassigned_leads} 
-                    icon={<UserMinus size={24} />} 
-                    bg="bg-rose-50" 
+                <StatCard
+                    title="Fresh Leads"
+                    value={stats.fresh_leads || 0}
+                    icon={<Sparkles size={24} />}
+                    bg="bg-teal-50"
+                    text="text-teal-600"
+                    onClick={() => onStatClick('fresh', 'true', 'Fresh / Uncontacted Leads', { sales_section: sectionFilter, start_date: startDate, end_date: endDate })}
+                />
+                <StatCard
+                    title="Unassigned Leads"
+                    value={stats.unassigned_leads}
+                    icon={<UserMinus size={24} />}
+                    bg="bg-rose-50"
                     text="text-rose-600"
-                    onClick={() => onStatClick('assignee', 'unassigned', 'Unassigned Leads')}
+                    onClick={() => onStatClick('assignee', 'unassigned', 'Unassigned Leads', { sales_section: sectionFilter, start_date: startDate, end_date: endDate })}
                 />
-                <StatCard 
-                    title="Assigned Leads" 
-                    value={stats.assigned_leads} 
-                    icon={<UserCheck size={24} />} 
-                    bg="bg-sky-50" 
+                <StatCard
+                    title="Assigned Leads"
+                    value={stats.assigned_leads}
+                    icon={<UserCheck size={24} />}
+                    bg="bg-sky-50"
                     text="text-sky-600"
-                    onClick={() => onStatClick('assignee', 'assigned', 'Assigned Leads')}
+                    onClick={() => onStatClick('assignee', 'assigned', 'Assigned Leads', { sales_section: sectionFilter, start_date: startDate, end_date: endDate })}
                 />
-                <StatCard 
-                    title="Contacted Leads" 
-                    value={stats.contacted_leads} 
-                    icon={<PhoneCall size={24} />} 
-                    bg="bg-emerald-50" 
+                <StatCard
+                    title="Contacted Leads"
+                    value={stats.contacted_leads}
+                    icon={<PhoneCall size={24} />}
+                    bg="bg-emerald-50"
                     text="text-emerald-600"
-                    onClick={() => onStatClick('contacted', 'true', 'Contacted Leads')}
+                    onClick={() => onStatClick('contacted', 'true', 'Contacted Leads', { sales_section: sectionFilter, start_date: startDate, end_date: endDate })}
                 />
-                <StatCard 
-                    title="Pending Leads" 
-                    value={stats.pending_leads} 
-                    icon={<Clock size={24} />} 
-                    bg="bg-orange-50" 
-                    text="text-orange-600"
-                    onClick={() => onStatClick('contacted', 'false', 'Pending Leads')}
-                />
-                <StatCard 
-                    title="Converted Leads" 
-                    value={stats.converted_leads} 
-                    icon={<UserCheck size={24} />} 
-                    bg="bg-blue-50" 
+                <StatCard
+                    title="Converted Leads"
+                    value={stats.converted_leads}
+                    icon={<UserCheck size={24} />}
+                    bg="bg-blue-50"
                     text="text-blue-600"
-                    onClick={() => onStatClick('status', 'converted', 'Converted Leads')}
+                    onClick={() => onStatClick('status', 'converted', 'Converted Leads', { sales_section: sectionFilter, start_date: startDate, end_date: endDate })}
                 />
-                <StatCard 
-                    title="Revenue" 
-                    value={`₹${stats.revenue.toLocaleString()}`} 
-                    icon={<DollarSign size={24} />} 
-                    bg="bg-amber-50" 
+                <StatCard
+                    title="Dropped Leads"
+                    value={stats.dropped_leads || 0}
+                    icon={<UserX size={24} />}
+                    bg="bg-slate-100"
+                    text="text-slate-600"
+                    onClick={() => onStatClick('status', 'dropped', 'Dropped Leads', { sales_section: sectionFilter, start_date: startDate, end_date: endDate })}
+                />
+                <StatCard
+                    title="Revenue"
+                    value={`₹${stats.revenue.toLocaleString()}`}
+                    icon={<DollarSign size={24} />}
+                    bg="bg-amber-50"
                     text="text-amber-600"
                 />
             </div>
@@ -200,7 +281,7 @@ const CRMDashboard = ({ onStatClick, onBdeClick }) => {
                                         outerRadius={100}
                                         paddingAngle={5}
                                         dataKey="count"
-                                        onClick={(data) => onStatClick('stage', data.id, data.id)}
+                                        onClick={(data) => onStatClick('stage', data.id, data.id, { sales_section: sectionFilter, start_date: startDate, end_date: endDate })}
                                         style={{ cursor: 'pointer' }}
                                     >
                                         {stats.pipeline_stages.map((entry, index) => (
@@ -216,7 +297,7 @@ const CRMDashboard = ({ onStatClick, onBdeClick }) => {
                                         verticalAlign="middle" 
                                         align="right"
                                         onClick={(data) => onStatClick('stage', data.payload.id, data.payload.id)}
-                                        wrapperStyle={{ cursor: 'pointer', fontSize: '12px' }}
+                                        wrapperStyle={{ cursor: 'pointer', fontSize: '12px',overflowY: 'scroll', maxHeight: '300px', }}
                                     />
                                 </PieChart>
                             </ResponsiveContainer>

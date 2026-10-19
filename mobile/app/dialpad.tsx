@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Notifications from 'expo-notifications';
 import { useLocalSearchParams, router } from 'expo-router';
 import { startNativeRecording, stopNativeRecording, listenToCallEvents, requestCallPermissions, listenToCallState, makeDirectCall, getLatestCallLogDuration } from '../src/utils/CallManager';
-import { generateMobileCallId, queueOfflineCall, markRecordingConsumed } from '../src/utils/SyncManager';
+import { generateMobileCallId, queueOfflineCall, markRecordingConsumed, uploadCallRecordingAsync, syncPendingRecordings } from '../src/utils/SyncManager';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
@@ -29,6 +29,7 @@ const Dialpad = () => {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [isProcessingRecording, setIsProcessingRecording] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [recordingUploadStatus, setRecordingUploadStatus] = useState<string | null>(null);
 
   // Dynamic pipeline stages from web backend
   const [pipelineStages, setPipelineStages] = useState<any[]>([
@@ -279,6 +280,7 @@ const Dialpad = () => {
       // If the app comes back to the foreground and we were in CALLING/ACTIVE state,
       // conclude call via authoritative CallLog check.
       if (nextAppState === 'active') {
+        syncPendingRecordings().catch(() => {});
         const currentStatus = callStatusRef.current;
         if ((currentStatus === 'CALLING' || currentStatus === 'ACTIVE') && lastBackgroundTimeRef.current > 0) {
           const timeInBackground = Date.now() - lastBackgroundTimeRef.current;
@@ -564,39 +566,56 @@ const Dialpad = () => {
     }
 
     try {
-      if (fileUriToUpload) {
-        const formData = new FormData();
-        Object.keys(parameters).forEach(k => formData.append(k, parameters[k]));
-        formData.append('audio_recording', {
-          uri: fileUriToUpload,
-          type: mimeType,
-          name: fileName
-        } as any);
+      // 1. Post lightweight metadata to create the interaction record promptly (< 200ms)
+      const res = await client.post('/crm/interactions/', parameters);
+      const serverInteractionId = res.data?.id;
 
-        await client.post('/crm/interactions/', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' }
-        });
-
-        await markRecordingConsumed(fileUriToUpload);
-      } else {
-        await client.post('/crm/interactions/', parameters);
-      }
-
+      // 2. Schedule follow-up notification if specified
       if (nextFollowupDate) {
         const trigger = nextFollowupDate.getTime() - Date.now();
         if (trigger > 0) {
-          await Notifications.scheduleNotificationAsync({
-            content: {
-              title: 'Follow-up Reminder',
-              body: `It's time to follow up with ${phoneNumber}!`,
-              sound: true,
-            },
-            trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: nextFollowupDate, channelId: 'default' },
-          });
+          try {
+            await Notifications.scheduleNotificationAsync({
+              content: {
+                title: 'Follow-up Reminder',
+                body: `It's time to follow up with ${phoneNumber}!`,
+                sound: true,
+              },
+              trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: nextFollowupDate, channelId: 'default' },
+            });
+          } catch (_) {}
         }
       }
 
-      Alert.alert('✅ Saved', 'Call log saved to CRM successfully.');
+      // 3. If there is a recording, kick off asynchronous background upload
+      if (fileUriToUpload && serverInteractionId) {
+        setRecordingUploadStatus('Uploading recording in background...');
+        uploadCallRecordingAsync({
+          interactionId: serverInteractionId,
+          mobileCallId,
+          fileUri: fileUriToUpload,
+          mimeType,
+          fileName
+        }, (status) => {
+          if (status === 'success') {
+            setRecordingUploadStatus('✅ Recording uploaded successfully');
+            setTimeout(() => setRecordingUploadStatus(null), 3000);
+          } else if (status === 'permanent_failure') {
+            setRecordingUploadStatus('⚠️ Interaction not found; recording archived safely');
+            setTimeout(() => setRecordingUploadStatus(null), 5000);
+          } else if (status === 'failed') {
+            setRecordingUploadStatus('⚠️ Recording upload queued for retry');
+            setTimeout(() => setRecordingUploadStatus(null), 4000);
+          }
+        }).catch(err => {
+          console.warn('[dialpad] Asynchronous recording upload error:', err);
+        });
+
+        Alert.alert('✅ Saved', 'Call log saved. Audio recording is uploading in the background.');
+      } else {
+        Alert.alert('✅ Saved', 'Call log saved to CRM successfully.');
+      }
+
       setCallStatus('IDLE');
       setPostCallNotes('');
       setRecordedFilePath(null);
@@ -1079,6 +1098,14 @@ const Dialpad = () => {
           <Text style={[styles.tabText, activeTab === 'history' && styles.activeTabText]}>Recent Calls</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Recording Upload Status Banner */}
+      {recordingUploadStatus && (
+        <View style={{ backgroundColor: '#EFF6FF', borderBottomWidth: 1, borderColor: '#BFDBFE', paddingVertical: 8, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+          <ActivityIndicator size="small" color="#2563EB" />
+          <Text style={{ color: '#1E40AF', fontSize: 13, fontWeight: '600' }}>{recordingUploadStatus}</Text>
+        </View>
+      )}
 
       {activeTab === 'dialer' ? (
         <>

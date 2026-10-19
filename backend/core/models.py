@@ -202,6 +202,19 @@ class Student(models.Model):
     fee_due_date = models.DateField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
 
+    def save(self, *args, **kwargs):
+        # Freshly created leads: ensure canonical 'New Lead' stage is assigned
+        # if not explicitly set or if assigned legacy 'NEW'/'new'
+        if not self.pk:
+            raw_status = str(self.lead_status or '').strip()
+            if not raw_status or raw_status.upper() in ['NEW', 'NEW LEAD', 'DEFAULT']:
+                try:
+                    from crm.utils import get_canonical_new_lead_stage_id
+                    self.lead_status = get_canonical_new_lead_stage_id()
+                except Exception:
+                    pass
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return f"{self.first_name} {self.last_name}"
 

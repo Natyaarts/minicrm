@@ -26,29 +26,55 @@ const StatLeadsModal = ({ config, onClose, onViewLead, salesSectionFilter, pipel
     try {
         const params = new URLSearchParams({
             is_active: 'true',
-            page: currentPage.toString(),
-            campaign_only: 'true'          // same as dashboard
+            page: currentPage.toString()
         });
+
+        if (config.campaign_id) params.append('campaign_id', config.campaign_id);
+        if (config.campaign_only) params.append('campaign_only', 'true');
 
         if (search) params.append('search', search);
 
-        if (salesSectionFilter && salesSectionFilter !== 'ALL') {
-            params.append('sales_section', salesSectionFilter);
+        const section = config.sales_section || salesSectionFilter;
+        if (section && section !== 'ALL') {
+            params.append('sales_section', section);
+        }
+        if (config.start_date) {
+            params.append('start_date', config.start_date);
+        }
+        if (config.end_date) {
+            params.append('end_date', config.end_date);
         }
 
-        // Stage / converted handling
+        // Stage / converted / dropped handling
         const convertedStage = pipelineStages.find(s => /enroll|convert/i.test(s.name || ''));
-        const openOnlyTypes = ['assignee', 'contacted'];   // assigned, unassigned, contacted, pending cards
+        const droppedStage = pipelineStages.find(s => /drop|lost/i.test(s.name || ''));
+        const openOnlyTypes = ['assignee', 'contacted', 'fresh', 'pending'];   // active open pipeline cards
 
         if (config.type === 'stage') {
             params.append('lead_status', config.value);
         } else if (config.type === 'status') {
-            // Converted card
-            params.append('lead_status', status || (convertedStage ? String(convertedStage.id) : 'ENROLLED'));
+            if (config.value === 'dropped') {
+                params.append('lead_status', status || (droppedStage ? String(droppedStage.id) : 'DROPPED'));
+            } else {
+                params.append('lead_status', status || (convertedStage ? String(convertedStage.id) : 'CONVERTED'));
+            }
         } else if (status) {
             params.append('lead_status', status);
-        } else if (openOnlyTypes.includes(config.type)) {
-            params.append('hide_converted', 'true');   // these dashboard cards exclude converted leads
+        }
+
+        if (openOnlyTypes.includes(config.type)) {
+            params.append('hide_converted', 'true');   // active pipeline cards exclude converted leads
+            params.append('hide_dropped', 'true');     // active pipeline cards exclude dropped leads
+        }
+
+        // Fresh / uncontacted leads
+        if (config.type === 'fresh') {
+            params.append('fresh', 'true');
+        }
+
+        // Pending follow-up task leads
+        if (config.type === 'pending') {
+            params.append('has_pending_tasks', 'true');
         }
 
         // Assignee handling
@@ -229,9 +255,9 @@ const StatLeadsModal = ({ config, onClose, onViewLead, salesSectionFilter, pipel
                                                 </td>
                                                 <td className="px-4 py-3">
                                                     <span className={`px-2 py-1 rounded-md text-[10px] font-bold tracking-wide uppercase ${getStatusStyle(
-                                                        pipelineStages.find(s => (s.id || s.name).toString() === (lead.lead_status || '').toString())?.name || lead.lead_status || 'New Lead'
+                                                        pipelineStages.find(s => (s.id || s.name).toString() === (lead.lead_status || '').toString() || ((lead.lead_status === 'NEW' || !lead.lead_status) && (s.id === 1 || s.order === 1 || /new/i.test(s.name))))?.name || (lead.lead_status === 'NEW' ? 'New Lead' : lead.lead_status) || 'New Lead'
                                                     )}`}>
-                                                        {pipelineStages.find(s => (s.id || s.name).toString() === (lead.lead_status || '').toString())?.name || lead.lead_status || 'New Lead'}
+                                                        {pipelineStages.find(s => (s.id || s.name).toString() === (lead.lead_status || '').toString() || ((lead.lead_status === 'NEW' || !lead.lead_status) && (s.id === 1 || s.order === 1 || /new/i.test(s.name))))?.name || (lead.lead_status === 'NEW' ? 'New Lead' : lead.lead_status) || 'New Lead'}
                                                     </span>
                                                 </td>
                                                 <td className="px-4 py-3">

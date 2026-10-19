@@ -1,38 +1,52 @@
-import React, { useState, useEffect } from 'react';
-import { X, PhoneCall, Mail, MessageSquare, FileText, User, Headphones } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { X, PhoneCall, Mail, MessageSquare, FileText, User, Headphones, RotateCw } from 'lucide-react';
 import api from '../api/axios';
 
-const BDEReport = ({ bdeId, onClose, onLeadClick }) => {
+const BDEReport = ({ bdeId, onClose, onLeadClick, initialStartDate = '', initialEndDate = '' }) => {
     const [report, setReport] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [startDate, setStartDate] = useState('');
-    const [endDate, setEndDate] = useState('');
+    const [startDate, setStartDate] = useState(initialStartDate || '');
+    const [endDate, setEndDate] = useState(initialEndDate || '');
     const [leadSearchTerm, setLeadSearchTerm] = useState('');
+    const scrollRef = useRef(null);
 
     useEffect(() => {
+        setStartDate(initialStartDate || '');
+        setEndDate(initialEndDate || '');
+        setLeadSearchTerm('');
+    }, [bdeId, initialStartDate, initialEndDate]);
+
+    const fetchReport = useCallback(async () => {
         if (!bdeId) return;
-        const fetchReport = async () => {
-            try {
-                setLoading(true);
-                let url = `/crm/bde-report/${bdeId}/`;
-                const params = new URLSearchParams();
-                if (startDate) params.append('start_date', startDate);
-                if (endDate) params.append('end_date', endDate);
-                
-                if (params.toString()) {
-                    url += `?${params.toString()}`;
-                }
-                
-                const res = await api.get(url);
-                setReport(res.data);
-            } catch (err) {
-                console.error("Failed to fetch BDE report:", err);
-            } finally {
-                setLoading(false);
+        try {
+            setLoading(true);
+            let url = `/crm/bde-report/${bdeId}/`;
+            const params = new URLSearchParams();
+            if (startDate) params.append('start_date', startDate);
+            if (endDate) params.append('end_date', endDate);
+
+            if (params.toString()) {
+                url += `?${params.toString()}`;
             }
-        };
-        fetchReport();
+
+            const res = await api.get(url);
+            setReport(res.data);
+        } catch (err) {
+            console.error("Failed to fetch BDE report:", err);
+        } finally {
+            setLoading(false);
+        }
     }, [bdeId, startDate, endDate]);
+
+    useEffect(() => {
+        fetchReport();
+    }, [fetchReport]);
+
+    useEffect(() => {
+        if (bdeId && scrollRef.current) {
+            scrollRef.current.scrollTo(0, 0);
+        }
+    }, [bdeId]);
 
     const clearFilters = () => {
         setStartDate('');
@@ -95,6 +109,15 @@ const BDEReport = ({ bdeId, onClose, onLeadClick }) => {
                         </div>
 
                         <button 
+                            onClick={fetchReport}
+                            disabled={loading}
+                            title="Refresh Report Data"
+                            className="p-2 hover:bg-slate-100 rounded-lg transition-colors text-slate-500 hover:text-indigo-600 disabled:opacity-50"
+                        >
+                            <RotateCw size={18} className={loading ? "animate-spin" : ""} />
+                        </button>
+
+                        <button
                             onClick={onClose}
                             className="p-2 hover:bg-slate-100 rounded-lg transition-colors text-slate-500"
                         >
@@ -113,50 +136,74 @@ const BDEReport = ({ bdeId, onClose, onLeadClick }) => {
                         <p className="text-sm font-medium text-rose-500">Failed to load report data.</p>
                     </div>
                 ) : (
-                    <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
+                    <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
                         
-                        {/* Metrics */}
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        {/* Summary Cards */}
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Total Assigned Leads</p>
-                                <h3 className="text-2xl font-black text-indigo-600">{report.metrics.total_assigned}</h3>
+                                <h3 className="text-2xl font-black text-indigo-600">{report.metrics.total_assigned ?? 0}</h3>
+                                <p className="text-[10px] text-slate-500 font-medium mt-1">Unique Assigned Leads</p>
                             </div>
                             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Total Interactions Logged</p>
-                                <h3 className="text-2xl font-black text-emerald-600">{report.metrics.total_interactions}</h3>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Connected Leads</p>
+                                <h3 className="text-2xl font-black text-emerald-600">{report.metrics.connected_leads ?? 0}</h3>
+                                <p className="text-[10px] text-emerald-600 font-medium mt-1">Successful Connections</p>
                             </div>
                             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Pending Follow-up Tasks</p>
-                                <h3 className="text-2xl font-black text-rose-600">{report.metrics.pending_tasks}</h3>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Contacted (Not Connected)</p>
+                                <h3 className="text-2xl font-black text-amber-600">{report.metrics.contacted_not_connected_leads ?? 0}</h3>
+                                <p className="text-[10px] text-amber-600 font-medium mt-1">Call Attempted, Unanswered</p>
+                            </div>
+                            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Not Connected</p>
+                                <h3 className="text-2xl font-black text-slate-600">{report.metrics.not_connected_leads ?? 0}</h3>
+                                <p className="text-[10px] text-slate-400 font-medium mt-1">New / Uncontacted</p>
                             </div>
                         </div>
 
                         {/* Activity Breakdown */}
                         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
                             <p className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">Logged Activity Breakdown</p>
-                            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                                <div className="bg-blue-50/50 p-3 rounded-lg border border-blue-100 text-center">
-                                    <p className="text-[9px] font-bold text-blue-500 uppercase">📞 Calls</p>
-                                    <h4 className="text-lg font-black text-blue-700 mt-0.5">{report.metrics.total_calls || 0}</h4>
-                                    {report.metrics.total_call_duration > 0 && (
-                                        <p className="text-[8px] font-semibold text-blue-500/80 mt-0.5">{report.metrics.formatted_total_call_duration}</p>
-                                    )}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div className="bg-blue-50/60 p-4 rounded-xl border border-blue-100 flex flex-col justify-between">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2.5">
+                                            <div className="w-9 h-9 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center">
+                                                <PhoneCall size={18} />
+                                            </div>
+                                            <div>
+                                                <p className="text-xs font-bold text-blue-900 uppercase">Calls</p>
+                                                <p className="text-[11px] text-blue-600 font-medium">Logged phone interactions</p>
+                                            </div>
+                                        </div>
+                                        <h4 className="text-2xl font-black text-blue-700">{report.metrics.total_calls || 0}</h4>
+                                    </div>
+                                    <div className="mt-3 pt-3 border-t border-blue-100 flex flex-wrap items-center justify-between gap-2 text-xs text-blue-900">
+                                        <span>Connected: <strong className="font-bold text-emerald-700">{report.metrics.connected_calls || 0}</strong></span>
+                                        <span>Unsuccessful: <strong className="font-bold text-amber-700">{report.metrics.unsuccessful_calls || 0}</strong></span>
+                                        {report.metrics.total_call_duration > 0 && (
+                                            <span className="font-semibold text-blue-700 bg-blue-100/70 px-2 py-0.5 rounded">Duration: {report.metrics.formatted_total_call_duration}</span>
+                                        )}
+                                    </div>
                                 </div>
-                                <div className="bg-indigo-50/50 p-3 rounded-lg border border-indigo-100 text-center">
-                                    <p className="text-[9px] font-bold text-indigo-500 uppercase">📝 Notes</p>
-                                    <h4 className="text-lg font-black text-indigo-700 mt-0.5">{report.metrics.total_notes || 0}</h4>
-                                </div>
-                                <div className="bg-emerald-50/50 p-3 rounded-lg border border-emerald-100 text-center">
-                                    <p className="text-[9px] font-bold text-emerald-500 uppercase">💬 WhatsApp</p>
-                                    <h4 className="text-lg font-black text-emerald-700 mt-0.5">{report.metrics.total_whatsapp || 0}</h4>
-                                </div>
-                                <div className="bg-purple-50/50 p-3 rounded-lg border border-purple-100 text-center">
-                                    <p className="text-[9px] font-bold text-purple-500 uppercase">✉️ Emails</p>
-                                    <h4 className="text-lg font-black text-purple-700 mt-0.5">{report.metrics.total_emails || 0}</h4>
-                                </div>
-                                <div className="bg-amber-50/50 p-3 rounded-lg border border-amber-100 text-center col-span-2 sm:col-span-1">
-                                    <p className="text-[9px] font-bold text-amber-600 uppercase">🤝 Meetings</p>
-                                    <h4 className="text-lg font-black text-amber-700 mt-0.5">{report.metrics.total_meetings || 0}</h4>
+
+                                <div className="bg-emerald-50/60 p-4 rounded-xl border border-emerald-100 flex flex-col justify-between">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2.5">
+                                            <div className="w-9 h-9 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center">
+                                                <MessageSquare size={18} />
+                                            </div>
+                                            <div>
+                                                <p className="text-xs font-bold text-emerald-900 uppercase">WhatsApp Connected</p>
+                                                <p className="text-[11px] text-emerald-600 font-medium">Confirmed WhatsApp connections</p>
+                                            </div>
+                                        </div>
+                                        <h4 className="text-2xl font-black text-emerald-700">{report.metrics.whatsapp_connected || 0}</h4>
+                                    </div>
+                                    <div className="mt-3 pt-3 border-t border-emerald-100 text-xs text-emerald-900">
+                                        <span>Unique Leads Connected: <strong className="font-bold text-emerald-700">{report.metrics.whatsapp_connected || 0}</strong></span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -183,7 +230,16 @@ const BDEReport = ({ bdeId, onClose, onLeadClick }) => {
                                             onClick={() => onLeadClick && onLeadClick(lead.id)}
                                             className="p-3 border border-slate-100 rounded-lg hover:border-indigo-300 hover:bg-indigo-50/10 transition-colors cursor-pointer"
                                         >
-                                            <p className="text-sm font-bold text-slate-800 hover:text-indigo-600 transition-colors">{lead.name}</p>
+                                            <div className="flex justify-between items-start gap-1">
+                                                <p className="text-sm font-bold text-slate-800 hover:text-indigo-600 transition-colors truncate">{lead.name}</p>
+                                                {lead.connection_status === 'CONNECTED' ? (
+                                                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 shrink-0">Connected</span>
+                                                ) : lead.connection_status === 'CONTACTED_NOT_CONNECTED' ? (
+                                                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 shrink-0">Attempted</span>
+                                                ) : (
+                                                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 shrink-0">Not Connected</span>
+                                                )}
+                                            </div>
                                             <div className="flex justify-between items-center mt-1">
                                                 <p className="text-[10px] font-medium text-slate-500">{lead.crm_id}</p>
                                                 <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{lead.status}</span>

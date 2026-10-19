@@ -357,3 +357,79 @@ class NSDCRegistrationFlowTests(APITestCase):
         self.assertEqual(prog.slug, "skill-india-mission")
         prog2 = Program.objects.create(name="Skill India Mission")
         self.assertEqual(prog2.slug, "skill-india-mission-1")
+
+
+class AnalyticsDetailTests(APITestCase):
+    def setUp(self):
+        self.admin = User.objects.create_superuser(
+            username='admin_analytics',
+            password='testpassword123',
+            email='admin_analytics@example.com',
+            role='SUPER_ADMIN'
+        )
+        self.client.force_authenticate(user=self.admin)
+        self.prog = Program.objects.create(name='Classical Arts', slug='classical-arts')
+
+        from crm.models import PipelineStage
+        self.stage_new = PipelineStage.objects.create(name='New Lead', order=1, is_default=True)
+        self.stage_conv = PipelineStage.objects.create(name='Converted', order=2)
+        self.stage_drop = PipelineStage.objects.create(name='Dropped', order=3)
+
+    def test_analytics_detail_reconciles_enrolled_students_and_funnel(self):
+        # 1. Enrolled student
+        u1 = User.objects.create_user(username='enrolled_stud', password='password123', role='STUDENT')
+        Student.objects.create(
+            user=u1,
+            crm_student_id='CRM-TEST-AN-1',
+            first_name='Enrolled',
+            last_name='Student',
+            mobile='+919800000001',
+            program_type=self.prog,
+            lead_status=str(self.stage_conv.id),
+            is_active=True
+        )
+
+        # 2. Raw unconverted lead
+        u2 = User.objects.create_user(username='raw_lead', password='password123', role='STUDENT')
+        Student.objects.create(
+            user=u2,
+            crm_student_id='CRM-TEST-AN-2',
+            first_name='Raw',
+            last_name='Lead',
+            mobile='+919800000002',
+            program_type=self.prog,
+            lead_status=str(self.stage_new.id),
+            is_active=True
+        )
+
+        # 3. Dropped lead
+        u3 = User.objects.create_user(username='drop_lead', password='password123', role='STUDENT')
+        Student.objects.create(
+            user=u3,
+            crm_student_id='CRM-TEST-AN-3',
+            first_name='Drop',
+            last_name='Lead',
+            mobile='+919800000003',
+            program_type=self.prog,
+            lead_status=str(self.stage_drop.id),
+            is_active=True
+        )
+
+        res = self.client.get('/api/analytics-details/')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        # students_count must be 1 (only genuinely enrolled converted students)
+        self.assertEqual(res.data['students_count'], 1)
+
+        # program_distribution must only count enrolled students
+        self.assertEqual(len(res.data['program_distribution']), 1)
+        self.assertEqual(res.data['program_distribution'][0]['name'], 'Classical Arts')
+        self.assertEqual(res.data['program_distribution'][0]['value'], 1)
+
+        # lead_funnel must use human-readable stage names
+        funnel_names = [item['name'] for item in res.data['lead_funnel']]
+        self.assertIn('New Lead', funnel_names)
+        self.assertIn('Converted', funnel_names)
+        self.assertIn('Dropped', funnel_names)
+        self.assertNotIn(str(self.stage_new.id), funnel_names)
+        self.assertNotIn(str(self.stage_conv.id), funnel_names)

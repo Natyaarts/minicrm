@@ -6,14 +6,9 @@ class Command(BaseCommand):
     help = 'Fix lead_status for students imported from Wise LMS'
 
     def handle(self, *args, **options):
-        # Resolve 'CONVERTED' stage ID
-        converted_stage_id = 'CONVERTED'
-        try:
-            stage = PipelineStage.objects.filter(name__iexact='CONVERTED').first()
-            if stage:
-                converted_stage_id = str(stage.id)
-        except Exception:
-            pass
+        # Resolve canonical 'CONVERTED' stage ID
+        from crm.utils import get_canonical_converted_stage_id
+        converted_stage_id = get_canonical_converted_stage_id()
 
         # Find all students imported from Wise LMS
         wise_students = Student.objects.filter(lms_student_id__isnull=False).exclude(lms_student_id="")

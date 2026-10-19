@@ -455,6 +455,11 @@ class StudentSerializer(serializers.ModelSerializer):
             crm_id = Student.generate_next_crm_id()
             
             # 3. Create Student
+            raw_status = str(validated_data.get('lead_status') or '').strip()
+            if not raw_status or raw_status.upper() in ['NEW', 'NEW LEAD', 'DEFAULT']:
+                from crm.utils import get_canonical_new_lead_stage_id
+                validated_data['lead_status'] = get_canonical_new_lead_stage_id()
+
             student = Student.objects.create(user=user, crm_student_id=crm_id, **validated_data)
             
             # If this is an NSDC application for an existing student, record interaction on original student

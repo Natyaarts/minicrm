@@ -134,6 +134,7 @@ const SalesModule = () => {
     const [loadingTasks, setLoadingTasks] = useState(false);
     
     const [selectedBdeId, setSelectedBdeId] = useState(null);
+    const [selectedBdeDates, setSelectedBdeDates] = useState({ start: '', end: '' });
 
     useEffect(() => {
         if (selectedStudentProfile?.id) {
@@ -391,7 +392,7 @@ const SalesModule = () => {
                             { id: 'NEW', name: 'New Lead', color: '#e2e8f0' },
                             { id: 'FOLLOW_UP', name: 'Follow-up', color: '#fef08a' },
                             { id: 'PAYMENT_PENDING', name: 'Payment Pending', color: '#fed7aa' },
-                            { id: 'ENROLLED', name: 'Enrolled', color: '#bbf7d0' },
+                            { id: 'CONVERTED', name: 'Converted', color: '#bbf7d0' },
                             { id: 'DROPPED', name: 'Dropped', color: '#fecaca' },
                         ];
                     } else {
@@ -1018,13 +1019,14 @@ const SalesModule = () => {
         e.preventDefault();
         setCreatingLead(true);
 
+        const newLeadStage = pipelineStages.find(s => s.name?.toLowerCase().includes('new')) || pipelineStages[0];
         const payload = {
             first_name: createFormData.first_name,
             last_name: createFormData.last_name || '',
             mobile: createFormData.mobile,
             email: createFormData.email || '',
             program_type: createFormData.program_type,
-            lead_status: 'NEW',
+            ...(newLeadStage ? { lead_status: String(newLeadStage.id) } : {}),
             is_active: true
         };
 
@@ -1821,7 +1823,7 @@ const SalesModule = () => {
                     ) : activeTab === 'dashboard' && isAuthenticated ? (
                         <div className="bg-slate-50 min-h-[500px]">
                             <CRMDashboard 
-                                onStatClick={async (type, value, title) => {
+                                onStatClick={async (type, value, title, extraParams = {}) => {
                                     if (type === 'single') {
                                         try {
                                             const res = await api.get(`students/${value}/`);
@@ -1832,9 +1834,17 @@ const SalesModule = () => {
                                         return;
                                     }
                                     // Open Stat Modal
-                                    setStatModalConfig({ type, value, title: title || (type === 'stage' ? value : 'Leads') });
+                                    setStatModalConfig({
+                                        type,
+                                        value,
+                                        title: title || (type === 'stage' ? value : 'Leads'),
+                                        ...extraParams
+                                    });
                                 }}
-                                onBdeClick={setSelectedBdeId}
+                                onBdeClick={(id, start, end) => {
+                                    setSelectedBdeId(id);
+                                    setSelectedBdeDates({ start: start || '', end: end || '' });
+                                }}
                             />
                         </div>
                     ) : activeTab === 'tasks' && isAuthenticated ? (
@@ -1851,7 +1861,10 @@ const SalesModule = () => {
                         </div>
                     ) : activeTab === 'reports' && isAuthenticated ? (
                         <div className="bg-slate-50 min-h-[500px]">
-                            <TeamReports onBdeClick={setSelectedBdeId} />
+                            <TeamReports onBdeClick={(id, start, end) => {
+                                setSelectedBdeId(id);
+                                setSelectedBdeDates({ start: start || '', end: end || '' });
+                            }} />
                         </div>
                     ) : activeTab === 'analytics' && isAuthenticated ? (
                         <div className="bg-slate-50 min-h-[500px]">
@@ -3143,6 +3156,8 @@ const SalesModule = () => {
             {/* BDE Report Modal */}
             <BDEReport 
                 bdeId={selectedBdeId} 
+                initialStartDate={selectedBdeDates.start}
+                initialEndDate={selectedBdeDates.end}
                 onClose={() => setSelectedBdeId(null)} 
                 onLeadClick={async (id) => {
                     try {

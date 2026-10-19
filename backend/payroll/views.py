@@ -94,6 +94,38 @@ class PayslipViewSet(viewsets.ModelViewSet):
             return [IsAdminOrSuperAdmin()]
         return [permissions.IsAuthenticated()]
 
+    @action(detail=False, methods=['get'])
+    def summary(self, request):
+        qs = self.filter_queryset(self.get_queryset())
+
+        month = request.query_params.get('month')
+        year = request.query_params.get('year')
+        status_param = request.query_params.get('status')
+        if month:
+            qs = qs.filter(month=month)
+        if year:
+            qs = qs.filter(year=year)
+        if status_param:
+            qs = qs.filter(status=status_param)
+
+        from django.db.models import Sum, Avg
+
+        paid_qs = qs.filter(status='PAID')
+        total_disbursed = paid_qs.aggregate(total=Sum('net_salary'))['total'] or Decimal('0.00')
+        pending_slips = qs.filter(status='PENDING').count()
+        total_slips = qs.count()
+        paid_count = paid_qs.count()
+
+        avg_salary = paid_qs.aggregate(avg=Avg('net_salary'))['avg'] if paid_count > 0 else (qs.aggregate(avg=Avg('net_salary'))['avg'] or Decimal('0.00'))
+
+        return Response({
+            "total_disbursed": float(total_disbursed),
+            "pending_slips": pending_slips,
+            "total_slips": total_slips,
+            "paid_count": paid_count,
+            "avg_salary": float(avg_salary or 0),
+        })
+
     @action(detail=False, methods=['post'])
     def generate_all(self, request):
         if not (request.user.role in ['SUPER_ADMIN', 'ADMIN'] or request.user.is_superuser):
