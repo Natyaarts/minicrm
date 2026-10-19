@@ -208,12 +208,17 @@ def compute_audio_hash(file_obj) -> str:
     """
     Computes a SHA-256 hash of the audio content for deduplication.
     Works with Django FieldFile, UploadedFile, file paths, or file-like objects.
+    Returns empty string if file is empty or missing.
     """
     import hashlib
     if not file_obj:
         return ""
     try:
+        if hasattr(file_obj, 'size') and file_obj.size == 0:
+            return ""
+
         h = hashlib.sha256()
+        total_bytes = 0
         if hasattr(file_obj, 'open') and not hasattr(file_obj, 'read'):
             try:
                 file_obj.open('rb')
@@ -228,6 +233,7 @@ def compute_audio_hash(file_obj) -> str:
                 chunk = file_obj.read(65536)
                 if not chunk:
                     break
+                total_bytes += len(chunk)
                 h.update(chunk)
             if hasattr(file_obj, 'seek'):
                 file_obj.seek(pos)
@@ -237,10 +243,19 @@ def compute_audio_hash(file_obj) -> str:
                     chunk = f.read(65536)
                     if not chunk:
                         break
+                    total_bytes += len(chunk)
                     h.update(chunk)
         elif isinstance(file_obj, bytes):
+            total_bytes = len(file_obj)
             h.update(file_obj)
-        return h.hexdigest()
+
+        if total_bytes == 0:
+            return ""
+
+        digest = h.hexdigest()
+        if digest == 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855':
+            return ""
+        return digest
     except Exception:
         return ""
 
@@ -269,10 +284,87 @@ def check_is_sales_manager(user) -> bool:
 
 
 
+def get_canonical_new_lead_stage():
+    """
+    Resolves the canonical 'New Lead' pipeline stage dynamically.
+    Enforces the single canonical pipeline stage named 'New Lead'.
+    Never assumes a hardcoded stage ID.
+    Returns the PipelineStage model instance.
+    """
+    from .models import PipelineStage
+    # 1. Exact match on 'New Lead'
+    stage = PipelineStage.objects.filter(name__iexact='New Lead').first()
+    if stage:
+        return stage
+
+    # 2. Match on 'New' and normalize to 'New Lead'
+    stage = PipelineStage.objects.filter(name__iexact='New').first()
+    if stage:
+        stage.name = 'New Lead'
+        stage.save(update_fields=['name'])
+        return stage
+
+    # 3. Match regex or is_default
+    stage = PipelineStage.objects.filter(Q(name__iregex=r'^new( lead)?$') | Q(is_default=True)).order_by('order', 'id').first()
+    if stage:
+        return stage
+
+    # 4. Fallback to order=1 or first stage
+    stage = PipelineStage.objects.order_by('order', 'id').first()
+    if stage:
+        return stage
+
+    # 5. Create if pipeline stages table is empty
+    return PipelineStage.objects.create(name='New Lead', order=1, is_default=True)
+
+
+def get_canonical_new_lead_stage_id() -> str:
+    """Returns the string ID of the canonical 'New Lead' pipeline stage."""
+    return str(get_canonical_new_lead_stage().id)
+
+
+def get_canonical_converted_stage():
+    """
+    Resolves the canonical 'Converted' pipeline stage dynamically.
+    Ensures 'Enrolled' is not maintained as a separate CRM pipeline stage.
+    Returns the PipelineStage model instance.
+    """
+    from .models import PipelineStage
+    # 1. Look for 'Converted' stage
+    stage = PipelineStage.objects.filter(name__iexact='Converted').first()
+    if stage:
+        return stage
+
+    # 2. If 'Enrolled' stage exists, rename it to 'Converted' to prevent a separate CRM pipeline stage
+    enrolled_stage = PipelineStage.objects.filter(name__iexact='Enrolled').first()
+    if enrolled_stage:
+        enrolled_stage.name = 'Converted'
+        enrolled_stage.save(update_fields=['name'])
+        return enrolled_stage
+
+    # 3. Look for any stage containing 'convert'
+    stage = PipelineStage.objects.filter(name__icontains='convert').order_by('order', 'id').first()
+    if stage:
+        return stage
+
+    # 4. Create Converted stage if missing
+    order = 4
+    last_stage = PipelineStage.objects.order_by('-order').first()
+    if last_stage:
+        order = last_stage.order + 1
+    return PipelineStage.objects.create(name='Converted', order=order)
+
+
+def get_canonical_converted_stage_id() -> str:
+    """Returns the string ID of the canonical 'Converted' pipeline stage."""
+    return str(get_canonical_converted_stage().id)
+
+
 def get_converted_stage_values():
     """All lead_status values that mean converted/enrolled (ids, codes, names)."""
     from .models import PipelineStage
-    values = {'ENROLLED', 'CONVERTED', 'enrolled', 'converted', 'Enrolled', 'Converted'}
+    canonical_id = get_canonical_converted_stage_id()
+    values = {'ENROLLED', 'CONVERTED', 'enrolled', 'converted', 'Enrolled', 'Converted', canonical_id}
     for stage in PipelineStage.objects.filter(
         Q(name__icontains='convert') | Q(name__icontains='enroll')
     ):
@@ -285,8 +377,114 @@ def get_converted_stage_values():
 def get_new_stage_values():
     """All lead_status values that mean the lead is still in the NEW stage."""
     from .models import PipelineStage
-    values = {'NEW', 'new', 'New', 'New Lead', 'NEW LEAD', 'new lead'}
-    for stage in PipelineStage.objects.filter(name__iregex=r'^new( lead)?$'):
+    canonical_id = get_canonical_new_lead_stage_id()
+    values = {'NEW', 'new', 'New', 'New Lead', 'NEW LEAD', 'new lead', canonical_id}
+    for stage in PipelineStage.objects.filter(Q(name__iregex=r'^new( lead)?$') | Q(order=1) | Q(is_default=True)):
         values.add(str(stage.id))
-        values.add(stage.name)
+        if stage.name:
+            values.add(stage.name)
     return list(values)
+
+
+def get_dropped_stage_values():
+    """All lead_status values that mean dropped/lost (ids, codes, names)."""
+    from .models import PipelineStage
+    values = {'DROPPED', 'dropped', 'Dropped', 'LOST', 'lost', 'Lost'}
+    for stage in PipelineStage.objects.filter(
+        Q(name__icontains='drop') | Q(name__icontains='lost')
+    ):
+        values.add(str(stage.id))
+        if stage.name:
+            values.add(stage.name)
+    return list(values)
+
+
+def get_whatsapp_connected_stage_values():
+    """
+    All lead_status values (IDs, names) that represent a confirmed connection via WhatsApp.
+    Excludes stages that represent only attempted/sent/initiated messages without confirmed connection.
+    """
+    from .models import PipelineStage
+    values = set()
+    for stage in PipelineStage.objects.all():
+        name_lower = (stage.name or '').strip().lower()
+        if 'whatsapp' in name_lower:
+            # Exclude stages that only signify an attempted/sent message without connection
+            if any(neg in name_lower for neg in ['attempt', 'sent', 'send', 'initiated', 'pending', 'undelivered', 'unread']):
+                continue
+            # Include stages indicating connection, discussion, reply, or explicit connection
+            if any(pos in name_lower for pos in ['connect', 'replied', 'discussion', 'chat', 'engaged', 'responsive']) or name_lower == 'whatsapp':
+                values.add(str(stage.id))
+                values.add(stage.name)
+    return list(values)
+
+
+
+def resolve_stage_filter_values(status_param):
+    """
+    Given a lead_status filter parameter (e.g. '1', 'NEW', '2', 'FOLLOW_UP', 'CONVERTED', 'DROPPED'),
+    returns a list of all equivalent database representations (IDs, enum codes, names).
+    """
+    if not status_param:
+        return []
+
+    status_str = str(status_param).strip()
+    status_upper = status_str.upper()
+
+    if status_upper in ['CONVERTED', 'ENROLLED']:
+        return get_converted_stage_values()
+
+    if status_upper in ['DROPPED', 'LOST']:
+        return get_dropped_stage_values()
+
+    new_stages = get_new_stage_values()
+    if status_str in new_stages or status_upper in [s.upper() for s in new_stages]:
+        return new_stages
+
+    from .models import PipelineStage
+    matching_values = {status_str, status_upper}
+
+    standard_mapping = {
+        'NEW': 'New Lead',
+        'FOLLOW_UP': 'Follow-up',
+        'PAYMENT_PENDING': 'Payment Pending',
+        'ENROLLED': 'Converted',
+        'CONVERTED': 'Converted',
+        'DROPPED': 'Dropped',
+    }
+    name_to_legacy = {v.lower(): k for k, v in standard_mapping.items()}
+
+    # 1. If it's a numeric PipelineStage ID
+    if status_str.isdigit():
+        stage = PipelineStage.objects.filter(id=int(status_str)).first()
+        if stage:
+            matching_values.add(str(stage.id))
+            if stage.name:
+                matching_values.add(stage.name)
+                stage_name_lower = stage.name.strip().lower()
+                if stage_name_lower in name_to_legacy:
+                    matching_values.add(name_to_legacy[stage_name_lower])
+                if any(w in stage_name_lower for w in ['convert', 'enroll']):
+                    matching_values.update(get_converted_stage_values())
+            return list(matching_values)
+
+    # 2. If it's a legacy code (e.g. 'FOLLOW_UP', 'DROPPED')
+    if status_upper in standard_mapping:
+        stage_name = standard_mapping[status_upper]
+        matching_values.add(stage_name)
+        for stage in PipelineStage.objects.filter(name__iexact=stage_name):
+            matching_values.add(str(stage.id))
+            matching_values.add(stage.name)
+        return list(matching_values)
+
+    # 3. If it's a stage name string (e.g. 'Follow-up', 'In Discussion')
+    stage = PipelineStage.objects.filter(name__iexact=status_str).first()
+    if stage:
+        matching_values.add(str(stage.id))
+        matching_values.add(stage.name)
+        stage_name_lower = stage.name.strip().lower()
+        if stage_name_lower in name_to_legacy:
+            matching_values.add(name_to_legacy[stage_name_lower])
+        return list(matching_values)
+
+    return list(matching_values)

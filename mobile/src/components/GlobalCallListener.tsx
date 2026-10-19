@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, TextInput, Platform, ScrollView, Alert, ActivityIndicator, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { listenToCallState, listenToMissedCalls, startNativeRecording, stopNativeRecording, getLatestCallLogDuration, extractDurationFromAudio } from '../utils/CallManager';
-import { generateMobileCallId, queueOfflineCall, markRecordingConsumed } from '../utils/SyncManager';
+import { generateMobileCallId, queueOfflineCall, markRecordingConsumed, uploadCallRecordingAsync } from '../utils/SyncManager';
 import client from '../api/client';
 import * as DocumentPicker from 'expo-document-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -298,65 +298,67 @@ export default function GlobalCallListener() {
     const status = isConnected ? 'CONNECTED' : 'MISSED';
     const finalDuration = isConnected ? callDuration.toString() : '0';
 
+    const parameters: Record<string, string> = {
+      mobile_call_id: mobileCallId,
+      customer_number: displayPhone,
+      caller_number: displayPhone,
+      interaction_type: 'CALL',
+      call_duration: finalDuration,
+      call_direction: 'INCOMING',
+      call_status: status,
+      notes: notesContent,
+    };
+    if (leadInfo?.id) parameters.student = leadInfo.id.toString();
+    if (pipelineStatus && leadInfo?.id) parameters.pipeline_status = pipelineStatus;
+    if (nextFollowupDate && leadInfo?.id) {
+      parameters.next_followup_date = nextFollowupDate.toISOString();
+    }
+
+    let fileUriToUpload: string | null = null;
+    let mimeType = 'audio/m4a';
+    let fileName = `incoming_record_${Date.now()}.m4a`;
+
+    if (isConnected && recordedFilePath) {
+      fileUriToUpload = recordedFilePath;
+      if (!fileUriToUpload.startsWith('file://') && !fileUriToUpload.startsWith('content://')) {
+        fileUriToUpload = `file://${fileUriToUpload}`;
+      }
+      const extMatch = fileUriToUpload.match(/\.([a-zA-Z0-9]+)$/);
+      const ext = extMatch ? extMatch[1].toLowerCase() : 'm4a';
+      if (ext === 'mp3') mimeType = 'audio/mpeg';
+      else if (ext === 'wav') mimeType = 'audio/wav';
+      else if (ext === 'amr') mimeType = 'audio/amr';
+      else if (ext === 'aac') mimeType = 'audio/aac';
+
+      const cleanPhone = (displayPhone || '').replace(/\D/g, '').slice(-10);
+      fileName = `incoming_record_${cleanPhone ? cleanPhone + '_' : ''}${Date.now()}.${ext}`;
+    } else if (isConnected && manualRecordingFile) {
+      fileUriToUpload = manualRecordingFile.uri;
+      mimeType = manualRecordingFile.mimeType || 'audio/mpeg';
+      const cleanPhone = (displayPhone || '').replace(/\D/g, '').slice(-10);
+      fileName = manualRecordingFile.name || `record_${cleanPhone ? cleanPhone + '_' : ''}${Date.now()}.mp3`;
+    }
+
     try {
-      const formData = new FormData();
-      if (leadInfo?.id) {
-        formData.append('student', leadInfo.id.toString());
-      }
-      formData.append('mobile_call_id', mobileCallId);
-      formData.append('customer_number', displayPhone);
-      formData.append('caller_number', displayPhone);
-      formData.append('interaction_type', 'CALL');
-      formData.append('call_duration', finalDuration);
-      formData.append('call_direction', 'INCOMING');
-      formData.append('call_status', status);
+      // 1. Post lightweight metadata to create the interaction record promptly (< 200ms)
+      const res = await client.post('/crm/interactions/', parameters);
+      const serverInteractionId = res.data?.id;
 
-      const notesContent = postCallNotes 
-        ? `Incoming Call - Duration: ${formatDuration(callDuration)}\nNotes: ${postCallNotes}`
-        : (isConnected ? `Incoming Call from ${displayPhone} (CONNECTED, ${formatDuration(callDuration)})` : `Missed Incoming Call from ${displayPhone}`);
-      formData.append('notes', notesContent);
+      // 2. If there is an audio recording, kick off asynchronous background upload
+      if (fileUriToUpload && serverInteractionId) {
+        uploadCallRecordingAsync({
+          interactionId: serverInteractionId,
+          mobileCallId,
+          fileUri: fileUriToUpload,
+          mimeType,
+          fileName,
+        }).catch((err) => {
+          console.warn('[GlobalCallListener] Asynchronous recording upload error:', err);
+        });
 
-      if (pipelineStatus && leadInfo?.id) formData.append('pipeline_status', pipelineStatus);
-      if (nextFollowupDate && leadInfo?.id) {
-        formData.append('next_followup_date', nextFollowupDate.toISOString());
-      }
-
-      // Only attach recording if call is confirmed CONNECTED with duration > 0
-      if (isConnected && recordedFilePath) {
-        let finalUri = recordedFilePath;
-        if (!finalUri.startsWith('file://') && !finalUri.startsWith('content://')) {
-          finalUri = `file://${finalUri}`;
-        }
-        
-        const extMatch = finalUri.match(/\.([a-zA-Z0-9]+)$/);
-        const ext = extMatch ? extMatch[1].toLowerCase() : 'm4a';
-        let mimeType = 'audio/m4a';
-        if (ext === 'mp3') mimeType = 'audio/mpeg';
-        else if (ext === 'wav') mimeType = 'audio/wav';
-        else if (ext === 'amr') mimeType = 'audio/amr';
-        else if (ext === 'aac') mimeType = 'audio/aac';
-        
-        const cleanPhone = (displayPhone || '').replace(/\D/g, '').slice(-10);
-        formData.append('audio_recording', {
-          uri: finalUri,
-          type: mimeType,
-          name: `incoming_record_${cleanPhone ? cleanPhone + '_' : ''}${Date.now()}.${ext}`
-        } as any);
-      } else if (isConnected && manualRecordingFile) {
-        const cleanPhone = (displayPhone || '').replace(/\D/g, '').slice(-10);
-        formData.append('audio_recording', {
-          uri: manualRecordingFile.uri,
-          type: manualRecordingFile.mimeType || 'audio/mpeg',
-          name: manualRecordingFile.name || `record_${cleanPhone ? cleanPhone + '_' : ''}${Date.now()}.mp3`
-        } as any);
-      }
-
-      await client.post('/crm/interactions/', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
-
-      if (isConnected && recordedFilePath) {
-        await markRecordingConsumed(recordedFilePath);
+        Alert.alert('✅ Saved', 'Call logged to CRM. Audio recording is uploading in the background.');
+      } else {
+        Alert.alert('✅ Saved', 'Call logged to CRM successfully.');
       }
 
       if (nextFollowupDate && leadInfo?.id) {
@@ -379,7 +381,6 @@ export default function GlobalCallListener() {
         }
       }
 
-      Alert.alert('✅ Saved', 'Call logged to CRM successfully.');
       resetModal();
     } catch (error: any) {
       console.warn('Failed to upload incoming call log online, queueing offline:', error?.response?.data || error);

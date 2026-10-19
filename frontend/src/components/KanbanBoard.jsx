@@ -31,7 +31,7 @@ const KanbanBoard = ({ program, subProgram, course, searchTerm, hideConverted, s
                     { id: 'NEW', name: 'New Lead', color: '#e2e8f0' },
                     { id: 'FOLLOW_UP', name: 'Follow-up', color: '#fef08a' },
                     { id: 'PAYMENT_PENDING', name: 'Payment Pending', color: '#fed7aa' },
-                    { id: 'ENROLLED', name: 'Enrolled', color: '#bbf7d0' },
+                    { id: 'CONVERTED', name: 'Converted', color: '#bbf7d0' },
                     { id: 'DROPPED', name: 'Dropped', color: '#fecaca' },
                 ];
             } else {
@@ -135,9 +135,34 @@ const KanbanBoard = ({ program, subProgram, course, searchTerm, hideConverted, s
             {/* Kanban Board */}
             <div className="flex gap-4 overflow-x-auto pb-4 h-[calc(100vh-250px)]">
                 {stages.map(stage => {
-                    const stageLeads = leads.filter(lead => 
-                        (lead.lead_status || 'NEW').toString() === (stage.id || stage.name).toString()
-                    );
+                    const stageLeads = leads.filter(lead => {
+                        const rawStatus = (lead.lead_status || 'NEW').toString().trim();
+                        const stageId = (stage.id || '').toString().trim();
+                        const stageName = (stage.name || '').toString().trim().toLowerCase();
+
+                        if (rawStatus === stageId || rawStatus.toLowerCase() === stageName) {
+                            return true;
+                        }
+
+                        const statusUpper = rawStatus.toUpperCase();
+                        if (statusUpper === 'NEW' || !lead.lead_status) {
+                            return stageId === '1' || stage.order === 1 || /^(new( lead)?)$/i.test(stageName);
+                        }
+                        if (statusUpper === 'FOLLOW_UP') {
+                            return /^follow[- ]?up$/i.test(stageName);
+                        }
+                        if (statusUpper === 'PAYMENT_PENDING') {
+                            return /payment.*pending/i.test(stageName);
+                        }
+                        if (statusUpper === 'ENROLLED' || statusUpper === 'CONVERTED') {
+                            return /enroll|convert/i.test(stageName);
+                        }
+                        if (statusUpper === 'DROPPED') {
+                            return /drop/i.test(stageName);
+                        }
+
+                        return false;
+                    });
 
                     return (
                         <div 

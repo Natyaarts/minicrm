@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, PhoneCall, TrendingUp, AlertCircle, ChevronRight, User } from 'lucide-react';
+import { Users, ChevronRight, User } from 'lucide-react';
 import api from '../api/axios';
 
 const TeamReports = ({ onBdeClick }) => {
@@ -96,66 +96,42 @@ const TeamReports = ({ onBdeClick }) => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {teamData.map((member) => {
-                    const completionRate = member.assigned > 0 
-                        ? Math.round((member.contacted / member.assigned) * 100) 
-                        : 0;
-                        
-                    return (
-                        <div 
-                            key={member.id}
-                            onClick={() => onBdeClick(member.id)}
-                            className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:shadow-md hover:border-indigo-300 transition-all cursor-pointer group"
-                        >
-                            <div className="flex justify-between items-start mb-4">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center font-bold text-lg group-hover:bg-indigo-600 group-hover:text-white transition-colors">
-                                        {(member.name || 'U').charAt(0).toUpperCase()}
-                                    </div>
-                                    <div>
-                                        <h3 className="font-bold text-slate-800 text-lg">{member.name || 'Unknown'}</h3>
-                                        <p className="text-xs text-slate-500 uppercase tracking-wider font-medium">Sales Rep</p>
-                                    </div>
+                {teamData.map((member) => (
+                    <div
+                        key={member.id}
+                        onClick={() => onBdeClick(member.id, startDate, endDate)}
+                        className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:shadow-md hover:border-indigo-300 transition-all cursor-pointer group"
+                    >
+                        <div className="flex justify-between items-start mb-4">
+                            <div className="flex items-center gap-3">
+                                <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center font-bold text-lg group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                                    {(member.name || 'U').charAt(0).toUpperCase()}
                                 </div>
-                                <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors">
-                                    <ChevronRight size={18} />
+                                <div>
+                                    <h3 className="font-bold text-slate-800 text-lg">{member.name || 'Unknown'}</h3>
+                                    <p className="text-xs text-slate-500 uppercase tracking-wider font-medium">{member.role || 'Sales Rep'}</p>
                                 </div>
                             </div>
-                            
-                            <div className="grid grid-cols-2 gap-4 mb-5">
-                                <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                                    <div className="flex items-center gap-1.5 text-slate-500 mb-1">
-                                        <Users size={14} />
-                                        <span className="text-[10px] font-bold uppercase tracking-wider">Assigned Leads</span>
-                                    </div>
-                                    <p className="text-xl font-black text-slate-700">{member.assigned}</p>
-                                </div>
-                                <div className="bg-emerald-50 p-3 rounded-xl border border-emerald-100">
-                                    <div className="flex items-center gap-1.5 text-emerald-600 mb-1">
-                                        <PhoneCall size={14} />
-                                        <span className="text-[10px] font-bold uppercase tracking-wider">Contacted</span>
-                                    </div>
-                                    <p className="text-xl font-black text-emerald-700">{member.contacted}</p>
-                                </div>
-                            </div>
-
-                            <div className="mb-2 flex justify-between items-center text-xs">
-                                <span className="font-medium text-slate-600">Lead Contact Rate</span>
-                                <span className="font-bold text-indigo-600">{completionRate}%</span>
-                            </div>
-                            <div className="w-full bg-slate-100 rounded-full h-2">
-                                <div 
-                                    className="bg-indigo-500 h-2 rounded-full" 
-                                    style={{ width: `${completionRate}%` }}
-                                ></div>
-                            </div>
-                            
-                            <div className="mt-4 pt-4 border-t border-slate-100 flex items-center text-xs font-medium text-indigo-600 group-hover:text-indigo-700">
-                                View full report & call recordings &rarr;
+                            <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors">
+                                <ChevronRight size={18} />
                             </div>
                         </div>
-                    );
-                })}
+
+                        <div className="mb-5">
+                            <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100">
+                                <div className="flex items-center gap-1.5 text-slate-500 mb-1">
+                                    <Users size={14} />
+                                    <span className="text-[10px] font-bold uppercase tracking-wider">Total Assigned Leads</span>
+                                </div>
+                                <p className="text-2xl font-black text-slate-800">{member.assigned || 0}</p>
+                            </div>
+                        </div>
+
+                        <div className="mt-4 pt-4 border-t border-slate-100 flex items-center text-xs font-medium text-indigo-600 group-hover:text-indigo-700">
+                            View full report & call recordings &rarr;
+                        </div>
+                    </div>
+                ))}
                 
                 {teamData.length === 0 && (
                     <div className="col-span-full bg-slate-50 border border-slate-200 border-dashed rounded-2xl p-12 text-center">

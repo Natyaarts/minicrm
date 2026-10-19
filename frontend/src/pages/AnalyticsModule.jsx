@@ -131,10 +131,10 @@ const AnalyticsModule = () => {
 
             {/* Stat Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <StatCard title="Total Students" value={data.students_count} icon={Users} trend="up" trendValue="12%" />
+                <StatCard title="Total Students" value={data.students_count} icon={Users} />
                 <StatCard title="Active Mentors" value={data.teachers_count} icon={UserCheck} />
                 <StatCard title="Live Batches" value={data.batches_count} icon={GraduationCap} />
-                <StatCard title="Net Revenue" value={`₹${data.revenue_metrics.collected.toLocaleString()}`} icon={DollarSign} trend="up" trendValue="8.4%" />
+                <StatCard title="Net Revenue" value={`₹${data.revenue_metrics.collected.toLocaleString()}`} icon={DollarSign} />
             </div>
 
             {/* Tabs */}
