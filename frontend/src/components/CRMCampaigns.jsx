@@ -194,10 +194,11 @@ const CRMCampaigns = ({ onLeadClick }) => {
     };
 
     useEffect(() => {
-        if (editingCampaign?.id && activeTab === 'campaigns') {
+        const isGoogleSheetsCampaign = editingCampaign?.id && (formData.platform === 'OTHER' || Boolean(formData.google_spreadsheet_id));
+        if (isGoogleSheetsCampaign && activeTab === 'campaigns') {
             fetchGoogleSheetsList();
         }
-    }, [editingCampaign?.id, activeTab]);
+    }, [editingCampaign?.id, formData.platform, formData.google_spreadsheet_id, activeTab]);
 
     useEffect(() => {
         if (activeTab === 'dashboard') {

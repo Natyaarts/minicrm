@@ -29,7 +29,9 @@ api.interceptors.response.use(
         if (error.response && error.response.status === 401) {
             const requestUrl = error.config?.url || '';
             const isLoginRequest = requestUrl.includes('auth/login');
-            if (!isLoginRequest) {
+            // Do not clear the MiniCRM session on third-party OAuth/integration authorization errors
+            const isThirdPartyAuthError = requestUrl.includes('crm/google/') || requestUrl.includes('integrations/google');
+            if (!isLoginRequest && !isThirdPartyAuthError) {
                 localStorage.removeItem('token');
                 // Redirect if currently on a protected page
                 if (window.location.pathname !== '/login') {

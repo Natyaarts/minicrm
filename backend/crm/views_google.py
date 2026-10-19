@@ -134,7 +134,7 @@ class GoogleSpreadsheetsListView(APIView):
             
         access_token = get_refreshed_access_token(campaign)
         if not access_token:
-            return Response({'error': 'Google authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+            return Response({'authenticated': False, 'files': [], 'message': 'Google authentication required'}, status=status.HTTP_200_OK)
             
         # Call Google Drive API to list spreadsheets
         drive_url = "https://www.googleapis.com/drive/v3/files"
@@ -149,7 +149,10 @@ class GoogleSpreadsheetsListView(APIView):
         if res.status_code != 200:
             return Response({'error': 'Failed to fetch spreadsheets from Google', 'details': res.json()}, status=status.HTTP_400_BAD_REQUEST)
             
-        return Response(res.json())
+        data = res.json()
+        if isinstance(data, dict):
+            data['authenticated'] = True
+        return Response(data)
 
 class GoogleSheetSyncView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -180,7 +183,7 @@ class GoogleSheetSyncView(APIView):
             
         access_token = get_refreshed_access_token(campaign)
         if not access_token:
-            return Response({'error': 'Google authentication token is missing or expired'}, status=status.HTTP_401_UNAUTHORIZED)
+            return Response({'error': 'Google authentication token is missing or expired', 'authenticated': False}, status=status.HTTP_400_BAD_REQUEST)
             
         # Get values from Sheet
         import urllib.parse
