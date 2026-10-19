@@ -1398,30 +1398,30 @@ const fetchCollectedFees = async () => {
             {viewTab === 'dashboard' && !selectedBatch && (
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
                     <div className="flex flex-wrap items-center justify-end gap-3">
-    <input
-        type="date"
-        value={filterStartDate}
-        max={filterEndDate || undefined}
-        onChange={(e) => setFilterStartDate(e.target.value)}
-        className="px-3 py-1.5 text-sm rounded-lg border border-slate-200 bg-white"
-    />
-    <span className="text-slate-400">to</span>
-    <input
-        type="date"
-        value={filterEndDate}
-        min={filterStartDate || undefined}
-        onChange={(e) => setFilterEndDate(e.target.value)}
-        className="px-3 py-1.5 text-sm rounded-lg border border-slate-200 bg-white"
-    />
-    {(filterStartDate || filterEndDate) && (
-        <button
-            onClick={() => { setFilterStartDate(''); setFilterEndDate(''); }}
-            className="px-3 py-1.5 text-xs font-bold text-slate-500 bg-slate-200 hover:bg-slate-300 rounded-lg"
-        >
-            Clear
-        </button>
-    )}
-</div>
+                        <input
+                            type="date"
+                            value={filterStartDate}
+                            max={filterEndDate || undefined}
+                            onChange={(e) => setFilterStartDate(e.target.value)}
+                            className="px-3 py-1.5 text-sm rounded-lg border border-slate-200 bg-white"
+                        />
+                        <span className="text-slate-400">to</span>
+                        <input
+                            type="date"
+                            value={filterEndDate}
+                            min={filterStartDate || undefined}
+                            onChange={(e) => setFilterEndDate(e.target.value)}
+                            className="px-3 py-1.5 text-sm rounded-lg border border-slate-200 bg-white"
+                        />
+                        {(filterStartDate || filterEndDate) && (
+                            <button
+                                onClick={() => { setFilterStartDate(''); setFilterEndDate(''); }}
+                                className="px-3 py-1.5 text-xs font-bold text-slate-500 bg-slate-200 hover:bg-slate-300 rounded-lg"
+                            >
+                                Clear
+                            </button>
+                        )}
+                    </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between hover:shadow-md transition-all">
@@ -1434,12 +1434,22 @@ const fetchCollectedFees = async () => {
                             </div>
                         </div>
 
-                        {/* Date Filter for Break Metrics */}
-                        
+
 
                         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between hover:shadow-md transition-all">
                             <div>
                                 <p className="text-sm font-semibold text-slate-500 mb-1">Total Students</p>
+                                <p className="text-3xl font-black text-slate-800"> {dashboardStats?.students_all ?? 0}</p>
+                            </div>
+                            <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600">
+                                <Users size={24} />
+                            </div>
+                        </div>
+                        
+
+                        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between hover:shadow-md transition-all">
+                            <div>
+                                <p className="text-sm font-semibold text-slate-500 mb-1">Active Students</p>
                                 <p className="text-3xl font-black text-slate-800">{dashboardStats?.students ?? 0}</p>
                             </div>
                             <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600">

@@ -1288,7 +1288,7 @@ class StudentViewSet(viewsets.ModelViewSet):
             
         student.academic_status = 'DISCONTINUED'
         # Optional: You might want to update lead_status to 'DROPPED' as well
-        student.lead_status = 'DROPPED'
+        # student.lead_status = 'DROPPED'
         
         import datetime
         try:
@@ -1326,8 +1326,9 @@ class StudentViewSet(viewsets.ModelViewSet):
         ).select_related('student')
 
         rejoined_qs = StudentBreakHistory.objects.filter(
-            student__in=qs, is_active_break=False
-        ).select_related('student')
+            student__in=qs.filter(academic_status='ACTIVE'),   # excludes DISCONTINUED and ON_BREAK
+            is_active_break=False,
+        ).select_related('student').order_by('student_id', '-rejoin_date')
 
         if start_date:
             break_history_qs = break_history_qs.filter(break_start_date__gte=start_date)
@@ -1358,7 +1359,11 @@ class StudentViewSet(viewsets.ModelViewSet):
             })
 
         rejoined_data = []
+        seen = set()
         for h in rejoined_qs:
+            if h.student_id in seen:
+                continue
+            seen.add(h.student_id)
             s = h.student
             rejoined_data.append({
                 'id': s.id,
@@ -2144,18 +2149,39 @@ class DashboardStatsView(APIView):
         start_date = parse_date(request.query_params.get('start_date') or '')
         end_date = parse_date(request.query_params.get('end_date') or '')
 
-        students_count_qs = student_qs
+        # Apply the selected date range to student counts
+        students_count_qs = student_qs.exclude(
+            academic_status='DISCONTINUED'
+        )
+
+        students_all_qs = student_qs
         batches_count_qs = batch_qs
 
         if start_date:
-            students_count_qs = students_count_qs.filter(created_at__date__gte=start_date)
-            # batch still running on/after start (no end date = ongoing)
-            batches_count_qs = batches_count_qs.filter(
-                Q(end_date__isnull=True) | Q(end_date__gte=start_date)
+            students_count_qs = students_count_qs.filter(
+                created_at__date__gte=start_date
             )
+            students_all_qs = students_all_qs.filter(
+                created_at__date__gte=start_date
+            )
+
+            # Batches still running on or after the start date
+            batches_count_qs = batches_count_qs.filter(
+                Q(end_date__isnull=True) |
+                Q(end_date__gte=start_date)
+            )
+
         if end_date:
-            students_count_qs = students_count_qs.filter(created_at__date__lte=end_date)
-            batches_count_qs = batches_count_qs.filter(start_date__lte=end_date)
+            students_count_qs = students_count_qs.filter(
+                created_at__date__lte=end_date
+            )
+            students_all_qs = students_all_qs.filter(
+                created_at__date__lte=end_date
+            )
+
+            batches_count_qs = batches_count_qs.filter(
+                start_date__lte=end_date
+            )
 
 
 
@@ -2198,7 +2224,7 @@ class DashboardStatsView(APIView):
         ).values('total')
         
         # Annotate student_qs with fallback calculations
-        student_fees_qs = student_qs.annotate(
+        student_fees_qs = student_qs.exclude(academic_status='DISCONTINUED').annotate(
             current_month_collected=Coalesce(
                 Subquery(monthly_pay_subquery),
                 Decimal('0.00'),
@@ -2239,10 +2265,12 @@ class DashboardStatsView(APIView):
 
         stats = {
             "students": students_count_qs.distinct().count(),
+            "students_all": students_all_qs.distinct().count(),
             "batches": batches_count_qs.distinct().count(),
             "revenue": trans_qs.aggregate(total=Sum('amount'))['total'] or 0,
             "leads": lead_qs.count(),
-            "distribution": list(student_qs.values(name=F('program_type__name')).annotate(value=Count('id'))),
+            "distribution": list(student_qs.exclude(academic_status='DISCONTINUED')
+                                 .values(name=F('program_type__name')).annotate(value=Count('id'))),
             "revenue_distribution": list(trans_qs.values(name=F('student__program_type__name')).annotate(value=Sum('amount'))),
             "expenses": float(monthly_expenses),
             "total_expenses": float(total_expenses),
