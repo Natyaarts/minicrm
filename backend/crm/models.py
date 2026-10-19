@@ -86,32 +86,38 @@ class LeadInteraction(models.Model):
             self.recording_url = None
             self.audio_file_hash = None
         elif self.audio_recording:
-            try:
-                from .utils import extract_audio_duration, compute_audio_hash
-                file_hash = compute_audio_hash(self.audio_recording)
-                # Check for duplicate audio binary on another distinct call
-                if file_hash:
-                    dup_query = LeadInteraction.objects.filter(audio_file_hash=file_hash)
-                    if self.pk:
-                        dup_query = dup_query.exclude(pk=self.pk)
-                    if self.mobile_call_id:
-                        dup_query = dup_query.exclude(mobile_call_id=self.mobile_call_id)
+            # Only compute hash and duration if audio file is newly assigned or hash is missing
+            is_new_file = not getattr(self.audio_recording, '_committed', True)
+            if is_new_file or not self.audio_file_hash:
+                try:
+                    from .utils import extract_audio_duration, compute_audio_hash
+                    file_hash = compute_audio_hash(self.audio_recording)
+                    # Check for duplicate audio binary on another distinct call
+                    if file_hash:
+                        dup_query = LeadInteraction.objects.filter(audio_file_hash=file_hash)
+                        if self.pk:
+                            dup_query = dup_query.exclude(pk=self.pk)
+                        if self.mobile_call_id:
+                            dup_query = dup_query.exclude(mobile_call_id=self.mobile_call_id)
 
-                    if dup_query.exists():
-                        # Duplicate binary detected on a different call - reject cross-attachment!
-                        try:
-                            self.audio_recording.delete(save=False)
-                        except Exception:
-                            pass
+                        if dup_query.exists():
+                            # Duplicate binary detected on a different call - reject cross-attachment!
+                            try:
+                                self.audio_recording.delete(save=False)
+                            except Exception:
+                                pass
+                            self.audio_recording = None
+                            self.audio_file_hash = None
+                        else:
+                            self.audio_file_hash = file_hash
+                            rec_dur = extract_audio_duration(self.audio_recording)
+                            if rec_dur > 0:
+                                self.call_duration = rec_dur
+                    else:
                         self.audio_recording = None
                         self.audio_file_hash = None
-                    else:
-                        self.audio_file_hash = file_hash
-                        rec_dur = extract_audio_duration(self.audio_recording)
-                        if rec_dur > 0:
-                            self.call_duration = rec_dur
-            except Exception:
-                pass
+                except Exception:
+                    pass
         super().save(*args, **kwargs)
 
 

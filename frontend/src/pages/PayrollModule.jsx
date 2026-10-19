@@ -55,16 +55,18 @@ const PayrollModule = () => {
         try {
             let res;
             if (activeTab === 'payslips') {
-                res = await api.get(`payroll/payslips/?page=${pageNum}`);
-                const data = res.data.results || res.data || [];
+                const [listRes, summaryRes] = await Promise.all([
+                    api.get(`payroll/payslips/?page=${pageNum}`),
+                    api.get('payroll/payslips/summary/')
+                ]);
+                res = listRes;
+                const data = listRes.data.results || listRes.data || [];
                 setPayslips(data);
                 
-                const disbursed = data.filter(p => p.status === 'PAID').reduce((sum, p) => sum + Number(p.net_salary), 0);
-                const pending = data.filter(p => p.status === 'PENDING').length;
                 setStats({
-                    totalDisbursed: disbursed,
-                    pendingSlips: pending,
-                    avgSalary: data.length ? disbursed / data.length : 0
+                    totalDisbursed: summaryRes.data.total_disbursed || 0,
+                    pendingSlips: summaryRes.data.pending_slips || 0,
+                    avgSalary: summaryRes.data.avg_salary || 0
                 });
             } else if (activeTab === 'structures') {
                 res = await api.get(`payroll/salary-structures/?page=${pageNum}`);

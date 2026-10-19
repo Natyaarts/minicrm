@@ -28,29 +28,42 @@ function Dashboard() {
         this_month_due: 0
     });
     const [distribution, setDistribution] = useState([]);
+    const [selectedMentor, setSelectedMentor] = useState('');
+    const [teamMembers, setTeamMembers] = useState([]);
+    const [hasTeam, setHasTeam] = useState(false);
+
+    const fetchData = async (mentorId = selectedMentor) => {
+        try {
+            setLoading(true);
+            let url = 'dashboard-stats/';
+            if (mentorId) {
+                url += `?mentor_id=${encodeURIComponent(mentorId)}`;
+            }
+            const res = await api.get(url);
+            setStats({
+                students: res.data.students || 0,
+                batches: res.data.batches || 0,
+                revenue: res.data.revenue || 0,
+                leads: res.data.leads || 0,
+                revenue_distribution: res.data.revenue_distribution || [],
+                this_month_expected: res.data.this_month_expected || 0,
+                this_month_collected: res.data.this_month_collected || 0,
+                this_month_due: res.data.this_month_due || 0,
+                expenses: res.data.expenses || 0
+            });
+            setDistribution(res.data.distribution || []);
+            if (res.data.has_team !== undefined) {
+                setHasTeam(res.data.has_team);
+                setTeamMembers(res.data.team_members || []);
+            }
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     useEffect(() => {
-        const fetchData = async () => {
-            try {
-                const res = await api.get('dashboard-stats/');
-                setStats({
-                    students: res.data.students || 0,
-                    batches: res.data.batches || 0,
-                    revenue: res.data.revenue || 0,
-                    leads: res.data.leads || 0,
-                    revenue_distribution: res.data.revenue_distribution || [],
-                    this_month_expected: res.data.this_month_expected || 0,
-                    this_month_collected: res.data.this_month_collected || 0,
-                    this_month_due: res.data.this_month_due || 0,
-                    expenses: res.data.expenses || 0
-                });
-                setDistribution(res.data.distribution || []);
-            } catch (err) {
-                console.error(err);
-            } finally {
-                setLoading(false);
-            }
-        };
         if (user) fetchData();
     }, [user]);
 
@@ -83,7 +96,7 @@ function Dashboard() {
         { title: 'Collected (This Month)', value: `₹${stats.this_month_collected.toLocaleString()}`, icon: DollarSign, color: 'from-teal-500 to-teal-600', show: canViewAnalytics },
         { title: 'Pending Dues (This Month)', value: `₹${stats.this_month_due.toLocaleString()}`, icon: DollarSign, color: 'from-amber-500 to-amber-600', show: canViewAnalytics },
         { title: 'Monthly Expenses', value: `₹${(stats.expenses || 0).toLocaleString()}`, icon: TrendingUp, color: 'from-rose-500 to-rose-600', show: canViewAnalytics },
-        { title: 'Net Profit', value: `₹${(stats.revenue - (stats.expenses || 0)).toLocaleString()}`, icon: DollarSign, color: 'from-indigo-500 to-indigo-600', show: canViewAnalytics },
+        { title: 'Net Profit (This Month)', value: `₹${((stats.this_month_collected || 0) - (stats.expenses || 0)).toLocaleString()}`, icon: DollarSign, color: 'from-indigo-500 to-indigo-600', show: canViewAnalytics },
         { title: 'New Leads', value: (stats.leads || 0).toLocaleString(), icon: TrendingUp, color: 'from-pink-500 to-pink-600', show: canViewSales },
     ].filter(card => card.show);
 
@@ -106,6 +119,35 @@ function Dashboard() {
                     </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                    {hasTeam && teamMembers.length > 0 && (
+                        <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1">
+                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Faculty / Mentor:</label>
+                            <select
+                                value={selectedMentor}
+                                onChange={(e) => {
+                                    const val = e.target.value;
+                                    setSelectedMentor(val);
+                                    fetchData(val);
+                                }}
+                                className="bg-transparent text-xs font-semibold text-slate-700 outline-none"
+                            >
+                                {teamMembers.map(m => (
+                                    <option key={m.id} value={m.id}>{m.name}</option>
+                                ))}
+                            </select>
+                            {selectedMentor && (
+                                <button
+                                    onClick={() => {
+                                        setSelectedMentor('');
+                                        fetchData('');
+                                    }}
+                                    className="text-[10px] font-bold text-rose-500 hover:text-rose-700 ml-1"
+                                >
+                                    Clear
+                                </button>
+                            )}
+                        </div>
+                    )}
                     {canViewSales && (
                         <button
                             onClick={handleExport}
@@ -158,7 +200,7 @@ function Dashboard() {
                                 <div className="w-full bg-slate-50 h-1.5 rounded-full overflow-hidden">
                                     <motion.div
                                         initial={{ width: 0 }}
-                                        animate={{ width: `${(item.value / stats.students) * 100}%` }}
+                                        animate={{ width: `${stats.students > 0 ? (item.value / stats.students) * 100 : 0}%` }}
                                         className="bg-indigo-600 h-full rounded-full"
                                     />
                                 </div>
@@ -179,7 +221,7 @@ function Dashboard() {
                                         <div className="w-full bg-slate-50 h-1.5 rounded-full overflow-hidden">
                                             <motion.div
                                                 initial={{ width: 0 }}
-                                                animate={{ width: `${(item.value / stats.revenue) * 100}%` }}
+                                                animate={{ width: `${stats.revenue > 0 ? (item.value / stats.revenue) * 100 : 0}%` }}
                                                 className="bg-emerald-500 h-full rounded-full shadow-sm"
                                             />
                                         </div>

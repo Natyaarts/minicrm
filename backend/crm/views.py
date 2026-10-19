@@ -13,7 +13,7 @@ from .models import PipelineStage, LeadInteraction, Campaign, WebhookEndpoint, W
 from .serializers import PipelineStageSerializer, LeadInteractionSerializer, CampaignSerializer, TaskSerializer
 from .utils import (
     normalize_phone_for_matching, match_lead_by_phone, match_agent_by_phone,
-    get_converted_stage_values, get_new_stage_values,
+    get_converted_stage_values, get_new_stage_values, get_dropped_stage_values,
 )
 from .services.deduplication import lookup_existing_student, record_reengagement_interaction, normalize_lead_phone, normalize_lead_email, create_duplicate_lead
 from .services.assignment import get_next_assigned_rep
@@ -52,7 +52,7 @@ class DashboardStatsView(APIView):
             
             # Super Admin / Admin section filter (optional, if they want to drill down)
             section_filter = request.query_params.get('sales_section')
-            if section_filter and request.user.role in ['SUPER_ADMIN', 'ADMIN']:
+            if section_filter and section_filter.upper() != 'ALL' and request.user.role in ['SUPER_ADMIN', 'ADMIN']:
                 students = students.filter(Q(sales_section=section_filter) | Q(assigned_to__sales_section=section_filter))
 
             if request.user.role in ['SALES', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD']:
@@ -61,6 +61,11 @@ class DashboardStatsView(APIView):
                     students = students.filter(
                         Q(assigned_to__sales_section=user_section) |
                         Q(sales_section=user_section)
+                    )
+                elif section_filter and section_filter.upper() != 'ALL':
+                    students = students.filter(
+                        Q(assigned_to__sales_section=section_filter) |
+                        Q(sales_section=section_filter)
                     )
                     
                 from .utils import check_is_sales_manager
@@ -75,7 +80,10 @@ class DashboardStatsView(APIView):
                         if assigned_to_param == 'unassigned':
                             students = students.filter(assigned_to__isnull=True)
                         elif assigned_to_param != 'assigned':
-                            students = students.filter(assigned_to_id=assigned_to_param)
+                            try:
+                                students = students.filter(assigned_to_id=int(assigned_to_param))
+                            except (ValueError, TypeError):
+                                students = students.none()
                         else:
                             students = students.filter(assigned_to__isnull=False)
             elif request.user.role in ['SUPER_ADMIN', 'ADMIN']:
@@ -84,20 +92,29 @@ class DashboardStatsView(APIView):
                     if assigned_to_param == 'unassigned':
                         students = students.filter(assigned_to__isnull=True)
                     elif assigned_to_param != 'assigned':
-                        students = students.filter(assigned_to_id=assigned_to_param)
+                        try:
+                            students = students.filter(assigned_to_id=int(assigned_to_param))
+                        except (ValueError, TypeError):
+                            students = students.none()
                     else:
                         students = students.filter(assigned_to__isnull=False)
 
             campaign_id = request.query_params.get('campaign_id')
+            camp_id_int = None
             if campaign_id:
-                students = students.filter(campaign_id=campaign_id)
+                try:
+                    camp_id_int = int(campaign_id)
+                    students = students.filter(campaign_id=camp_id_int)
+                except (ValueError, TypeError):
+                    camp_id_int = None
+                    students = students.none()
 
             campaign_only = request.query_params.get('campaign_only') == 'true'
             hide_converted = request.query_params.get('hide_converted') == 'true'
             if campaign_only:
                 students = students.filter(campaign__isnull=False)
 
-            # Date Presets (today, yesterday, this_week, this_month, custom)
+            # Date Presets (today, yesterday, this_week, this_month, last_7_days, last_30_days, last_month, custom)
             date_preset = request.query_params.get('date_preset')
             start_date = request.query_params.get('start_date')
             end_date = request.query_params.get('end_date')
@@ -116,6 +133,18 @@ class DashboardStatsView(APIView):
             elif date_preset == 'this_month':
                 start_date = str(today.replace(day=1))
                 end_date = str(today)
+            elif date_preset == 'last_7_days':
+                start_date = str(today - timedelta(days=6))
+                end_date = str(today)
+            elif date_preset == 'last_30_days':
+                start_date = str(today - timedelta(days=29))
+                end_date = str(today)
+            elif date_preset == 'last_month':
+                first_of_this_month = today.replace(day=1)
+                last_day_last_month = first_of_this_month - timedelta(days=1)
+                first_day_last_month = last_day_last_month.replace(day=1)
+                start_date = str(first_day_last_month)
+                end_date = str(last_day_last_month)
             
             # Snapshot students BEFORE date filter for total assigned counts in leaderboard
             all_time_students = students
@@ -130,50 +159,31 @@ class DashboardStatsView(APIView):
                 if parsed_end:
                     students = students.filter(Q(created_at__date__lte=parsed_end) | Q(user__date_joined__date__lte=parsed_end))
             
-            # Identify converted/enrolled leads to exclude them from active totals
+            # Identify converted and dropped leads to exclude them from active open pipeline totals
             converted_stages = get_converted_stage_values()
             new_stages = get_new_stage_values()
+            dropped_stages = get_dropped_stage_values()
 
-            open_students = students.exclude(lead_status__in=converted_stages)
+            # Active open pipeline leads: exclude converted and dropped leads
+            open_students = students.exclude(lead_status__in=converted_stages).exclude(lead_status__in=dropped_stages)
 
             total_leads = students.count()
             converted_leads = students.filter(lead_status__in=converted_stages).count()
+            dropped_leads = students.filter(lead_status__in=dropped_stages).count()
 
             unassigned_leads = open_students.filter(assigned_to__isnull=True).count()
             assigned_leads = open_students.filter(assigned_to__isnull=False).count()
 
+            # Contacted leads: open leads with at least one interaction logged
             contacted_leads = (
                 open_students
-                .exclude(lead_status__in=new_stages)
                 .filter(crm_interactions__isnull=False)
                 .distinct()
                 .count()
             )
-            pending_leads = max(0, open_students.count() - contacted_leads)
+            # Fresh / Uncontacted leads: open leads with zero interactions logged
+            fresh_leads = open_students.filter(crm_interactions__isnull=True).count()
 
-            # Total leads matching filters (inclusive of all statuses)
-            # open_students = students.exclude(lead_status__in=converted_stages) if hide_converted else students
-
-            # total_leads = open_students.count()
-            # converted_leads = students.filter(lead_status__in=converted_stages).count()
-
-            # unassigned_leads = open_students.filter(assigned_to__isnull=True).count()
-            # assigned_leads = open_students.filter(assigned_to__isnull=False).count()
-
-            # contacted_leads = open_students.filter(crm_interactions__isnull=False).distinct().count()
-            # pending_leads = max(0, total_leads - contacted_leads)
-
-            # Leads still being worked (converted ones excluded)
-            # open_students = students.exclude(lead_status__in=converted_stages)
-
-            # total_leads = students.count()   # everything, converted included
-            # converted_leads = students.filter(lead_status__in=converted_stages).count()
-
-            # unassigned_leads = open_students.filter(assigned_to__isnull=True).count()
-            # assigned_leads = open_students.filter(assigned_to__isnull=False).count()
-
-            # contacted_leads = open_students.filter(crm_interactions__isnull=False).distinct().count()
-            # pending_leads = max(0, open_students.count() - contacted_leads)
             
             # Leaderboard & Call Duration per Sales Rep
             sales_reps = User.objects.filter(Q(role__in=['SALES', 'SALES_HEAD', 'SALES_MANAGER', 'SALES_LEAD', 'MANAGER']) | Q(assigned_leads__isnull=False), is_active=True).distinct()
@@ -181,10 +191,19 @@ class DashboardStatsView(APIView):
                 user_section = getattr(request.user, 'sales_section', 'BOTH')
                 if user_section and user_section != 'BOTH':
                     sales_reps = sales_reps.filter(Q(sales_section=user_section) | Q(sales_section='BOTH'))
+                elif section_filter and section_filter.upper() != 'ALL':
+                    sales_reps = sales_reps.filter(Q(sales_section=section_filter) | Q(sales_section='BOTH'))
                 if not is_sales_manager:
                     sales_reps = sales_reps.filter(id=request.user.id)
-            elif section_filter and request.user.role in ['SUPER_ADMIN', 'ADMIN']:
+            elif section_filter and section_filter.upper() != 'ALL' and request.user.role in ['SUPER_ADMIN', 'ADMIN']:
                 sales_reps = sales_reps.filter(Q(sales_section=section_filter) | Q(sales_section='BOTH'))
+
+            assigned_to_param = request.query_params.get('assigned_to')
+            if assigned_to_param and assigned_to_param not in ['assigned', 'unassigned']:
+                try:
+                    sales_reps = sales_reps.filter(id=int(assigned_to_param))
+                except (ValueError, TypeError):
+                    pass
 
             # Call Duration Metrics for department calls (strictly matching the sales reps in the leaderboard)
             interactions_qs = LeadInteraction.objects.filter(author__in=sales_reps, interaction_type='CALL')
@@ -206,17 +225,20 @@ class DashboardStatsView(APIView):
             outgoing_calls = interactions_qs.filter(call_direction='OUTGOING').count()
 
             # Pipeline Stages Breakdown
-            pipeline_stages_data = []
             standard_mapping = {
                 'NEW': 'New Lead',
                 'FOLLOW_UP': 'Follow-up',
                 'PAYMENT_PENDING': 'Payment Pending',
-                'ENROLLED': 'Enrolled',
+                'ENROLLED': 'Converted',
+                'CONVERTED': 'Converted',
                 'DROPPED': 'Dropped'
             }
             status_counts = students.values('lead_status').annotate(count=Count('id'))
-            dynamic_stages = {str(stage.id): stage.name for stage in PipelineStage.objects.all()}
-            
+            dynamic_stages_obj = list(PipelineStage.objects.all())
+            dynamic_stages = {str(stage.id): stage.name for stage in dynamic_stages_obj}
+            stage_by_name = {stage.name.strip().lower(): stage for stage in dynamic_stages_obj}
+
+            combined_stages = {}
             for item in status_counts:
                 status_val = str(item['lead_status'])
                 count = item['count']
@@ -226,16 +248,32 @@ class DashboardStatsView(APIView):
                     name = dynamic_stages[status_val]
                 else:
                     name = status_val
-                    
-                pipeline_stages_data.append({
-                    "id": status_val,
-                    "name": name,
-                    "count": count
-                })
+
+                # Canonicalize ID to PipelineStage.id if a matching stage exists
+                if status_val in dynamic_stages:
+                    canonical_id = status_val
+                    matched_obj = next((s for s in dynamic_stages_obj if str(s.id) == status_val), None)
+                    name = matched_obj.name if matched_obj else name
+                elif name.strip().lower() in stage_by_name:
+                    matched_stage = stage_by_name[name.strip().lower()]
+                    canonical_id = str(matched_stage.id)
+                    name = matched_stage.name
+                else:
+                    canonical_id = status_val
+
+                if canonical_id not in combined_stages:
+                    combined_stages[canonical_id] = {
+                        "id": canonical_id,
+                        "name": name,
+                        "count": 0
+                    }
+                combined_stages[canonical_id]["count"] += count
+
+            pipeline_stages_data = list(combined_stages.values())
                 
             leaderboard = []
             for rep in sales_reps:
-                # Count leads assigned to this rep within the selected date range
+                # Count unique assigned leads for this sales rep respecting current filters and assignment
                 rep_students = students.filter(assigned_to=rep)
                 rep_leads = rep_students.count()
                 
@@ -250,8 +288,7 @@ class DashboardStatsView(APIView):
                     if parsed_end:
                         rep_interactions = rep_interactions.filter(date__date__lte=parsed_end)
                 
-                rep_contacted = (
-                rep_students.exclude(lead_status__in=converted_stages).exclude(lead_status__in=new_stages).filter(crm_interactions__isnull=False).distinct().count())
+                rep_contacted = rep_students.filter(crm_interactions__isnull=False).distinct().count()
                 rep_duration_sec = rep_interactions.aggregate(total_sec=Sum('call_duration'))['total_sec'] or 0
                 rep_call_count = rep_interactions.count()
                 rep_connected = rep_interactions.filter(Q(call_status='CONNECTED') | Q(call_duration__gt=0)).count()
@@ -260,6 +297,7 @@ class DashboardStatsView(APIView):
                 leaderboard.append({
                     "id": rep.id,
                     "name": rep.get_full_name() or rep.username,
+                    "role": rep.get_role_display() if hasattr(rep, 'get_role_display') else getattr(rep, 'role', 'Sales Rep'),
                     "assigned": rep_leads,
                     "contacted": rep_contacted,
                     "total_calls": rep_call_count,
@@ -283,6 +321,15 @@ class DashboardStatsView(APIView):
             elif section_filter and request.user.role in ['SUPER_ADMIN', 'ADMIN']:
                 revenue_qs = revenue_qs.filter(Q(student__sales_section=section_filter) | Q(student__assigned_to__sales_section=section_filter))
 
+            # Campaign revenue attribution: filter by student campaign
+            if campaign_id:
+                if camp_id_int is not None:
+                    revenue_qs = revenue_qs.filter(student__campaign_id=camp_id_int)
+                else:
+                    revenue_qs = revenue_qs.none()
+            elif campaign_only:
+                revenue_qs = revenue_qs.filter(student__campaign__isnull=False)
+
             if start_date:
                 parsed_start = parse_date(start_date)
                 if parsed_start:
@@ -299,9 +346,10 @@ class DashboardStatsView(APIView):
                 "total_leads": total_leads,
                 "unassigned_leads": unassigned_leads,
                 "assigned_leads": assigned_leads,
+                "fresh_leads": fresh_leads,
                 "contacted_leads": contacted_leads,
-                "pending_leads": pending_leads,
                 "converted_leads": converted_leads,
+                "dropped_leads": dropped_leads,
                 "total_call_duration": total_call_duration_sec,
                 "formatted_total_call_duration": formatted_total_call_duration,
                 "connected_calls": connected_calls,
@@ -530,17 +578,7 @@ class LeadInteractionViewSet(viewsets.ModelViewSet):
 
             uploaded_audio = request.FILES.get('audio_recording')
             if uploaded_audio and (existing.call_status or '').upper() not in ['MISSED', 'REJECTED', 'UNANSWERED', 'FAILED']:
-                from .utils import extract_audio_duration, compute_audio_hash
-                file_hash = compute_audio_hash(uploaded_audio)
-                if file_hash and LeadInteraction.objects.filter(audio_file_hash=file_hash).exclude(pk=existing.pk).exclude(mobile_call_id=existing.mobile_call_id).exists():
-                    # Duplicate binary on another call - do not attach
-                    pass
-                else:
-                    existing.audio_recording = uploaded_audio
-                    existing.audio_file_hash = file_hash
-                    rec_dur = extract_audio_duration(existing.audio_recording)
-                    if rec_dur > 0:
-                        existing.call_duration = rec_dur
+                existing.audio_recording = uploaded_audio
 
             # STRICT UNIFIED RULES:
             # duration == 0 or explicit missed/unanswered/rejected/failed => MISSED, duration 0, no audio
@@ -608,21 +646,6 @@ class LeadInteractionViewSet(viewsets.ModelViewSet):
             call_status = 'CONNECTED'
             audio_file = request.FILES.get('audio_recording')
             rec_url = request.data.get('recording_url')
-            file_hash = None
-            if audio_file:
-                from .utils import extract_audio_duration, compute_audio_hash
-                file_hash = compute_audio_hash(audio_file)
-                dup_query = LeadInteraction.objects.filter(audio_file_hash=file_hash)
-                if mobile_call_id:
-                    dup_query = dup_query.exclude(mobile_call_id=mobile_call_id)
-                if file_hash and dup_query.exists():
-                    # Duplicate audio binary detected on a different call - reject cross-attachment
-                    audio_file = None
-                    file_hash = None
-                else:
-                    rec_dur = extract_audio_duration(audio_file)
-                    if rec_dur > 0:
-                        dur_int = rec_dur
 
         # Secondary lead matching: search complete CRM dataset
         student = None
@@ -659,7 +682,6 @@ class LeadInteractionViewSet(viewsets.ModelViewSet):
             is_matched=is_matched,
             notes=notes,
             audio_recording=audio_file,
-            audio_file_hash=file_hash
         )
 
         # Optional pipeline update & follow-up task only if student matched
@@ -722,18 +744,7 @@ class LeadInteractionViewSet(viewsets.ModelViewSet):
         else:
             instance.call_status = 'CONNECTED'
             if request.FILES.get('audio_recording'):
-                uploaded_audio = request.FILES.get('audio_recording')
-                from .utils import extract_audio_duration, compute_audio_hash
-                file_hash = compute_audio_hash(uploaded_audio)
-                if file_hash and LeadInteraction.objects.filter(audio_file_hash=file_hash).exclude(pk=instance.pk).exclude(mobile_call_id=instance.mobile_call_id).exists():
-                    # Duplicate binary on another call - do not attach
-                    pass
-                else:
-                    instance.audio_recording = uploaded_audio
-                    instance.audio_file_hash = file_hash
-                    rec_dur = extract_audio_duration(instance.audio_recording)
-                    if rec_dur > 0:
-                        instance.call_duration = rec_dur
+                instance.audio_recording = request.FILES.get('audio_recording')
             if request.data.get('recording_url'):
                 instance.recording_url = request.data.get('recording_url')
 
@@ -757,6 +768,16 @@ class CampaignViewSet(viewsets.ModelViewSet):
         if self.request.user.role in ['SALES', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD'] and getattr(self.request.user, 'sales_section', 'BOTH') != 'BOTH':
             from django.db.models import Q
             queryset = queryset.filter(Q(section=self.request.user.sales_section) | Q(section='BOTH'))
+
+        status_param = self.request.query_params.get('status')
+        if status_param and status_param.upper() != 'ALL':
+            queryset = queryset.filter(status=status_param.upper())
+
+        section_param = self.request.query_params.get('section') or self.request.query_params.get('sales_section')
+        if section_param and section_param.upper() != 'ALL':
+            from django.db.models import Q
+            queryset = queryset.filter(Q(section=section_param.upper()) | Q(section='BOTH'))
+
         return queryset
 
     def perform_create(self, serializer):
@@ -829,7 +850,7 @@ class CampaignViewSet(viewsets.ModelViewSet):
                 last_name = name_parts[1] if len(name_parts) > 1 else (clean_row.get('last name') or clean_row.get('lastname') or clean_row.get('last_name', '')).strip()
                 
                 email = clean_row.get('email', '').strip()
-                mobile = clean_row.get('contact', clean_row.get('mobile', '')).strip()
+                mobile = (clean_row.get('contact') or clean_row.get('mobile') or clean_row.get('phone') or '').strip()
                 
                 clean_phone = normalize_lead_phone(mobile)
                 clean_em = normalize_lead_email(email)
@@ -880,8 +901,8 @@ class CampaignViewSet(viewsets.ModelViewSet):
                         # Handle Auto-Assignment Round Robin for bulk uploaded non-duplicate leads
                         assigned_to_user = get_next_assigned_rep(campaign)
 
-                        stage = PipelineStage.objects.filter(name__iexact='New').first()
-                        stage_id = str(stage.id) if stage else '2'
+                        from .utils import get_canonical_new_lead_stage_id
+                        stage_id = get_canonical_new_lead_stage_id()
 
                         student = Student.objects.create(
                             user=user,
@@ -902,11 +923,6 @@ class CampaignViewSet(viewsets.ModelViewSet):
                 else:
                     skipped_leads += 1
                     
-            # Make sure lead_status uses the pipeline stage ID for NEW
-            stage = PipelineStage.objects.filter(name__iexact='New').first()
-            stage_id = str(stage.id) if stage else '2'
-            Student.objects.filter(campaign=campaign, lead_status='2').update(lead_status=stage_id)
-
             return Response({
                 'message': f'CSV upload processed. Total rows: {total_rows}. Successful additions: {leads_created}. Duplicates skipped: {duplicates_skipped}. Skipped (invalid): {skipped_leads}.'
             })
@@ -1016,8 +1032,8 @@ class CampaignViewSet(viewsets.ModelViewSet):
                         # Handle Auto-Assignment Round Robin for batch uploaded non-duplicate leads
                         assigned_to_user = get_next_assigned_rep(campaign)
 
-                        stage = PipelineStage.objects.filter(name__iexact='New').first()
-                        stage_id = str(stage.id) if stage else '2'
+                        from .utils import get_canonical_new_lead_stage_id
+                        stage_id = get_canonical_new_lead_stage_id()
 
                         student = Student.objects.create(
                             user=user,
@@ -1059,25 +1075,9 @@ class CampaignViewSet(viewsets.ModelViewSet):
         
         total_leads = students.count()
         
-        converted_stages = ['ENROLLED', 'CONVERTED', 'enrolled', 'converted', 'Enrolled', 'Converted']
-        try:
-            from .models import PipelineStage
-            for stage in PipelineStage.objects.filter(name__icontains='convert') | PipelineStage.objects.filter(name__icontains='enroll'):
-                converted_stages.append(str(stage.id))
-                if stage.name:
-                    converted_stages.append(stage.name)
-        except Exception:
-            pass
-            
-        lost_stages = ['DROPPED', 'dropped', 'Dropped', 'BUSY', 'busy', 'Busy', 'NOT_ANSWERING', 'not_answering', 'Not Answering', 'NOT ANSWERING', 'Not Answered', 'DUPLICATE', 'duplicate']
-        try:
-            from .models import PipelineStage
-            for stage in PipelineStage.objects.filter(name__icontains='drop') | PipelineStage.objects.filter(name__icontains='busy') | PipelineStage.objects.filter(name__icontains='not answer') | PipelineStage.objects.filter(name__icontains='lost'):
-                lost_stages.append(str(stage.id))
-                if stage.name:
-                    lost_stages.append(stage.name)
-        except Exception:
-            pass
+        from .utils import get_converted_stage_values, get_dropped_stage_values
+        converted_stages = get_converted_stage_values()
+        lost_stages = get_dropped_stage_values()
             
         converted_leads = students.filter(lead_status__in=converted_stages).count()
         lost_leads = students.filter(lead_status__in=lost_stages).count()
@@ -1087,15 +1087,48 @@ class CampaignViewSet(viewsets.ModelViewSet):
         try:
             from django.db.models import Count
             status_counts = students.values('lead_status').annotate(count=Count('id'))
-            stages_map = {str(stage.id): stage.name for stage in PipelineStage.objects.all()}
+            dynamic_stages_obj = list(PipelineStage.objects.all())
+            stages_map = {str(stage.id): stage.name for stage in dynamic_stages_obj}
+            stage_by_name = {stage.name.strip().lower(): stage for stage in dynamic_stages_obj}
+            standard_mapping = {
+                'NEW': 'New Lead',
+                'FOLLOW_UP': 'Follow-up',
+                'PAYMENT_PENDING': 'Payment Pending',
+                'ENROLLED': 'Converted',
+                'CONVERTED': 'Converted',
+                'DROPPED': 'Dropped'
+            }
+
+            combined_campaign_stages = {}
             for item in status_counts:
                 status_id = str(item['lead_status'])
-                name = stages_map.get(status_id, status_id)
-                stages_data.append({
-                    'status': status_id,
-                    'name': name,
-                    'count': item['count']
-                })
+                count = item['count']
+
+                if status_id in standard_mapping:
+                    name = standard_mapping[status_id]
+                else:
+                    name = stages_map.get(status_id, status_id)
+
+                if status_id in stages_map:
+                    canonical_id = status_id
+                    matched_obj = next((s for s in dynamic_stages_obj if str(s.id) == status_id), None)
+                    name = matched_obj.name if matched_obj else name
+                elif name.strip().lower() in stage_by_name:
+                    matched_stage = stage_by_name[name.strip().lower()]
+                    canonical_id = str(matched_stage.id)
+                    name = matched_stage.name
+                else:
+                    canonical_id = status_id
+
+                if canonical_id not in combined_campaign_stages:
+                    combined_campaign_stages[canonical_id] = {
+                        'status': canonical_id,
+                        'name': name,
+                        'count': 0
+                    }
+                combined_campaign_stages[canonical_id]['count'] += count
+
+            stages_data = list(combined_campaign_stages.values())
         except Exception:
             pass
             
@@ -1137,6 +1170,10 @@ class BDEReportView(APIView):
         from datetime import timedelta
         from django.utils import timezone
         
+        allowed_roles = ['SUPER_ADMIN', 'ADMIN', 'SALES', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD', 'HR']
+        if not (request.user.is_superuser or request.user.is_staff or request.user.role in allowed_roles):
+            return Response({"error": "Unauthorized access to BDE reports"}, status=status.HTTP_403_FORBIDDEN)
+
         from .utils import check_is_sales_manager
         if request.user.role == 'SALES' and not check_is_sales_manager(request.user):
             bde = request.user
@@ -1145,6 +1182,11 @@ class BDEReportView(APIView):
                 bde = request.user
             else:
                 bde = get_object_or_404(User, id=int(user_id))
+                if request.user.role in ['SALES', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD']:
+                    user_sec = getattr(request.user, 'sales_section', 'BOTH')
+                    if user_sec != 'BOTH' and getattr(bde, 'sales_section', 'BOTH') not in [user_sec, 'BOTH']:
+                        return Response({"error": "Unauthorized to access representatives outside your section"}, status=status.HTTP_403_FORBIDDEN)
+
         date_preset = request.query_params.get('date_preset')
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
@@ -1164,18 +1206,30 @@ class BDEReportView(APIView):
         elif date_preset == 'this_month':
             start_date = str(today.replace(day=1))
             end_date = str(today)
+        elif date_preset == 'last_7_days':
+            start_date = str(today - timedelta(days=6))
+            end_date = str(today)
+        elif date_preset == 'last_30_days':
+            start_date = str(today - timedelta(days=29))
+            end_date = str(today)
+        elif date_preset == 'last_month':
+            first_of_this_month = today.replace(day=1)
+            last_day_last_month = first_of_this_month - timedelta(days=1)
+            first_day_last_month = last_day_last_month.replace(day=1)
+            start_date = str(first_day_last_month)
+            end_date = str(last_day_last_month)
         
-        leads = Student.objects.filter(assigned_to=bde, is_active=True).exclude(lead_status='DUPLICATE')
+        leads = Student.objects.filter(assigned_to=bde, is_active=True).exclude(lead_status='DUPLICATE').select_related('user')
         if start_date:
             parsed_start = parse_date(start_date)
             if parsed_start:
-                leads = leads.filter(created_at__date__gte=parsed_start)
+                leads = leads.filter(Q(created_at__date__gte=parsed_start) | Q(user__date_joined__date__gte=parsed_start))
         if end_date:
             parsed_end = parse_date(end_date)
             if parsed_end:
-                leads = leads.filter(created_at__date__lte=parsed_end)
+                leads = leads.filter(Q(created_at__date__lte=parsed_end) | Q(user__date_joined__date__lte=parsed_end))
 
-        interactions = LeadInteraction.objects.filter(author=bde).select_related('student')
+        interactions = LeadInteraction.objects.filter(author=bde).select_related('student', 'student__user')
         if start_date:
             parsed_start = parse_date(start_date)
             if parsed_start:
@@ -1209,6 +1263,25 @@ class BDEReportView(APIView):
             else:
                 interactions = interactions_slice
         
+        dynamic_stages = {str(stage.id): stage.name for stage in PipelineStage.objects.all()}
+        standard_mapping = {
+            'NEW': 'New Lead',
+            'FOLLOW_UP': 'Follow-up',
+            'PAYMENT_PENDING': 'Payment Pending',
+            'ENROLLED': 'Converted',
+            'CONVERTED': 'Converted',
+            'DROPPED': 'Dropped'
+        }
+        def get_display_stage(val):
+            if not val:
+                return 'New Lead'
+            s_val = str(val).strip()
+            if s_val in dynamic_stages:
+                return dynamic_stages[s_val]
+            if s_val in standard_mapping:
+                return standard_mapping[s_val]
+            return s_val
+
         timeline = []
         for inter in interactions:
             dur_sec = parse_duration_sec(inter.call_duration, inter.notes)
@@ -1226,7 +1299,7 @@ class BDEReportView(APIView):
                 'student_phone': inter.student.mobile if inter.student else (inter.customer_number or inter.caller_number or inter.receiver_number or ''),
                 'student_email': inter.student.email if inter.student else '',
                 'student_crm_id': inter.student.crm_student_id if inter.student else '',
-                'student_status': inter.student.lead_status if inter.student else '',
+                'student_status': get_display_stage(inter.student.lead_status) if inter.student else '',
                 'is_matched': bool(inter.student_id),
                 'type': inter.interaction_type,
                 'call_duration': dur_sec,
@@ -1238,7 +1311,7 @@ class BDEReportView(APIView):
                 'audio_url': audio_url or inter.recording_url
             })
 
-        pending_tasks = Task.objects.filter(assigned_to=bde, status='PENDING')
+        pending_tasks = Task.objects.filter(Q(assigned_to=bde) | Q(student__assigned_to=bde), status='PENDING').distinct()
         if start_date:
             parsed_start = parse_date(start_date)
             if parsed_start:
@@ -1248,6 +1321,86 @@ class BDEReportView(APIView):
             if parsed_end:
                 pending_tasks = pending_tasks.filter(created_at__date__lte=parsed_end)
 
+        from collections import defaultdict
+        from .utils import get_whatsapp_connected_stage_values, get_converted_stage_values
+
+        whatsapp_stages = set(get_whatsapp_connected_stage_values())
+        converted_stages = set(get_converted_stage_values())
+
+        lead_ids = list(leads.values_list('id', flat=True))
+
+        # Query all interactions associated with these assigned leads logged by bde
+        lead_interactions_qs = LeadInteraction.objects.filter(
+            student_id__in=lead_ids,
+            author=bde
+        )
+        if start_date:
+            parsed_start = parse_date(start_date)
+            if parsed_start:
+                lead_interactions_qs = lead_interactions_qs.filter(date__date__gte=parsed_start)
+        if end_date:
+            parsed_end = parse_date(end_date)
+            if parsed_end:
+                lead_interactions_qs = lead_interactions_qs.filter(date__date__lte=parsed_end)
+
+        lead_interactions_by_student = defaultdict(list)
+        for inter in lead_interactions_qs:
+            lead_interactions_by_student[inter.student_id].append(inter)
+
+        connected_lead_ids = set()
+        contacted_not_connected_lead_ids = set()
+        not_connected_lead_ids = set()
+        whatsapp_connected_lead_ids = set()
+        connection_status_map = {}
+
+        for lead in leads:
+            lead_inters = lead_interactions_by_student.get(lead.id, [])
+            lead_status_str = str(lead.lead_status)
+
+            # 1. WhatsApp Connection check
+            is_wa_stage = lead_status_str in whatsapp_stages
+            has_wa_connected_inter = any(
+                i.interaction_type == 'WHATSAPP' and (i.call_status or '').upper() == 'CONNECTED'
+                for i in lead_inters
+            )
+            is_wa_connected = is_wa_stage or has_wa_connected_inter
+            if is_wa_connected:
+                whatsapp_connected_lead_ids.add(lead.id)
+
+            # 2. Call outcomes check
+            calls = [i for i in lead_inters if i.interaction_type == 'CALL']
+            has_connected_call = any(
+                (c.call_status or '').upper() == 'CONNECTED' and (c.call_duration > 0 or not (c.call_status or '').upper() in ['MISSED', 'UNANSWERED', 'REJECTED', 'BUSY', 'FAILED'])
+                for c in calls
+            )
+            has_attempted_call = any(
+                (c.call_status or '').upper() in ['MISSED', 'UNANSWERED', 'REJECTED', 'BUSY', 'FAILED'] or c.call_duration == 0
+                for c in calls
+            )
+
+            # 3. Canonical conversion stage check
+            is_converted = lead_status_str in converted_stages
+
+            # 4. Other recorded successful connections
+            has_other_connected = any(
+                i.interaction_type in ['MEETING', 'VISIT'] and (i.call_status or '').upper() == 'CONNECTED'
+                for i in lead_inters
+            )
+
+            # Strict Mutual Exclusivity:
+            # Category A: Connected Leads
+            if has_connected_call or is_wa_connected or is_converted or has_other_connected:
+                connected_lead_ids.add(lead.id)
+                connection_status_map[lead.id] = 'CONNECTED'
+            # Category B: Contacted but Not Connected (attempted call with no successful connection)
+            elif has_attempted_call:
+                contacted_not_connected_lead_ids.add(lead.id)
+                connection_status_map[lead.id] = 'CONTACTED_NOT_CONNECTED'
+            # Category C: Not Connected (new leads, notes-only, plain WhatsApp message without response, etc.)
+            else:
+                not_connected_lead_ids.add(lead.id)
+                connection_status_map[lead.id] = 'NOT_CONNECTED'
+
         total_calls = all_interactions.filter(interaction_type='CALL').count()
         total_notes = all_interactions.filter(interaction_type='NOTE').count()
         total_whatsapp = all_interactions.filter(interaction_type='WHATSAPP').count()
@@ -1255,11 +1408,19 @@ class BDEReportView(APIView):
         total_meetings = all_interactions.filter(interaction_type='MEETING').count()
 
         calls_qs = all_interactions.filter(interaction_type='CALL')
+        connected_calls = calls_qs.filter(Q(call_status='CONNECTED') | Q(call_duration__gt=0)).exclude(call_status__in=['MISSED', 'UNANSWERED', 'REJECTED', 'BUSY', 'FAILED']).count()
+        unsuccessful_calls = total_calls - connected_calls
         total_bde_duration_sec = sum(parse_duration_sec(c.call_duration, c.notes) for c in calls_qs)
 
         metrics = {
             'total_assigned': leads.count(),
+            'connected_leads': len(connected_lead_ids),
+            'contacted_not_connected_leads': len(contacted_not_connected_lead_ids),
+            'not_connected_leads': len(not_connected_lead_ids),
+            'whatsapp_connected': len(whatsapp_connected_lead_ids),
             'total_calls': total_calls,
+            'connected_calls': connected_calls,
+            'unsuccessful_calls': unsuccessful_calls,
             'total_notes': total_notes,
             'total_whatsapp': total_whatsapp,
             'total_emails': total_emails,
@@ -1280,7 +1441,9 @@ class BDEReportView(APIView):
                 'id': lead.id,
                 'name': f"{lead.first_name or ''} {lead.last_name or ''}".strip() or username,
                 'crm_id': lead.crm_student_id,
-                'status': lead.lead_status
+                'status': get_display_stage(lead.lead_status),
+                'raw_status': lead.lead_status,
+                'connection_status': connection_status_map.get(lead.id, 'NOT_CONNECTED')
             })
 
         return Response({
@@ -1439,6 +1602,7 @@ class WebhookReceiveView(APIView):
                 assigned_to_user = get_next_assigned_rep(campaign) if campaign else None
 
                 # Create Student Lead
+                from .utils import get_canonical_new_lead_stage_id
                 student = Student.objects.create(
                     user=user,
                     crm_student_id=crm_id,
@@ -1450,6 +1614,7 @@ class WebhookReceiveView(APIView):
                     campaign=campaign,
                     sales_section=campaign.section if campaign else 'BOTH',
                     assigned_to=assigned_to_user,
+                    lead_status=get_canonical_new_lead_stage_id(),
                     is_active=True
                 )
 
@@ -1598,6 +1763,7 @@ class CampaignWebhookReceiveView(APIView):
                     # Genuinely new lead: determine assignment and create Student Lead
                     assigned_to_user = get_next_assigned_rep(campaign)
 
+                    from .utils import get_canonical_new_lead_stage_id
                     student = Student.objects.create(
                         user=user,
                         crm_student_id=crm_id,
@@ -1608,7 +1774,7 @@ class CampaignWebhookReceiveView(APIView):
                         program_type=program,
                         campaign=campaign,
                         sales_section=campaign.section,
-                        lead_status="NEW",
+                        lead_status=get_canonical_new_lead_stage_id(),
                         assigned_to=assigned_to_user,
                         is_active=True
                     )
@@ -1641,10 +1807,14 @@ class CallAnalyticsView(APIView):
 
 
     def get(self, request):
+        allowed_roles = ['SUPER_ADMIN', 'ADMIN', 'SALES', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD', 'HR']
+        if not (request.user.is_superuser or request.user.is_staff or request.user.role in allowed_roles):
+            return Response({"error": "Unauthorized access to call analytics"}, status=status.HTTP_403_FORBIDDEN)
 
         interactions = LeadInteraction.objects.filter(interaction_type='CALL')
         from .utils import check_is_sales_manager
-        if request.user.role == 'SALES' and not check_is_sales_manager(request.user):
+        is_sales_mgr = check_is_sales_manager(request.user)
+        if request.user.role == 'SALES' and not is_sales_mgr:
             interactions = interactions.filter(author=request.user)
         elif getattr(request.user, 'sales_section', 'BOTH') != 'BOTH' and request.user.role in ['SALES', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD']:
             interactions = interactions.filter(
@@ -1666,37 +1836,37 @@ class CallAnalyticsView(APIView):
                 
         employee_id = request.query_params.get('employee_id')
         if employee_id:
-            interactions = interactions.filter(author_id=employee_id)
+            try:
+                emp_id_int = int(employee_id)
+                if request.user.role == 'SALES' and not is_sales_mgr:
+                    if emp_id_int != request.user.id:
+                        return Response({"error": "Unauthorized to view other representatives' call analytics"}, status=status.HTTP_403_FORBIDDEN)
+                interactions = interactions.filter(author_id=emp_id_int)
+            except (ValueError, TypeError):
+                interactions = interactions.none()
             
         direction = request.query_params.get('direction')
         if direction:
             interactions = interactions.filter(call_direction=direction)
             
-        status = request.query_params.get('status')
-        if status:
-            interactions = interactions.filter(call_status=status)
+        status_param = request.query_params.get('status')
+        if status_param:
+            if status_param.upper() == 'MISSED':
+                interactions = interactions.filter(call_status__in=['MISSED', 'UNANSWERED', 'missed', 'unanswered'])
+            else:
+                interactions = interactions.filter(call_status__iexact=status_param)
 
         total_incoming = interactions.filter(call_direction='INCOMING').count()
-
         total_outgoing = interactions.filter(call_direction='OUTGOING').count()
-
         
-
-        missed = interactions.filter(call_status__in=['MISSED', 'UNANSWERED']).count()
-
-        rejected = interactions.filter(call_status='REJECTED').count()
-
-
+        missed = interactions.filter(call_status__in=['MISSED', 'UNANSWERED', 'missed', 'unanswered']).count()
+        rejected = interactions.filter(call_status__iexact='REJECTED').count()
 
         duration_incoming = interactions.filter(call_direction='INCOMING').aggregate(Sum('call_duration'))['call_duration__sum'] or 0
-
         duration_outgoing = interactions.filter(call_direction='OUTGOING').aggregate(Sum('call_duration'))['call_duration__sum'] or 0
-
         
-
         total_calls = interactions.count()
-
-        total_duration = duration_incoming + duration_outgoing
+        total_duration = interactions.aggregate(Sum('call_duration'))['call_duration__sum'] or 0
 
 
 
@@ -1796,7 +1966,10 @@ class CallAnalyticsView(APIView):
 
 
 
-        page = int(request.query_params.get('page', 1))
+        try:
+            page = max(1, int(request.query_params.get('page', 1)))
+        except (ValueError, TypeError):
+            page = 1
         page_size = 20
         start = (page - 1) * page_size
         end = start + page_size
@@ -1881,7 +2054,7 @@ class MarketingDashboardView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        from django.db.models import Count, Sum
+        from django.db.models import Count, Sum, Q
         from datetime import datetime, timedelta
         from django.utils import timezone
         
@@ -1891,6 +2064,25 @@ class MarketingDashboardView(APIView):
         # Summary Stats
         campaigns = Campaign.objects.all()
         students = Student.objects.filter(is_active=True, campaign__isnull=False).exclude(lead_status='DUPLICATE')
+
+        campaign_id = request.query_params.get('campaign_id')
+        if campaign_id:
+            try:
+                camp_id = int(campaign_id)
+                campaigns = campaigns.filter(id=camp_id)
+                students = students.filter(campaign_id=camp_id)
+            except (ValueError, TypeError):
+                campaigns = campaigns.none()
+                students = students.none()
+
+        section_param = request.query_params.get('section') or request.query_params.get('sales_section')
+        if section_param and section_param.upper() != 'ALL':
+            campaigns = campaigns.filter(Q(section=section_param.upper()) | Q(section='BOTH'))
+            students = students.filter(Q(sales_section=section_param.upper()) | Q(assigned_to__sales_section=section_param.upper()))
+
+        if request.user.role in ['SALES', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD'] and getattr(request.user, 'sales_section', 'BOTH') != 'BOTH':
+            campaigns = campaigns.filter(Q(section=request.user.sales_section) | Q(section='BOTH'))
+            students = students.filter(Q(sales_section=request.user.sales_section) | Q(assigned_to__sales_section=request.user.sales_section))
 
         if start_date_str:
             try:
@@ -1908,35 +2100,24 @@ class MarketingDashboardView(APIView):
             except ValueError:
                 pass
 
-        # Dynamically determine all converted/enrolled pipeline stage values
-        converted_stage_values = set(['ENROLLED', 'CONVERTED', 'converted', 'enrolled', 'Converted', 'Enrolled', 'POSITIVE', 'positive'])
-        try:
-            from .models import PipelineStage
-            for stage in PipelineStage.objects.all():
-                s_name = (stage.name or '').lower()
-                if any(kw in s_name for kw in ['convert', 'enroll', 'positive', 'paid', 'join']):
-                    converted_stage_values.add(str(stage.id))
-                    converted_stage_values.add(stage.name)
-                    converted_stage_values.add(stage.name.lower())
-                    converted_stage_values.add(stage.name.upper())
-        except Exception:
-            pass
-        converted_stages_list = list(converted_stage_values)
+        # Dynamically determine all converted/enrolled pipeline stage values using canonical helper
+        from .utils import get_converted_stage_values
+        converted_stages_list = get_converted_stage_values()
 
         total_spend = campaigns.aggregate(total=Sum('budget'))['total'] or 0
         total_leads = students.count()
         total_converted = students.filter(lead_status__in=converted_stages_list).count()
 
         # Chart Data
-        from django.db.models.functions import TruncDate
+        from django.db.models.functions import Coalesce, TruncDate
         
         daily_leads_qs = students
         if not start_date_str:
             # Default to 30 days if no start date provided
             thirty_days_ago = timezone.now().date() - timedelta(days=30)
-            daily_leads_qs = students.filter(user__date_joined__date__gte=thirty_days_ago)
+            daily_leads_qs = students.filter(Q(created_at__date__gte=thirty_days_ago) | Q(created_at__isnull=True, user__date_joined__date__gte=thirty_days_ago))
             
-        daily_leads = daily_leads_qs.annotate(date=TruncDate('user__date_joined')).values('date').annotate(count=Count('id')).order_by('date')
+        daily_leads = daily_leads_qs.annotate(lead_date=Coalesce('created_at', 'user__date_joined')).annotate(date=TruncDate('lead_date')).values('date').annotate(count=Count('id')).order_by('date')
         
         chart_data = []
         for d in daily_leads:

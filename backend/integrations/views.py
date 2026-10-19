@@ -499,15 +499,9 @@ class SyncWiseBatchView(views.APIView):
             if not class_details:
                  return response.Response({"error": "Class not found in Wise LMS"}, status=404)
             
-            # Resolve 'CONVERTED' stage ID
-            converted_stage_id = 'CONVERTED'
-            try:
-                from crm.models import PipelineStage
-                stage = PipelineStage.objects.filter(name__iexact='CONVERTED').first()
-                if stage:
-                    converted_stage_id = str(stage.id)
-            except Exception:
-                pass
+            # Resolve canonical 'CONVERTED' stage ID
+            from crm.utils import get_canonical_converted_stage_id
+            converted_stage_id = get_canonical_converted_stage_id()
             
             # 2. Ensure Course exists
             program, _ = Program.objects.get_or_create(name="Wise Courses", defaults={"slug": "wise-courses"})

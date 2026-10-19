@@ -69,8 +69,8 @@ class Command(BaseCommand):
                     self.stdout.write(self.style.ERROR(f'Could not identify Name or Mobile columns in campaign {campaign.id} headers.'))
                     continue
                     
-                new_stage = PipelineStage.objects.filter(name__iexact='New Lead').first() or PipelineStage.objects.filter(is_default=True).first()
-                new_stage_id = str(new_stage.id) if new_stage else 'NEW'
+                from crm.utils import get_canonical_new_lead_stage_id
+                new_stage_id = get_canonical_new_lead_stage_id()
                 
                 start_row_index = max(1, campaign.google_last_synced_row)
                 imported_count = 0

@@ -388,8 +388,16 @@ class StudentViewSet(viewsets.ModelViewSet):
             try:
                 from crm.models import PipelineStage, LeadInteraction
                 stages_map = {str(stage.id): stage.name for stage in PipelineStage.objects.all()}
-                old_name = stages_map.get(str(old_status), str(old_status))
-                new_name = stages_map.get(str(new_status), str(new_status))
+                standard_mapping = {
+                    'NEW': 'New Lead',
+                    'FOLLOW_UP': 'Follow-up',
+                    'PAYMENT_PENDING': 'Payment Pending',
+                    'ENROLLED': 'Converted',
+                    'CONVERTED': 'Converted',
+                    'DROPPED': 'Dropped'
+                }
+                old_name = stages_map.get(str(old_status)) or standard_mapping.get(str(old_status).upper()) or str(old_status)
+                new_name = stages_map.get(str(new_status)) or standard_mapping.get(str(new_status).upper()) or str(new_status)
                 
                 author = self.request.user if (self.request.user and self.request.user.is_authenticated) else None
                 LeadInteraction.objects.create(
@@ -481,16 +489,8 @@ class StudentViewSet(viewsets.ModelViewSet):
             'user', 'program_type', 'sub_program', 'course', 'batch'
         ).prefetch_related('dynamic_values__field', 'documents', 'transactions', 'monthly_payments').all()
             
-        # Resolve 'CONVERTED' to its IDs (handle 'converted', 'enrolled', etc.)
-        converted_stage_ids = ['CONVERTED', 'ENROLLED']
-        try:
-            from crm.models import PipelineStage
-            from django.db.models import Q
-            stages = PipelineStage.objects.filter(Q(name__icontains='convert') | Q(name__icontains='enroll'))
-            for stage in stages:
-                converted_stage_ids.append(str(stage.id))
-        except Exception:
-            pass
+        from crm.utils import get_converted_stage_values
+        converted_stage_ids = get_converted_stage_values()
 
         lead_status_param = self.request.query_params.get('lead_status', '')
         is_duplicate_requested = str(lead_status_param).upper() == 'DUPLICATE'
@@ -548,6 +548,11 @@ class StudentViewSet(viewsets.ModelViewSet):
             from crm.utils import get_converted_stage_values
             qs = qs.exclude(lead_status__in=get_converted_stage_values())
 
+        hide_dropped = self.request.query_params.get('hide_dropped')
+        if hide_dropped == 'true':
+            from crm.utils import get_dropped_stage_values
+            qs = qs.exclude(lead_status__in=get_dropped_stage_values())
+
         # sales_section_filter = self.request.query_params.get('sales_section')
         # if sales_section_filter and sales_section_filter.upper() != 'ALL':
         #     qs = qs.filter(sales_section=sales_section_filter.upper())
@@ -571,11 +576,10 @@ class StudentViewSet(viewsets.ModelViewSet):
 
         contacted = self.request.query_params.get('contacted')
         if contacted in ('true', 'false'):
-            from crm.utils import get_converted_stage_values, get_new_stage_values
-            open_qs = qs.exclude(lead_status__in=get_converted_stage_values())
+            from crm.utils import get_converted_stage_values, get_dropped_stage_values
+            open_qs = qs.exclude(lead_status__in=get_converted_stage_values()).exclude(lead_status__in=get_dropped_stage_values())
             contacted_ids = (
                 open_qs
-                .exclude(lead_status__in=get_new_stage_values())
                 .filter(crm_interactions__isnull=False)
                 .values('id')
             )
@@ -583,6 +587,18 @@ class StudentViewSet(viewsets.ModelViewSet):
                 qs = open_qs.filter(id__in=contacted_ids)
             else:
                 qs = open_qs.exclude(id__in=contacted_ids)
+
+        fresh = self.request.query_params.get('fresh')
+        if fresh == 'true':
+            from crm.utils import get_converted_stage_values, get_dropped_stage_values
+            qs = qs.exclude(lead_status__in=get_converted_stage_values()).exclude(lead_status__in=get_dropped_stage_values()).filter(crm_interactions__isnull=True)
+
+        has_pending_tasks = self.request.query_params.get('has_pending_tasks')
+        if has_pending_tasks == 'true':
+            from crm.utils import get_converted_stage_values, get_dropped_stage_values
+            from crm.models import Task
+            pending_lead_ids = Task.objects.filter(status='PENDING', student__isnull=False).values_list('student_id', flat=True).distinct()
+            qs = qs.exclude(lead_status__in=get_converted_stage_values()).exclude(lead_status__in=get_dropped_stage_values()).filter(id__in=pending_lead_ids)
             
         new_only = self.request.query_params.get('new_only')
         pipeline_only = self.request.query_params.get('pipeline_only')
@@ -622,14 +638,6 @@ class StudentViewSet(viewsets.ModelViewSet):
         if program:
             qs = qs.filter(program_type_id=program)
 
-        start_date = self.request.query_params.get('start_date')
-        if start_date:
-            qs = qs.filter(created_at__date__gte=start_date)
-
-        end_date = self.request.query_params.get('end_date')
-        if end_date:
-            qs = qs.filter(created_at__date__lte=end_date)
-
         teacher_id = self.request.query_params.get('teacher_id')
         if teacher_id:
             qs = qs.filter(batch__teacher_id=teacher_id)
@@ -659,13 +667,15 @@ class StudentViewSet(viewsets.ModelViewSet):
 
         lead_status = self.request.query_params.get('lead_status')
         if lead_status:
-            if lead_status.upper() == 'CONVERTED':
-                from crm.utils import get_converted_stage_values
-                qs = qs.filter(lead_status__in=get_converted_stage_values())
-            elif lead_status.upper() == 'DUPLICATE':
+            if lead_status.upper() == 'DUPLICATE':
                 pass  # Already isolated above
             else:
-                qs = qs.filter(lead_status__iexact=lead_status)
+                from crm.utils import resolve_stage_filter_values
+                resolved_values = resolve_stage_filter_values(lead_status)
+                if resolved_values:
+                    qs = qs.filter(lead_status__in=resolved_values)
+                else:
+                    qs = qs.filter(lead_status__iexact=lead_status)
 
         sub_program = self.request.query_params.get('sub_program')
         if sub_program:
@@ -678,7 +688,10 @@ class StudentViewSet(viewsets.ModelViewSet):
         course = self.request.query_params.get('course')
         if course:
             from django.db.models import Q
-            qs = qs.filter(Q(course_id=course) | Q(lms_course_id=course) | Q(lms_course_names__icontains=str(course)))
+            if str(course).isdigit():
+                qs = qs.filter(Q(course_id=int(course)) | Q(lms_course_id=course) | Q(lms_course_names__icontains=str(course)))
+            else:
+                qs = qs.filter(Q(course__name__icontains=str(course)) | Q(lms_course_id=course) | Q(lms_course_names__icontains=str(course)))
 
         academic_status = self.request.query_params.get('academic_status')
         if academic_status:
@@ -716,10 +729,13 @@ class StudentViewSet(viewsets.ModelViewSet):
 
         campaign_id = self.request.query_params.get('campaign_id')
         if campaign_id:
-            qs = qs.filter(campaign__id=campaign_id)
+            try:
+                qs = qs.filter(campaign__id=int(campaign_id))
+            except (ValueError, TypeError):
+                qs = qs.none()
 
         sales_section = self.request.query_params.get('sales_section')
-        if sales_section:
+        if sales_section and sales_section.upper() != 'ALL':
             from django.db.models import Q
             qs = qs.filter(Q(sales_section=sales_section) | Q(assigned_to__sales_section=sales_section))
 
@@ -1694,8 +1710,9 @@ class StudentViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Cannot manually mark Wise LMS integrated student as paid. Please sync from Wise LMS instead.'}, status=400)
             
         student.paid_fee = student.total_fee
-        if student.lead_status == 'PAYMENT_PENDING':
-            student.lead_status = 'ENROLLED'
+        if student.lead_status == 'PAYMENT_PENDING' or str(student.lead_status).upper() in ['PAYMENT_PENDING', '3']:
+            from crm.utils import get_canonical_converted_stage_id
+            student.lead_status = get_canonical_converted_stage_id()
         student.save()
         
         return Response({'status': 'Student marked as fully paid'})
@@ -2075,23 +2092,19 @@ class DashboardStatsView(APIView):
         from django.db import models
         from decimal import Decimal
         
-        # Base querysets
-        converted_stage_ids = ['CONVERTED', 'ENROLLED']
-        try:
-            from crm.models import PipelineStage
-            stages = PipelineStage.objects.filter(Q(name__icontains='convert') | Q(name__icontains='enroll'))
-            for stage in stages:
-                converted_stage_ids.append(str(stage.id))
-        except Exception:
-            pass
+        from crm.utils import get_converted_stage_values, get_new_stage_values
+        converted_stage_ids = get_converted_stage_values()
 
-        new_stage_ids = ['NEW', 'New', 'new']
         try:
-            from crm.models import PipelineStage
-            for stage in PipelineStage.objects.filter(name__iexact='new'):
-                new_stage_ids.append(str(stage.id))
+            new_stage_ids = get_new_stage_values()
         except Exception:
-            pass
+            new_stage_ids = ['NEW', 'New', 'new', 'New Lead']
+            try:
+                from crm.models import PipelineStage
+                for stage in PipelineStage.objects.filter(Q(name__iregex=r'^new( lead)?$') | Q(is_default=True)):
+                    new_stage_ids.append(str(stage.id))
+            except Exception:
+                pass
 
         student_qs = Student.objects.filter(is_active=True, lead_status__in=converted_stage_ids)
         batch_qs = Batch.objects.all()
@@ -2169,7 +2182,14 @@ class DashboardStatsView(APIView):
 
 
 
-        lead_qs = Student.objects.filter(is_active=True, lead_status__in=new_stage_ids, campaign__isnull=False,)
+        lead_qs = Student.objects.filter(
+            is_active=True,
+            lead_status__in=new_stage_ids,
+        ).exclude(lead_status__in=converted_stage_ids).exclude(lead_status='DUPLICATE')
+
+        campaign_only = request.query_params.get('campaign_only') == 'true'
+        if campaign_only:
+            lead_qs = lead_qs.filter(campaign__isnull=False)
 
         if user.role in ['SALES', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD']:
             from crm.utils import check_is_sales_manager
@@ -2187,45 +2207,67 @@ class DashboardStatsView(APIView):
 
         # Finance Integration
         from finance.models import Expense
-        from datetime import datetime
-        today = datetime.now()
-        first_day = today.replace(day=1)
-        
-        monthly_expenses = Expense.objects.filter(date__gte=first_day).aggregate(total=Sum('amount'))['total'] or 0
-        total_expenses = Expense.objects.aggregate(total=Sum('amount'))['total'] or 0
+        from django.utils import timezone
+        import calendar
+
+        now = timezone.now()
+        today_date = now.date()
+        first_day_of_month = today_date.replace(day=1)
+        _, last_day_num = calendar.monthrange(today_date.year, today_date.month)
+        last_day_of_month = today_date.replace(day=last_day_num)
+
+        monthly_expenses = Expense.objects.filter(
+            date__gte=first_day_of_month,
+            date__lte=last_day_of_month
+        ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+        total_expenses = Expense.objects.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
 
         # Calculate monthly expected, collected, due fee metrics
-        from core.models import MonthlyPayment
-        
-        first_day_date = today.date().replace(day=1)
-        
         # Subquery to calculate MonthlyPayment sum for current month for each student
         monthly_pay_subquery = MonthlyPayment.objects.filter(
             student=OuterRef('pk'),
-            month=first_day_date
+            month=first_day_of_month
         ).values('student').annotate(
             total=Sum('amount')
         ).values('total')
-        
-        # Annotate student_qs with fallback calculations
+
+        # Subquery to calculate Transaction sum for current month for each student
+        monthly_txn_subquery = Transaction.objects.filter(
+            student=OuterRef('pk'),
+            date__date__gte=first_day_of_month,
+            date__date__lte=last_day_of_month
+        ).values('student').annotate(
+            total=Sum('amount')
+        ).values('total')
+
+        # Annotate student_qs with reliable current-month collections from timestamped records
         student_fees_qs = student_qs.annotate(
-            current_month_collected=Coalesce(
+            current_month_mp=Coalesce(
                 Subquery(monthly_pay_subquery),
                 Decimal('0.00'),
                 output_field=models.DecimalField(max_digits=10, decimal_places=2)
             ),
-            expected_fee=Case(
-                When(course__fee_amount__gt=0, then=F('course__fee_amount')),
-                default=F('total_fee'),
+            current_month_txn=Coalesce(
+                Subquery(monthly_txn_subquery),
+                Decimal('0.00'),
                 output_field=models.DecimalField(max_digits=10, decimal_places=2)
             ),
-            collected_fee=Case(
-                When(course__fee_amount__gt=0, then=F('current_month_collected')),
-                default=F('paid_fee'),
+        ).annotate(
+            current_month_collected=F('current_month_mp') + F('current_month_txn'),
+            collected_fee=F('current_month_mp') + F('current_month_txn'),
+            expected_fee=Case(
+                When(course__fee_amount__gt=0, then=F('course__fee_amount')),
+                When(
+                    fee_due_date__gte=first_day_of_month,
+                    fee_due_date__lte=last_day_of_month,
+                    total_fee__gt=F('paid_fee'),
+                    then=(F('current_month_mp') + F('current_month_txn') + (F('total_fee') - F('paid_fee')))
+                ),
+                default=(F('current_month_mp') + F('current_month_txn')),
                 output_field=models.DecimalField(max_digits=10, decimal_places=2)
             )
         )
-        
+
         expected_monthly_revenue = student_fees_qs.aggregate(total=Sum('expected_fee'))['total'] or Decimal('0.00')
         collected_monthly_revenue = student_fees_qs.aggregate(total=Sum('collected_fee'))['total'] or Decimal('0.00')
         due_monthly_revenue = max(Decimal('0.00'), expected_monthly_revenue - collected_monthly_revenue)
@@ -2297,24 +2339,46 @@ class AnalyticsDetailView(APIView):
         batches = Batch.objects.annotate(student_count=Count('students'))
         batch_stats = batches.values('id', 'name', 'course__name', 'student_count')
         
-        total_potential = Student.objects.filter(is_active=True).aggregate(sum=Sum('course__fee_amount'))['sum'] or 0
+        from crm.utils import get_converted_stage_values
+        converted_stage_ids = get_converted_stage_values()
+        enrolled_students = Student.objects.filter(is_active=True, lead_status__in=converted_stage_ids)
+
+        program_id = request.query_params.get('program')
+        if program_id:
+            try:
+                enrolled_students = enrolled_students.filter(program_type_id=int(program_id))
+            except (ValueError, TypeError):
+                pass
+
+        total_potential = enrolled_students.aggregate(sum=Sum('course__fee_amount'))['sum'] or 0
         total_collected = Transaction.objects.all().aggregate(sum=Sum('amount'))['sum'] or 0
-        total_due = total_potential - total_collected
+        total_due = max(0, total_potential - total_collected)
 
         from core.models import ClassSession
         import re
         
-        month = request.query_params.get('month')
-        year = request.query_params.get('year')
+        month_param = request.query_params.get('month')
+        year_param = request.query_params.get('year')
+        parsed_month = None
+        parsed_year = None
+        if month_param and year_param:
+            try:
+                m = int(month_param)
+                y = int(year_param)
+                if 1 <= m <= 12 and 1900 <= y <= 2100:
+                    parsed_month = m
+                    parsed_year = y
+            except (ValueError, TypeError):
+                pass
         
         # Annotate teachers with their session counts, batch counts, and calculated hours
         teacher_stats = []
         for teacher in teachers:
             b_count = Batch.objects.filter(Q(teacher=teacher) | Q(primary_mentor=teacher)).distinct().count()
             
-            sessions = ClassSession.objects.filter(teacher=teacher)
-            if month and year:
-                sessions = sessions.filter(date__month=month, date__year=year)
+            sessions = ClassSession.objects.filter(teacher=teacher).select_related('batch').prefetch_related('attendances__student')
+            if parsed_month and parsed_year:
+                sessions = sessions.filter(date__month=parsed_month, date__year=parsed_year)
                 
             s_count = sessions.count()
             
@@ -2403,17 +2467,32 @@ class AnalyticsDetailView(APIView):
         # Advanced Charting Data
         from django.db.models.functions import TruncMonth
         
-        program_dist = list(Student.objects.values(name=F('program_type__name')).annotate(value=Count('id')))
+        program_dist = list(enrolled_students.values(name=F('program_type__name')).annotate(value=Count('id')))
         
-        # Lead statuses are enum codes like 'NEW', map them for UI if needed, but UI can handle it.
-        lead_dist = list(Student.objects.values(name=F('lead_status')).annotate(value=Count('id')))
+        from crm.models import PipelineStage
+        stage_names = {str(s.id): s.name for s in PipelineStage.objects.all()}
+        standard_mapping = {
+            'NEW': 'New Lead',
+            'FOLLOW_UP': 'Follow-up',
+            'PAYMENT_PENDING': 'Payment Pending',
+            'ENROLLED': 'Converted',
+            'CONVERTED': 'Converted',
+            'DROPPED': 'Dropped'
+        }
+        raw_lead_counts = Student.objects.filter(is_active=True).exclude(lead_status='DUPLICATE').values('lead_status').annotate(value=Count('id'))
+        funnel_dict = {}
+        for item in raw_lead_counts:
+            st = str(item['lead_status'] or '')
+            display_name = standard_mapping.get(st, stage_names.get(st, st))
+            funnel_dict[display_name] = funnel_dict.get(display_name, 0) + item['value']
+        lead_dist = [{'name': k, 'value': v} for k, v in funnel_dict.items()]
         
         revenue_time = list(Transaction.objects.annotate(month_trunc=TruncMonth('date')).values('month_trunc').annotate(total=Sum('amount')).order_by('month_trunc'))
         revenue_timeline = [{'name': rt['month_trunc'].strftime('%b %Y') if rt['month_trunc'] else 'Unknown', 'revenue': rt['total']} for rt in revenue_time]
 
         return Response({
             'teachers_count': teachers.count(),
-            'students_count': Student.objects.count(),
+            'students_count': enrolled_students.count(),
             'batches_count': Batch.objects.count(),
             'batch_details': batch_stats,
             'teacher_performance': teacher_stats,
