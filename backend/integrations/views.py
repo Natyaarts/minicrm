@@ -550,9 +550,18 @@ class SyncWiseBatchView(views.APIView):
             with transaction.atomic():
                 for p in participants:
                     p_id = p.get('_id') or p.get('id')
-                    p_name = p.get('name', 'Wise Student')
                     phone = p.get('phoneNumber') or p.get('mobile') or ''
                     email = p.get('email') or f"wise_{p_id}@example.com"
+
+                    # Independent Name Parsing for current participant
+                    p_name = (p.get('name') or '').strip()
+                    if not p_name or "@" in p_name:
+                        first_name = "Wise"
+                        last_name = "Student"
+                    else:
+                        name_parts = p_name.split(' ')
+                        first_name = name_parts[0]
+                        last_name = ' '.join(name_parts[1:]) if len(name_parts) > 1 else 'Student'
                     
                     # Clean phone
                     clean_phone = str(phone).replace(" ", "")
@@ -578,16 +587,6 @@ class SyncWiseBatchView(views.APIView):
                         if User.objects.filter(username=username).exists():
                              import uuid
                              username = f"wise_{base_username_id}_{str(uuid.uuid4())[:4]}"
-
-                        # Improved Name Parsing
-                        p_name = p.get('name', '').strip()
-                        if not p_name or "@" in p_name:
-                            first_name = "Wise"
-                            last_name = "Student"
-                        else:
-                            name_parts = p_name.split(' ')
-                            first_name = name_parts[0]
-                            last_name = ' '.join(name_parts[1:]) if len(name_parts) > 1 else 'Student'
 
                         user, u_created = User.objects.get_or_create(
                             username=username,
