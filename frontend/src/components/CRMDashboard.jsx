@@ -199,7 +199,7 @@ const CRMDashboard = ({ onStatClick, onBdeClick, sectionFilter: propSectionFilte
             </div>
             
             {/* Top Stat Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-4 mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                 <StatCard
                     title="Total Leads"
                     value={stats.total_leads}
