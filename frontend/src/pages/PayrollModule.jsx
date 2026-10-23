@@ -1077,18 +1077,18 @@ const PayrollModule = () => {
             <AnimatePresence>
                 {genModal.show && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                        <motion.div 
+                        <div 
                             initial={{ opacity: 0 }} 
                             animate={{ opacity: 1 }} 
                             exit={{ opacity: 0 }}
                             className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" 
                             onClick={() => setGenModal({ ...genModal, show: false })}
                         />
-                        <motion.div 
+                        <div 
                             initial={{ scale: 0.9, opacity: 0 }}
                             animate={{ scale: 1, opacity: 1 }}
                             exit={{ scale: 0.9, opacity: 0 }}
-                            className="bg-white rounded-xl p-6 w-full max-w-md relative z-10 shadow-2xl"
+                            className="modal-card bg-white rounded-xl p-6 w-full max-w-md relative z-10 shadow-2xl"
                         >
                             <h3 className="text-xl font-bold text-slate-800 mb-4">Generate Monthly Slips</h3>
                             <div className="space-y-4">
@@ -1124,7 +1124,7 @@ const PayrollModule = () => {
                                     {loading ? "Calculating..." : "Start Generation"}
                                 </button>
                             </div>
-                        </motion.div>
+                        </div>
                     </div>
                 )}
             </AnimatePresence>

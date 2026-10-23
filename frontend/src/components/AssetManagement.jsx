@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Laptop, Key, Monitor, Archive, Trash2, Plus, X, Search, CheckCircle2, Clock, User, Filter, Package, Tag, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../api/axios';
+import { createPortal } from 'react-dom';
 
 const CATEGORIES = ['Laptop', 'Monitor', 'Key', 'Other'];
 const STATUSES   = ['AVAILABLE', 'ASSIGNED', 'MAINTENANCE', 'RETIRED'];
@@ -230,8 +231,8 @@ const AssetManagement = ({ employees = [] }) => {
       )}
 
       {/* ── Add Asset Modal ── */}
-      <AnimatePresence>
-        {showModal && (
+      {/* <AnimatePresence> */}
+        {showModal && createPortal(
           <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
             {/* Backdrop */}
             <motion.div
@@ -359,9 +360,10 @@ const AssetManagement = ({ employees = [] }) => {
                 </div>
               </form>
             </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+          </div>,
+            document.body
+          )}
+      {/* </AnimatePresence> */}
     </div>
   );
 };

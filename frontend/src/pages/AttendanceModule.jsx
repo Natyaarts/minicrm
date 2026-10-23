@@ -19,6 +19,8 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import FaceSelfieCapture from '../components/FaceSelfieCapture';
+import { createPortal } from 'react-dom';
+
 
 // Helper for local India/IST date string YYYY-MM-DD
 const getTodayIST = () => {
@@ -345,20 +347,21 @@ const AttendanceModule = () => {
     return (
         <div className="space-y-6 animate-fadeIn px-2 md:px-0 pb-20 relative">
             {/* Manual Entry Modal */}
+            {createPortal(
             <AnimatePresence>
                 {showManualEntry && (
-                    <motion.div
+                    <div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
                         onClick={(e) => { if (e.target === e.currentTarget) setShowManualEntry(false); }}
                     >
-                        <motion.div
+                        <div
                             initial={{ scale: 0.9, opacity: 0 }}
                             animate={{ scale: 1, opacity: 1 }}
                             exit={{ scale: 0.9, opacity: 0 }}
-                            className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
+                            className=" modal-card bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
                         >
                             <div className="bg-gradient-to-r from-indigo-600 to-violet-600 px-6 py-4 flex items-center justify-between text-white">
                                 <div className="flex items-center space-x-2">
@@ -469,10 +472,13 @@ const AttendanceModule = () => {
                                     </button>
                                 </div>
                             </form>
-                        </motion.div>
-                    </motion.div>
+                        </div>
+                    </div>
                 )}
-            </AnimatePresence>
+            </AnimatePresence>,
+            document.body
+            )}
+            {createPortal(
             <AnimatePresence>
                 {previewImage && (
                     <motion.div 
@@ -500,18 +506,18 @@ const AttendanceModule = () => {
                     </motion.div>
                 )}
                 {selectedDashboardStat && (
-                    <motion.div 
+                    <div 
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4"
                         onClick={() => setSelectedDashboardStat(null)}
                     >
-                        <motion.div 
+                        <div 
                             initial={{ scale: 0.95 }}
                             animate={{ scale: 1 }}
                             exit={{ scale: 0.95 }}
-                            className="bg-white p-6 rounded-2xl shadow-2xl max-w-lg w-full relative max-h-[80vh] overflow-y-auto"
+                            className="modal-card bg-white p-6 rounded-2xl shadow-2xl max-w-lg w-full relative max-h-[80vh] overflow-y-auto"
                             onClick={e => e.stopPropagation()}
                         >
                             <button 
@@ -577,10 +583,12 @@ const AttendanceModule = () => {
                                     ));
                                 })()}
                             </div>
-                        </motion.div>
-                    </motion.div>
+                        </div>
+                    </div>
                 )}
-            </AnimatePresence>
+            </AnimatePresence>,
+            document.body
+            )}
             {showSelfieCapture && (
                 <FaceSelfieCapture 
                     onCapture={handleClockIn}

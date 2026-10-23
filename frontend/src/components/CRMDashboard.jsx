@@ -301,7 +301,7 @@ const CRMDashboard = ({ onStatClick, onBdeClick, sectionFilter: propSectionFilte
                                         verticalAlign="middle" 
                                         align="right"
                                         onClick={(data) => onStatClick('stage', data.payload.id, data.payload.id)}
-                                        wrapperStyle={{ cursor: 'pointer', fontSize: '12px',overflowY: 'scroll', maxHeight: '300px', }}
+                                        wrapperStyle={{ cursor: 'pointer', fontSize: '12px',overflowY: 'auto', maxHeight: '300px', }}
                                     />
                                 </PieChart>
                             </ResponsiveContainer>

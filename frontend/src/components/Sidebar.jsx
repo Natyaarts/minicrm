@@ -143,7 +143,7 @@ function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }) {
                 "fixed inset-y-0 left-0 md:relative md:translate-x-0",
                 isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"
             )}>
-                <div className="px-5 py-4 border-b border-slate-200/60 flex justify-between items-center bg-white relative z-10">
+                <div className="px-5 py-4 h-[5rem] border-b border-slate-200/60 flex justify-between items-center bg-white relative z-10">
                     <Link to="/" onClick={() => setIsMobileMenuOpen(false)} className="flex items-center gap-3">
                         <div className="h-10 w-auto flex items-center justify-center shrink-0">
                             <img src="/logo.png" alt="Logo" className="h-full w-auto object-contain" />

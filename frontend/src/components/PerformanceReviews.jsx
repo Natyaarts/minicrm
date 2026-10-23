@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Star, TrendingUp, Search, Plus, X, BarChart2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../api/axios';
+import { createPortal } from 'react-dom';
 
 const PerformanceReviews = ({ authUser, employees }) => {
     const [reviews, setReviews] = useState([]);
@@ -113,6 +114,7 @@ const PerformanceReviews = ({ authUser, employees }) => {
             )}
 
             {/* Add Review Modal */}
+            {createPortal(
             <AnimatePresence>
                 {showModal && (
                     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
@@ -162,7 +164,8 @@ const PerformanceReviews = ({ authUser, employees }) => {
                         </motion.div>
                     </div>
                 )}
-            </AnimatePresence>
+            </AnimatePresence>,
+            document.body)}
         </div>
     );
 };
