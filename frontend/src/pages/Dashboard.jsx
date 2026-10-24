@@ -41,7 +41,7 @@ function Dashboard() {
             }
             const res = await api.get(url);
             setStats({
-                students: res.data.students || 0,
+                students: res.data.students_all ?? res.data.students ?? 0,
                 batches: res.data.batches || 0,
                 revenue: res.data.revenue || 0,
                 leads: res.data.leads || 0,

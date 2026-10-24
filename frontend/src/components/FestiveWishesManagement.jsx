@@ -21,6 +21,7 @@ export default function FestiveWishesManagement() {
   const [editingGreeting, setEditingGreeting] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [previewGreeting, setPreviewGreeting] = useState(null);
+  const [forbidden, setForbidden] = useState(false);
 
   const [formData, setFormData] = useState({
     title: '',
@@ -42,10 +43,14 @@ export default function FestiveWishesManagement() {
   const fetchGreetings = async () => {
     try {
       setLoading(true);
+      setForbidden(false);
       const res = await api.get('hrms/festive-greetings/');
       const list = Array.isArray(res.data) ? res.data : (res.data?.results || []);
       setGreetings(list);
     } catch (err) {
+      if (err.response?.status === 403) {
+        setForbidden(true);
+      }
       console.error('Failed to fetch festive greetings:', err);
       setGreetings([]);
     } finally {
@@ -179,6 +184,19 @@ export default function FestiveWishesManagement() {
   };
 
   const selectedThemePreset = THEME_PRESETS.find(t => t.id === formData.theme) || THEME_PRESETS[0];
+
+  if (forbidden) {
+    return (
+      <div className="flex items-center justify-center h-[calc(100vh-8rem)] p-6">
+        <div className="bg-white rounded-2xl p-10 text-center border border-slate-200 shadow-sm max-w-md w-full">
+          <h2 className="text-lg font-bold text-slate-800">Access Denied</h2>
+          <p className="text-sm text-slate-500 mt-2">
+            You do not have permission to manage festive greetings.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 bg-slate-50 min-h-screen">

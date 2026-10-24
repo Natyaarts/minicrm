@@ -932,6 +932,14 @@ class FestiveGreetingViewSet(viewsets.ModelViewSet):
     serializer_class = FestiveGreetingSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def get_permissions(self):
+        # Everyone logged in can see the banners that are active for them
+        if self.action == 'active':
+            return [permissions.IsAuthenticated()]
+        # Create / edit / delete / full list = Admin and Super Admin only
+        return [IsAdminOrSuperAdmin()]
+    
+
     def get_queryset(self):
         return FestiveGreeting.objects.all().order_by('-start_date', '-created_at')
 
