@@ -21,7 +21,6 @@ import { useAuth } from '../context/AuthContext';
 import FaceSelfieCapture from '../components/FaceSelfieCapture';
 import { createPortal } from 'react-dom';
 
-
 // Helper for local India/IST date string YYYY-MM-DD
 const getTodayIST = () => {
     const now = new Date();
@@ -350,18 +349,18 @@ const AttendanceModule = () => {
             {createPortal(
             <AnimatePresence>
                 {showManualEntry && (
-                    <div
+                    <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
                         onClick={(e) => { if (e.target === e.currentTarget) setShowManualEntry(false); }}
                     >
-                        <div
+                        <motion.div
                             initial={{ scale: 0.9, opacity: 0 }}
                             animate={{ scale: 1, opacity: 1 }}
                             exit={{ scale: 0.9, opacity: 0 }}
-                            className=" modal-card bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
+                            className="modal-card bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
                         >
                             <div className="bg-gradient-to-r from-indigo-600 to-violet-600 px-6 py-4 flex items-center justify-between text-white">
                                 <div className="flex items-center space-x-2">
@@ -472,8 +471,8 @@ const AttendanceModule = () => {
                                     </button>
                                 </div>
                             </form>
-                        </div>
-                    </div>
+                        </motion.div>
+                    </motion.div>
                 )}
             </AnimatePresence>,
             document.body
@@ -506,14 +505,14 @@ const AttendanceModule = () => {
                     </motion.div>
                 )}
                 {selectedDashboardStat && (
-                    <div 
+                    <motion.div 
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4"
                         onClick={() => setSelectedDashboardStat(null)}
                     >
-                        <div 
+                        <motion.div 
                             initial={{ scale: 0.95 }}
                             animate={{ scale: 1 }}
                             exit={{ scale: 0.95 }}
@@ -583,8 +582,8 @@ const AttendanceModule = () => {
                                     ));
                                 })()}
                             </div>
-                        </div>
-                    </div>
+                        </motion.div>
+                    </motion.div>
                 )}
             </AnimatePresence>,
             document.body

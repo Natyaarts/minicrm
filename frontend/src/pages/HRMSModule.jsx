@@ -447,7 +447,7 @@ const HRMSModule = () => {
                             <UserPlus size={14} /> Add Employee
                         </button>
                     )}
-                    {activeTab === 'departments' && (authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.WORKFORCE?.add) && (
+                    {activeTab === 'departments' && (['SUPER_ADMIN', 'ADMIN'].includes(authUser?.role) && (authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.WORKFORCE?.add !== false)) && (
                         <button 
                             onClick={openAddDept}
                             className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold shadow-sm hover:bg-indigo-700 transition-colors"
@@ -455,7 +455,7 @@ const HRMSModule = () => {
                             <Plus size={14} /> New Department
                         </button>
                     )}
-                    {activeTab === 'designations' && (authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.WORKFORCE?.add) && (
+                    {activeTab === 'designations' && (['SUPER_ADMIN', 'ADMIN'].includes(authUser?.role) && (authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.WORKFORCE?.add !== false)) && (
                         <button 
                             onClick={openAddDesig}
                             className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold shadow-sm hover:bg-indigo-700 transition-colors"
@@ -556,7 +556,7 @@ const HRMSModule = () => {
                                         <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
                                             {employees.filter(e => e.department === dept.id).length} Members
                                         </span>
-                                        {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.WORKFORCE?.edit) && (
+                                        {(['SUPER_ADMIN', 'ADMIN'].includes(authUser?.role) && (authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.WORKFORCE?.edit !== false)) && (
                                             <button
                                                 type="button"
                                                 onClick={() => openEditDept(dept)}
@@ -600,7 +600,7 @@ const HRMSModule = () => {
                                                 </span>
                                             </td>
                                             <td className="px-5 py-3 text-right space-x-1">
-                                                {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.WORKFORCE?.edit) && (
+                                                {(['SUPER_ADMIN', 'ADMIN'].includes(authUser?.role) && (authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.WORKFORCE?.edit !== false)) && (
                                                     <button
                                                         type="button"
                                                         onClick={() => openEditDesig(desig)}
@@ -610,7 +610,7 @@ const HRMSModule = () => {
                                                         <Edit2 size={14} />
                                                     </button>
                                                 )}
-                                                {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.WORKFORCE?.delete) && (
+                                                {(['SUPER_ADMIN', 'ADMIN'].includes(authUser?.role) && (authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.WORKFORCE?.delete !== false)) && (
                                                     <button
                                                         type="button"
                                                         onClick={() => handleDeleteDesig(desig.id)}

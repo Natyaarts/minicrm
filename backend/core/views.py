@@ -480,6 +480,7 @@ class StudentViewSet(viewsets.ModelViewSet):
             )
 
     def get_queryset(self):
+        from django.db.models import Q
         user = self.request.user
         if not user.is_authenticated:
             # Allow public submissions (PATCH) for active student profiles via deep links
@@ -504,7 +505,7 @@ class StudentViewSet(viewsets.ModelViewSet):
             qs = qs.filter(lead_status__iexact='DUPLICATE')
         else:
             # Normal lead queries: strictly isolate by excluding duplicates for ALL roles
-            qs = qs.exclude(lead_status='DUPLICATE')
+            qs = qs.exclude(lead_status__iexact='DUPLICATE')
 
         if user.role in ['SALES', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD']:
             user_section = getattr(user, 'sales_section', 'BOTH')
@@ -519,8 +520,6 @@ class StudentViewSet(viewsets.ModelViewSet):
             if not check_is_sales_manager(user) and not is_duplicate_requested:
                 # STRICT ACCESS CONTROL: Standard SALES employee only sees leads assigned to them
                 qs = qs.filter(assigned_to=user)
-        elif user.role in ['ACADEMIC', 'ACADEMIC_COORDINATOR'] or self.request.query_params.get('group', '').upper() == 'ACADEMIC':
-            qs = qs.filter(lead_status__in=converted_stage_ids)
         elif user.role in ['MENTOR', 'TEACHER']:
             subordinates = user.get_all_subordinates()
             if subordinates:
@@ -536,6 +535,8 @@ class StudentViewSet(viewsets.ModelViewSet):
                     Q(batch__secondary_mentors=user) | 
                     Q(batch__teacher=user)
                 ).filter(lead_status__in=converted_stage_ids).distinct()
+        elif user.role in ['ACADEMIC', 'ACADEMIC_COORDINATOR'] or self.request.query_params.get('group', '').upper() == 'ACADEMIC':
+            qs = qs.filter(lead_status__in=converted_stage_ids)
         elif user.role == 'STUDENT':
             qs = Student.objects.filter(user=user)
         
@@ -591,8 +592,8 @@ class StudentViewSet(viewsets.ModelViewSet):
 
         fresh = self.request.query_params.get('fresh')
         if fresh == 'true':
-            from crm.utils import get_converted_stage_values, get_dropped_stage_values
-            qs = qs.exclude(lead_status__in=get_converted_stage_values()).exclude(lead_status__in=get_dropped_stage_values()).filter(crm_interactions__isnull=True)
+            from crm.utils import get_new_stage_values
+            qs = qs.filter(lead_status__in=get_new_stage_values())
 
         has_pending_tasks = self.request.query_params.get('has_pending_tasks')
         if has_pending_tasks == 'true':
@@ -737,22 +738,39 @@ class StudentViewSet(viewsets.ModelViewSet):
 
         sales_section = self.request.query_params.get('sales_section')
         if sales_section and sales_section.upper() != 'ALL':
-            from django.db.models import Q
             qs = qs.filter(Q(sales_section=sales_section) | Q(assigned_to__sales_section=sales_section))
 
+        date_preset = self.request.query_params.get('date_preset')
         start_date_str = self.request.query_params.get('start_date')
-        if start_date_str:
-            from django.utils.dateparse import parse_date
-            start_date = parse_date(start_date_str)
-            if start_date:
-                qs = qs.filter(created_at__date__gte=start_date)
-
         end_date_str = self.request.query_params.get('end_date')
-        if end_date_str:
-            from django.utils.dateparse import parse_date
-            end_date = parse_date(end_date_str)
-            if end_date:
-                qs = qs.filter(created_at__date__lte=end_date)
+
+        if date_preset and not (start_date_str and end_date_str):
+            from crm.utils import resolve_date_preset
+            preset_start, preset_end = resolve_date_preset(date_preset, start_date_str, end_date_str)
+            if not start_date_str and preset_start:
+                start_date_str = preset_start
+            if not end_date_str and preset_end:
+                end_date_str = preset_end
+
+        from django.utils.dateparse import parse_date
+        parsed_start = parse_date(start_date_str) if start_date_str else None
+        parsed_end = parse_date(end_date_str) if end_date_str else None
+
+        if parsed_start and parsed_end:
+            qs = qs.filter(
+                Q(created_at__date__gte=parsed_start, created_at__date__lte=parsed_end) |
+                Q(created_at__isnull=True, user__date_joined__date__gte=parsed_start, user__date_joined__date__lte=parsed_end)
+            )
+        elif parsed_start:
+            qs = qs.filter(
+                Q(created_at__date__gte=parsed_start) |
+                Q(created_at__isnull=True, user__date_joined__date__gte=parsed_start)
+            )
+        elif parsed_end:
+            qs = qs.filter(
+                Q(created_at__date__lte=parsed_end) |
+                Q(created_at__isnull=True, user__date_joined__date__lte=parsed_end)
+            )
 
         if not self.request.query_params.get('ordering'):
             return qs.order_by('-id')
@@ -1235,7 +1253,7 @@ class StudentViewSet(viewsets.ModelViewSet):
             return Response({'error': 'No student IDs provided'}, status=status.HTTP_400_BAD_REQUEST)
             
         # Secure bulk assignment: DUPLICATE leads can never be assigned or unassigned via bulk operations
-        students = Student.objects.filter(id__in=student_ids).exclude(lead_status='DUPLICATE')
+        students = Student.objects.filter(id__in=student_ids).exclude(lead_status__iexact='DUPLICATE')
         
         if user_id:
             try:
@@ -2219,7 +2237,7 @@ class DashboardStatsView(APIView):
         lead_qs = Student.objects.filter(
             is_active=True,
             lead_status__in=new_stage_ids,
-        ).exclude(lead_status__in=converted_stage_ids).exclude(lead_status='DUPLICATE')
+        ).exclude(lead_status__in=converted_stage_ids).exclude(lead_status__iexact='DUPLICATE')
 
         campaign_only = request.query_params.get('campaign_only') == 'true'
         if campaign_only:
@@ -2515,7 +2533,7 @@ class AnalyticsDetailView(APIView):
             'CONVERTED': 'Converted',
             'DROPPED': 'Dropped'
         }
-        raw_lead_counts = Student.objects.filter(is_active=True).exclude(lead_status='DUPLICATE').values('lead_status').annotate(value=Count('id'))
+        raw_lead_counts = Student.objects.filter(is_active=True).exclude(lead_status__iexact='DUPLICATE').values('lead_status').annotate(value=Count('id'))
         funnel_dict = {}
         for item in raw_lead_counts:
             st = str(item['lead_status'] or '')

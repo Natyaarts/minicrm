@@ -246,6 +246,11 @@ class StudentSerializer(serializers.ModelSerializer):
     # Assignment
     assigned_to_name = serializers.SerializerMethodField()
     teacher_name = serializers.SerializerMethodField()
+
+    # Resolved Lead Status metadata
+    lead_status_display = serializers.SerializerMethodField()
+    lead_stage_id = serializers.SerializerMethodField()
+    is_lead_status_resolved = serializers.SerializerMethodField()
     
     # Detail lists for read
     dynamic_values_list = StudentDynamicValueReadSerializer(source='dynamic_values', many=True, read_only=True)
@@ -318,6 +323,42 @@ class StudentSerializer(serializers.ModelSerializer):
 
     def get_monthly_payment_months(self, obj):
         return [p.month.strftime('%Y-%m-%d') for p in obj.monthly_payments.all()]
+
+    def _get_status_resolver(self):
+        request = self.context.get('request')
+        if request is not None:
+            if not hasattr(request, '_lead_status_resolver'):
+                from crm.utils import LeadStatusResolver
+                request._lead_status_resolver = LeadStatusResolver()
+            return request._lead_status_resolver
+
+        if '_lead_status_resolver' not in self.context:
+            from crm.utils import LeadStatusResolver
+            self.context['_lead_status_resolver'] = LeadStatusResolver()
+        return self.context['_lead_status_resolver']
+
+    def _get_resolved_status(self, obj):
+        if not hasattr(obj, '_cached_resolved_status'):
+            resolver = self._get_status_resolver()
+            obj._cached_resolved_status = resolver.resolve(getattr(obj, 'lead_status', None))
+        return obj._cached_resolved_status
+
+    def get_lead_status_display(self, obj):
+        resolved = self._get_resolved_status(obj)
+        return resolved.stage_name
+
+    def get_lead_stage_id(self, obj):
+        resolved = self._get_resolved_status(obj)
+        if resolved.stage_id is not None:
+            try:
+                return int(resolved.stage_id)
+            except (ValueError, TypeError):
+                return resolved.stage_id
+        return None
+
+    def get_is_lead_status_resolved(self, obj):
+        resolved = self._get_resolved_status(obj)
+        return resolved.is_resolved
 
     def validate(self, attrs):
         # Enforce that DUPLICATE leads can never receive an assigned_to value

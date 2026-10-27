@@ -68,7 +68,6 @@ const AcademicModule = () => {
         }
     };
 
-
     const fetchTotalStudents = async () => {
         try {
             const res = await api.get('students/?page=1&group=ACADEMIC');
@@ -234,6 +233,7 @@ const AcademicModule = () => {
             });
             setCompletingProfile(null);
             fetchStudents(); // Refresh to show updated data
+            fetchTotalStudents(); // Refresh total-student metric
         } catch (err) {
             console.error("Save failed", err);
             alert("Failed to save details.");

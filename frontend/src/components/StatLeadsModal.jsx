@@ -40,6 +40,9 @@ const StatLeadsModal = ({ config, onClose, onViewLead, salesSectionFilter, pipel
         if (section && section !== 'ALL') {
             params.set('sales_section', section);
         }
+        if (config.date_preset) {
+            params.set('date_preset', config.date_preset);
+        }
         if (config.start_date) {
             params.set('start_date', config.start_date);
         }
@@ -69,7 +72,7 @@ const StatLeadsModal = ({ config, onClose, onViewLead, salesSectionFilter, pipel
             params.append('hide_dropped', 'true');     // active pipeline cards exclude dropped leads
         }
 
-        // Fresh / uncontacted leads
+        // Fresh leads (status NEW)
         if (config.type === 'fresh') {
             params.append('fresh', 'true');
         }
@@ -99,6 +102,8 @@ const StatLeadsModal = ({ config, onClose, onViewLead, salesSectionFilter, pipel
         });
     } catch (error) {
         console.error("Failed to fetch stat leads", error);
+        setLeads([]);
+        setPagination({ count: 0, next: null, previous: null });
     } finally {
         setLoading(false);
     }
@@ -125,13 +130,16 @@ const StatLeadsModal = ({ config, onClose, onViewLead, salesSectionFilter, pipel
         }
     };
 
-    const getStatusStyle = (status) => {
+    const getStatusStyle = (status, isResolved = true) => {
+        if (!isResolved) return "bg-amber-100 text-amber-800 border border-amber-300";
         if (!status) return "bg-slate-100 text-slate-700";
         const s = status.toUpperCase();
+        if (s.includes('DUPLICATE')) return "bg-red-100 text-red-800 border border-red-200";
         if (s.includes('NEW')) return "bg-emerald-100 text-emerald-700";
         if (s.includes('FOLLOW')) return "bg-blue-100 text-blue-700";
         if (s.includes('CONVERT') || s.includes('ENROLL')) return "bg-indigo-100 text-indigo-700";
-        if (s.includes('DROP')) return "bg-rose-100 text-rose-700";
+        if (s.includes('DROP') || s.includes('LOST')) return "bg-rose-100 text-rose-700";
+        if (s.includes('PAYMENT')) return "bg-orange-100 text-orange-700";
         return "bg-slate-100 text-slate-700";
     };
 
@@ -256,11 +264,18 @@ const StatLeadsModal = ({ config, onClose, onViewLead, salesSectionFilter, pipel
                                                     )}
                                                 </td>
                                                 <td className="px-4 py-3">
-                                                    <span className={`px-2 py-1 rounded-md text-[10px] font-bold tracking-wide uppercase ${getStatusStyle(
-                                                        pipelineStages.find(s => (s.id || s.name).toString() === (lead.lead_status || '').toString() || ((lead.lead_status === 'NEW' || !lead.lead_status) && (s.id === 1 || s.order === 1 || /new/i.test(s.name))))?.name || (lead.lead_status === 'NEW' ? 'New Lead' : lead.lead_status) || 'New Lead'
-                                                    )}`}>
-                                                        {pipelineStages.find(s => (s.id || s.name).toString() === (lead.lead_status || '').toString() || ((lead.lead_status === 'NEW' || !lead.lead_status) && (s.id === 1 || s.order === 1 || /new/i.test(s.name))))?.name || (lead.lead_status === 'NEW' ? 'New Lead' : lead.lead_status) || 'New Lead'}
-                                                    </span>
+                                                    {(() => {
+                                                        const isResolved = lead.is_lead_status_resolved !== false;
+                                                        const displayStatus = lead.lead_status_display ||
+                                                            pipelineStages.find(s => String(s.id) === String(lead.lead_stage_id || lead.lead_status))?.name ||
+                                                            lead.lead_status ||
+                                                            'New Lead';
+                                                        return (
+                                                            <span className={`px-2 py-1 rounded-md text-[10px] font-bold tracking-wide uppercase ${getStatusStyle(displayStatus, isResolved)}`}>
+                                                                {displayStatus}
+                                                            </span>
+                                                        );
+                                                    })()}
                                                 </td>
                                                 <td className="px-4 py-3">
                                                     {lead.assigned_to_name ? (
