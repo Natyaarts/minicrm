@@ -79,3 +79,12 @@ body {
 .animate-fadeIn {
   animation: fadeIn 0.5s ease-out forwards;
 }
+
+
+@keyframes modalCardIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to   { opacity: 1; transform: none; }
+}
+.modal-card {
+  animation: modalCardIn 0.18s ease-out;
+}

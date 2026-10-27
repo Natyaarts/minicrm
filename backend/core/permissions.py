@@ -12,54 +12,48 @@ from users.permissions import (
 
 logger = logging.getLogger(__name__)
 
+SALES_SUBMODULES = [
+    'CRM_DASHBOARD', 'CRM_CAMPAIGNS', 'CRM_PIPELINE',
+    'CRM_LEADS_TABLE', 'CRM_TASKS', 'CRM_REPORTS', 'CRM_CALL_ANALYTICS',
+]
+
 class DynamicRolePermission(permissions.BasePermission):
-    """
-    Checks permissions against the RolePermission model in users app.
-    Usage: Set view.module_name (e.g. 'SALES', 'MENTOR')
-    """
+    METHOD_TO_FLAG = {
+        'GET': 'can_view', 'HEAD': 'can_view', 'OPTIONS': 'can_view',
+        'POST': 'can_add',
+        'PUT': 'can_edit', 'PATCH': 'can_edit',
+        'DELETE': 'can_delete',
+    }
+
     def has_permission(self, request, view):
-        if not request.user.is_authenticated:
+        user = request.user
+        if not user or not user.is_authenticated:
             return False
-            
-        # Super Admins bypass all checks
-        if request.user.role == 'SUPER_ADMIN' or request.user.is_superuser:
+
+        if user.role == 'SUPER_ADMIN' or user.is_superuser:
+            return True
+
+        if getattr(view, 'allow_all_authenticated', False):
             return True
 
         module_name = getattr(view, 'module_name', None)
         if not module_name:
-            # If no module name is specified, we assume it's publicly available to authenticated users
-            return True 
+            logger.warning("View %s has no module_name; denying access",
+                           view.__class__.__name__)
+            return False
 
-        # Import model dynamically to avoid circular imports
-        RolePermission = apps.get_model('users', 'RolePermission')
-        
-        check_modules = [module_name]
+        flag = self.METHOD_TO_FLAG.get(request.method)
+        if not flag:
+            return False
+
+        modules = [module_name]
         if module_name == 'SALES':
-            check_modules.extend([
-                'CRM_DASHBOARD', 'CRM_CAMPAIGNS', 'CRM_PIPELINE', 
-                'CRM_LEADS_TABLE', 'CRM_TASKS', 'CRM_REPORTS', 'CRM_CALL_ANALYTICS'
-            ])
+            modules += SALES_SUBMODULES
 
-        for mod in check_modules:
-            try:
-                perm = RolePermission.objects.get(role=request.user.role, module=mod)
-                
-                if request.method in permissions.SAFE_METHODS: # GET, HEAD, OPTIONS
-                    if perm.can_view:
-                        return True
-                elif request.method == 'POST':
-                    if perm.can_add:
-                        return True
-                elif request.method in ['PUT', 'PATCH']:
-                    if perm.can_edit:
-                        return True
-                elif request.method == 'DELETE':
-                    if perm.can_delete:
-                        return True
-            except RolePermission.DoesNotExist:
-                continue
-                
-        return False
+        RolePermission = apps.get_model('users', 'RolePermission')
+        return RolePermission.objects.filter(
+            role=user.role, module__in=modules, **{flag: True}
+        ).exists()
 
 class IsMentorOwner(permissions.BasePermission):
     """

@@ -99,24 +99,72 @@ const HRMSModule = () => {
     const handleAddDept = async (e) => {
         e.preventDefault();
         try {
-            await api.post('hrms/departments/', newDept);
-            setShowAddDept(false);
-            setNewDept({ name: '', description: '' });
+            if (editingDept) {
+                await api.patch(`hrms/departments/${editingDept.id}/`, newDept);
+            } else {
+                await api.post('hrms/departments/', newDept);
+            }
+            closeDeptModal();
             fetchData();
         } catch (err) {
-            alert("Failed to add department");
+            console.error(err);
+            alert(`Failed to ${editingDept ? 'update' : 'add'} department`);
+        }
+    };
+
+
+
+
+
+    const [editingDesig, setEditingDesig] = useState(null);
+    const defaultDesig = { name: '', department: '', description: '', permission_role: 'EMPLOYEE' };
+
+    const openAddDesig = () => {
+        setEditingDesig(null);
+        setNewDesignation(defaultDesig);
+        setShowAddDesignation(true);
+    };
+
+    const openEditDesig = (desig) => {
+        setEditingDesig(desig);
+        setNewDesignation({
+            name: desig.name,
+            department: desig.department,
+            description: desig.description || '',
+            permission_role: desig.permission_role || 'EMPLOYEE'
+        });
+        setShowAddDesignation(true);
+    };
+
+    const closeDesigModal = () => {
+        setShowAddDesignation(false);
+        setEditingDesig(null);
+        setNewDesignation(defaultDesig);
+    };
+
+    const handleDeleteDesig = async (id) => {
+        if (!window.confirm("Delete this designation?")) return;
+        try {
+            await api.delete(`hrms/designations/${id}/`);
+            fetchData();
+        } catch (err) {
+            alert("Failed to delete designation. It may be assigned to employees.");
         }
     };
 
     const handleAddDesignation = async (e) => {
         e.preventDefault();
         try {
-            await api.post('hrms/designations/', newDesignation);
-            setShowAddDesignation(false);
-            setNewDesignation({ name: '', department: '', description: '' });
+            if (editingDesig) {
+                await api.patch(`hrms/designations/${editingDesig.id}/`, newDesignation);
+            } else {
+                await api.post('hrms/designations/', newDesignation);
+            }
+            closeDesigModal();
             fetchData();
         } catch (err) {
-            alert("Failed to add designation");
+            console.error(err);
+            alert(`Failed to ${editingDesig ? 'update' : 'add'} designation`);
         }
     };
 
@@ -244,6 +292,27 @@ const HRMSModule = () => {
         } finally {
             e.target.value = '';
         }
+    };
+
+
+    const [editingDept, setEditingDept] = useState(null);
+
+    const openAddDept = () => {
+        setEditingDept(null);
+        setNewDept({ name: '', description: '' });
+        setShowAddDept(true);
+    };
+
+    const openEditDept = (dept) => {
+        setEditingDept(dept);
+        setNewDept({ name: dept.name, description: dept.description || '' });
+        setShowAddDept(true);
+    };
+
+    const closeDeptModal = () => {
+        setShowAddDept(false);
+        setEditingDept(null);
+        setNewDept({ name: '', description: '' });
     };
 
     const renderStats = () => (
@@ -380,7 +449,7 @@ const HRMSModule = () => {
                     )}
                     {activeTab === 'departments' && (['SUPER_ADMIN', 'ADMIN'].includes(authUser?.role) && (authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.WORKFORCE?.add !== false)) && (
                         <button 
-                            onClick={() => setShowAddDept(true)}
+                            onClick={openAddDept}
                             className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold shadow-sm hover:bg-indigo-700 transition-colors"
                         >
                             <Plus size={14} /> New Department
@@ -388,7 +457,7 @@ const HRMSModule = () => {
                     )}
                     {activeTab === 'designations' && (['SUPER_ADMIN', 'ADMIN'].includes(authUser?.role) && (authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.WORKFORCE?.add !== false)) && (
                         <button 
-                            onClick={() => setShowAddDesignation(true)}
+                            onClick={openAddDesig}
                             className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold shadow-sm hover:bg-indigo-700 transition-colors"
                         >
                             <Plus size={14} /> New Designation
@@ -488,7 +557,12 @@ const HRMSModule = () => {
                                             {employees.filter(e => e.department === dept.id).length} Members
                                         </span>
                                         {(['SUPER_ADMIN', 'ADMIN'].includes(authUser?.role) && (authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.WORKFORCE?.edit !== false)) && (
-                                            <button className="p-1.5 text-slate-400 hover:text-indigo-600 transition-colors bg-slate-50 hover:bg-indigo-50 rounded border border-transparent hover:border-indigo-100">
+                                            <button
+                                                type="button"
+                                                onClick={() => openEditDept(dept)}
+                                                title="Edit department"
+                                                className="p-1.5 text-slate-400 hover:text-indigo-600 transition-colors bg-slate-50 hover:bg-indigo-50 rounded border border-transparent hover:border-indigo-100"
+                                            >
                                                 <Edit2 size={14} />
                                             </button>
                                         )}
@@ -527,10 +601,24 @@ const HRMSModule = () => {
                                             </td>
                                             <td className="px-5 py-3 text-right space-x-1">
                                                 {(['SUPER_ADMIN', 'ADMIN'].includes(authUser?.role) && (authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.WORKFORCE?.edit !== false)) && (
-                                                    <button className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded border border-transparent hover:border-indigo-100 transition-colors"><Edit2 size={14} /></button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => openEditDesig(desig)}
+                                                        title="Edit designation"
+                                                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded border border-transparent hover:border-indigo-100 transition-colors"
+                                                    >
+                                                        <Edit2 size={14} />
+                                                    </button>
                                                 )}
                                                 {(['SUPER_ADMIN', 'ADMIN'].includes(authUser?.role) && (authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.WORKFORCE?.delete !== false)) && (
-                                                    <button className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded border border-transparent hover:border-red-100 transition-colors"><Trash2 size={14} /></button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleDeleteDesig(desig.id)}
+                                                        title="Delete designation"
+                                                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded border border-transparent hover:border-red-100 transition-colors"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
                                                 )}
                                             </td>
                                         </tr>
@@ -646,7 +734,7 @@ const HRMSModule = () => {
             </AnimatePresence>
 
             {/* Modals (Dept) */}
-            {showAddDept && (
+            {showAddDept && createPortal((
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 sm:p-6">
                     <motion.div 
                         initial={{ scale: 0.95, opacity: 0, y: 20 }}
@@ -660,11 +748,15 @@ const HRMSModule = () => {
                                     <Building2 size={24} strokeWidth={2.5} />
                                 </div>
                                 <div>
-                                    <h3 className="text-2xl font-black text-slate-900 tracking-tight">New Department</h3>
-                                    <p className="text-slate-500 text-xs font-medium mt-0.5">Group your workforce into functional teams.</p>
+                                    <h3 className="text-2xl font-black text-slate-900 tracking-tight">
+                                        {editingDept ? 'Edit Department' : 'New Department'}
+                                    </h3>
+                                    <p className="text-slate-500 text-xs font-medium mt-0.5">
+                                        {editingDept ? 'Update this team’s details.' : 'Group your workforce into functional teams.'}
+                                    </p>
                                 </div>
                             </div>
-                            <button onClick={() => setShowAddDept(false)} className="w-10 h-10 bg-white border border-slate-200 rounded-full flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 hover:border-rose-100 transition-all shadow-sm">
+                            <button onClick={closeDeptModal} className="w-10 h-10 bg-white border border-slate-200 rounded-full flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 hover:border-rose-100 transition-all shadow-sm">
                                 <X size={20} />
                             </button>
                         </div>
@@ -698,7 +790,7 @@ const HRMSModule = () => {
                         <div className="px-8 py-5 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-3">
                             <button 
                                 type="button"
-                                onClick={() => setShowAddDept(false)}
+                                onClick={closeDeptModal}
                                 className="px-6 py-3 bg-white border border-slate-200 text-slate-600 rounded-xl font-bold hover:bg-slate-50 hover:text-slate-900 transition-all shadow-sm text-sm"
                             >
                                 Cancel
@@ -708,15 +800,15 @@ const HRMSModule = () => {
                                 form="deptForm"
                                 className="px-8 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 hover:shadow-indigo-300 transform hover:-translate-y-0.5 text-sm"
                             >
-                                Create Dept
+                                {editingDept ? 'Save Changes' : 'Create Dept'}
                             </button>
                         </div>
                     </motion.div>
                 </div>
-            )}
+            ), document.body)}
 
             {/* Modals (Designation) */}
-            {showAddDesignation && (
+            {showAddDesignation && createPortal((
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 sm:p-6">
                     <motion.div 
                         initial={{ scale: 0.95, opacity: 0, y: 20 }}
@@ -730,11 +822,11 @@ const HRMSModule = () => {
                                     <Briefcase size={24} strokeWidth={2.5} />
                                 </div>
                                 <div>
-                                    <h3 className="text-2xl font-black text-slate-900 tracking-tight">New Designation</h3>
-                                    <p className="text-slate-500 text-xs font-medium mt-0.5">Define roles within your departments.</p>
+                                    <h3 className="text-2xl font-black text-slate-900 tracking-tight">{editingDesig ? 'Edit Designation' : 'New Designation'}</h3>
+                                    <p className="text-slate-500 text-xs font-medium mt-0.5">{editingDesig ? 'Update this role’s details.' : 'Define roles within your departments.'}</p>
                                 </div>
                             </div>
-                            <button onClick={() => setShowAddDesignation(false)} className="w-10 h-10 bg-white border border-slate-200 rounded-full flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 hover:border-rose-100 transition-all shadow-sm">
+                            <button onClick={closeDesigModal} className="w-10 h-10 bg-white border border-slate-200 rounded-full flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 hover:border-rose-100 transition-all shadow-sm">
                                 <X size={20} />
                             </button>
                         </div>
@@ -791,7 +883,7 @@ const HRMSModule = () => {
                         <div className="px-8 py-5 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-3">
                             <button 
                                 type="button"
-                                onClick={() => setShowAddDesignation(false)}
+                                onClick={closeDesigModal}
                                 className="px-6 py-3 bg-white border border-slate-200 text-slate-600 rounded-xl font-bold hover:bg-slate-50 hover:text-slate-900 transition-all shadow-sm text-sm"
                             >
                                 Cancel
@@ -801,12 +893,12 @@ const HRMSModule = () => {
                                 form="desigForm"
                                 className="px-8 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 hover:shadow-indigo-300 transform hover:-translate-y-0.5 text-sm"
                             >
-                                Create Role
+                                {editingDesig ? 'Save Changes' : 'Create Role'}
                             </button>
                         </div>
                     </motion.div>
                 </div>
-            )}
+            ), document.body)}
 
             {/* Modal (Add Employee) */}
             {showAddEmployee && createPortal((

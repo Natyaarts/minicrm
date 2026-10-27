@@ -56,3 +56,36 @@ class IsSelfOrAdmin(permissions.BasePermission):
         if hasattr(obj, 'user'):
             return obj.user == request.user
         return False
+
+
+
+
+from .models import RolePermission
+
+class ModulePermission(permissions.BasePermission):
+    """
+    Enforces the RolePermission table on the server.
+    The view must declare `permission_module = '<MODULE_KEY>'`.
+    """
+    ACTION_MAP = {
+        'GET': 'can_view', 'HEAD': 'can_view', 'OPTIONS': 'can_view',
+        'POST': 'can_add',
+        'PUT': 'can_edit', 'PATCH': 'can_edit',
+        'DELETE': 'can_delete',
+    }
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not (user and user.is_authenticated):
+            return False
+        if user.is_superuser or user.role == 'SUPER_ADMIN':
+            return True
+        module = getattr(view, 'permission_module', None)
+        if not module:
+            return False          # deny by default if a view forgot to declare a module
+        field = self.ACTION_MAP.get(request.method)
+        if not field:
+            return False
+        return RolePermission.objects.filter(
+            role=user.role, module=module, **{field: True}
+        ).exists()

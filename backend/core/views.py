@@ -2110,6 +2110,13 @@ class DashboardStatsView(APIView):
 
     def get(self, request):
         user = request.user
+
+        # DASHBOARD_ROLES = ['SUPER_ADMIN', 'ADMIN', 'ACADEMIC', 'ACADEMIC_COORDINATOR',
+        #                 'MENTOR', 'TEACHER', 'SALES']
+        # if not (user.is_superuser or user.role in DASHBOARD_ROLES):
+        #     return Response({'error': 'Permission denied'}, status=403)
+
+
         # Use Q for complex lookups if needed
         from django.db.models import Q, OuterRef, Subquery, Case, When
         from django.db.models.functions import Coalesce

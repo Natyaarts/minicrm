@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Receipt, CheckCircle, XCircle, Clock, Plus, X, Upload } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../api/axios';
+import { createPortal } from 'react-dom';
 
 const ExpenseManagement = ({ authUser, employees }) => {
     const [expenses, setExpenses] = useState([]);
@@ -135,6 +136,7 @@ const ExpenseManagement = ({ authUser, employees }) => {
             )}
 
             {/* Submit Expense Modal */}
+            {createPortal(
             <AnimatePresence>
                 {showModal && (
                     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
@@ -174,7 +176,9 @@ const ExpenseManagement = ({ authUser, employees }) => {
                         </motion.div>
                     </div>
                 )}
-            </AnimatePresence>
+            </AnimatePresence>,
+                document.body
+            )}
         </div>
     );
 };

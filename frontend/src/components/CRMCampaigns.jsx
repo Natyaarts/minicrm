@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api/axios';
 import { motion } from 'framer-motion';
-import { Plus, X, Search, BarChart, Calendar, DollarSign, Users, ExternalLink, Edit2, Trash2, Link, Upload, TrendingUp, CheckCircle, Clock, Download, ArrowUpDown, ChevronLeft, ChevronRight, Phone, Layers, Megaphone } from 'lucide-react';
+import { Plus, X, Search, BarChart, Calendar, DollarSign, Users, ExternalLink, Edit2, Trash2, Link, Upload, TrendingUp, CheckCircle, Clock, Download, ArrowUpDown, ChevronLeft, ChevronRight, Phone, Layers, Megaphone  } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 
@@ -1051,7 +1051,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
                             {/* Total Assigned */}
                             <div 
                                 onClick={() => openPopup('assigned')}
-                                className="bg-white p-4.5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between cursor-pointer hover:border-blue-300 hover:shadow-md hover:scale-[1.01] active:scale-[0.99] transition-all"
+                                className="bg-white p-4.5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between cursor-pointer hover:border-blue-300 hover:shadow-md hover:scale-[1.01] active:scale-[0.99] transition-all p-5"
                             >
                                 <div>
                                     <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Total Assigned Leads</p>
@@ -1066,7 +1066,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
                             {/* Contacted Leads */}
                             <div 
                                 onClick={() => openPopup('contacted')}
-                                className="bg-white p-4.5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between cursor-pointer hover:border-emerald-300 hover:shadow-md hover:scale-[1.01] active:scale-[0.99] transition-all"
+                                className="bg-white p-4.5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between cursor-pointer hover:border-emerald-300 hover:shadow-md hover:scale-[1.01] active:scale-[0.99] transition-all p-5"
                             >
                                 <div>
                                     <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Contacted Leads</p>
@@ -1085,7 +1085,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
                             {/* Total Call Duration / Talk Time */}
                             <div 
                                 onClick={() => openPopup('talk_time')}
-                                className="bg-white p-4.5 rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50/30 to-white shadow-sm flex items-center justify-between cursor-pointer hover:border-indigo-300 hover:shadow-md hover:scale-[1.01] active:scale-[0.99] transition-all"
+                                className="bg-white p-4.5 rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50/30 to-white shadow-sm flex items-center justify-between cursor-pointer hover:border-indigo-300 hover:shadow-md hover:scale-[1.01] active:scale-[0.99] transition-all p-5"
                             >
                                 <div>
                                     <p className="text-[11px] font-semibold text-indigo-900 uppercase tracking-wider">Total Talk Time</p>
@@ -1100,7 +1100,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
                             {/* Converted */}
                             <div 
                                 onClick={() => openPopup('converted')}
-                                className="bg-white p-4.5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between cursor-pointer hover:border-purple-300 hover:shadow-md hover:scale-[1.01] active:scale-[0.99] transition-all"
+                                className="bg-white p-4.5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between cursor-pointer hover:border-purple-300 hover:shadow-md hover:scale-[1.01] active:scale-[0.99] transition-all p-5"
                             >
                                 <div>
                                     <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Converted / Enrolled</p>
@@ -1759,7 +1759,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
     };
 
     return (
-        <div className="max-w-7xl mx-auto space-y-6">
+        <div className="max-w-7xl mx-auto space-y-6 p-10">
             {/* Header & Tabs */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 pb-4">
                 <div className="flex bg-slate-100 p-1 rounded-xl w-full md:w-auto overflow-x-auto">
