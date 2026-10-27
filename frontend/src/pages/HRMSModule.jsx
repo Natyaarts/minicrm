@@ -378,7 +378,7 @@ const HRMSModule = () => {
                             <UserPlus size={14} /> Add Employee
                         </button>
                     )}
-                    {activeTab === 'departments' && (authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.WORKFORCE?.add) && (
+                    {activeTab === 'departments' && (['SUPER_ADMIN', 'ADMIN'].includes(authUser?.role) && (authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.WORKFORCE?.add !== false)) && (
                         <button 
                             onClick={() => setShowAddDept(true)}
                             className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold shadow-sm hover:bg-indigo-700 transition-colors"
@@ -386,7 +386,7 @@ const HRMSModule = () => {
                             <Plus size={14} /> New Department
                         </button>
                     )}
-                    {activeTab === 'designations' && (authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.WORKFORCE?.add) && (
+                    {activeTab === 'designations' && (['SUPER_ADMIN', 'ADMIN'].includes(authUser?.role) && (authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.WORKFORCE?.add !== false)) && (
                         <button 
                             onClick={() => setShowAddDesignation(true)}
                             className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold shadow-sm hover:bg-indigo-700 transition-colors"
@@ -487,7 +487,7 @@ const HRMSModule = () => {
                                         <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
                                             {employees.filter(e => e.department === dept.id).length} Members
                                         </span>
-                                        {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.WORKFORCE?.edit) && (
+                                        {(['SUPER_ADMIN', 'ADMIN'].includes(authUser?.role) && (authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.WORKFORCE?.edit !== false)) && (
                                             <button className="p-1.5 text-slate-400 hover:text-indigo-600 transition-colors bg-slate-50 hover:bg-indigo-50 rounded border border-transparent hover:border-indigo-100">
                                                 <Edit2 size={14} />
                                             </button>
@@ -526,10 +526,10 @@ const HRMSModule = () => {
                                                 </span>
                                             </td>
                                             <td className="px-5 py-3 text-right space-x-1">
-                                                {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.WORKFORCE?.edit) && (
+                                                {(['SUPER_ADMIN', 'ADMIN'].includes(authUser?.role) && (authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.WORKFORCE?.edit !== false)) && (
                                                     <button className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded border border-transparent hover:border-indigo-100 transition-colors"><Edit2 size={14} /></button>
                                                 )}
-                                                {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.WORKFORCE?.delete) && (
+                                                {(['SUPER_ADMIN', 'ADMIN'].includes(authUser?.role) && (authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.WORKFORCE?.delete !== false)) && (
                                                     <button className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded border border-transparent hover:border-red-100 transition-colors"><Trash2 size={14} /></button>
                                                 )}
                                             </td>

@@ -48,7 +48,7 @@ class DashboardStatsView(APIView):
             from datetime import timedelta
             from django.utils import timezone
             
-            students = Student.objects.filter(is_active=True).exclude(lead_status='DUPLICATE')
+            students = Student.objects.filter(is_active=True).exclude(lead_status__iexact='DUPLICATE')
             
             # Super Admin / Admin section filter (optional, if they want to drill down)
             section_filter = request.query_params.get('sales_section')
@@ -119,45 +119,30 @@ class DashboardStatsView(APIView):
             start_date = request.query_params.get('start_date')
             end_date = request.query_params.get('end_date')
             
-            today = timezone.now().date()
-            if date_preset == 'today':
-                start_date = str(today)
-                end_date = str(today)
-            elif date_preset == 'yesterday':
-                yesterday = today - timedelta(days=1)
-                start_date = str(yesterday)
-                end_date = str(yesterday)
-            elif date_preset == 'this_week':
-                start_date = str(today - timedelta(days=today.weekday()))
-                end_date = str(today)
-            elif date_preset == 'this_month':
-                start_date = str(today.replace(day=1))
-                end_date = str(today)
-            elif date_preset == 'last_7_days':
-                start_date = str(today - timedelta(days=6))
-                end_date = str(today)
-            elif date_preset == 'last_30_days':
-                start_date = str(today - timedelta(days=29))
-                end_date = str(today)
-            elif date_preset == 'last_month':
-                first_of_this_month = today.replace(day=1)
-                last_day_last_month = first_of_this_month - timedelta(days=1)
-                first_day_last_month = last_day_last_month.replace(day=1)
-                start_date = str(first_day_last_month)
-                end_date = str(last_day_last_month)
+            from .utils import resolve_date_preset
+            start_date, end_date = resolve_date_preset(date_preset, start_date, end_date)
             
             # Snapshot students BEFORE date filter for total assigned counts in leaderboard
             all_time_students = students
             
-            if start_date:
-                parsed_start = parse_date(start_date)
-                if parsed_start:
-                    students = students.filter(Q(created_at__date__gte=parsed_start) | Q(user__date_joined__date__gte=parsed_start))
-            
-            if end_date:
-                parsed_end = parse_date(end_date)
-                if parsed_end:
-                    students = students.filter(Q(created_at__date__lte=parsed_end) | Q(user__date_joined__date__lte=parsed_end))
+            parsed_start = parse_date(start_date) if start_date else None
+            parsed_end = parse_date(end_date) if end_date else None
+
+            if parsed_start and parsed_end:
+                students = students.filter(
+                    Q(created_at__date__gte=parsed_start, created_at__date__lte=parsed_end) |
+                    Q(created_at__isnull=True, user__date_joined__date__gte=parsed_start, user__date_joined__date__lte=parsed_end)
+                )
+            elif parsed_start:
+                students = students.filter(
+                    Q(created_at__date__gte=parsed_start) |
+                    Q(created_at__isnull=True, user__date_joined__date__gte=parsed_start)
+                )
+            elif parsed_end:
+                students = students.filter(
+                    Q(created_at__date__lte=parsed_end) |
+                    Q(created_at__isnull=True, user__date_joined__date__lte=parsed_end)
+                )
             
             # Identify converted and dropped leads to exclude them from active open pipeline totals
             converted_stages = get_converted_stage_values()
@@ -181,8 +166,8 @@ class DashboardStatsView(APIView):
                 .distinct()
                 .count()
             )
-            # Fresh / Uncontacted leads: open leads with zero interactions logged
-            fresh_leads = open_students.filter(crm_interactions__isnull=True).count()
+            # Fresh leads: open leads whose actual current status is NEW
+            fresh_leads = open_students.filter(lead_status__in=new_stages).count()
 
             
             # Leaderboard & Call Duration per Sales Rep
@@ -225,49 +210,46 @@ class DashboardStatsView(APIView):
             outgoing_calls = interactions_qs.filter(call_direction='OUTGOING').count()
 
             # Pipeline Stages Breakdown
-            standard_mapping = {
-                'NEW': 'New Lead',
-                'FOLLOW_UP': 'Follow-up',
-                'PAYMENT_PENDING': 'Payment Pending',
-                'ENROLLED': 'Converted',
-                'CONVERTED': 'Converted',
-                'DROPPED': 'Dropped'
-            }
+            from .utils import LeadStatusResolver
+            dynamic_stages_obj = list(PipelineStage.objects.all().order_by('order', 'id'))
+            resolver = LeadStatusResolver(stages=dynamic_stages_obj)
             status_counts = students.values('lead_status').annotate(count=Count('id'))
-            dynamic_stages_obj = list(PipelineStage.objects.all())
-            dynamic_stages = {str(stage.id): stage.name for stage in dynamic_stages_obj}
-            stage_by_name = {stage.name.strip().lower(): stage for stage in dynamic_stages_obj}
 
             combined_stages = {}
             for item in status_counts:
-                status_val = str(item['lead_status'])
+                raw_status = item['lead_status']
                 count = item['count']
-                if status_val in standard_mapping:
-                    name = standard_mapping[status_val]
-                elif status_val in dynamic_stages:
-                    name = dynamic_stages[status_val]
-                else:
-                    name = status_val
+                resolved = resolver.resolve(raw_status)
 
-                # Canonicalize ID to PipelineStage.id if a matching stage exists
-                if status_val in dynamic_stages:
-                    canonical_id = status_val
-                    matched_obj = next((s for s in dynamic_stages_obj if str(s.id) == status_val), None)
-                    name = matched_obj.name if matched_obj else name
-                elif name.strip().lower() in stage_by_name:
-                    matched_stage = stage_by_name[name.strip().lower()]
-                    canonical_id = str(matched_stage.id)
-                    name = matched_stage.name
+                if resolved.is_resolved:
+                    if resolved.stage_id:
+                        bucket_key = str(resolved.stage_id)
+                        stage_id_val = resolved.stage_id
+                        stage_name_val = resolved.stage_name
+                    elif resolved.is_duplicate:
+                        bucket_key = "DUPLICATE"
+                        stage_id_val = "DUPLICATE"
+                        stage_name_val = resolved.stage_name
+                    else:
+                        bucket_key = resolved.raw_status or "resolved"
+                        stage_id_val = resolved.raw_status
+                        stage_name_val = resolved.stage_name
+                    is_unresolved = False
                 else:
-                    canonical_id = status_val
+                    # Unresolved status: explicit diagnostic bucket
+                    bucket_key = f"unresolved_{resolved.raw_status}"
+                    stage_id_val = resolved.raw_status if resolved.raw_status else "unknown"
+                    stage_name_val = f"Unresolved ({resolved.raw_status})" if resolved.raw_status else "Unresolved"
+                    is_unresolved = True
 
-                if canonical_id not in combined_stages:
-                    combined_stages[canonical_id] = {
-                        "id": canonical_id,
-                        "name": name,
-                        "count": 0
+                if bucket_key not in combined_stages:
+                    combined_stages[bucket_key] = {
+                        "id": stage_id_val,
+                        "name": stage_name_val,
+                        "count": 0,
+                        "is_unresolved": is_unresolved
                     }
-                combined_stages[canonical_id]["count"] += count
+                combined_stages[bucket_key]["count"] += count
 
             pipeline_stages_data = list(combined_stages.values())
                 
@@ -358,7 +340,10 @@ class DashboardStatsView(APIView):
                 "outgoing_calls": outgoing_calls,
                 "pipeline_stages": pipeline_stages_data,
                 "leaderboard": leaderboard,
-                "revenue": revenue
+                "revenue": revenue,
+                "start_date": start_date or "",
+                "end_date": end_date or "",
+                "date_preset": date_preset or ""
             })
         except Exception as e:
             logger.error(f"Dashboard stats error: {e}")
@@ -1071,7 +1056,7 @@ class CampaignViewSet(viewsets.ModelViewSet):
     def report(self, request, pk=None):
         campaign = self.get_object()
         from .models import Student
-        students = Student.objects.filter(campaign=campaign, is_active=True).exclude(lead_status='DUPLICATE')
+        students = Student.objects.filter(campaign=campaign, is_active=True).exclude(lead_status__iexact='DUPLICATE')
         
         total_leads = students.count()
         
@@ -1219,15 +1204,25 @@ class BDEReportView(APIView):
             start_date = str(first_day_last_month)
             end_date = str(last_day_last_month)
         
-        leads = Student.objects.filter(assigned_to=bde, is_active=True).exclude(lead_status='DUPLICATE').select_related('user')
-        if start_date:
-            parsed_start = parse_date(start_date)
-            if parsed_start:
-                leads = leads.filter(Q(created_at__date__gte=parsed_start) | Q(user__date_joined__date__gte=parsed_start))
-        if end_date:
-            parsed_end = parse_date(end_date)
-            if parsed_end:
-                leads = leads.filter(Q(created_at__date__lte=parsed_end) | Q(user__date_joined__date__lte=parsed_end))
+        leads = Student.objects.filter(assigned_to=bde, is_active=True).exclude(lead_status__iexact='DUPLICATE').select_related('user')
+        parsed_start = parse_date(start_date) if start_date else None
+        parsed_end = parse_date(end_date) if end_date else None
+
+        if parsed_start and parsed_end:
+            leads = leads.filter(
+                Q(created_at__date__gte=parsed_start, created_at__date__lte=parsed_end) |
+                Q(created_at__isnull=True, user__date_joined__date__gte=parsed_start, user__date_joined__date__lte=parsed_end)
+            )
+        elif parsed_start:
+            leads = leads.filter(
+                Q(created_at__date__gte=parsed_start) |
+                Q(created_at__isnull=True, user__date_joined__date__gte=parsed_start)
+            )
+        elif parsed_end:
+            leads = leads.filter(
+                Q(created_at__date__lte=parsed_end) |
+                Q(created_at__isnull=True, user__date_joined__date__lte=parsed_end)
+            )
 
         interactions = LeadInteraction.objects.filter(author=bde).select_related('student', 'student__user')
         if start_date:
@@ -2063,7 +2058,7 @@ class MarketingDashboardView(APIView):
 
         # Summary Stats
         campaigns = Campaign.objects.all()
-        students = Student.objects.filter(is_active=True, campaign__isnull=False).exclude(lead_status='DUPLICATE')
+        students = Student.objects.filter(is_active=True, campaign__isnull=False).exclude(lead_status__iexact='DUPLICATE')
 
         campaign_id = request.query_params.get('campaign_id')
         if campaign_id:
@@ -2084,21 +2079,37 @@ class MarketingDashboardView(APIView):
             campaigns = campaigns.filter(Q(section=request.user.sales_section) | Q(section='BOTH'))
             students = students.filter(Q(sales_section=request.user.sales_section) | Q(assigned_to__sales_section=request.user.sales_section))
 
+        parsed_start = None
+        parsed_end = None
         if start_date_str:
             try:
-                start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
-                campaigns = campaigns.filter(created_at__date__gte=start_date)
-                students = students.filter(created_at__date__gte=start_date)
+                parsed_start = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+                campaigns = campaigns.filter(created_at__date__gte=parsed_start)
             except ValueError:
                 pass
         
         if end_date_str:
             try:
-                end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
-                campaigns = campaigns.filter(created_at__date__lte=end_date)
-                students = students.filter(created_at__date__lte=end_date)
+                parsed_end = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+                campaigns = campaigns.filter(created_at__date__lte=parsed_end)
             except ValueError:
                 pass
+
+        if parsed_start and parsed_end:
+            students = students.filter(
+                Q(created_at__date__gte=parsed_start, created_at__date__lte=parsed_end) |
+                Q(created_at__isnull=True, user__date_joined__date__gte=parsed_start, user__date_joined__date__lte=parsed_end)
+            )
+        elif parsed_start:
+            students = students.filter(
+                Q(created_at__date__gte=parsed_start) |
+                Q(created_at__isnull=True, user__date_joined__date__gte=parsed_start)
+            )
+        elif parsed_end:
+            students = students.filter(
+                Q(created_at__date__lte=parsed_end) |
+                Q(created_at__isnull=True, user__date_joined__date__lte=parsed_end)
+            )
 
         # Dynamically determine all converted/enrolled pipeline stage values using canonical helper
         from .utils import get_converted_stage_values
@@ -2112,10 +2123,13 @@ class MarketingDashboardView(APIView):
         from django.db.models.functions import Coalesce, TruncDate
         
         daily_leads_qs = students
-        if not start_date_str:
+        if not parsed_start:
             # Default to 30 days if no start date provided
             thirty_days_ago = timezone.now().date() - timedelta(days=30)
-            daily_leads_qs = students.filter(Q(created_at__date__gte=thirty_days_ago) | Q(created_at__isnull=True, user__date_joined__date__gte=thirty_days_ago))
+            daily_leads_qs = students.filter(
+                Q(created_at__date__gte=thirty_days_ago) |
+                Q(created_at__isnull=True, user__date_joined__date__gte=thirty_days_ago)
+            )
             
         daily_leads = daily_leads_qs.annotate(lead_date=Coalesce('created_at', 'user__date_joined')).annotate(date=TruncDate('lead_date')).values('date').annotate(count=Count('id')).order_by('date')
         
@@ -2137,19 +2151,22 @@ class MarketingDashboardView(APIView):
 
         sales_report = []
         for rep in sales_reps:
-            rep_leads = Student.objects.filter(assigned_to=rep, is_active=True).exclude(lead_status='DUPLICATE')
-            if start_date_str:
-                try:
-                    p_start = datetime.strptime(start_date_str, '%Y-%m-%d').date()
-                    rep_leads = rep_leads.filter(created_at__date__gte=p_start)
-                except ValueError:
-                    pass
-            if end_date_str:
-                try:
-                    p_end = datetime.strptime(end_date_str, '%Y-%m-%d').date()
-                    rep_leads = rep_leads.filter(created_at__date__lte=p_end)
-                except ValueError:
-                    pass
+            rep_leads = Student.objects.filter(assigned_to=rep, is_active=True).exclude(lead_status__iexact='DUPLICATE')
+            if parsed_start and parsed_end:
+                rep_leads = rep_leads.filter(
+                    Q(created_at__date__gte=parsed_start, created_at__date__lte=parsed_end) |
+                    Q(created_at__isnull=True, user__date_joined__date__gte=parsed_start, user__date_joined__date__lte=parsed_end)
+                )
+            elif parsed_start:
+                rep_leads = rep_leads.filter(
+                    Q(created_at__date__gte=parsed_start) |
+                    Q(created_at__isnull=True, user__date_joined__date__gte=parsed_start)
+                )
+            elif parsed_end:
+                rep_leads = rep_leads.filter(
+                    Q(created_at__date__lte=parsed_end) |
+                    Q(created_at__isnull=True, user__date_joined__date__lte=parsed_end)
+                )
 
             assigned = rep_leads.count()
             contacted = rep_leads.filter(crm_interactions__isnull=False).distinct().count()
@@ -2187,7 +2204,7 @@ class BulkAssignLeadsView(APIView):
 
         try:
             sales_user = User.objects.get(id=sales_user_id, role='SALES')
-            students = Student.objects.filter(id__in=lead_ids).exclude(lead_status='DUPLICATE')
+            students = Student.objects.filter(id__in=lead_ids).exclude(lead_status__iexact='DUPLICATE')
             updated = students.update(assigned_to=sales_user)
             return Response({'message': f'Successfully assigned {updated} leads to {sales_user.username}'})
         except User.DoesNotExist:

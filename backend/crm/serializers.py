@@ -83,7 +83,7 @@ class CampaignSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_by', 'last_assigned_bde']
 
     def get_lead_count(self, obj):
-        return obj.leads.filter(is_active=True).exclude(lead_status='DUPLICATE').count()
+        return obj.leads.filter(is_active=True).exclude(lead_status__iexact='DUPLICATE').count()
 
     def get_cost_per_lead(self, obj):
         count = self.get_lead_count(obj)

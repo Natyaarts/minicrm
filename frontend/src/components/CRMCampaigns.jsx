@@ -379,12 +379,10 @@ const CRMCampaigns = ({ onLeadClick }) => {
             
             if (type === 'converted') {
                 const convertedStages = ['ENROLLED', 'CONVERTED', 'enrolled', 'converted', 'Enrolled', 'Converted'];
-                if (res.data.results) {
-                    // Filter if paginated API returns everything
-                    dataList = dataList.filter(lead => convertedStages.includes(lead.lead_status) || lead.lead_status === '4');
-                } else {
-                    dataList = dataList.filter(lead => convertedStages.includes(lead.lead_status) || lead.lead_status === '4');
-                }
+                dataList = dataList.filter(lead =>
+                    /enroll|convert/i.test(lead.lead_status_display || '') ||
+                    convertedStages.includes(lead.lead_status)
+                );
             }
             
             setPopupLeads(dataList);
@@ -616,7 +614,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
     const selectAllLeads = (e) => {
         if (e.target.checked) {
             // Only select leads that are not duplicates
-            setSelectedLeads(leads.filter(l => l.lead_status !== 'DUPLICATE').map(l => l.id));
+            setSelectedLeads(leads.filter(l => (l.lead_status || '').toUpperCase() !== 'DUPLICATE').map(l => l.id));
         } else {
             setSelectedLeads([]);
         }
@@ -653,7 +651,11 @@ const CRMCampaigns = ({ onLeadClick }) => {
     };
 
     const statusCounts = leads.reduce((acc, lead) => {
-        const statusName = pipelineStages[lead.lead_status] || lead.lead_status || 'NEW LEAD';
+        const statusName = lead.lead_status_display ||
+            (lead.lead_stage_id != null ? pipelineStages[lead.lead_stage_id] : null) ||
+            pipelineStages[lead.lead_status] ||
+            lead.lead_status ||
+            'NEW LEAD';
         acc[statusName] = (acc[statusName] || 0) + 1;
         return acc;
     }, {});
@@ -1618,7 +1620,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
                                     {sortedLeads.map((lead) => {
-                                        const isDuplicate = lead.lead_status === 'DUPLICATE';
+                                        const isDuplicate = (lead.lead_status || '').toUpperCase() === 'DUPLICATE';
                                         return (
                                             <tr key={lead.id} className={`transition-colors ${isDuplicate ? 'bg-red-50 text-red-900 font-medium border-l-4 border-red-500 hover:bg-red-100/75' : 'hover:bg-slate-50/50'}`}>
                                                 <td className="px-6 py-4">
@@ -1665,14 +1667,35 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                                     )}
                                                 </td>
                                                 <td className="px-6 py-4">
-                                                    <span className={`px-2.5 py-1 text-[10px] font-bold rounded-md uppercase tracking-wide ${
-                                                        isDuplicate ? 'bg-red-200 text-red-900 border border-red-300' :
-                                                        lead.lead_status === 'Pending' || lead.lead_status === 'NEW' ? 'bg-amber-50 text-amber-600' :
-                                                        lead.lead_status === 'Enrolled' || lead.lead_status === '4' ? 'bg-green-50 text-green-600' :
-                                                        'bg-slate-100 text-slate-600'
-                                                    }`}>
-                                                        {isDuplicate ? '⚠️ DUPLICATE' : (pipelineStages[lead.lead_status] || lead.lead_status || 'Pending')}
-                                                    </span>
+                                                    {(() => {
+                                                        const displayStatus = isDuplicate ? '⚠️ DUPLICATE' : (
+                                                            lead.lead_status_display ||
+                                                            (lead.lead_stage_id != null ? pipelineStages[lead.lead_stage_id] : null) ||
+                                                            pipelineStages[lead.lead_status] ||
+                                                            lead.lead_status ||
+                                                            'Pending'
+                                                        );
+                                                        const isResolved = lead.is_lead_status_resolved !== false;
+                                                        const statusLower = displayStatus.toLowerCase();
+                                                        const isNew = /new|pending/i.test(statusLower) || lead.lead_status === 'Pending' || lead.lead_status === 'NEW';
+                                                        const isEnrolled = /enroll|convert/i.test(statusLower) || lead.lead_status === 'Enrolled';
+
+                                                        const badgeClass = isDuplicate
+                                                            ? 'bg-red-200 text-red-900 border border-red-300'
+                                                            : !isResolved
+                                                            ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                                                            : isNew
+                                                            ? 'bg-amber-50 text-amber-600'
+                                                            : isEnrolled
+                                                            ? 'bg-green-50 text-green-600'
+                                                            : 'bg-slate-100 text-slate-600';
+
+                                                        return (
+                                                            <span className={`px-2.5 py-1 text-[10px] font-bold rounded-md uppercase tracking-wide ${badgeClass}`}>
+                                                                {displayStatus}
+                                                            </span>
+                                                        );
+                                                    })()}
                                                 </td>
                                                 <td className={`px-6 py-4 text-sm ${isDuplicate ? 'text-red-800' : 'text-slate-500'}`}>
                                                     {lead.created_at ? new Date(lead.created_at).toLocaleDateString() : '—'}
@@ -2788,7 +2811,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                                         </td>
                                                         <td className="px-5 py-3">
                                                             <span className="px-2 py-0.5 text-[9px] font-bold rounded-md bg-slate-100 text-slate-600 uppercase tracking-wider">
-                                                                {pipelineStages[lead.lead_status] || lead.lead_status || 'NEW'}
+                                                                {lead.lead_status_display || (lead.lead_stage_id != null ? pipelineStages[lead.lead_stage_id] : null) || pipelineStages[lead.lead_status] || lead.lead_status || 'NEW'}
                                                             </span>
                                                         </td>
                                                         <td className="px-5 py-3 text-slate-500 font-medium">{createdDate}</td>

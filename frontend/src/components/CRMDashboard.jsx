@@ -38,8 +38,11 @@ const CRMDashboard = ({ onStatClick, onBdeClick, sectionFilter: propSectionFilte
     const [totalFollowupsPages, setTotalFollowupsPages] = useState(1);
     const [totalFollowupsCount, setTotalFollowupsCount] = useState(0);
 
+    const [statsError, setStatsError] = useState(null);
+
     const fetchStats = async () => {
         setLoading(true);
+        setStatsError(null);
         try {
             const params = new URLSearchParams();
             if (canFilterSection && sectionFilter) params.append('sales_section', sectionFilter);
@@ -50,6 +53,19 @@ const CRMDashboard = ({ onStatClick, onBdeClick, sectionFilter: propSectionFilte
             setStats(res.data);
         } catch (error) {
             console.error("Failed to fetch dashboard stats", error);
+            setStatsError("Failed to load dashboard metrics for the selected period.");
+            setStats({
+                total_leads: 0,
+                unassigned_leads: 0,
+                assigned_leads: 0,
+                fresh_leads: 0,
+                contacted_leads: 0,
+                converted_leads: 0,
+                dropped_leads: 0,
+                pipeline_stages: [],
+                leaderboard: [],
+                revenue: 0
+            });
         } finally {
             setLoading(false);
         }
@@ -82,7 +98,14 @@ const CRMDashboard = ({ onStatClick, onBdeClick, sectionFilter: propSectionFilte
         fetchFollowups(followupsPage);
     }, [followupsPage]);
 
-    if (loading && !stats.total_leads) {
+    const activeFilterParams = {
+        sales_section: sectionFilter,
+        date_preset: datePreset,
+        start_date: startDate || stats.start_date || '',
+        end_date: endDate || stats.end_date || ''
+    };
+
+    if (loading && !stats.total_leads && !statsError) {
         return (
             <div className="p-8 flex justify-center items-center h-[500px]">
                 <div className="flex flex-col items-center">
@@ -198,177 +221,186 @@ const CRMDashboard = ({ onStatClick, onBdeClick, sectionFilter: propSectionFilte
                 </div>
             </div>
             
-            {/* Top Stat Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                <StatCard
-                    title="Total Leads"
-                    value={stats.total_leads}
-                    icon={<Users size={24} />}
-                    bg="bg-indigo-50"
-                    text="text-indigo-600"
-                    onClick={() => onStatClick('all', '', 'Total Leads', { sales_section: sectionFilter, start_date: startDate, end_date: endDate })}
-                />
-                <StatCard
-                    title="Fresh Leads"
-                    value={stats.fresh_leads || 0}
-                    icon={<Sparkles size={24} />}
-                    bg="bg-teal-50"
-                    text="text-teal-600"
-                    onClick={() => onStatClick('fresh', 'true', 'Fresh / Uncontacted Leads', { sales_section: sectionFilter, start_date: startDate, end_date: endDate })}
-                />
-                <StatCard
-                    title="Unassigned Leads"
-                    value={stats.unassigned_leads}
-                    icon={<UserMinus size={24} />}
-                    bg="bg-rose-50"
-                    text="text-rose-600"
-                    onClick={() => onStatClick('assignee', 'unassigned', 'Unassigned Leads', { sales_section: sectionFilter, start_date: startDate, end_date: endDate })}
-                />
-                <StatCard
-                    title="Assigned Leads"
-                    value={stats.assigned_leads}
-                    icon={<UserCheck size={24} />}
-                    bg="bg-sky-50"
-                    text="text-sky-600"
-                    onClick={() => onStatClick('assignee', 'assigned', 'Assigned Leads', { sales_section: sectionFilter, start_date: startDate, end_date: endDate })}
-                />
-                <StatCard
-                    title="Contacted Leads"
-                    value={stats.contacted_leads}
-                    icon={<PhoneCall size={24} />}
-                    bg="bg-emerald-50"
-                    text="text-emerald-600"
-                    onClick={() => onStatClick('contacted', 'true', 'Contacted Leads', { sales_section: sectionFilter, start_date: startDate, end_date: endDate })}
-                />
-                <StatCard
-                    title="Converted Leads"
-                    value={stats.converted_leads}
-                    icon={<UserCheck size={24} />}
-                    bg="bg-blue-50"
-                    text="text-blue-600"
-                    onClick={() => onStatClick('status', 'converted', 'Converted Leads', { sales_section: sectionFilter, start_date: startDate, end_date: endDate })}
-                />
-                <StatCard
-                    title="Dropped Leads"
-                    value={stats.dropped_leads || 0}
-                    icon={<UserX size={24} />}
-                    bg="bg-slate-100"
-                    text="text-slate-600"
-                    onClick={() => onStatClick('status', 'dropped', 'Dropped Leads', { sales_section: sectionFilter, start_date: startDate, end_date: endDate })}
-                />
-                <StatCard
-                    title="Revenue"
-                    value={`₹${stats.revenue.toLocaleString()}`}
-                    icon={<DollarSign size={24} />}
-                    bg="bg-amber-50"
-                    text="text-amber-600"
-                />
-            </div>
+            {statsError && (
+                <div className="mb-6 p-4 bg-rose-50 border border-rose-200 text-rose-700 text-sm rounded-xl flex items-center justify-between">
+                    <span>{statsError}</span>
+                    <button onClick={fetchStats} className="underline font-semibold ml-2 hover:text-rose-800">Retry</button>
+                </div>
+            )}
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-                
-                {/* Pipeline Stages Breakdown */}
-                <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-                    <h3 className="text-sm font-bold text-slate-800 mb-4 flex justify-between items-center">
-                        Pipeline Stages Overview
-                        <span className="text-[10px] font-normal text-slate-400 bg-slate-100 px-2 py-1 rounded">Click slice to filter</span>
-                    </h3>
-                    {stats.pipeline_stages.length > 0 ? (
-                        <div className="h-[300px]">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
-                                    <Pie
-                                        data={stats.pipeline_stages}
-                                        cx="50%"
-                                        cy="50%"
-                                        innerRadius={60}
-                                        outerRadius={100}
-                                        paddingAngle={5}
-                                        dataKey="count"
-                                        onClick={(data) => onStatClick('stage', data.id, data.id, { sales_section: sectionFilter, start_date: startDate, end_date: endDate })}
-                                        style={{ cursor: 'pointer' }}
-                                    >
-                                        {stats.pipeline_stages.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                        ))}
-                                    </Pie>
-                                    <RechartsTooltip 
-                                        formatter={(value, name, props) => [value, props.payload.name]}
-                                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                                    />
-                                    <Legend 
-                                        layout="vertical" 
-                                        verticalAlign="middle" 
-                                        align="right"
-                                        onClick={(data) => onStatClick('stage', data.payload.id, data.payload.id)}
-                                        wrapperStyle={{ cursor: 'pointer', fontSize: '12px',overflowY: 'scroll', maxHeight: '300px', }}
-                                    />
-                                </PieChart>
-                            </ResponsiveContainer>
-                        </div>
-                    ) : (
-                        <div className="h-[300px] flex items-center justify-center text-slate-400 text-sm">No pipeline data available</div>
-                    )}
+            <div className={`transition-opacity duration-200 ${loading ? 'opacity-60 pointer-events-none' : ''}`}>
+                {/* Top Stat Cards */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                    <StatCard
+                        title="Total Leads"
+                        value={stats.total_leads}
+                        icon={<Users size={24} />}
+                        bg="bg-indigo-50"
+                        text="text-indigo-600"
+                        onClick={() => onStatClick('all', '', 'Total Leads', activeFilterParams)}
+                    />
+                    <StatCard
+                        title="Fresh Leads"
+                        value={stats.fresh_leads || 0}
+                        icon={<Sparkles size={24} />}
+                        bg="bg-teal-50"
+                        text="text-teal-600"
+                        onClick={() => onStatClick('fresh', 'true', 'Fresh Leads', activeFilterParams)}
+                    />
+                    <StatCard
+                        title="Unassigned Leads"
+                        value={stats.unassigned_leads}
+                        icon={<UserMinus size={24} />}
+                        bg="bg-rose-50"
+                        text="text-rose-600"
+                        onClick={() => onStatClick('assignee', 'unassigned', 'Unassigned Leads', activeFilterParams)}
+                    />
+                    <StatCard
+                        title="Assigned Leads"
+                        value={stats.assigned_leads}
+                        icon={<UserCheck size={24} />}
+                        bg="bg-sky-50"
+                        text="text-sky-600"
+                        onClick={() => onStatClick('assignee', 'assigned', 'Assigned Leads', activeFilterParams)}
+                    />
+                    <StatCard
+                        title="Contacted Leads"
+                        value={stats.contacted_leads}
+                        icon={<PhoneCall size={24} />}
+                        bg="bg-emerald-50"
+                        text="text-emerald-600"
+                        onClick={() => onStatClick('contacted', 'true', 'Contacted Leads', activeFilterParams)}
+                    />
+                    <StatCard
+                        title="Converted Leads"
+                        value={stats.converted_leads}
+                        icon={<UserCheck size={24} />}
+                        bg="bg-blue-50"
+                        text="text-blue-600"
+                        onClick={() => onStatClick('status', 'converted', 'Converted Leads', activeFilterParams)}
+                    />
+                    <StatCard
+                        title="Dropped Leads"
+                        value={stats.dropped_leads || 0}
+                        icon={<UserX size={24} />}
+                        bg="bg-slate-100"
+                        text="text-slate-600"
+                        onClick={() => onStatClick('status', 'dropped', 'Dropped Leads', activeFilterParams)}
+                    />
+                    <StatCard
+                        title="Revenue"
+                        value={`₹${stats.revenue.toLocaleString()}`}
+                        icon={<DollarSign size={24} />}
+                        bg="bg-amber-50"
+                        text="text-amber-600"
+                    />
                 </div>
 
-                {/* BDE Leaderboard */}
-                <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-                    <h3 className="text-sm font-bold text-slate-800 mb-4 flex justify-between items-center">
-                        Sales Rep Leaderboard
-                        <span className="text-[10px] font-normal text-slate-400 bg-slate-100 px-2 py-1 rounded">Click bar to filter</span>
-                    </h3>
-                    {stats.leaderboard.length > 0 ? (
-                        <div className="h-[300px]">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart
-                                    data={stats.leaderboard}
-                                    margin={{ top: 10, right: 10, left: -20, bottom: 20 }}
-                                    onClick={(data) => {
-                                        if (data && data.activePayload) {
-                                            if (onBdeClick) onBdeClick(data.activePayload[0].payload.id);
-                                            else onStatClick('assignee', data.activePayload[0].payload.id, data.activePayload[0].payload.name);
-                                        }
-                                    }}
-                                >
-                                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#64748b' }} angle={-45} textAnchor="end" />
-                                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#64748b' }} />
-                                    <RechartsTooltip 
-                                        cursor={{ fill: '#f8fafc' }}
-                                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                                    />
-                                    <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '20px', bottom:'0' }} />
-                                    <Bar 
-                                        dataKey="assigned" 
-                                        name="Assigned Leads" 
-                                        fill="#4f46e5" 
-                                        radius={[4, 4, 0, 0]} 
-                                        style={{ cursor: 'pointer' }} 
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+
+                    {/* Pipeline Stages Breakdown */}
+                    <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                        <h3 className="text-sm font-bold text-slate-800 mb-4 flex justify-between items-center">
+                            Pipeline Stages Overview
+                            <span className="text-[10px] font-normal text-slate-400 bg-slate-100 px-2 py-1 rounded">Click slice to filter</span>
+                        </h3>
+                        {stats.pipeline_stages.length > 0 ? (
+                            <div className="h-[300px]">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <PieChart>
+                                        <Pie
+                                            data={stats.pipeline_stages}
+                                            cx="50%"
+                                            cy="50%"
+                                            innerRadius={60}
+                                            outerRadius={100}
+                                            paddingAngle={5}
+                                            dataKey="count"
+                                            onClick={(data) => onStatClick('stage', data.id, data.name || data.id, activeFilterParams)}
+                                            style={{ cursor: 'pointer' }}
+                                        >
+                                            {stats.pipeline_stages.map((entry, index) => (
+                                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                            ))}
+                                        </Pie>
+                                        <RechartsTooltip
+                                            formatter={(value, name, props) => [value, props.payload.name]}
+                                            contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                        />
+                                        <Legend
+                                            layout="vertical"
+                                            verticalAlign="middle"
+                                            align="right"
+                                            onClick={(data) => onStatClick('stage', data.payload.id, data.payload.name || data.payload.id, activeFilterParams)}
+                                            wrapperStyle={{ cursor: 'pointer', fontSize: '12px', overflowY: 'auto', maxHeight: '300px' }}
+                                        />
+                                    </PieChart>
+                                </ResponsiveContainer>
+                            </div>
+                        ) : (
+                            <div className="h-[300px] flex items-center justify-center text-slate-400 text-sm">No pipeline data available</div>
+                        )}
+                    </div>
+
+                    {/* BDE Leaderboard */}
+                    <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                        <h3 className="text-sm font-bold text-slate-800 mb-4 flex justify-between items-center">
+                            Sales Rep Leaderboard
+                            <span className="text-[10px] font-normal text-slate-400 bg-slate-100 px-2 py-1 rounded">Click bar to filter</span>
+                        </h3>
+                        {stats.leaderboard.length > 0 ? (
+                            <div className="h-[300px]">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart
+                                        data={stats.leaderboard}
+                                        margin={{ top: 10, right: 10, left: -20, bottom: 20 }}
                                         onClick={(data) => {
-                                            if (data && data.id) {
-                                                if (onBdeClick) onBdeClick(data.id);
-                                                else onStatClick('assignee', data.id);
+                                            if (data && data.activePayload) {
+                                                if (onBdeClick) onBdeClick(data.activePayload[0].payload.id, activeFilterParams.start_date, activeFilterParams.end_date);
+                                                else onStatClick('assignee', data.activePayload[0].payload.id, data.activePayload[0].payload.name, activeFilterParams);
                                             }
                                         }}
-                                    />
-                                    <Bar 
-                                        dataKey="contacted" 
-                                        name="Contacted Leads" 
-                                        fill="#10b981" 
-                                        radius={[4, 4, 0, 0]} 
-                                        style={{ cursor: 'pointer' }} 
-                                        onClick={(data) => {
-                                            if (data && data.id) {
-                                                if (onBdeClick) onBdeClick(data.id);
-                                                else onStatClick('assignee', data.id);
-                                            }
-                                        }}
-                                    />
-                                </BarChart>
-                            </ResponsiveContainer>
-                        </div>
-                    ) : (
-                        <div className="h-[300px] flex items-center justify-center text-slate-400 text-sm">No assigned leads data</div>
-                    )}
+                                    >
+                                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#64748b' }} angle={-45} textAnchor="end" />
+                                        <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#64748b' }} />
+                                        <RechartsTooltip
+                                            cursor={{ fill: '#f8fafc' }}
+                                            contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                        />
+                                        <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '20px', bottom:'0' }} />
+                                        <Bar
+                                            dataKey="assigned"
+                                            name="Assigned Leads"
+                                            fill="#4f46e5"
+                                            radius={[4, 4, 0, 0]}
+                                            style={{ cursor: 'pointer' }}
+                                            onClick={(data) => {
+                                                if (data && data.id) {
+                                                    if (onBdeClick) onBdeClick(data.id, activeFilterParams.start_date, activeFilterParams.end_date);
+                                                    else onStatClick('assignee', data.id, '', activeFilterParams);
+                                                }
+                                            }}
+                                        />
+                                        <Bar
+                                            dataKey="contacted"
+                                            name="Contacted Leads"
+                                            fill="#10b981"
+                                            radius={[4, 4, 0, 0]}
+                                            style={{ cursor: 'pointer' }}
+                                            onClick={(data) => {
+                                                if (data && data.id) {
+                                                    if (onBdeClick) onBdeClick(data.id, activeFilterParams.start_date, activeFilterParams.end_date);
+                                                    else onStatClick('assignee', data.id, '', activeFilterParams);
+                                                }
+                                            }}
+                                        />
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </div>
+                        ) : (
+                            <div className="h-[300px] flex items-center justify-center text-slate-400 text-sm">No assigned leads data</div>
+                        )}
+                    </div>
                 </div>
             </div>
             

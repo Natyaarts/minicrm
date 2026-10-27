@@ -68,6 +68,17 @@ const AcademicModule = () => {
         }
     };
 
+    const fetchTotalStudents = async () => {
+        try {
+            const res = await api.get('students/?page=1&group=ACADEMIC');
+            const d = res.data;
+            const total = Array.isArray(d) ? d.length : (d.academic_total ?? d.count ?? 0);
+            setStats(prev => ({ ...prev, totalStudents: total }));
+        } catch (err) {
+            console.error("Failed to fetch total students", err);
+        }
+    };
+
     useEffect(() => {
         fetchStudents();
     }, [studentPage, searchTerm, selectedBatchId]);
@@ -132,6 +143,8 @@ const AcademicModule = () => {
             // Fetch teachers
             await fetchTeachers();
 
+            await fetchTotalStudents();
+
         } catch (err) {
             console.error(err);
         } finally {
@@ -142,7 +155,7 @@ const AcademicModule = () => {
     const fetchStudents = async () => {
         try {
             setLoading(true);
-            let url = `students/?page=${studentPage}&search=${searchTerm}`;
+            let url = `students/?page=${studentPage}&search=${searchTerm}&group=ACADEMIC`;
             if (selectedBatchId) {
                 url += `&batch=${selectedBatchId}`;
             }
@@ -155,16 +168,10 @@ const AcademicModule = () => {
                     next: data.next,
                     previous: data.previous
                 });
-                if (!selectedBatchId && !searchTerm) {
-                    setStats(prev => ({ ...prev, totalStudents: data.count }));
-                }
             } else {
                 setStudents(Array.isArray(data) ? data : []);
                 const count = Array.isArray(data) ? data.length : 0;
                 setStudentPagination({ count, next: null, previous: null });
-                if (!selectedBatchId && !searchTerm) {
-                    setStats(prev => ({ ...prev, totalStudents: count }));
-                }
             }
         } catch (err) {
             console.error("Failed to fetch students", err);
@@ -226,6 +233,7 @@ const AcademicModule = () => {
             });
             setCompletingProfile(null);
             fetchStudents(); // Refresh to show updated data
+            fetchTotalStudents(); // Refresh total-student metric
         } catch (err) {
             console.error("Save failed", err);
             alert("Failed to save details.");

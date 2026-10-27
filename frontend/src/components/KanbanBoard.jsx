@@ -61,17 +61,27 @@ const KanbanBoard = ({ program, subProgram, course, searchTerm, hideConverted, s
         e.dataTransfer.setData('leadId', leadId);
     };
 
-    const handleDrop = async (e, stageId) => {
+    const handleDrop = async (e, targetStage) => {
         e.preventDefault();
         const leadId = e.dataTransfer.getData('leadId');
-        
+        if (!leadId || !targetStage || targetStage.id == null) return;
+
+        const stageIdVal = targetStage.id.toString();
         const originalLeads = [...leads];
         setLeads(leads.map(lead => 
-            lead.id.toString() === leadId ? { ...lead, lead_status: stageId } : lead
+            lead.id.toString() === leadId.toString()
+                ? {
+                    ...lead,
+                    lead_status: stageIdVal,
+                    lead_stage_id: targetStage.id,
+                    lead_status_display: targetStage.name,
+                    is_lead_status_resolved: true
+                  }
+                : lead
         ));
 
         try {
-            await api.patch(`students/${leadId}/`, { lead_status: stageId });
+            await api.patch(`students/${leadId}/`, { lead_status: stageIdVal });
         } catch (error) {
             console.error("Failed to update lead status", error);
             setLeads(originalLeads);
@@ -117,8 +127,57 @@ const KanbanBoard = ({ program, subProgram, course, searchTerm, hideConverted, s
         return <div className="flex justify-center p-12 text-slate-400">Loading pipeline...</div>;
     }
 
+    // Compute stage leads using resolved backend metadata first, followed by safe fallbacks
+    const mappedLeadIds = new Set();
+    const stageLeadsMap = {};
+
+    stages.forEach(stage => {
+        const stageId = (stage.id != null ? stage.id : '').toString().trim();
+        const stageName = (stage.name || '').toString().trim().toLowerCase();
+
+        const matched = leads.filter(lead => {
+            // 1. Match on resolved stage ID from backend serializer
+            if (lead.lead_stage_id != null && String(lead.lead_stage_id) === stageId) {
+                return true;
+            }
+            // 2. Match on resolved stage display name from backend serializer
+            if (lead.lead_status_display && lead.lead_status_display.trim().toLowerCase() === stageName) {
+                return true;
+            }
+            // 3. Fallback: Raw status matches stage ID
+            const rawStatus = (lead.lead_status || '').toString().trim();
+            if (rawStatus && rawStatus === stageId) {
+                return true;
+            }
+            // 4. Fallback: Raw status matches stage name
+            if (rawStatus && rawStatus.toLowerCase() === stageName) {
+                return true;
+            }
+            return false;
+        });
+
+        stageLeadsMap[stage.id] = matched;
+        matched.forEach(l => mappedLeadIds.add(l.id));
+    });
+
+    const unresolvedLeads = leads.filter(l => !mappedLeadIds.has(l.id));
+
     return (
         <div className="relative">
+            {/* Unresolved Diagnostic Alert Banner */}
+            {unresolvedLeads.length > 0 && (
+                <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between text-amber-800 text-xs shadow-sm">
+                    <div className="flex items-center gap-2">
+                        <span className="font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300">
+                            ⚠️ {unresolvedLeads.length} Unresolved Lead{unresolvedLeads.length > 1 ? 's' : ''}
+                        </span>
+                        <span>
+                            These leads have unmapped stage IDs or legacy enum values that do not match the current pipeline stages. Drag them to any valid column below to reclassify them.
+                        </span>
+                    </div>
+                </div>
+            )}
+
             {/* Header Actions */}
             {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.SALES?.add) && (
                 <div className="flex justify-end mb-4">
@@ -135,40 +194,13 @@ const KanbanBoard = ({ program, subProgram, course, searchTerm, hideConverted, s
             {/* Kanban Board */}
             <div className="flex gap-4 overflow-x-auto pb-4 h-[calc(100vh-250px)]">
                 {stages.map(stage => {
-                    const stageLeads = leads.filter(lead => {
-                        const rawStatus = (lead.lead_status || 'NEW').toString().trim();
-                        const stageId = (stage.id || '').toString().trim();
-                        const stageName = (stage.name || '').toString().trim().toLowerCase();
-
-                        if (rawStatus === stageId || rawStatus.toLowerCase() === stageName) {
-                            return true;
-                        }
-
-                        const statusUpper = rawStatus.toUpperCase();
-                        if (statusUpper === 'NEW' || !lead.lead_status) {
-                            return stageId === '1' || stage.order === 1 || /^(new( lead)?)$/i.test(stageName);
-                        }
-                        if (statusUpper === 'FOLLOW_UP') {
-                            return /^follow[- ]?up$/i.test(stageName);
-                        }
-                        if (statusUpper === 'PAYMENT_PENDING') {
-                            return /payment.*pending/i.test(stageName);
-                        }
-                        if (statusUpper === 'ENROLLED' || statusUpper === 'CONVERTED') {
-                            return /enroll|convert/i.test(stageName);
-                        }
-                        if (statusUpper === 'DROPPED') {
-                            return /drop/i.test(stageName);
-                        }
-
-                        return false;
-                    });
+                    const stageLeads = stageLeadsMap[stage.id] || [];
 
                     return (
                         <div 
                             key={stage.id} 
                             className="flex-shrink-0 w-80 bg-slate-100 rounded-xl flex flex-col border border-slate-200"
-                            onDrop={(e) => handleDrop(e, stage.id || stage.name)}
+                            onDrop={(e) => handleDrop(e, stage)}
                             onDragOver={handleDragOver}
                         >
                             <div className="p-3 border-b border-slate-200 flex justify-between items-center bg-slate-50/50 rounded-t-xl" style={{ borderTop: `4px solid ${stage.color || '#94a3b8'}`}}>
@@ -196,7 +228,7 @@ const KanbanBoard = ({ program, subProgram, course, searchTerm, hideConverted, s
                                         </div>
                                         
                                         {lead.assigned_to_name && (
-                                            <div className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-indigo-50 text-indigo-700 rounded text-[10px] font-semibold border border-indigo-100 mb-2">
+                                             <div className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-indigo-50 text-indigo-700 rounded text-[10px] font-semibold border border-indigo-100 mb-2">
                                                 <UserCircle size={10} />
                                                 {lead.assigned_to_name}
                                             </div>
@@ -225,6 +257,75 @@ const KanbanBoard = ({ program, subProgram, course, searchTerm, hideConverted, s
                         </div>
                     );
                 })}
+
+                {/* Unresolved Leads Column */}
+                {unresolvedLeads.length > 0 && (
+                    <div
+                        className="flex-shrink-0 w-80 bg-amber-50/50 rounded-xl flex flex-col border border-dashed border-amber-300"
+                        onDrop={(e) => {
+                            e.preventDefault();
+                            // Prevent dropping into unresolved bucket to avoid assigning arbitrary stage
+                        }}
+                        onDragOver={handleDragOver}
+                    >
+                        <div className="p-3 border-b border-amber-200 flex justify-between items-center bg-amber-100/60 rounded-t-xl" style={{ borderTop: '4px solid #f59e0b'}}>
+                            <div>
+                                <h4 className="font-bold text-sm text-amber-900">Unresolved / Needs Action</h4>
+                                <p className="text-[10px] text-amber-700">Drag to a stage column to resolve</p>
+                            </div>
+                            <span className="text-xs font-semibold text-amber-800 bg-amber-200/70 px-2 py-0.5 rounded-full shadow-sm">{unresolvedLeads.length}</span>
+                        </div>
+
+                        <div className="p-3 flex-1 overflow-y-auto space-y-3 custom-scrollbar">
+                            {unresolvedLeads.map(lead => (
+                                <motion.div
+                                    layoutId={lead.id.toString()}
+                                    key={lead.id}
+                                    draggable
+                                    onDragStart={(e) => handleDragStart(e, lead.id.toString())}
+                                    className="bg-white p-3 rounded-lg shadow-sm border border-amber-200 cursor-grab active:cursor-grabbing hover:border-amber-400 transition-colors"
+                                >
+                                    <div className="flex justify-between items-start mb-2">
+                                        <div className="font-semibold text-sm text-slate-900 truncate pr-2">
+                                            {lead.first_name} {lead.last_name}
+                                        </div>
+                                        <span className="text-[10px] text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded font-mono border border-amber-200">
+                                            {lead.lead_status ? `Raw: ${lead.lead_status}` : 'No Status'}
+                                        </span>
+                                    </div>
+                                    <div className="text-xs text-slate-500 mb-2 truncate">
+                                        {lead.program_name} {lead.course_name ? `- ${lead.course_name}` : ''}
+                                    </div>
+
+                                    {lead.assigned_to_name && (
+                                        <div className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-indigo-50 text-indigo-700 rounded text-[10px] font-semibold border border-indigo-100 mb-2">
+                                            <UserCircle size={10} />
+                                            {lead.assigned_to_name}
+                                        </div>
+                                    )}
+
+                                    <div className="flex items-center justify-between border-t border-slate-50 pt-2 mt-2">
+                                        <div className="flex gap-2">
+                                            <button className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors" title="Call">
+                                                <Phone size={12} />
+                                            </button>
+                                            <button className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors" title="Email">
+                                                <Mail size={12} />
+                                            </button>
+                                            <button className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors" title="Notes">
+                                                <FileText size={12} />
+                                            </button>
+                                        </div>
+                                        <div className="text-[10px] font-medium text-slate-400 flex items-center gap-1">
+                                            <Calendar size={10} />
+                                            {new Date(lead.created_at || Date.now()).toLocaleDateString()}
+                                        </div>
+                                    </div>
+                                </motion.div>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Stage Manager Modal */}
