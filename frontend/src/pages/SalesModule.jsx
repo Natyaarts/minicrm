@@ -2599,7 +2599,7 @@ const SalesModule = () => {
                                                     <p className="text-xs text-slate-600 whitespace-pre-wrap leading-relaxed">{interaction.notes}</p>
                                                     {interaction.audio_recording && (
                                                         <div className="mt-2">
-                                                            <audio 
+                                                            <audio preload="none" 
                                                                 controls 
                                                                 className="h-8 w-full max-w-xs"
                                                                 src={interaction.audio_recording.startsWith('http') ? interaction.audio_recording : `${api.defaults.baseURL.split('/api')[0]}${interaction.audio_recording}`}

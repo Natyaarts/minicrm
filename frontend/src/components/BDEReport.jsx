@@ -341,7 +341,7 @@ const BDEReport = ({ bdeId, onClose, onLeadClick, initialStartDate = '', initial
                                                         <p className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider mb-2 flex items-center gap-1">
                                                             <Headphones size={12} /> Call Recording
                                                         </p>
-                                                        <audio controls className="w-full h-8" src={item.audio_url}>
+                                                        <audio controls preload="none" className="w-full h-8" src={item.audio_url}>
                                                             Your browser does not support the audio element.
                                                         </audio>
                                                     </div>
