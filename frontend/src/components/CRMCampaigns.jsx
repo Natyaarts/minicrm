@@ -2760,7 +2760,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                                         </td>
                                                         <td className="px-5 py-3">
                                                             {audioUrl ? (
-                                                                <audio controls src={audioUrl} className="h-7 w-48 rounded-md bg-slate-50" />
+                                                                <audio controls preload="none" src={audioUrl} className="h-7 w-48 rounded-md bg-slate-50" />
                                                             ) : (
                                                                 <span className="text-[10px] text-slate-400 italic">No recording</span>
                                                             )}
