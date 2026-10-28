@@ -4,6 +4,7 @@ import {
     Plus, Trash2, Edit2, X, Search, UserCircle, UserPlus, Users, ChevronDown, Shield, GraduationCap, Briefcase, BookOpen
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { createPortal } from 'react-dom';
 
 const UsersModule = () => {
     const [loading, setLoading] = useState(false);
@@ -440,6 +441,7 @@ const UsersModule = () => {
             )}
 
             {/* User Modal */}
+            {createPortal(
             <AnimatePresence>
                 {userModalOpen && (
                     <div className="fixed inset-0 bg-black/40 z-[100] flex items-center justify-center p-4">
@@ -621,7 +623,9 @@ const UsersModule = () => {
                         </motion.div>
                     </div>
                 )}
-            </AnimatePresence>
+            </AnimatePresence>,
+                document.body
+            )}
         </div>
     );
 };

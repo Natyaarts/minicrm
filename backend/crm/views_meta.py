@@ -35,18 +35,25 @@ def _hash_data(value: str):
 
 
 def _send_meta_conversions_event(campaign, student, event_name: str):
-    pixel_id = campaign.meta_pixel_id
-    access_token = campaign.meta_access_token
+    pixel_id = campaign.meta_pixel_id or getattr(settings, "META_DATASET_ID", "")
+    access_token = campaign.meta_access_token or getattr(settings, "META_CAPI_ACCESS_TOKEN", "")
 
     if not pixel_id or not access_token:
         logger.warning(f"Campaign {campaign.id} has no Meta pixel/token configured. Skipping CAPI event.")
         return False
 
-    url = f"https://graph.facebook.com/v20.0/{pixel_id}/events"
+    version = getattr(settings, "META_API_VERSION", "v26.0")
+    url = f"https://graph.facebook.com/{version}/{pixel_id}/events"
 
     user_data = {}
+    if student.meta_lead_id and str(student.meta_lead_id).isdigit():
+        user_data["lead_id"] = int(student.meta_lead_id)
     if student.mobile:
-        user_data["ph"] = [_hash_data(student.mobile.replace("+", "").replace(" ", "").replace("-", ""))]
+        digits = "".join(ch for ch in student.mobile if ch.isdigit())
+        if len(digits) == 10:
+            digits = "91" + digits
+        if digits:
+            user_data["ph"] = [_hash_data(digits)]
     if student.email:
         user_data["em"] = [_hash_data(student.email)]
     if student.first_name:
@@ -54,27 +61,26 @@ def _send_meta_conversions_event(campaign, student, event_name: str):
     if student.last_name:
         user_data["ln"] = [_hash_data(student.last_name)]
 
-    custom_data = {}
-    if student.meta_lead_id:
-        custom_data["lead_id"] = student.meta_lead_id
-
-    event_data = {
-        "data": [
-            {
-                "event_name": event_name,
-                "event_time": int(time.time()),
-                "action_source": "crm",
-                "user_data": user_data,
-                "custom_data": custom_data,
-            }
-        ],
+    payload = {
+        "data": [{
+            "event_name": event_name,
+            "event_time": int(time.time()),
+            "action_source": "system_generated",
+            "user_data": user_data,
+            "custom_data": {"event_source": "crm", "lead_event_source": "MiniCRM"},
+        }],
         "access_token": access_token,
     }
+    test_code = getattr(settings, "META_TEST_EVENT_CODE", "")
+    if test_code:
+        payload["test_event_code"] = test_code
 
     try:
-        resp = requests.post(url, json=event_data, timeout=10)
-        resp.raise_for_status()
-        logger.info(f"Meta CAPI event '{event_name}' sent for student {student.id}. Response: {resp.json()}")
+        resp = requests.post(url, json=payload, timeout=10)
+        if not resp.ok:
+            logger.error(f"Meta CAPI error for student {student.id}: {resp.status_code} {resp.text[:300]}")
+            return False
+        logger.info(f"Meta CAPI event '{event_name}' sent for student {student.id}: {resp.text[:200]}")
         return True
     except Exception as e:
         logger.error(f"Failed to send Meta CAPI event for student {student.id}: {e}")
@@ -313,7 +319,9 @@ class LeadQualityFeedbackView(APIView):
 
         if quality == "QUALITY" and student.campaign:
             campaign = student.campaign
-            if campaign.meta_pixel_id and campaign.meta_access_token:
+            has_pixel = campaign.meta_pixel_id or getattr(settings, "META_DATASET_ID", "")
+            has_token = campaign.meta_access_token or getattr(settings, "META_CAPI_ACCESS_TOKEN", "")
+            if has_pixel and has_token:
                 capi_sent = _send_meta_conversions_event(campaign, student, "Lead")
                 capi_message = "Meta Conversions API Lead event sent." if capi_sent else "Meta CAPI call failed - check server logs."
             else:

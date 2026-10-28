@@ -358,6 +358,13 @@ import os
 META_WEBHOOK_VERIFY_TOKEN = os.environ.get('META_WEBHOOK_VERIFY_TOKEN', 'natyaarts_meta_webhook_2024')
 META_APP_SECRET = os.environ.get('META_APP_SECRET', None)
 
+
+# Meta Conversions API (CRM -> Meta)
+META_DATASET_ID = os.environ.get('META_DATASET_ID', '')
+META_CAPI_ACCESS_TOKEN = os.environ.get('META_CAPI_ACCESS_TOKEN', '')
+META_API_VERSION = os.environ.get('META_API_VERSION', 'v26.0')
+META_TEST_EVENT_CODE = os.environ.get('META_TEST_EVENT_CODE', '')
+
 # Google Sheets Integration
 GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '')
 GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', '')
