@@ -4,7 +4,7 @@ import {
   TouchableOpacity, Alert, Text, View, useColorScheme, StatusBar
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { getStudents } from '../../src/api/sales';
@@ -13,6 +13,7 @@ import client from '../../src/api/client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function SalesScreen() {
+  const params = useLocalSearchParams<{ mode?: string }>();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const insets = useSafeAreaInsets();
@@ -50,7 +51,30 @@ export default function SalesScreen() {
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
   const [showPicker, setShowPicker] = useState<'start' | 'end' | null>(null);
-  const [viewMode, setViewMode] = useState<'NEW' | 'PIPELINE' | 'CALLS'>('NEW');
+  const [viewMode, setViewMode] = useState<'NEW' | 'PIPELINE' | 'CALLS' | 'TASKS'>('NEW');
+
+  // ── Lead Tasks States ─────────────────────────────────────────────────────
+  const [leadTasks, setLeadTasks] = useState<any[]>([]);
+  const [loadingLeadTasks, setLoadingLeadTasks] = useState(false);
+
+  const fetchLeadTasks = async () => {
+    try {
+      setLoadingLeadTasks(true);
+      const res = await client.get('/crm/lead-tasks/');
+      const data = res.data?.results || res.data || [];
+      setLeadTasks(data);
+    } catch (e) {
+      console.error('Failed to fetch BDE lead tasks:', e);
+    } finally {
+      setLoadingLeadTasks(false);
+    }
+  };
+
+  useEffect(() => {
+    if (params.mode === 'TASKS') {
+      setViewMode('TASKS');
+    }
+  }, [params.mode]);
 
   // ── Recent Calls States ──
   const [recentCalls, setRecentCalls] = useState<any[]>([]);
@@ -70,6 +94,10 @@ export default function SalesScreen() {
 
   useEffect(() => {
     if (authLoading) return;
+    if (viewMode === 'TASKS') {
+      fetchLeadTasks();
+      return;
+    }
     if (viewMode === 'CALLS') {
       fetchRecentCalls(1, true);
       return;
@@ -444,6 +472,61 @@ export default function SalesScreen() {
     );
   }, [isDark, pipelineStages]);
 
+  const renderLeadTaskCard = useCallback(({ item }: { item: any }) => {
+    const isCompleted = item.status === 'COMPLETED';
+    const isInProgress = item.status === 'IN_PROGRESS';
+    const badgeColor = isCompleted
+      ? { bg: '#D1FAE5', text: '#065F46', label: 'Completed' }
+      : isInProgress
+      ? { bg: '#DBEAFE', text: '#1E40AF', label: 'In Progress' }
+      : { bg: '#FEF3C7', text: '#92400E', label: 'Pending' };
+
+    const percent = item.progress_percent || 0;
+
+    return (
+      <TouchableOpacity
+        style={[styles.taskCard, isDark && styles.taskCardDark]}
+        onPress={() => router.push({ pathname: '/task-details', params: { taskId: String(item.id) } } as any)}
+        activeOpacity={0.7}
+      >
+        <View style={styles.taskCardHeader}>
+          <View style={{ flex: 1, marginRight: 8 }}>
+            <Text style={[styles.taskCardTitle, isDark && { color: '#F1F5F9' }]} numberOfLines={1}>
+              {item.title}
+            </Text>
+            <Text style={styles.taskCardSub}>
+              Assigned to {item.assigned_to_name || 'You'} • {new Date(item.created_at).toLocaleDateString()}
+            </Text>
+          </View>
+          <View style={[styles.taskStatusBadge, { backgroundColor: badgeColor.bg }]}>
+            <Text style={[styles.taskStatusText, { color: badgeColor.text }]}>{badgeColor.label}</Text>
+          </View>
+        </View>
+
+        {/* Progress row */}
+        <View style={styles.taskProgressRow}>
+          <View style={styles.taskProgressTrack}>
+            <View
+              style={[
+                styles.taskProgressFill,
+                { width: `${percent}%` },
+                isCompleted && { backgroundColor: '#10B981' }
+              ]}
+            />
+          </View>
+          <Text style={styles.taskProgressText}>
+            {item.completed_leads || 0}/{item.total_leads || 0} Leads ({percent}%)
+          </Text>
+        </View>
+
+        <View style={styles.taskCardFooter}>
+          <Text style={styles.taskCardAction}>Tap to view leads & follow-ups</Text>
+          <FontAwesome5 name="chevron-right" size={11} color="#3B82F6" />
+        </View>
+      </TouchableOpacity>
+    );
+  }, [isDark]);
+
   // ── Guards ────────────────────────────────────────────────────────────────
   if (authLoading) {
     return (
@@ -550,6 +633,12 @@ export default function SalesScreen() {
           >
             <Text style={[styles.tabTxt, viewMode === 'CALLS' && styles.tabTxtActive, isDark && viewMode === 'CALLS' && { color: '#0F172A' }, isDark && viewMode !== 'CALLS' && { color: '#94A3B8' }]}>Recent Calls</Text>
           </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.tabBtn, viewMode === 'TASKS' && styles.tabBtnActive]} 
+            onPress={() => { setViewMode('TASKS'); }}
+          >
+            <Text style={[styles.tabTxt, viewMode === 'TASKS' && styles.tabTxtActive, isDark && viewMode === 'TASKS' && { color: '#0F172A' }, isDark && viewMode !== 'TASKS' && { color: '#94A3B8' }]}>Tasks</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Filter controls row */}
@@ -642,8 +731,37 @@ export default function SalesScreen() {
         )}
       </View>
 
-      {/* ── LEADS LIST or RECENT CALLS LIST ── */}
-      {viewMode === 'CALLS' ? (
+      {/* ── TASKS LIST or RECENT CALLS or LEADS LIST ── */}
+      {viewMode === 'TASKS' ? (
+        loadingLeadTasks && !refreshing ? (
+          <View style={styles.center}>
+            <ActivityIndicator size="large" color="#3B82F6" />
+            <Text style={{ color: '#94A3B8', marginTop: 10, fontSize: 13 }}>Loading tasks...</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={search ? leadTasks.filter(t => t.title?.toLowerCase().includes(search.toLowerCase())) : leadTasks}
+            renderItem={renderLeadTaskCard}
+            keyExtractor={(item) => item.id.toString()}
+            contentContainerStyle={styles.listContent}
+            refreshing={refreshing}
+            onRefresh={async () => {
+              setRefreshing(true);
+              await fetchLeadTasks();
+              setRefreshing(false);
+            }}
+            ListEmptyComponent={
+              <View style={styles.center}>
+                <FontAwesome5 name="check-circle" size={36} color="#CBD5E1" />
+                <Text style={{ color: '#94A3B8', marginTop: 10, fontSize: 14, fontWeight: '600' }}>No tasks found</Text>
+                <Text style={{ color: '#CBD5E1', fontSize: 12, marginTop: 4 }}>
+                  {search ? 'No tasks match your search' : 'You currently have no tasks assigned to you.'}
+                </Text>
+              </View>
+            }
+          />
+        )
+      ) : viewMode === 'CALLS' ? (
         loadingCalls && !refreshing ? (
           <View style={styles.center}>
             <ActivityIndicator size="large" color="#3B82F6" />
@@ -927,5 +1045,84 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: '#1E40AF',
+  },
+
+  // ── Lead Tasks Styles ──
+  taskCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  taskCardDark: {
+    backgroundColor: '#1E293B',
+    borderColor: '#334155',
+  },
+  taskCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 10,
+  },
+  taskCardTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  taskCardSub: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  taskStatusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  taskStatusText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  taskProgressRow: {
+    marginVertical: 4,
+  },
+  taskProgressTrack: {
+    height: 6,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 3,
+    overflow: 'hidden',
+    marginBottom: 6,
+  },
+  taskProgressFill: {
+    height: '100%',
+    backgroundColor: '#3B82F6',
+    borderRadius: 3,
+  },
+  taskProgressText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#64748B',
+    textAlign: 'right',
+  },
+  taskCardFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  taskCardAction: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#3B82F6',
   },
 });

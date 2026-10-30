@@ -240,3 +240,93 @@ class WebhookLog(models.Model):
 
     def __str__(self):
         return f"{self.endpoint.name} - {self.status} at {self.timestamp}"
+
+
+class LeadTask(models.Model):
+    STATUS_CHOICES = (
+        ('PENDING', 'Pending'),
+        ('IN_PROGRESS', 'In Progress'),
+        ('COMPLETED', 'Completed'),
+    )
+    title = models.CharField(max_length=255)
+    assigned_to = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name='assigned_lead_tasks')
+    assigned_bdes = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name='multi_assigned_lead_tasks', blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_lead_tasks')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        assignee_str = self.assigned_to.username if self.assigned_to else f"{self.assigned_bdes.count()} BDEs"
+        return f"{self.title} ({self.status}) - {assignee_str}"
+
+    @property
+    def total_leads(self):
+        return self.items.count()
+
+    @property
+    def completed_leads(self):
+        return self.items.filter(is_completed=True).count()
+
+    @property
+    def progress_percent(self):
+        total = self.total_leads
+        if total == 0:
+            return 0
+        return int((self.completed_leads / total) * 100)
+
+    def update_status_from_items(self, save=True):
+        total = self.items.count()
+        completed = self.items.filter(is_completed=True).count()
+        if total == 0:
+            new_status = 'PENDING'
+        elif completed == total:
+            new_status = 'COMPLETED'
+        elif completed > 0:
+            new_status = 'IN_PROGRESS'
+        else:
+            new_status = 'PENDING'
+
+        if self.status != new_status:
+            self.status = new_status
+            if save:
+                self.save(update_fields=['status', 'updated_at'])
+        return self.status
+
+
+class LeadTaskItem(models.Model):
+    task = models.ForeignKey(LeadTask, on_delete=models.CASCADE, related_name='items')
+    lead = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='lead_task_items')
+    assigned_to = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name='assigned_lead_task_items')
+    is_completed = models.BooleanField(default=False)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    completed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='completed_lead_task_items')
+    notes = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['created_at']
+        unique_together = ('task', 'lead')
+
+    def __str__(self):
+        return f"Task {self.task_id} - Lead {self.lead_id} ({'Done' if self.is_completed else 'Pending'})"
+
+
+class LeadTaskAssignmentHistory(models.Model):
+    task = models.ForeignKey(LeadTask, on_delete=models.CASCADE, related_name='assignment_history')
+    item = models.ForeignKey(LeadTaskItem, on_delete=models.CASCADE, null=True, blank=True, related_name='assignment_history')
+    previous_assignee = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    new_assignee = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='+')
+    reassigned_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    reassigned_at = models.DateTimeField(auto_now_add=True)
+    notes = models.TextField(blank=True, default='')
+
+    class Meta:
+        ordering = ['-reassigned_at']
+
+    def __str__(self):
+        return f"Task {self.task_id} assigned to {self.new_assignee} at {self.reassigned_at}"

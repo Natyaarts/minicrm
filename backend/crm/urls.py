@@ -1,6 +1,11 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import PipelineStageViewSet, LeadInteractionViewSet, CampaignViewSet, WebhookReceiveView, WebhookEndpointViewSet, SalesUserListView, DashboardStatsView, MentorDashboardStatsView, TaskViewSet, BDEReportView, CallAnalyticsView, MarketingDashboardView, BulkAssignLeadsView, CampaignWebhookReceiveView
+from .views import (
+    PipelineStageViewSet, LeadInteractionViewSet, CampaignViewSet, WebhookReceiveView,
+    WebhookEndpointViewSet, SalesUserListView, DashboardStatsView, MentorDashboardStatsView,
+    TaskViewSet, LeadTaskViewSet, BDEReportView, CallAnalyticsView, MarketingDashboardView,
+    BulkAssignLeadsView, CampaignWebhookReceiveView
+)
 from .views_meta import MetaLeadWebhookView, LeadQualityFeedbackView
 from .views_telephony import TelephonyWebhookView
 from . import views_google as google_views
@@ -11,6 +16,8 @@ router.register(r'interactions', LeadInteractionViewSet, basename='interaction')
 router.register(r'campaigns', CampaignViewSet, basename='campaign')
 router.register(r'webhook-endpoints', WebhookEndpointViewSet, basename='webhook-endpoint')
 router.register(r'tasks', TaskViewSet, basename='task')
+router.register(r'reminders', TaskViewSet, basename='reminder')
+router.register(r'lead-tasks', LeadTaskViewSet, basename='lead-task')
 
 urlpatterns = [
     path('dashboard-stats/', DashboardStatsView.as_view(), name='dashboard_stats'),

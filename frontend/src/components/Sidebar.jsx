@@ -22,6 +22,7 @@ import {
     CalendarDays,
     Wallet,
     CheckSquare,
+    Bell,
     Star,
     PieChart
 } from 'lucide-react';
@@ -52,7 +53,8 @@ const sidebarSections = [
             { icon: Sparkles, label: 'Campaigns', path: '/crm/campaigns', module: 'CRM_CAMPAIGNS' },
             { icon: Users, label: 'Pipeline', path: '/crm/pipeline', module: 'CRM_PIPELINE' },
             { icon: ClipboardEdit, label: 'Leads Table', path: '/crm/leads', module: 'CRM_LEADS_TABLE' },
-            { icon: CheckSquare, label: 'Tasks', path: '/crm/tasks', module: 'CRM_TASKS' },
+            { icon: CheckSquare, label: 'Tasks', path: '/crm/assigned-tasks', module: 'CRM_TASKS' },
+            { icon: Bell, label: 'Reminders', path: '/crm/reminders', module: 'CRM_TASKS' },
             { icon: BarChart2, label: 'Team Reports', path: '/crm/reports', module: 'CRM_REPORTS' },
             { icon: PieChart, label: 'Call Analytics', path: '/crm/analytics', module: 'CRM_CALL_ANALYTICS' },
             { icon: GraduationCap, label: 'Mentor Module', path: '/mentor', module: 'MENTOR' },
@@ -104,7 +106,8 @@ function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }) {
 
     const checkPermission = (item) => {
         if (!user) return false;
-        if (user.role === 'SUPER_ADMIN' || user.is_superuser) return true;
+        if (['SUPER_ADMIN', 'ADMIN'].includes(user.role) || user.is_superuser) return true;
+        if (user.role === 'TEAM_LEAD' && (item.module === 'SALES' || item.module?.startsWith('CRM_'))) return true;
         if (item.label === 'Dashboard' && user.role === 'STUDENT') return false;
         if (item.label === 'Teacher Module' && user.role === 'TEACHER') return true;
         if (item.label === 'Teacher Module' && user.role !== 'SUPER_ADMIN') return false;
@@ -117,8 +120,8 @@ function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }) {
 
         // Restrict CRM modules for non-manager sales users
         const managerOnlyCrmModules = ['Dashboard', 'Campaigns', 'Team Reports', 'Call Analytics'];
-        if (managerOnlyCrmModules.includes(item.label) && item.module === 'SALES') {
-            const isManager = ['SUPER_ADMIN', 'ADMIN', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD'].includes(user.role) || user.is_manager;
+        if (managerOnlyCrmModules.includes(item.label)) {
+            const isManager = ['SUPER_ADMIN', 'ADMIN', 'TEAM_LEAD', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD'].includes(user.role) || user.is_manager;
             if (!isManager) return false;
         }
 
