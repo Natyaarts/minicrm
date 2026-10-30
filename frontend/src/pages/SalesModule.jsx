@@ -3,7 +3,7 @@ import { useSearchParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Copy, Check, Search, FileText, User, Trash2, Edit2, RotateCcw, Trash, X, UserCircle, Download } from 'lucide-react';
+import { Copy, Check, Search, FileText, User, Trash2, Edit2, RotateCcw, Trash, X, UserCircle, Download, CheckSquare, AlertCircle } from 'lucide-react';
 import { copyToClipboard } from '../utils/clipboard';
 import { compressImage } from '../utils/fileCompressor';
 import KanbanBoard from '../components/KanbanBoard';
@@ -12,11 +12,14 @@ import BDEReport from '../components/BDEReport';
 import TeamReports from '../components/TeamReports';
 import CallAnalyticsDashboard from '../components/CallAnalyticsDashboard';
 import CRMTasks from '../components/CRMTasks';
+import LeadTasksManagement from '../components/LeadTasksManagement';
 import CRMCampaigns from '../components/CRMCampaigns';
 import StatLeadsModal from '../components/StatLeadsModal';
 
 const SalesModule = () => {
     const { user: authUser } = useAuth();
+    const canAssignTasks = ['SUPER_ADMIN', 'ADMIN', 'TEAM_LEAD', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD'].includes(authUser?.role) || authUser?.is_manager;
+
     // URL Params
     const [searchParams, setSearchParams] = useSearchParams();
     const location = useLocation();
@@ -82,8 +85,16 @@ const SalesModule = () => {
         } else if (location.pathname === '/crm/dashboard') setActiveTab('dashboard');
         else if (location.pathname === '/crm/pipeline') setActiveTab('kanban');
         else if (location.pathname === '/crm/leads') setActiveTab('list');
-        else if (location.pathname === '/crm/tasks') setActiveTab('tasks');
-        else if (location.pathname === '/crm/campaigns') setActiveTab('campaigns');
+        else if (location.pathname === '/crm/assigned-tasks') setActiveTab('assigned-tasks');
+        else if (location.pathname === '/crm/tasks' || location.pathname === '/crm/reminders') setActiveTab('reminders');
+        else if (location.pathname === '/crm/campaigns') {
+            const isManager = ['SUPER_ADMIN', 'ADMIN', 'TEAM_LEAD', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD'].includes(authUser?.role) || authUser?.is_manager;
+            if (authUser?.role === 'SALES' && !isManager) {
+                setActiveTab('assigned-tasks');
+            } else {
+                setActiveTab('campaigns');
+            }
+        }
         else if (location.pathname === '/crm/reports') setActiveTab('reports');
         else if (location.pathname === '/crm/analytics') setActiveTab('analytics');
         else if (location.pathname === '/sales') setActiveTab('dashboard');
@@ -118,6 +129,8 @@ const SalesModule = () => {
     const [selectedLeadIds, setSelectedLeadIds] = useState([]);
     const [showBulkAssignModal, setShowBulkAssignModal] = useState(false);
     const [bulkAssignTo, setBulkAssignTo] = useState('');
+    const [bulkActionType, setBulkActionType] = useState('SALES_REP'); // 'SALES_REP' | 'TASK'
+    const [isAssigningBulk, setIsAssigningBulk] = useState(false);
     const [statModalConfig, setStatModalConfig] = useState(null);
     const [wiseData, setWiseData] = useState(null);
     const [loadingWise, setLoadingWise] = useState(false);
@@ -128,11 +141,11 @@ const SalesModule = () => {
     const [interactionNotes, setInteractionNotes] = useState('');
     const [nextFollowupDate, setNextFollowupDate] = useState('');
     const [loadingInteractions, setLoadingInteractions] = useState(false);
-    
+
     // Student Tasks State
     const [studentTasks, setStudentTasks] = useState([]);
     const [loadingTasks, setLoadingTasks] = useState(false);
-    
+
     const [selectedBdeId, setSelectedBdeId] = useState(null);
     const [selectedBdeDates, setSelectedBdeDates] = useState({ start: '', end: '' });
 
@@ -231,8 +244,9 @@ const SalesModule = () => {
 
     const handleBulkAssign = async () => {
         if (!bulkAssignTo || selectedLeadIds.length === 0) return;
+        setIsAssigningBulk(true);
         try {
-            await Promise.all(selectedLeadIds.map(id => 
+            await Promise.all(selectedLeadIds.map(id =>
                 api.patch(`students/${id}/`, { assigned_to: bulkAssignTo })
             ));
             setToast({ title: "Success", description: `${selectedLeadIds.length} leads assigned successfully.`, type: 'success' });
@@ -245,20 +259,71 @@ const SalesModule = () => {
             console.error("Failed to bulk assign leads", error);
             setToast({ title: "Error", description: "Failed to assign leads.", type: 'error' });
             setTimeout(() => setToast(null), 3000);
+        } finally {
+            setIsAssigningBulk(false);
+        }
+    };
+
+    // Assign as Task State and Handler
+    const [showAssignTaskModal, setShowAssignTaskModal] = useState(false);
+    const [taskName, setTaskName] = useState('');
+    const [taskAssignee, setTaskAssignee] = useState('');
+    const [creatingTask, setCreatingTask] = useState(false);
+    const [taskError, setTaskError] = useState('');
+
+    const handleCreateLeadTask = async () => {
+        if (creatingTask) return;
+        if (!taskName.trim()) {
+            setTaskError('Task name is required.');
+            return;
+        }
+        if (!taskAssignee) {
+            setTaskError('Please select a BDE executive.');
+            return;
+        }
+        if (selectedLeadIds.length === 0) {
+            setTaskError('At least one lead must be selected.');
+            return;
+        }
+
+        setCreatingTask(true);
+        setTaskError('');
+        try {
+            await api.post('/crm/lead-tasks/', {
+                title: taskName.trim(),
+                assigned_to: taskAssignee,
+                lead_ids: selectedLeadIds
+            });
+            setToast({
+                title: "Task Created",
+                description: `Task "${taskName.trim()}" with ${selectedLeadIds.length} lead(s) created and assigned successfully.`,
+                type: 'success'
+            });
+            setTimeout(() => setToast(null), 3500);
+            setSelectedLeadIds([]);
+            setShowAssignTaskModal(false);
+            setTaskName('');
+            setTaskAssignee('');
+        } catch (error) {
+            console.error("Failed to create task:", error);
+            setTaskError(error.response?.data?.error || 'Failed to create task. Please try again.');
+        } finally {
+            setCreatingTask(false);
         }
     };
 
     const toggleLeadSelection = (id) => {
-        setSelectedLeadIds(prev => 
+        setSelectedLeadIds(prev =>
             prev.includes(id) ? prev.filter(leadId => leadId !== id) : [...prev, id]
         );
     };
 
     const toggleAllLeads = () => {
-        if (selectedLeadIds.length === studentList.length && studentList.length > 0) {
+        const selectable = (filteredStudents || []).filter(s => s.lead_status !== 'DUPLICATE');
+        if (selectable.length > 0 && selectedLeadIds.length === selectable.length) {
             setSelectedLeadIds([]);
         } else {
-            setSelectedLeadIds(studentList.map(s => s.id));
+            setSelectedLeadIds(selectable.map(s => s.id));
         }
     };
 
@@ -306,7 +371,7 @@ const SalesModule = () => {
                 is_active: (!isTrashView).toString(),
                 search: searchTerm
             });
-            
+
             if (selectedProgram) params.append('program', selectedProgram);
             if (selectedSubProgram) params.append('sub_program', selectedSubProgram);
             if (selectedCourse) params.append('course', selectedCourse);
@@ -373,16 +438,16 @@ const SalesModule = () => {
             try {
                 const res = await api.get('programs/');
                 setPrograms(res.data);
-                
+
                 try {
                     const campRes = await api.get('crm/campaigns/');
                     setCampaigns(campRes.data.results || campRes.data || []);
-                } catch(e) {}
-                
+                } catch (e) { }
+
                 try {
                     const suRes = await api.get('crm/sales-users/');
                     setSalesUsers(suRes.data || []);
-                } catch(e) {}
+                } catch (e) { }
 
                 try {
                     const stageRes = await api.get('crm/stages/');
@@ -399,7 +464,7 @@ const SalesModule = () => {
                         stageData = stageData.sort((a, b) => a.order - b.order);
                     }
                     setPipelineStages(stageData);
-                } catch (e) {}
+                } catch (e) { }
 
                 // Check URL Param (Support both Slug and ID for backward compatibility)
                 const urlProg = searchParams.get('program') || searchParams.get('p');
@@ -416,11 +481,11 @@ const SalesModule = () => {
                         setSubPrograms(subRes.data);
 
                         let fieldsParam = `program=${progExists.id}`;
-                        
+
                         if (urlSubProg) {
                             setSelectedSubProgram(urlSubProg);
                             fieldsParam = `sub_program=${urlSubProg}`;
-                            
+
                             // Fetch courses for this sub-program
                             const courseRes = await api.get(`courses/?sub_program=${urlSubProg}`);
                             setCourses(courseRes.data);
@@ -451,7 +516,7 @@ const SalesModule = () => {
                 page: studentPage.toString(),
                 search: searchTerm
             });
-            
+
             if (selectedProgram) params.append('program', selectedProgram);
             if (selectedSubProgram) params.append('sub_program', selectedSubProgram);
             if (selectedCourse) params.append('course', selectedCourse);
@@ -594,7 +659,7 @@ const SalesModule = () => {
         if (!field.conditional_rule || !field.conditional_rule.depends_on) return true;
         const triggerValue = dynamicValues[field.conditional_rule.depends_on];
         if (!triggerValue) return false;
-        
+
         if (typeof triggerValue === 'string' && typeof field.conditional_rule.value === 'string') {
             return triggerValue.trim().toLowerCase() === field.conditional_rule.value.trim().toLowerCase();
         }
@@ -612,7 +677,7 @@ const SalesModule = () => {
 
         if (processedFile.size > 10 * 1024 * 1024) {
             alert(`File "${processedFile.name}" is too large even after compression. Max limit is 10MB.`);
-            e.target.value = ''; 
+            e.target.value = '';
             return;
         }
         setFiles(prev => ({ ...prev, [fieldId]: processedFile }));
@@ -711,7 +776,7 @@ const SalesModule = () => {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
             setMessage({ type: 'success', text: 'Application submitted successfully! Welcome to the family.' });
-            
+
             // Re-fetch list and clear form
             fetchStudents();
             setFormData({
@@ -1106,7 +1171,7 @@ const SalesModule = () => {
                     <option value="">{defaultText}</option>
                     {options.map(opt => (
                         <option key={opt.id || opt} value={opt.id || opt}>{opt.name || opt}</option>
-                     ))}
+                    ))}
                 </select>
                 <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-slate-400">
                     <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
@@ -1125,19 +1190,22 @@ const SalesModule = () => {
                 >
                     <h1 className="text-2xl md:text-3xl font-bold text-slate-800 tracking-tight mb-2">
                         {activeTab === 'single' || activeTab === 'bulk' ? 'Student Enrollment' :
-                         activeTab === 'kanban' || activeTab === 'list' ? 'Sales Pipeline & Leads' :
-                         activeTab === 'dashboard' ? 'Sales Dashboard' :
-                         activeTab === 'tasks' ? 'Tasks & Follow-ups' :
-                         activeTab === 'reports' ? 'Team Performance Reports' :
-                         activeTab === 'analytics' ? 'Call Analytics' :
-                         activeTab === 'campaigns' ? 'Marketing Campaigns' : 'Sales Management'}
+                            activeTab === 'kanban' || activeTab === 'list' ? 'Sales Pipeline & Leads' :
+                                activeTab === 'dashboard' ? 'Sales Dashboard' :
+                                    activeTab === 'assigned-tasks' ? 'Tasks Management' :
+                                        activeTab === 'reminders' || activeTab === 'tasks' ? 'Reminders & Follow-ups' :
+                                            activeTab === 'reports' ? 'Team Performance Reports' :
+                                                activeTab === 'analytics' ? 'Call Analytics' :
+                                                    activeTab === 'campaigns' ? 'Marketing Campaigns' : 'Sales Management'}
                     </h1>
                     <p className="text-xs text-slate-500 max-w-xl mx-auto">
                         {activeTab === 'single' || activeTab === 'bulk' ? 'Join our community of learners and achievers. Please fill out the form below to begin your journey.' :
-                         activeTab === 'campaigns' ? 'Manage your marketing sources, track budgets, and analyze lead generation.' :
-                         activeTab === 'reports' ? 'View performance metrics, track call recordings, and review individual sales rep activity.' :
-                         activeTab === 'analytics' ? 'Detailed overview of incoming and outgoing calls, durations, and employee telephonic performance.' :
-                         'Manage and track your leads, interactions, and sales processes effectively.'}
+                            activeTab === 'assigned-tasks' ? 'Monitor, assign, and track multi-lead tasks distributed to BDE executives.' :
+                                activeTab === 'reminders' || activeTab === 'tasks' ? 'Set reminders, follow-up alerts, and track upcoming scheduled actions.' :
+                                    activeTab === 'campaigns' ? 'Manage your marketing sources, track budgets, and analyze lead generation.' :
+                                        activeTab === 'reports' ? 'View performance metrics, track call recordings, and review individual sales rep activity.' :
+                                            activeTab === 'analytics' ? 'Detailed overview of incoming and outgoing calls, durations, and employee telephonic performance.' :
+                                                'Manage and track your leads, interactions, and sales processes effectively.'}
                     </p>
                 </motion.div>
 
@@ -1145,7 +1213,7 @@ const SalesModule = () => {
                 <AnimatePresence>
                     {showBulkAssignModal && (
                         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
-                            <motion.div 
+                            <motion.div
                                 initial={{ opacity: 0, scale: 0.95 }}
                                 animate={{ opacity: 1, scale: 1 }}
                                 exit={{ opacity: 0, scale: 0.95 }}
@@ -1173,18 +1241,135 @@ const SalesModule = () => {
                                         </select>
                                     </div>
                                     <div className="flex justify-end gap-3">
-                                        <button 
+                                        <button
                                             onClick={() => setShowBulkAssignModal(false)}
                                             className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
                                         >
                                             Cancel
                                         </button>
-                                        <button 
+                                        <button
                                             onClick={handleBulkAssign}
                                             disabled={!bulkAssignTo}
                                             className={`px-4 py-2 text-xs font-semibold text-white rounded-lg transition-colors ${bulkAssignTo ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-indigo-300 cursor-not-allowed'}`}
                                         >
                                             Assign Leads
+                                        </button>
+                                    </div>
+                                </div>
+                            </motion.div>
+                        </div>
+                    )}
+                </AnimatePresence>
+
+                {/* Assign as Task Modal */}
+                <AnimatePresence>
+                    {showAssignTaskModal && (
+                        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+                            <motion.div
+                                initial={{ opacity: 0, scale: 0.95 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.95 }}
+                                className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]"
+                            >
+                                <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                                    <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                                        <CheckSquare className="text-indigo-600" size={18} />
+                                        Assign as Task
+                                    </h3>
+                                    <button
+                                        onClick={() => !creatingTask && setShowAssignTaskModal(false)}
+                                        className="text-slate-400 hover:text-slate-600"
+                                    >
+                                        <X size={20} />
+                                    </button>
+                                </div>
+                                <div className="p-6 overflow-y-auto space-y-4">
+                                    {taskError && (
+                                        <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center gap-2">
+                                            <AlertCircle size={14} />
+                                            {taskError}
+                                        </div>
+                                    )}
+
+                                    {/* Task Name */}
+                                    <div>
+                                        <label className="text-xs font-semibold text-slate-700 block mb-1.5">
+                                            Task Name *
+                                        </label>
+                                        <input
+                                            type="text"
+                                            placeholder="e.g. Follow-up - Not Answering Leads"
+                                            value={taskName}
+                                            onChange={(e) => setTaskName(e.target.value)}
+                                            disabled={creatingTask}
+                                            className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 focus:border-indigo-500 outline-none text-sm text-slate-800 shadow-sm"
+                                        />
+                                    </div>
+
+                                    {/* Selected Leads */}
+                                    <div>
+                                        <div className="flex justify-between items-center mb-1.5">
+                                            <label className="text-xs font-semibold text-slate-700">
+                                                Selected Leads ({selectedLeadIds.length})
+                                            </label>
+                                            <span className="text-[11px] text-slate-400">Original ownership remains intact</span>
+                                        </div>
+                                        <div className="max-h-40 overflow-y-auto border border-slate-200 rounded-lg p-2.5 bg-slate-50 divide-y divide-slate-100 space-y-1">
+                                            {selectedLeadIds.map(leadId => {
+                                                const lead = studentList.find(s => s.id === leadId);
+                                                return (
+                                                    <div key={leadId} className="flex items-center justify-between py-1 text-xs">
+                                                        <span className="font-semibold text-slate-800">
+                                                            {lead ? `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || `Lead #${leadId}` : `Lead #${leadId}`}
+                                                        </span>
+                                                        <span className="font-mono text-[10px] text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-200">
+                                                            {lead?.crm_student_id || `#${leadId}`}
+                                                        </span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+
+                                    {/* Assign to BDE Executive */}
+                                    <div>
+                                        <label className="text-xs font-semibold text-slate-700 block mb-1.5">
+                                            Assign to BDE Executive *
+                                        </label>
+                                        <select
+                                            className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 focus:border-indigo-500 outline-none text-sm text-slate-700 shadow-sm appearance-none"
+                                            value={taskAssignee}
+                                            onChange={(e) => setTaskAssignee(e.target.value)}
+                                            disabled={creatingTask}
+                                        >
+                                            <option value="">Select BDE executive...</option>
+                                            {salesUsers.map(u => (
+                                                <option key={u.id} value={u.id}>
+                                                    {u.name || `${u.first_name} ${u.last_name}`.trim() || u.username}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowAssignTaskModal(false)}
+                                            disabled={creatingTask}
+                                            className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handleCreateLeadTask}
+                                            disabled={creatingTask || !taskName.trim() || !taskAssignee || selectedLeadIds.length === 0}
+                                            className={`px-4 py-2 text-xs font-semibold text-white rounded-lg transition-colors ${taskName.trim() && taskAssignee && !creatingTask && selectedLeadIds.length > 0
+                                                ? 'bg-indigo-600 hover:bg-indigo-700 shadow-sm'
+                                                : 'bg-indigo-300 cursor-not-allowed'
+                                                }`}
+                                        >
+                                            {creatingTask ? 'Creating Task...' : 'Create Task'}
                                         </button>
                                     </div>
                                 </div>
@@ -1204,7 +1389,7 @@ const SalesModule = () => {
                             <div className="w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center">
                                 <Check size={12} />
                             </div>
-                            {toast.message}
+                            {toast.message || (toast.title ? `${toast.title}: ${toast.description || ''}` : toast.description)}
                         </motion.div>
                     )}
 
@@ -1250,20 +1435,12 @@ const SalesModule = () => {
                                             <Download size={14} /> Export CSV
                                         </button>
                                     )}
-                                    {selectedLeadIds.length > 0 && activeTab === 'list' && (
-                                        <button
-                                            onClick={() => setShowBulkAssignModal(true)}
-                                            className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold hover:bg-indigo-700 transition-colors shadow-sm flex items-center gap-2"
-                                        >
-                                            Bulk Assign ({selectedLeadIds.length})
-                                        </button>
-                                    )}
                                 </div>
                             </div>
                             <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3">
                                 {/* Program Logic Filters */}
                                 <div className="flex flex-col sm:flex-row sm:items-center gap-2 bg-slate-50 p-2 sm:p-1.5 rounded-xl border border-slate-200 w-full sm:w-auto">
-                                    <select 
+                                    <select
                                         value={selectedProgram}
                                         onChange={handleProgramChange}
                                         className="bg-transparent text-xs font-semibold text-slate-700 px-2 py-1 sm:py-0.5 outline-none min-w-[120px] cursor-pointer w-full sm:w-auto"
@@ -1271,10 +1448,10 @@ const SalesModule = () => {
                                         <option value="">All Brands/Programs</option>
                                         {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                                     </select>
-                                    
+
                                     {selectedProgram && (
                                         <div className="flex flex-col sm:flex-row sm:items-center gap-2 border-t sm:border-t-0 sm:border-l border-slate-200 pt-2 sm:pt-0 sm:pl-2 w-full sm:w-auto">
-                                            <select 
+                                            <select
                                                 value={selectedSubProgram}
                                                 onChange={handleSubProgramChange}
                                                 className="bg-transparent text-xs font-semibold text-indigo-600 px-2 py-1 sm:py-0.5 outline-none min-w-[120px] cursor-pointer w-full sm:w-auto"
@@ -1282,9 +1459,9 @@ const SalesModule = () => {
                                                 <option value="">All Categories</option>
                                                 {subPrograms.map(sp => <option key={sp.id} value={sp.id}>{sp.name}</option>)}
                                             </select>
-                                            
+
                                             {selectedSubProgram && (
-                                                <select 
+                                                <select
                                                     value={selectedCourse}
                                                     onChange={handleCourseChange}
                                                     className="bg-transparent text-xs font-semibold text-emerald-600 px-2 py-1 sm:py-0.5 outline-none min-w-[120px] border-t sm:border-t-0 sm:border-l border-slate-200 pt-2 sm:pt-0 sm:pl-2 cursor-pointer w-full sm:w-auto"
@@ -1295,9 +1472,9 @@ const SalesModule = () => {
                                             )}
                                         </div>
                                     )}
-                                    
+
                                     {(selectedProgram || selectedSubProgram || selectedCourse) && (
-                                        <button 
+                                        <button
                                             onClick={() => {
                                                 setSelectedProgram('');
                                                 setSelectedSubProgram('');
@@ -1315,7 +1492,7 @@ const SalesModule = () => {
 
                                 {/* Pipeline & Assignee Filters */}
                                 <div className="flex flex-col sm:flex-row sm:items-center gap-2 bg-indigo-50/50 p-2 sm:p-1.5 rounded-xl border border-indigo-100 w-full sm:w-auto">
-                                    <select 
+                                    <select
                                         value={selectedStageFilter}
                                         onChange={(e) => setSelectedStageFilter(e.target.value)}
                                         className="bg-transparent text-xs font-semibold text-indigo-700 px-2 py-1 sm:py-0.5 outline-none min-w-[120px] cursor-pointer w-full sm:w-auto"
@@ -1327,10 +1504,10 @@ const SalesModule = () => {
                                             </option>
                                         ))}
                                     </select>
-                                    
+
                                     <div className="hidden sm:block w-px h-4 bg-indigo-200"></div>
 
-                                    <select 
+                                    <select
                                         value={selectedAssigneeFilter}
                                         onChange={(e) => setSelectedAssigneeFilter(e.target.value)}
                                         className="bg-transparent text-xs font-semibold text-indigo-700 px-2 py-1 sm:py-0.5 outline-none min-w-[120px] cursor-pointer w-full sm:w-auto"
@@ -1347,17 +1524,17 @@ const SalesModule = () => {
                                     {(selectedStageFilter || selectedAssigneeFilter || selectedContactedFilter) && (
                                         <div className="flex items-center gap-2">
                                             {selectedContactedFilter && <span className="text-[10px] font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full uppercase">Contacted Only</span>}
-                                            <button 
+                                            <button
                                                 onClick={() => {
                                                     setSelectedStageFilter('');
                                                     setSelectedAssigneeFilter('');
                                                     setSelectedContactedFilter('');
                                                 }}
-                                            className="p-1 text-indigo-400 hover:text-rose-500 transition-colors self-end sm:self-center"
-                                            title="Clear Pipeline Filters"
-                                        >
-                                            <X size={12} />
-                                        </button>
+                                                className="p-1 text-indigo-400 hover:text-rose-500 transition-colors self-end sm:self-center"
+                                                title="Clear Pipeline Filters"
+                                            >
+                                                <X size={12} />
+                                            </button>
                                         </div>
                                     )}
                                 </div>
@@ -1370,7 +1547,7 @@ const SalesModule = () => {
                                         {hideConverted ? 'Enrolled Hidden' : 'Hide Enrolled'}
                                     </button>
                                     {(authUser?.role === 'SUPER_ADMIN' || authUser?.role === 'ADMIN' || authUser?.is_superuser || ['SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD', 'SALES'].includes(authUser?.role)) && (
-                                        <select 
+                                        <select
                                             value={selectedStageFilter}
                                             onChange={(e) => {
                                                 if (e.target.value === 'DUPLICATE') {
@@ -1386,8 +1563,8 @@ const SalesModule = () => {
                                     )}
                                     {selectedStageFilter === 'DUPLICATE' && (
                                         <div className="flex items-center gap-1.5 bg-rose-50/50 border border-rose-100 rounded-lg p-1">
-                                            <input 
-                                                type="date" 
+                                            <input
+                                                type="date"
                                                 title="Filter From Date"
                                                 className="bg-transparent text-[10px] text-rose-700 font-semibold outline-none"
                                                 value={searchParams.get('start_date') || ''}
@@ -1401,8 +1578,8 @@ const SalesModule = () => {
                                                 }}
                                             />
                                             <span className="text-[10px] text-rose-400 font-bold">to</span>
-                                            <input 
-                                                type="date" 
+                                            <input
+                                                type="date"
                                                 title="Filter To Date"
                                                 className="bg-transparent text-[10px] text-rose-700 font-semibold outline-none"
                                                 value={searchParams.get('end_date') || ''}
@@ -1416,7 +1593,7 @@ const SalesModule = () => {
                                                 }}
                                             />
                                             {(searchParams.get('start_date') || searchParams.get('end_date')) && (
-                                                <button 
+                                                <button
                                                     onClick={() => {
                                                         const newParams = new URLSearchParams(searchParams);
                                                         newParams.delete('start_date');
@@ -1432,7 +1609,7 @@ const SalesModule = () => {
                                             )}
                                         </div>
                                     )}
-                                    <select 
+                                    <select
                                         value={salesSectionFilter}
                                         onChange={(e) => setSalesSectionFilter(e.target.value)}
                                         className="bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 px-3 py-1.5 outline-none flex-1 sm:flex-initial shadow-sm"
@@ -1473,17 +1650,76 @@ const SalesModule = () => {
 
                     {activeTab === 'list' && isAuthenticated ? (
                         <div>
+                            {/* Single Dedicated Selected Leads Bulk Action Banner above Table */}
+                            {selectedLeadIds.length > 0 && (
+                                <div className="bg-indigo-50/90 border-b border-indigo-100 px-4 sm:px-6 py-2.5 flex items-center justify-between flex-wrap gap-3 text-xs">
+                                    <div className="flex items-center gap-2">
+                                        <span className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse"></span>
+                                        <span className="font-semibold text-indigo-900">
+                                            {selectedLeadIds.length} lead{selectedLeadIds.length > 1 ? 's' : ''} selected
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center gap-2.5 flex-wrap">
+                                        {/* Action 1: Assign to Sales Rep */}
+                                        <div className="flex items-center gap-1.5">
+                                            <select
+                                                value={bulkAssignTo}
+                                                onChange={(e) => setBulkAssignTo(e.target.value)}
+                                                className="bg-white border border-indigo-200 rounded-lg text-xs text-slate-700 px-2.5 py-1.5 outline-none shadow-xs focus:border-indigo-500 font-medium max-w-[180px]"
+                                            >
+                                                <option value="">Assign to Sales Rep...</option>
+                                                {salesUsers.map(user => (
+                                                    <option key={user.id} value={user.id}>
+                                                        {user.name || (user.first_name ? `${user.first_name} ${user.last_name || ''}`.trim() : user.username || `User #${user.id}`)}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            <button
+                                                onClick={handleBulkAssign}
+                                                disabled={!bulkAssignTo || isAssigningBulk}
+                                                className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shadow-xs"
+                                            >
+                                                {isAssigningBulk ? 'Assigning...' : 'Assign'}
+                                            </button>
+                                        </div>
+
+                                        {/* Action 2: Assign as Task (Super Admin, Admin, and Team Leads) */}
+                                        {canAssignTasks && (
+                                            <button
+                                                onClick={() => {
+                                                    setShowAssignTaskModal(true);
+                                                    setTaskName('');
+                                                    setTaskAssignee('');
+                                                    setTaskError('');
+                                                }}
+                                                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-semibold rounded-lg transition-colors shadow-xs whitespace-nowrap cursor-pointer"
+                                                title="Assign selected leads as a task to a BDE executive"
+                                            >
+                                                <CheckSquare size={13} className="text-indigo-600" />
+                                                Assign as Task
+                                            </button>
+                                        )}
+
+                                        <button
+                                            onClick={() => setSelectedLeadIds([])}
+                                            className="text-xs text-slate-500 hover:text-slate-800 px-2.5 py-1.5 rounded-lg hover:bg-white/80 transition-colors font-medium"
+                                        >
+                                            Clear Selection
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
                             {/* Desktop View Table (hidden on mobile) */}
                             <div className="hidden md:block overflow-x-auto">
                                 <table className="w-full text-left border-collapse min-w-[1000px]">
                                     <thead>
                                         <tr className="bg-slate-50 border-b border-slate-200">
                                             <th className="px-6 py-3 w-10">
-                                                <input 
-                                                    type="checkbox" 
-                                                    checked={selectedLeadIds.length === filteredStudents.length && filteredStudents.length > 0}
+                                                <input
+                                                    type="checkbox"
+                                                    checked={(filteredStudents || []).filter(s => s.lead_status !== 'DUPLICATE').length > 0 && selectedLeadIds.length === (filteredStudents || []).filter(s => s.lead_status !== 'DUPLICATE').length}
                                                     onChange={toggleAllLeads}
-                                                    className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
+                                                    className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
                                                 />
                                             </th>
                                             <th className="px-6 py-3 text-xs font-semibold uppercase text-slate-500 tracking-wider">Student</th>
@@ -1504,149 +1740,155 @@ const SalesModule = () => {
                                             filteredStudents.map((student) => {
                                                 const isDuplicate = student.lead_status === 'DUPLICATE';
                                                 return (
-                                                    <tr 
-                                                        key={student.id} 
-                                                        className={`transition-colors ${
-                                                            isDuplicate 
-                                                                ? 'bg-rose-50 text-rose-950 font-medium border-l-4 border-rose-500 hover:bg-rose-100/75' 
-                                                                : selectedLeadIds.includes(student.id) 
-                                                                    ? 'bg-indigo-50/30 hover:bg-slate-50/50' 
-                                                                    : 'hover:bg-slate-50/50'
-                                                        }`}
+                                                    <tr
+                                                        key={student.id}
+                                                        className={`transition-colors ${isDuplicate
+                                                            ? 'bg-rose-50 text-rose-950 font-medium border-l-4 border-rose-500 hover:bg-rose-100/75'
+                                                            : selectedLeadIds.includes(student.id)
+                                                                ? 'bg-indigo-50/30 hover:bg-slate-50/50'
+                                                                : 'hover:bg-slate-50/50'
+                                                            }`}
                                                     >
-                                                        <td className="px-6 py-3.5">
-                                                            <input 
+                                                        <td
+                                                            className="px-6 py-3.5 cursor-pointer"
+                                                            onClick={(e) => {
+                                                                if (!isDuplicate && e.target.tagName !== 'INPUT') {
+                                                                    toggleLeadSelection(student.id);
+                                                                }
+                                                            }}
+                                                        >
+                                                            <input
                                                                 type="checkbox"
                                                                 disabled={isDuplicate}
                                                                 title={isDuplicate ? "Duplicate leads cannot be assigned" : "Select lead"}
                                                                 checked={selectedLeadIds.includes(student.id)}
                                                                 onChange={() => toggleLeadSelection(student.id)}
-                                                                className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed"
+                                                                className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
                                                             />
                                                         </td>
-                                                    <td className="px-6 py-3.5">
-                                                        <div className="flex items-center gap-2">
-                                                            <div className="w-7 h-7 shrink-0 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-700 font-semibold text-[10px]">
-                                                                {(student.first_name?.[0] || '')}{(student.last_name?.[0] || '')}
+                                                        <td className="px-6 py-3.5">
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="w-7 h-7 shrink-0 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-700 font-semibold text-[10px]">
+                                                                    {(student.first_name?.[0] || '')}{(student.last_name?.[0] || '')}
+                                                                </div>
+                                                                <div>
+                                                                    <div
+                                                                        className="font-semibold text-slate-900 hover:text-indigo-600 cursor-pointer transition-colors"
+                                                                        onClick={() => setSelectedStudentProfile(student)}
+                                                                    >
+                                                                        {student.first_name} {student.last_name}
+                                                                    </div>
+                                                                    <div className="text-[10px] text-slate-400">ID: {student.crm_student_id || student.id}</div>
+                                                                </div>
                                                             </div>
-                                                            <div>
-                                                                <div 
-                                                                    className="font-semibold text-slate-900 hover:text-indigo-600 cursor-pointer transition-colors"
-                                                                    onClick={() => setSelectedStudentProfile(student)}
-                                                                >
-                                                                    {student.first_name} {student.last_name}
-                                                                </div>
-                                                                <div className="text-[10px] text-slate-400">ID: {student.crm_student_id || student.id}</div>
+                                                        </td>
+                                                        <td className="px-6 py-3.5">
+                                                            <div className="text-slate-700 font-medium">{student.mobile}</div>
+                                                            <div className="text-[10px] text-slate-400">{student.email}</div>
+                                                        </td>
+                                                        <td className="px-6 py-3.5">
+                                                            <div className="font-semibold text-slate-800">{student.program_name}</div>
+                                                            <div className="text-[10px] text-slate-500">{student.sub_program_name || student.course_name || student.lms_course_names || '-'}</div>
+                                                        </td>
+                                                        <td className="px-6 py-3.5">
+                                                            <div className="max-w-[200px] space-y-1">
+                                                                {student.dynamic_values_list?.filter(v => v.value && v.value.trim() !== '').slice(0, 3).map(val => (
+                                                                    <div key={val.id} className="text-[10px] leading-tight flex gap-1 truncate">
+                                                                        <span className="font-semibold text-slate-400 shrink-0">{val.field_label}:</span>
+                                                                        <span className="text-slate-600 truncate">{val.value}</span>
+                                                                    </div>
+                                                                ))}
+                                                                {student.dynamic_values_list?.filter(v => v.value && v.value.trim() !== '').length > 3 && (
+                                                                    <div className="text-[10px] text-indigo-500 font-semibold italic">
+                                                                        +{student.dynamic_values_list.filter(v => v.value && v.value.trim() !== '').length - 3} more...
+                                                                    </div>
+                                                                )}
+                                                                {!student.dynamic_values_list?.filter(v => v.value && v.value.trim() !== '').length && (
+                                                                    <span className="text-[10px] text-slate-300 italic">No custom data</span>
+                                                                )}
                                                             </div>
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-6 py-3.5">
-                                                        <div className="text-slate-700 font-medium">{student.mobile}</div>
-                                                        <div className="text-[10px] text-slate-400">{student.email}</div>
-                                                    </td>
-                                                    <td className="px-6 py-3.5">
-                                                        <div className="font-semibold text-slate-800">{student.program_name}</div>
-                                                        <div className="text-[10px] text-slate-500">{student.sub_program_name || student.course_name || student.lms_course_names || '-'}</div>
-                                                    </td>
-                                                    <td className="px-6 py-3.5">
-                                                        <div className="max-w-[200px] space-y-1">
-                                                            {student.dynamic_values_list?.filter(v => v.value && v.value.trim() !== '').slice(0, 3).map(val => (
-                                                                <div key={val.id} className="text-[10px] leading-tight flex gap-1 truncate">
-                                                                    <span className="font-semibold text-slate-400 shrink-0">{val.field_label}:</span>
-                                                                    <span className="text-slate-600 truncate">{val.value}</span>
-                                                                </div>
-                                                            ))}
-                                                            {student.dynamic_values_list?.filter(v => v.value && v.value.trim() !== '').length > 3 && (
-                                                                <div className="text-[10px] text-indigo-500 font-semibold italic">
-                                                                    +{student.dynamic_values_list.filter(v => v.value && v.value.trim() !== '').length - 3} more...
-                                                                </div>
+                                                        </td>
+                                                        <td className="px-6 py-3.5">
+                                                            <div className="text-slate-700 text-xs">{student.assigned_to_name || '-'}</div>
+                                                        </td>
+                                                        <td className="px-6 py-3.5">
+                                                            <div className="font-semibold text-slate-900">₹{student.total_paid || 0}</div>
+                                                        </td>
+                                                        <td className="px-6 py-3.5">
+                                                            <div className="font-medium text-slate-800">{student.transactions_list?.[0]?.transaction_id || '-'}</div>
+                                                            {student.transactions_list?.length > 1 && (
+                                                                <div className="text-[10px] text-indigo-500 font-semibold mt-1">+{student.transactions_list.length - 1} more</div>
                                                             )}
-                                                            {!student.dynamic_values_list?.filter(v => v.value && v.value.trim() !== '').length && (
-                                                                <span className="text-[10px] text-slate-300 italic">No custom data</span>
-                                                            )}
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-6 py-3.5">
-                                                        <div className="text-slate-700 text-xs">{student.assigned_to_name || '-'}</div>
-                                                    </td>
-                                                    <td className="px-6 py-3.5">
-                                                        <div className="font-semibold text-slate-900">₹{student.total_paid || 0}</div>
-                                                    </td>
-                                                    <td className="px-6 py-3.5">
-                                                        <div className="font-medium text-slate-800">{student.transactions_list?.[0]?.transaction_id || '-'}</div>
-                                                        {student.transactions_list?.length > 1 && (
-                                                            <div className="text-[10px] text-indigo-500 font-semibold mt-1">+{student.transactions_list.length - 1} more</div>
-                                                        )}
-                                                    </td>
-                                                    <td className="px-6 py-3.5">
-                                                        {student.transactions_list?.length > 0 || student.is_paid ? (
-                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-green-50 text-green-700 text-[10px] font-medium">
-                                                                Paid
-                                                            </span>
-                                                        ) : (
-                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-medium">
-                                                                Pending
-                                                            </span>
-                                                        )}
-                                                    </td>
-                                                    <td className="px-6 py-3.5 text-right">
-                                                        <div className="flex items-center justify-end gap-1.5">
-                                                            <button
-                                                                onClick={() => setSelectedStudentProfile(student)}
-                                                                className="p-1.5 bg-indigo-50 text-indigo-600 rounded-md hover:bg-indigo-100 transition-all"
-                                                                title="View Profile"
-                                                            >
-                                                                <FileText size={14} />
-                                                            </button>
-
-                                                            {!isTrashView ? (
-                                                                <>
-                                                                    {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.SALES?.edit) && (
-                                                                        <button
-                                                                            onClick={() => handleEditClick(student)}
-                                                                            className="p-1.5 bg-amber-50 text-amber-600 rounded-md hover:bg-amber-100 transition-all"
-                                                                            title="Edit"
-                                                                        >
-                                                                            <Edit2 size={14} />
-                                                                        </button>
-                                                                    )}
-                                                                    {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.SALES?.delete) && (
-                                                                        <button
-                                                                            onClick={() => handleDelete(student.id)}
-                                                                            className="p-1.5 bg-rose-50 text-rose-600 rounded-md hover:bg-rose-100 transition-all"
-                                                                            title="Move to Trash"
-                                                                        >
-                                                                            <Trash2 size={14} />
-                                                                        </button>
-                                                                    )}
-                                                                </>
+                                                        </td>
+                                                        <td className="px-6 py-3.5">
+                                                            {student.transactions_list?.length > 0 || student.is_paid ? (
+                                                                <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-green-50 text-green-700 text-[10px] font-medium">
+                                                                    Paid
+                                                                </span>
                                                             ) : (
-                                                                <>
-                                                                    {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.SALES?.edit) && (
-                                                                        <button
-                                                                            onClick={() => handleRestore(student.id)}
-                                                                            className="p-1.5 bg-green-50 text-green-600 rounded-md hover:bg-green-100 transition-all"
-                                                                            title="Restore"
-                                                                        >
-                                                                            <RotateCcw size={14} />
-                                                                        </button>
-                                                                    )}
-                                                                    {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.SALES?.delete) && (
-                                                                        <button
-                                                                            onClick={() => handlePermanentDelete(student.id)}
-                                                                            className="p-1.5 bg-red-600 text-white rounded-md hover:bg-red-700 transition-all"
-                                                                            title="Delete Permanently"
-                                                                        >
-                                                                            <Trash size={14} />
-                                                                        </button>
-                                                                    )}
-                                                                </>
+                                                                <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-medium">
+                                                                    Pending
+                                                                </span>
                                                             )}
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })
+                                                        </td>
+                                                        <td className="px-6 py-3.5 text-right">
+                                                            <div className="flex items-center justify-end gap-1.5">
+                                                                <button
+                                                                    onClick={() => setSelectedStudentProfile(student)}
+                                                                    className="p-1.5 bg-indigo-50 text-indigo-600 rounded-md hover:bg-indigo-100 transition-all"
+                                                                    title="View Profile"
+                                                                >
+                                                                    <FileText size={14} />
+                                                                </button>
+
+                                                                {!isTrashView ? (
+                                                                    <>
+                                                                        {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.SALES?.edit) && (
+                                                                            <button
+                                                                                onClick={() => handleEditClick(student)}
+                                                                                className="p-1.5 bg-amber-50 text-amber-600 rounded-md hover:bg-amber-100 transition-all"
+                                                                                title="Edit"
+                                                                            >
+                                                                                <Edit2 size={14} />
+                                                                            </button>
+                                                                        )}
+                                                                        {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.SALES?.delete) && (
+                                                                            <button
+                                                                                onClick={() => handleDelete(student.id)}
+                                                                                className="p-1.5 bg-rose-50 text-rose-600 rounded-md hover:bg-rose-100 transition-all"
+                                                                                title="Move to Trash"
+                                                                            >
+                                                                                <Trash2 size={14} />
+                                                                            </button>
+                                                                        )}
+                                                                    </>
+                                                                ) : (
+                                                                    <>
+                                                                        {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.SALES?.edit) && (
+                                                                            <button
+                                                                                onClick={() => handleRestore(student.id)}
+                                                                                className="p-1.5 bg-green-50 text-green-600 rounded-md hover:bg-green-100 transition-all"
+                                                                                title="Restore"
+                                                                            >
+                                                                                <RotateCcw size={14} />
+                                                                            </button>
+                                                                        )}
+                                                                        {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.SALES?.delete) && (
+                                                                            <button
+                                                                                onClick={() => handlePermanentDelete(student.id)}
+                                                                                className="p-1.5 bg-red-600 text-white rounded-md hover:bg-red-700 transition-all"
+                                                                                title="Delete Permanently"
+                                                                            >
+                                                                                <Trash size={14} />
+                                                                            </button>
+                                                                        )}
+                                                                    </>
+                                                                )}
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })
                                         ) : (
                                             <tr><td colSpan="8" className="px-6 py-8 text-center text-slate-400 font-medium">No applications found.</td></tr>
                                         )}
@@ -1663,132 +1905,140 @@ const SalesModule = () => {
                                         const isDuplicate = student.lead_status === 'DUPLICATE';
                                         return (
                                             <div key={student.id} className={`p-4 transition-colors ${isDuplicate ? 'bg-rose-50 hover:bg-rose-100/75 border-l-4 border-rose-500' : 'hover:bg-slate-50/50'}`}>
-                                            {/* Top Header Row: Avatar, Name, Status */}
-                                            <div className="flex items-start justify-between gap-3 mb-3">
-                                                <div className="flex items-center gap-2.5">
-                                                    <div className="w-9 h-9 shrink-0 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-700 font-semibold text-xs">
-                                                        {(student.first_name?.[0] || '')}{(student.last_name?.[0] || '')}
+                                                {/* Top Header Row: Avatar, Name, Status */}
+                                                <div className="flex items-start justify-between gap-3 mb-3">
+                                                    <div className="flex items-center gap-2.5">
+                                                        <input
+                                                            type="checkbox"
+                                                            disabled={isDuplicate}
+                                                            checked={selectedLeadIds.includes(student.id)}
+                                                            onChange={() => toggleLeadSelection(student.id)}
+                                                            className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                                                        />
+                                                        <div className="w-9 h-9 shrink-0 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-700 font-semibold text-xs">
+                                                            {(student.first_name?.[0] || '')}{(student.last_name?.[0] || '')}
+                                                        </div>
+                                                        <div>
+                                                            <div
+                                                                className="font-semibold text-slate-900 hover:text-indigo-600 cursor-pointer transition-colors text-sm"
+                                                                onClick={() => setSelectedStudentProfile(student)}
+                                                            >
+                                                                {student.first_name} {student.last_name}
+                                                            </div>
+                                                            <div className="text-[10px] text-slate-400 font-medium">ID: {student.crm_student_id || student.id}</div>
+                                                        </div>
                                                     </div>
                                                     <div>
-                                                        <div 
-                                                            className="font-semibold text-slate-900 hover:text-indigo-600 cursor-pointer transition-colors text-sm"
-                                                            onClick={() => setSelectedStudentProfile(student)}
-                                                        >
-                                                            {student.first_name} {student.last_name}
-                                                        </div>
-                                                        <div className="text-[10px] text-slate-400 font-medium">ID: {student.crm_student_id || student.id}</div>
+                                                        {student.transactions_list?.length > 0 || student.is_paid ? (
+                                                            <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-green-50 text-green-700 text-[10px] font-semibold">
+                                                                Paid
+                                                            </span>
+                                                        ) : (
+                                                            <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-semibold">
+                                                                Pending
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 </div>
-                                                <div>
-                                                    {student.transactions_list?.length > 0 || student.is_paid ? (
-                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-green-50 text-green-700 text-[10px] font-semibold">
-                                                            Paid
-                                                        </span>
+
+                                                {/* Details Grid */}
+                                                <div className="grid grid-cols-2 gap-3 text-xs mb-4 bg-slate-50/60 p-3 rounded-lg border border-slate-100">
+                                                    <div>
+                                                        <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mb-0.5">Contact</div>
+                                                        <div className="text-slate-700 font-semibold">{student.mobile}</div>
+                                                        <div className="text-[10px] text-slate-500 break-all">{student.email}</div>
+                                                    </div>
+                                                    <div>
+                                                        <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mb-0.5">Program</div>
+                                                        <div className="text-slate-800 font-semibold truncate">{student.program_name}</div>
+                                                        <div className="text-[10px] text-slate-500 truncate">{student.sub_program_name || student.course_name || student.lms_course_names || '-'}</div>
+                                                    </div>
+                                                    <div>
+                                                        <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mb-0.5">Payment</div>
+                                                        <div className="text-slate-900 font-semibold">₹{student.total_paid || 0}</div>
+                                                        <div className="text-[10px] text-slate-500 truncate" title={student.transactions_list?.[0]?.transaction_id}>
+                                                            Txn: {student.transactions_list?.[0]?.transaction_id || '-'}
+                                                            {student.transactions_list?.length > 1 && ` (+${student.transactions_list.length - 1})`}
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mb-0.5">Custom Fields</div>
+                                                        <div className="space-y-0.5 max-w-full">
+                                                            {student.dynamic_values_list?.filter(v => v.value && v.value.trim() !== '').slice(0, 2).map(val => (
+                                                                <div key={val.id} className="text-[10px] leading-tight flex gap-1 truncate">
+                                                                    <span className="font-semibold text-slate-400 shrink-0">{val.field_label}:</span>
+                                                                    <span className="text-slate-600 truncate">{val.value}</span>
+                                                                </div>
+                                                            ))}
+                                                            {student.dynamic_values_list?.filter(v => v.value && v.value.trim() !== '').length > 2 && (
+                                                                <div className="text-[10px] text-indigo-500 font-semibold italic">
+                                                                    +{student.dynamic_values_list.filter(v => v.value && v.value.trim() !== '').length - 2} more...
+                                                                </div>
+                                                            )}
+                                                            {!student.dynamic_values_list?.filter(v => v.value && v.value.trim() !== '').length && (
+                                                                <span className="text-[10px] text-slate-400 italic">No custom data</span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Action Buttons Row */}
+                                                <div className="flex items-center justify-end gap-2">
+                                                    <button
+                                                        onClick={() => setSelectedStudentProfile(student)}
+                                                        className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-all text-xs font-semibold flex-1"
+                                                    >
+                                                        <FileText size={14} />
+                                                        Profile
+                                                    </button>
+
+                                                    {!isTrashView ? (
+                                                        <>
+                                                            {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.SALES?.edit) && (
+                                                                <button
+                                                                    onClick={() => handleEditClick(student)}
+                                                                    className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-600 rounded-lg hover:bg-amber-100 transition-all text-xs font-semibold flex-1"
+                                                                >
+                                                                    <Edit2 size={14} />
+                                                                    Edit
+                                                                </button>
+                                                            )}
+                                                            {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.SALES?.delete) && (
+                                                                <button
+                                                                    onClick={() => handleDelete(student.id)}
+                                                                    className="p-2 bg-rose-50 text-rose-600 rounded-lg hover:bg-rose-100 transition-all"
+                                                                    title="Move to Trash"
+                                                                >
+                                                                    <Trash2 size={14} />
+                                                                </button>
+                                                            )}
+                                                        </>
                                                     ) : (
-                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-semibold">
-                                                            Pending
-                                                        </span>
+                                                        <>
+                                                            {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.SALES?.edit) && (
+                                                                <button
+                                                                    onClick={() => handleRestore(student.id)}
+                                                                    className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-all text-xs font-semibold flex-1"
+                                                                >
+                                                                    <RotateCcw size={14} />
+                                                                    Restore
+                                                                </button>
+                                                            )}
+                                                            {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.SALES?.delete) && (
+                                                                <button
+                                                                    onClick={() => handlePermanentDelete(student.id)}
+                                                                    className="p-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all"
+                                                                    title="Delete Permanently"
+                                                                >
+                                                                    <Trash size={14} />
+                                                                </button>
+                                                            )}
+                                                        </>
                                                     )}
                                                 </div>
                                             </div>
-
-                                            {/* Details Grid */}
-                                            <div className="grid grid-cols-2 gap-3 text-xs mb-4 bg-slate-50/60 p-3 rounded-lg border border-slate-100">
-                                                <div>
-                                                    <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mb-0.5">Contact</div>
-                                                    <div className="text-slate-700 font-semibold">{student.mobile}</div>
-                                                    <div className="text-[10px] text-slate-500 break-all">{student.email}</div>
-                                                </div>
-                                                <div>
-                                                    <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mb-0.5">Program</div>
-                                                    <div className="text-slate-800 font-semibold truncate">{student.program_name}</div>
-                                                    <div className="text-[10px] text-slate-500 truncate">{student.sub_program_name || student.course_name || student.lms_course_names || '-'}</div>
-                                                </div>
-                                                <div>
-                                                    <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mb-0.5">Payment</div>
-                                                    <div className="text-slate-900 font-semibold">₹{student.total_paid || 0}</div>
-                                                    <div className="text-[10px] text-slate-500 truncate" title={student.transactions_list?.[0]?.transaction_id}>
-                                                        Txn: {student.transactions_list?.[0]?.transaction_id || '-'}
-                                                        {student.transactions_list?.length > 1 && ` (+${student.transactions_list.length - 1})`}
-                                                    </div>
-                                                </div>
-                                                <div>
-                                                    <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mb-0.5">Custom Fields</div>
-                                                    <div className="space-y-0.5 max-w-full">
-                                                        {student.dynamic_values_list?.filter(v => v.value && v.value.trim() !== '').slice(0, 2).map(val => (
-                                                            <div key={val.id} className="text-[10px] leading-tight flex gap-1 truncate">
-                                                                <span className="font-semibold text-slate-400 shrink-0">{val.field_label}:</span>
-                                                                <span className="text-slate-600 truncate">{val.value}</span>
-                                                            </div>
-                                                        ))}
-                                                        {student.dynamic_values_list?.filter(v => v.value && v.value.trim() !== '').length > 2 && (
-                                                            <div className="text-[10px] text-indigo-500 font-semibold italic">
-                                                                +{student.dynamic_values_list.filter(v => v.value && v.value.trim() !== '').length - 2} more...
-                                                            </div>
-                                                        )}
-                                                        {!student.dynamic_values_list?.filter(v => v.value && v.value.trim() !== '').length && (
-                                                            <span className="text-[10px] text-slate-400 italic">No custom data</span>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            {/* Action Buttons Row */}
-                                            <div className="flex items-center justify-end gap-2">
-                                                <button
-                                                    onClick={() => setSelectedStudentProfile(student)}
-                                                    className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-all text-xs font-semibold flex-1"
-                                                >
-                                                    <FileText size={14} />
-                                                    Profile
-                                                </button>
-
-                                                {!isTrashView ? (
-                                                    <>
-                                                        {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.SALES?.edit) && (
-                                                            <button
-                                                                onClick={() => handleEditClick(student)}
-                                                                className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-600 rounded-lg hover:bg-amber-100 transition-all text-xs font-semibold flex-1"
-                                                            >
-                                                                <Edit2 size={14} />
-                                                                Edit
-                                                            </button>
-                                                        )}
-                                                        {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.SALES?.delete) && (
-                                                            <button
-                                                                onClick={() => handleDelete(student.id)}
-                                                                className="p-2 bg-rose-50 text-rose-600 rounded-lg hover:bg-rose-100 transition-all"
-                                                                title="Move to Trash"
-                                                            >
-                                                                <Trash2 size={14} />
-                                                            </button>
-                                                        )}
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.SALES?.edit) && (
-                                                            <button
-                                                                onClick={() => handleRestore(student.id)}
-                                                                className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-all text-xs font-semibold flex-1"
-                                                            >
-                                                                <RotateCcw size={14} />
-                                                                Restore
-                                                            </button>
-                                                        )}
-                                                        {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.SALES?.delete) && (
-                                                            <button
-                                                                onClick={() => handlePermanentDelete(student.id)}
-                                                                className="p-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all"
-                                                                title="Delete Permanently"
-                                                            >
-                                                                <Trash size={14} />
-                                                            </button>
-                                                        )}
-                                                    </>
-                                                )}
-                                            </div>
-                                        </div>
-                                    ); })
+                                        );
+                                    })
                                 ) : (
                                     <div className="p-6 text-center text-slate-400 font-medium">No applications found.</div>
                                 )}
@@ -1828,7 +2078,7 @@ const SalesModule = () => {
                                         try {
                                             const res = await api.get(`students/${value}/`);
                                             setSelectedStudentProfile(res.data);
-                                        } catch(e) {
+                                        } catch (e) {
                                             console.error("Failed to load student profile", e);
                                         }
                                         return;
@@ -1849,18 +2099,33 @@ const SalesModule = () => {
                                 setSectionFilter={setSalesSectionFilter}
                             />
                         </div>
-                    ) : activeTab === 'tasks' && isAuthenticated ? (
+                    ) : activeTab === 'assigned-tasks' && isAuthenticated ? (
                         <div className="bg-slate-50 min-h-[500px]">
-                            <CRMTasks />
-                        </div>
-                    ) : activeTab === 'campaigns' && isAuthenticated ? (
-                        <div className="bg-slate-50 min-h-[500px]">
-                            <CRMCampaigns 
+                            <LeadTasksManagement
                                 onLeadClick={(student) => {
                                     setSelectedStudentProfile(student);
                                 }}
                             />
                         </div>
+                    ) : (activeTab === 'reminders' || activeTab === 'tasks') && isAuthenticated ? (
+                        <div className="bg-slate-50 min-h-[500px]">
+                            <CRMTasks />
+                        </div>
+                    ) : activeTab === 'campaigns' && isAuthenticated ? (
+                        authUser?.role === 'SALES' && !(['SUPER_ADMIN', 'ADMIN', 'TEAM_LEAD', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD'].includes(authUser?.role) || authUser?.is_manager) ? (
+                            <div className="p-8 text-center text-slate-500 bg-white rounded-2xl border border-slate-200 m-6">
+                                <h3 className="text-base font-bold text-slate-800">Access Restricted</h3>
+                                <p className="text-xs text-slate-500 mt-1">BDE executives do not need Campaigns access. Please visit the Tasks section to view and manage your assigned tasks.</p>
+                            </div>
+                        ) : (
+                            <div className="bg-slate-50 min-h-[500px]">
+                                <CRMCampaigns
+                                    onLeadClick={(student) => {
+                                        setSelectedStudentProfile(student);
+                                    }}
+                                />
+                            </div>
+                        )
                     ) : activeTab === 'reports' && isAuthenticated ? (
                         <div className="bg-slate-50 min-h-[500px]">
                             <TeamReports onBdeClick={(id, start, end) => {
@@ -1874,7 +2139,7 @@ const SalesModule = () => {
                         </div>
                     ) : activeTab === 'kanban' && isAuthenticated ? (
                         <div className="p-4 sm:p-6 bg-slate-50 min-h-[500px]">
-                            <KanbanBoard 
+                            <KanbanBoard
                                 program={selectedProgram}
                                 subProgram={selectedSubProgram}
                                 course={selectedCourse}
@@ -1908,7 +2173,7 @@ const SalesModule = () => {
                                             <p className="text-[10px] text-slate-500 mt-1">XLSX, CSV up to 10MB</p>
                                         </div>
                                     </div>
-                                    
+
                                     <div>
                                         <select
                                             className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-500"
@@ -1993,7 +2258,7 @@ const SalesModule = () => {
                                             required
                                         />
                                     )}
-                                    
+
                                     {subPrograms.length > 0 && (
                                         <div className="flex flex-col">
                                             <label className="text-xs font-semibold text-slate-600 mb-1.5">Sub-Program / Category <span className="text-red-500">*</span></label>
@@ -2015,7 +2280,7 @@ const SalesModule = () => {
                                             </div>
                                         </div>
                                     )}
-                                    
+
                                     {courses.length > 0 && (
                                         <div className="flex flex-col">
                                             <label className="text-xs font-semibold text-slate-600 mb-1.5">Course / Subject <span className="text-red-500">*</span></label>
@@ -2142,272 +2407,271 @@ const SalesModule = () => {
                             animate={{ scale: 1, opacity: 1 }}
                             className="bg-white rounded-xl p-4 sm:p-6 border border-slate-200 w-full max-w-xl shadow-lg max-h-[90vh] overflow-y-auto custom-scrollbar"
                         >
-                        <div className="flex justify-between items-start mb-6">
-                            <div className="flex items-center gap-3 text-left">
-                                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-500 flex items-center justify-center text-white text-sm font-bold">
-                                    {(selectedStudentProfile.first_name?.[0] || '')}{(selectedStudentProfile.last_name?.[0] || '')}
+                            <div className="flex justify-between items-start mb-6">
+                                <div className="flex items-center gap-3 text-left">
+                                    <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-500 flex items-center justify-center text-white text-sm font-bold">
+                                        {(selectedStudentProfile.first_name?.[0] || '')}{(selectedStudentProfile.last_name?.[0] || '')}
+                                    </div>
+                                    <div>
+                                        <h2 className="text-base font-bold text-slate-900">{selectedStudentProfile.first_name} {selectedStudentProfile.last_name}</h2>
+                                        <p className="text-xs text-slate-500 font-medium">{selectedStudentProfile.crm_student_id}</p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <h2 className="text-base font-bold text-slate-900">{selectedStudentProfile.first_name} {selectedStudentProfile.last_name}</h2>
-                                    <p className="text-xs text-slate-500 font-medium">{selectedStudentProfile.crm_student_id}</p>
+                                <div className="flex gap-1.5">
+                                    <button
+                                        onClick={() => {
+                                            handleEditClick(selectedStudentProfile);
+                                            setSelectedStudentProfile(null);
+                                        }}
+                                        className="p-1.5 bg-amber-50 text-amber-600 rounded-lg hover:bg-amber-100 transition-all"
+                                        title="Edit Profile"
+                                    >
+                                        <Edit2 size={14} />
+                                    </button>
+                                    <button
+                                        onClick={() => setSelectedStudentProfile(null)}
+                                        className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors text-slate-400"
+                                    >
+                                        <X size={14} />
+                                    </button>
                                 </div>
                             </div>
-                            <div className="flex gap-1.5">
-                                <button
-                                    onClick={() => {
-                                        handleEditClick(selectedStudentProfile);
-                                        setSelectedStudentProfile(null);
-                                    }}
-                                    className="p-1.5 bg-amber-50 text-amber-600 rounded-lg hover:bg-amber-100 transition-all"
-                                    title="Edit Profile"
-                                >
-                                    <Edit2 size={14} />
-                                </button>
-                                <button
-                                    onClick={() => setSelectedStudentProfile(null)}
-                                    className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors text-slate-400"
-                                >
-                                    <X size={14} />
-                                </button>
-                            </div>
-                        </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {/* Live Wise LMS Data */}
-                            <div className="md:col-span-2 bg-slate-50 p-4 rounded-xl border border-slate-200 text-left">
-                                <div className="flex justify-between items-center mb-4">
-                                    <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                                        <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
-                                        Live Wise LMS Status
-                                    </h3>
-                                    {loadingWise ? (
-                                        <div className="w-3.5 h-3.5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {/* Live Wise LMS Data */}
+                                <div className="md:col-span-2 bg-slate-50 p-4 rounded-xl border border-slate-200 text-left">
+                                    <div className="flex justify-between items-center mb-4">
+                                        <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                                            <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+                                            Live Wise LMS Status
+                                        </h3>
+                                        {loadingWise ? (
+                                            <div className="w-3.5 h-3.5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+                                        ) : (
+                                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Real-time Connection</span>
+                                        )}
+                                    </div>
+
+                                    {wiseData && !wiseData.error_message ? (
+                                        <div className="space-y-4">
+                                            {/* Fees */}
+                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                                <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+                                                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Due Balance</p>
+                                                    <p className="font-bold text-rose-600 text-sm">₹{wiseData.fee_details?.due_fee || 0}</p>
+                                                </div>
+                                                <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+                                                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Total Paid</p>
+                                                    <p className="font-bold text-emerald-600 text-sm">₹{wiseData.fee_details?.paid_fee || 0}</p>
+                                                </div>
+                                                <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+                                                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Attendance</p>
+                                                    <p className="font-bold text-slate-700 text-sm">{wiseData.attendance || 0} Sessions</p>
+                                                </div>
+                                            </div>
+
+                                            {/* Enrolled Courses */}
+                                            <div className="text-left">
+                                                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2 ml-0.5">Currently Enrolled Wise Batches</p>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {wiseData.enrolled_courses?.length > 0 ? (
+                                                        wiseData.enrolled_courses.map(course => (
+                                                            <div key={course.id} className="px-2.5 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-medium flex items-center gap-1.5">
+                                                                <div className="w-1 h-1 bg-indigo-400 rounded-full" />
+                                                                {course.name}
+                                                            </div>
+                                                        ))
+                                                    ) : (
+                                                        <p className="text-slate-400 text-xs italic ml-0.5">No active enrollments found in Wise.</p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ) : !loadingWise ? (
+                                        <div className="text-center py-4 bg-white/50 rounded-lg border border-dashed border-slate-200">
+                                            <p className="text-slate-400 text-xs font-semibold italic">No Live Wise Data for this profile yet.</p>
+                                            <p className="text-[9px] text-slate-400 uppercase tracking-wider mt-0.5">Sync might be required or profile is missing LMS ID</p>
+                                        </div>
                                     ) : (
-                                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Real-time Connection</span>
+                                        <div className="h-16 flex items-center justify-center">
+                                            <div className="w-6 h-6 border-2 border-indigo-100 border-t-indigo-600 rounded-full animate-spin" />
+                                        </div>
                                     )}
                                 </div>
 
-                                {wiseData && !wiseData.error_message ? (
-                                    <div className="space-y-4">
-                                        {/* Fees */}
-                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                            <div className="bg-white p-2.5 rounded-lg border border-slate-200">
-                                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Due Balance</p>
-                                                <p className="font-bold text-rose-600 text-sm">₹{wiseData.fee_details?.due_fee || 0}</p>
-                                            </div>
-                                            <div className="bg-white p-2.5 rounded-lg border border-slate-200">
-                                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Total Paid</p>
-                                                <p className="font-bold text-emerald-600 text-sm">₹{wiseData.fee_details?.paid_fee || 0}</p>
-                                            </div>
-                                            <div className="bg-white p-2.5 rounded-lg border border-slate-200">
-                                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Attendance</p>
-                                                <p className="font-bold text-slate-700 text-sm">{wiseData.attendance || 0} Sessions</p>
-                                            </div>
+                                {/* Program Info */}
+                                <div className="md:col-span-2 bg-slate-50 p-4 rounded-xl border border-slate-200 text-left">
+                                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Enrollment Details</h3>
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+                                        <div>
+                                            <p className="text-[10px] text-slate-500 mb-0.5">Program</p>
+                                            <p className="font-semibold text-xs text-slate-800">{selectedStudentProfile.program_name}</p>
                                         </div>
+                                        <div>
+                                            <p className="text-[10px] text-slate-500 mb-0.5">Sub-Program</p>
+                                            <p className="font-semibold text-xs text-slate-800">{selectedStudentProfile.sub_program_name || '-'}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-[10px] text-slate-500 mb-0.5">Course</p>
+                                            <p className="font-semibold text-xs text-slate-800">{selectedStudentProfile.course_name || '-'}</p>
+                                        </div>
+                                    </div>
+                                </div>
 
-                                        {/* Enrolled Courses */}
-                                        <div className="text-left">
-                                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2 ml-0.5">Currently Enrolled Wise Batches</p>
-                                            <div className="flex flex-wrap gap-1.5">
-                                                {wiseData.enrolled_courses?.length > 0 ? (
-                                                    wiseData.enrolled_courses.map(course => (
-                                                        <div key={course.id} className="px-2.5 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-medium flex items-center gap-1.5">
-                                                            <div className="w-1 h-1 bg-indigo-400 rounded-full" />
-                                                            {course.name}
+                                {/* Call Performance Summary */}
+                                <div className="md:col-span-2 bg-slate-50 p-4 rounded-xl border border-slate-200 text-left">
+                                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Call Performance Summary</h3>
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                                        <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-xs">
+                                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Total Calls</p>
+                                            <p className="font-bold text-slate-800 text-sm">{totalCalls}</p>
+                                        </div>
+                                        <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-xs">
+                                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Total Duration</p>
+                                            <p className="font-bold text-indigo-600 text-sm">{formatSeconds(totalDuration)}</p>
+                                        </div>
+                                        <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-xs">
+                                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">🟢 Connected</p>
+                                            <p className="font-bold text-emerald-600 text-sm">{connectedCalls} calls</p>
+                                        </div>
+                                        <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-xs">
+                                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">🔴 Missed</p>
+                                            <p className="font-bold text-rose-600 text-sm">{missedCalls} calls</p>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-slate-600">
+                                        <div className="flex justify-between items-center bg-white px-3 py-2 rounded-lg border border-slate-200 shadow-xs">
+                                            <span>Outbound/Outgoing:</span>
+                                            <strong className="text-slate-800 font-bold">{outgoingCalls.length} calls ({formatSeconds(totalOutgoingDuration)})</strong>
+                                        </div>
+                                        <div className="flex justify-between items-center bg-white px-3 py-2 rounded-lg border border-slate-200 shadow-xs">
+                                            <span>Inbound/Incoming:</span>
+                                            <strong className="text-slate-800 font-bold">{incomingCalls.length} calls ({formatSeconds(totalIncomingDuration)})</strong>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Base Contact Info */}
+                                <div className="md:col-span-2 bg-slate-50 p-4 rounded-xl border border-slate-200 text-left">
+                                    <div className="flex justify-between items-center mb-3">
+                                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Contact Info</h3>
+                                        <div className="flex gap-2">
+                                            {selectedStudentProfile.mobile && (
+                                                <a href={`tel:${selectedStudentProfile.mobile}`} title="Call" className="p-1.5 bg-white border border-slate-200 rounded-md text-slate-500 hover:text-indigo-600 hover:border-indigo-200 transition-colors shadow-sm">
+                                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
+                                                </a>
+                                            )}
+                                            {selectedStudentProfile.mobile && (
+                                                <a href={`sms:${selectedStudentProfile.mobile}`} title="SMS" className="p-1.5 bg-white border border-slate-200 rounded-md text-slate-500 hover:text-indigo-600 hover:border-indigo-200 transition-colors shadow-sm">
+                                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+                                                </a>
+                                            )}
+                                            {selectedStudentProfile.mobile && (
+                                                <a href={`https://wa.me/${selectedStudentProfile.mobile.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" title="WhatsApp" className="p-1.5 bg-white border border-slate-200 rounded-md text-slate-500 hover:text-green-500 hover:border-green-200 transition-colors shadow-sm">
+                                                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" /></svg>
+                                                </a>
+                                            )}
+                                            {selectedStudentProfile.email && (
+                                                <a href={`mailto:${selectedStudentProfile.email}`} title="Email" className="p-1.5 bg-white border border-slate-200 rounded-md text-slate-500 hover:text-indigo-600 hover:border-indigo-200 transition-colors shadow-sm">
+                                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                                                </a>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                                        <div>
+                                            <p className="text-[10px] text-slate-500 mb-0.5">Mobile</p>
+                                            <p className="font-semibold text-xs text-slate-800">{selectedStudentProfile.mobile || '-'}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-[10px] text-slate-500 mb-0.5">Email</p>
+                                            <p className="font-semibold text-xs text-slate-800">{selectedStudentProfile.email || '-'}</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Dynamic Fields Groups */}
+                                <div className="md:col-span-2 space-y-4">
+                                    {['INITIAL', 'ACADEMIC'].map(group => {
+                                        const groupFields = selectedStudentProfile.dynamic_values_list?.filter(val => val.field_group === group);
+                                        if (!groupFields || groupFields.length === 0) return null;
+
+                                        return (
+                                            <div key={group} className="text-left">
+                                                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                                                    {group === 'INITIAL' ? 'Initial Application (Sales)' : 'Academic/Post-Admission Details'}
+                                                </h3>
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 bg-slate-50 border border-slate-200 p-3 sm:p-4 rounded-xl">
+                                                    {groupFields.map((val) => (
+                                                        <div key={val.id}>
+                                                            <p className="text-[10px] text-slate-500 mb-0.5">{val.field_label}</p>
+                                                            <p className="font-semibold text-xs text-slate-800">{val.value || '-'}</p>
                                                         </div>
-                                                    ))
-                                                ) : (
-                                                    <p className="text-slate-400 text-xs italic ml-0.5">No active enrollments found in Wise.</p>
-                                                )}
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                    {!selectedStudentProfile.dynamic_values_list?.length && (
+                                        <div className="text-left">
+                                            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Form Details</h3>
+                                            <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl">
+                                                <p className="text-slate-400 text-xs italic">No custom fields filled.</p>
                                             </div>
                                         </div>
-                                    </div>
-                                ) : !loadingWise ? (
-                                    <div className="text-center py-4 bg-white/50 rounded-lg border border-dashed border-slate-200">
-                                        <p className="text-slate-400 text-xs font-semibold italic">No Live Wise Data for this profile yet.</p>
-                                        <p className="text-[9px] text-slate-400 uppercase tracking-wider mt-0.5">Sync might be required or profile is missing LMS ID</p>
-                                    </div>
-                                ) : (
-                                    <div className="h-16 flex items-center justify-center">
-                                        <div className="w-6 h-6 border-2 border-indigo-100 border-t-indigo-600 rounded-full animate-spin" />
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Program Info */}
-                            <div className="md:col-span-2 bg-slate-50 p-4 rounded-xl border border-slate-200 text-left">
-                                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Enrollment Details</h3>
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-                                    <div>
-                                        <p className="text-[10px] text-slate-500 mb-0.5">Program</p>
-                                        <p className="font-semibold text-xs text-slate-800">{selectedStudentProfile.program_name}</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-[10px] text-slate-500 mb-0.5">Sub-Program</p>
-                                        <p className="font-semibold text-xs text-slate-800">{selectedStudentProfile.sub_program_name || '-'}</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-[10px] text-slate-500 mb-0.5">Course</p>
-                                        <p className="font-semibold text-xs text-slate-800">{selectedStudentProfile.course_name || '-'}</p>
-                                    </div>
+                                    )}
                                 </div>
-                            </div>
 
-                            {/* Call Performance Summary */}
-                            <div className="md:col-span-2 bg-slate-50 p-4 rounded-xl border border-slate-200 text-left">
-                                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Call Performance Summary</h3>
-                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-                                    <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-xs">
-                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Total Calls</p>
-                                        <p className="font-bold text-slate-800 text-sm">{totalCalls}</p>
-                                    </div>
-                                    <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-xs">
-                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Total Duration</p>
-                                        <p className="font-bold text-indigo-600 text-sm">{formatSeconds(totalDuration)}</p>
-                                    </div>
-                                    <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-xs">
-                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">🟢 Connected</p>
-                                        <p className="font-bold text-emerald-600 text-sm">{connectedCalls} calls</p>
-                                    </div>
-                                    <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-xs">
-                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">🔴 Missed</p>
-                                        <p className="font-bold text-rose-600 text-sm">{missedCalls} calls</p>
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-slate-600">
-                                    <div className="flex justify-between items-center bg-white px-3 py-2 rounded-lg border border-slate-200 shadow-xs">
-                                        <span>Outbound/Outgoing:</span>
-                                        <strong className="text-slate-800 font-bold">{outgoingCalls.length} calls ({formatSeconds(totalOutgoingDuration)})</strong>
-                                    </div>
-                                    <div className="flex justify-between items-center bg-white px-3 py-2 rounded-lg border border-slate-200 shadow-xs">
-                                        <span>Inbound/Incoming:</span>
-                                        <strong className="text-slate-800 font-bold">{incomingCalls.length} calls ({formatSeconds(totalIncomingDuration)})</strong>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Base Contact Info */}
-                            <div className="md:col-span-2 bg-slate-50 p-4 rounded-xl border border-slate-200 text-left">
-                                <div className="flex justify-between items-center mb-3">
-                                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Contact Info</h3>
-                                    <div className="flex gap-2">
-                                        {selectedStudentProfile.mobile && (
-                                            <a href={`tel:${selectedStudentProfile.mobile}`} title="Call" className="p-1.5 bg-white border border-slate-200 rounded-md text-slate-500 hover:text-indigo-600 hover:border-indigo-200 transition-colors shadow-sm">
-                                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
-                                            </a>
-                                        )}
-                                        {selectedStudentProfile.mobile && (
-                                            <a href={`sms:${selectedStudentProfile.mobile}`} title="SMS" className="p-1.5 bg-white border border-slate-200 rounded-md text-slate-500 hover:text-indigo-600 hover:border-indigo-200 transition-colors shadow-sm">
-                                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
-                                            </a>
-                                        )}
-                                        {selectedStudentProfile.mobile && (
-                                            <a href={`https://wa.me/${selectedStudentProfile.mobile.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" title="WhatsApp" className="p-1.5 bg-white border border-slate-200 rounded-md text-slate-500 hover:text-green-500 hover:border-green-200 transition-colors shadow-sm">
-                                                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" /></svg>
-                                            </a>
-                                        )}
-                                        {selectedStudentProfile.email && (
-                                            <a href={`mailto:${selectedStudentProfile.email}`} title="Email" className="p-1.5 bg-white border border-slate-200 rounded-md text-slate-500 hover:text-indigo-600 hover:border-indigo-200 transition-colors shadow-sm">
-                                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
-                                            </a>
-                                        )}
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                                    <div>
-                                        <p className="text-[10px] text-slate-500 mb-0.5">Mobile</p>
-                                        <p className="font-semibold text-xs text-slate-800">{selectedStudentProfile.mobile || '-'}</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-[10px] text-slate-500 mb-0.5">Email</p>
-                                        <p className="font-semibold text-xs text-slate-800">{selectedStudentProfile.email || '-'}</p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Dynamic Fields Groups */}
-                            <div className="md:col-span-2 space-y-4">
-                                {['INITIAL', 'ACADEMIC'].map(group => {
-                                    const groupFields = selectedStudentProfile.dynamic_values_list?.filter(val => val.field_group === group);
-                                    if (!groupFields || groupFields.length === 0) return null;
-
-                                    return (
-                                        <div key={group} className="text-left">
-                                            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                                                {group === 'INITIAL' ? 'Initial Application (Sales)' : 'Academic/Post-Admission Details'}
-                                            </h3>
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 bg-slate-50 border border-slate-200 p-3 sm:p-4 rounded-xl">
-                                                {groupFields.map((val) => (
-                                                    <div key={val.id}>
-                                                        <p className="text-[10px] text-slate-500 mb-0.5">{val.field_label}</p>
-                                                        <p className="font-semibold text-xs text-slate-800">{val.value || '-'}</p>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                                {!selectedStudentProfile.dynamic_values_list?.length && (
-                                    <div className="text-left">
-                                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Form Details</h3>
-                                        <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl">
-                                            <p className="text-slate-400 text-xs italic">No custom fields filled.</p>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Pipeline Status */}
-                            <div className="md:col-span-2 text-left bg-indigo-50/50 border border-indigo-100 rounded-xl p-4 mt-2">
-                                <h3 className="text-xs font-bold text-indigo-900 uppercase tracking-wider mb-2">Sales Pipeline Status</h3>
-                                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-                                    <select
-                                        value={(() => {
-                                            const matchedStage = pipelineStages.find(s => 
-                                                s.id?.toString() === pendingPipelineStatus?.toString() || 
-                                                s.name?.toLowerCase() === pendingPipelineStatus?.toLowerCase()
-                                            );
-                                            return matchedStage ? (matchedStage.id || matchedStage.name) : pendingPipelineStatus;
-                                        })()}
-                                        onChange={(e) => setPendingPipelineStatus(e.target.value)}
-                                        className="flex-1 text-xs font-semibold border border-indigo-200 rounded-lg p-2 bg-white outline-none text-indigo-700 shadow-sm"
-                                    >
-                                        {pipelineStages.map(stage => (
-                                            <option key={stage.id} value={stage.id || stage.name}>
-                                                {stage.name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                    <button
-                                        onClick={() => {
-                                            const matchedStage = pipelineStages.find(s => 
-                                                s.id?.toString() === pendingPipelineStatus?.toString() || 
-                                                s.name?.toLowerCase() === pendingPipelineStatus?.toString().toLowerCase()
-                                            );
-                                            const targetStatus = matchedStage ? (matchedStage.id || matchedStage.name) : pendingPipelineStatus;
-                                            handleStatusChange(targetStatus);
-                                        }}
-                                        disabled={(() => {
-                                            const currentStage = pipelineStages.find(s => 
-                                                s.id?.toString() === pendingPipelineStatus?.toString() || 
-                                                s.name?.toLowerCase() === pendingPipelineStatus?.toString().toLowerCase()
-                                            );
-                                            const originalStage = pipelineStages.find(s => 
-                                                s.id?.toString() === selectedStudentProfile.lead_status?.toString() || 
-                                                s.name?.toLowerCase() === selectedStudentProfile.lead_status?.toString().toLowerCase()
-                                            );
-                                            const currentVal = currentStage ? currentStage.id : pendingPipelineStatus;
-                                            const originalVal = originalStage ? originalStage.id : (selectedStudentProfile.lead_status || 'NEW');
-                                            return currentVal?.toString() === originalVal?.toString();
-                                        })()}
-                                        className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors ${
-                                            (() => {
-                                                const currentStage = pipelineStages.find(s => 
-                                                    s.id?.toString() === pendingPipelineStatus?.toString() || 
+                                {/* Pipeline Status */}
+                                <div className="md:col-span-2 text-left bg-indigo-50/50 border border-indigo-100 rounded-xl p-4 mt-2">
+                                    <h3 className="text-xs font-bold text-indigo-900 uppercase tracking-wider mb-2">Sales Pipeline Status</h3>
+                                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                                        <select
+                                            value={(() => {
+                                                const matchedStage = pipelineStages.find(s =>
+                                                    s.id?.toString() === pendingPipelineStatus?.toString() ||
+                                                    s.name?.toLowerCase() === pendingPipelineStatus?.toLowerCase()
+                                                );
+                                                return matchedStage ? (matchedStage.id || matchedStage.name) : pendingPipelineStatus;
+                                            })()}
+                                            onChange={(e) => setPendingPipelineStatus(e.target.value)}
+                                            className="flex-1 text-xs font-semibold border border-indigo-200 rounded-lg p-2 bg-white outline-none text-indigo-700 shadow-sm"
+                                        >
+                                            {pipelineStages.map(stage => (
+                                                <option key={stage.id} value={stage.id || stage.name}>
+                                                    {stage.name}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <button
+                                            onClick={() => {
+                                                const matchedStage = pipelineStages.find(s =>
+                                                    s.id?.toString() === pendingPipelineStatus?.toString() ||
                                                     s.name?.toLowerCase() === pendingPipelineStatus?.toString().toLowerCase()
                                                 );
-                                                const originalStage = pipelineStages.find(s => 
-                                                    s.id?.toString() === selectedStudentProfile.lead_status?.toString() || 
+                                                const targetStatus = matchedStage ? (matchedStage.id || matchedStage.name) : pendingPipelineStatus;
+                                                handleStatusChange(targetStatus);
+                                            }}
+                                            disabled={(() => {
+                                                const currentStage = pipelineStages.find(s =>
+                                                    s.id?.toString() === pendingPipelineStatus?.toString() ||
+                                                    s.name?.toLowerCase() === pendingPipelineStatus?.toString().toLowerCase()
+                                                );
+                                                const originalStage = pipelineStages.find(s =>
+                                                    s.id?.toString() === selectedStudentProfile.lead_status?.toString() ||
+                                                    s.name?.toLowerCase() === selectedStudentProfile.lead_status?.toString().toLowerCase()
+                                                );
+                                                const currentVal = currentStage ? currentStage.id : pendingPipelineStatus;
+                                                const originalVal = originalStage ? originalStage.id : (selectedStudentProfile.lead_status || 'NEW');
+                                                return currentVal?.toString() === originalVal?.toString();
+                                            })()}
+                                            className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors ${(() => {
+                                                const currentStage = pipelineStages.find(s =>
+                                                    s.id?.toString() === pendingPipelineStatus?.toString() ||
+                                                    s.name?.toLowerCase() === pendingPipelineStatus?.toString().toLowerCase()
+                                                );
+                                                const originalStage = pipelineStages.find(s =>
+                                                    s.id?.toString() === selectedStudentProfile.lead_status?.toString() ||
                                                     s.name?.toLowerCase() === selectedStudentProfile.lead_status?.toString().toLowerCase()
                                                 );
                                                 const currentVal = currentStage ? currentStage.id : pendingPipelineStatus;
@@ -2416,324 +2680,320 @@ const SalesModule = () => {
                                             })()
                                                 ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm'
                                                 : 'bg-indigo-200 text-indigo-400 cursor-not-allowed'
-                                        }`}
-                                    >
-                                        {(() => {
-                                            const currentStage = pipelineStages.find(s => 
-                                                s.id?.toString() === pendingPipelineStatus?.toString() || 
-                                                s.name?.toLowerCase() === pendingPipelineStatus?.toString().toLowerCase()
-                                            );
-                                            const originalStage = pipelineStages.find(s => 
-                                                s.id?.toString() === selectedStudentProfile.lead_status?.toString() || 
-                                                s.name?.toLowerCase() === selectedStudentProfile.lead_status?.toString().toLowerCase()
-                                            );
-                                            const currentVal = currentStage ? currentStage.id : pendingPipelineStatus;
-                                            const originalVal = originalStage ? originalStage.id : (selectedStudentProfile.lead_status || 'NEW');
-                                            return currentVal?.toString() !== originalVal?.toString();
-                                        })() ? 'Save Status' : 'Saved'}
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* Meta Lead Quality Feedback Section */}
-                            {selectedStudentProfile.meta_lead_id && (
-                                <div className="md:col-span-2 text-left bg-blue-50/50 border border-blue-200 rounded-xl p-4 mt-2">
-                                    <div className="flex items-center gap-1.5 mb-2">
-                                        <svg className="w-4 h-4 text-blue-600" fill="currentColor" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
-                                        <h3 className="text-xs font-bold text-blue-900 uppercase tracking-wider">Meta Conversions Feedback</h3>
+                                                }`}
+                                        >
+                                            {(() => {
+                                                const currentStage = pipelineStages.find(s =>
+                                                    s.id?.toString() === pendingPipelineStatus?.toString() ||
+                                                    s.name?.toLowerCase() === pendingPipelineStatus?.toString().toLowerCase()
+                                                );
+                                                const originalStage = pipelineStages.find(s =>
+                                                    s.id?.toString() === selectedStudentProfile.lead_status?.toString() ||
+                                                    s.name?.toLowerCase() === selectedStudentProfile.lead_status?.toString().toLowerCase()
+                                                );
+                                                const currentVal = currentStage ? currentStage.id : pendingPipelineStatus;
+                                                const originalVal = originalStage ? originalStage.id : (selectedStudentProfile.lead_status || 'NEW');
+                                                return currentVal?.toString() !== originalVal?.toString();
+                                            })() ? 'Save Status' : 'Saved'}
+                                        </button>
                                     </div>
-                                    <p className="text-[11px] text-blue-800 mb-3">Marking this lead helps Meta optimize your ads for higher quality leads.</p>
-                                    <div className="flex gap-2">
-                                        <button
-                                            onClick={async () => {
-                                                try {
-                                                    const res = await api.patch(`crm/leads/${selectedStudentProfile.id}/quality/`, { lead_quality: 'QUALITY' });
-                                                    setSelectedStudentProfile(prev => ({ ...prev, lead_quality: 'QUALITY' }));
-                                                    alert(res.data?.message || 'Feedback sent to Meta.');
-                                                } catch (e) {
-                                                    alert('Failed to send feedback.');
-                                                }
-                                            }}
-                                            className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold border flex items-center justify-center gap-1.5 transition-colors ${
-                                                selectedStudentProfile.lead_quality === 'QUALITY'
+                                </div>
+
+                                {/* Meta Lead Quality Feedback Section */}
+                                {selectedStudentProfile.meta_lead_id && (
+                                    <div className="md:col-span-2 text-left bg-blue-50/50 border border-blue-200 rounded-xl p-4 mt-2">
+                                        <div className="flex items-center gap-1.5 mb-2">
+                                            <svg className="w-4 h-4 text-blue-600" fill="currentColor" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" /></svg>
+                                            <h3 className="text-xs font-bold text-blue-900 uppercase tracking-wider">Meta Conversions Feedback</h3>
+                                        </div>
+                                        <p className="text-[11px] text-blue-800 mb-3">Marking this lead helps Meta optimize your ads for higher quality leads.</p>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={async () => {
+                                                    try {
+                                                        const res = await api.patch(`crm/leads/${selectedStudentProfile.id}/quality/`, { lead_quality: 'QUALITY' });
+                                                        setSelectedStudentProfile(prev => ({ ...prev, lead_quality: 'QUALITY' }));
+                                                        alert(res.data?.message || 'Feedback sent to Meta.');
+                                                    } catch (e) {
+                                                        alert('Failed to send feedback.');
+                                                    }
+                                                }}
+                                                className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold border flex items-center justify-center gap-1.5 transition-colors ${selectedStudentProfile.lead_quality === 'QUALITY'
                                                     ? 'bg-emerald-600 border-emerald-600 text-white'
                                                     : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                                            }`}
-                                        >
-                                            ✅ Quality Lead
-                                        </button>
-                                        <button
-                                            onClick={async () => {
-                                                try {
-                                                    const res = await api.patch(`crm/leads/${selectedStudentProfile.id}/quality/`, { lead_quality: 'FAKE' });
-                                                    setSelectedStudentProfile(prev => ({ ...prev, lead_quality: 'FAKE' }));
-                                                    alert(res.data?.message || 'Feedback sent to Meta.');
-                                                } catch (e) {
-                                                    alert('Failed to send feedback.');
-                                                }
-                                            }}
-                                            className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold border flex items-center justify-center gap-1.5 transition-colors ${
-                                                selectedStudentProfile.lead_quality === 'FAKE'
+                                                    }`}
+                                            >
+                                                ✅ Quality Lead
+                                            </button>
+                                            <button
+                                                onClick={async () => {
+                                                    try {
+                                                        const res = await api.patch(`crm/leads/${selectedStudentProfile.id}/quality/`, { lead_quality: 'FAKE' });
+                                                        setSelectedStudentProfile(prev => ({ ...prev, lead_quality: 'FAKE' }));
+                                                        alert(res.data?.message || 'Feedback sent to Meta.');
+                                                    } catch (e) {
+                                                        alert('Failed to send feedback.');
+                                                    }
+                                                }}
+                                                className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold border flex items-center justify-center gap-1.5 transition-colors ${selectedStudentProfile.lead_quality === 'FAKE'
                                                     ? 'bg-rose-600 border-rose-600 text-white'
                                                     : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                                            }`}
-                                        >
-                                            ❌ Fake / Junk Lead
-                                        </button>
+                                                    }`}
+                                            >
+                                                ❌ Fake / Junk Lead
+                                            </button>
+                                        </div>
+                                        {selectedStudentProfile.lead_quality && selectedStudentProfile.lead_quality !== 'UNKNOWN' && (
+                                            <p className="text-[10px] text-slate-500 mt-2 text-center">
+                                                Status: <span className="font-semibold">{selectedStudentProfile.lead_quality}</span>
+                                            </p>
+                                        )}
                                     </div>
-                                    {selectedStudentProfile.lead_quality && selectedStudentProfile.lead_quality !== 'UNKNOWN' && (
-                                        <p className="text-[10px] text-slate-500 mt-2 text-center">
-                                            Status: <span className="font-semibold">{selectedStudentProfile.lead_quality}</span>
-                                        </p>
-                                    )}
-                                </div>
-                            )}
+                                )}
 
-                            {/* CRE Update */}
-                            <div className="md:col-span-2 text-left bg-slate-50 border border-slate-200 rounded-xl p-4 mt-2">
-                                <div className="flex justify-between items-center mb-2">
-                                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">CRE Update</h3>
-                                    {selectedStudentProfile.cre_update && (
-                                        <span className="text-[10px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full font-semibold border border-emerald-200">
-                                            Recorded
-                                        </span>
-                                    )}
-                                </div>
-                                <textarea
-                                    value={creUpdate}
-                                    onChange={(e) => setCreUpdate(e.target.value)}
-                                    placeholder="Enter CRE update..."
-                                    rows={3}
-                                    className="w-full text-xs p-2.5 border border-slate-200 rounded-lg outline-none focus:border-indigo-400 bg-white text-slate-800 resize-y mb-2.5"
-                                />
-                                <div className="flex justify-between items-center">
-                                    <span className="text-[10px] text-slate-400 italic">Optional field</span>
-                                    <div className="flex gap-2">
-                                        {creUpdate !== (selectedStudentProfile.cre_update || '') && (
+                                {/* CRE Update */}
+                                <div className="md:col-span-2 text-left bg-slate-50 border border-slate-200 rounded-xl p-4 mt-2">
+                                    <div className="flex justify-between items-center mb-2">
+                                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">CRE Update</h3>
+                                        {selectedStudentProfile.cre_update && (
+                                            <span className="text-[10px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full font-semibold border border-emerald-200">
+                                                Recorded
+                                            </span>
+                                        )}
+                                    </div>
+                                    <textarea
+                                        value={creUpdate}
+                                        onChange={(e) => setCreUpdate(e.target.value)}
+                                        placeholder="Enter CRE update..."
+                                        rows={3}
+                                        className="w-full text-xs p-2.5 border border-slate-200 rounded-lg outline-none focus:border-indigo-400 bg-white text-slate-800 resize-y mb-2.5"
+                                    />
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-[10px] text-slate-400 italic">Optional field</span>
+                                        <div className="flex gap-2">
+                                            {creUpdate !== (selectedStudentProfile.cre_update || '') && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setCreUpdate(selectedStudentProfile.cre_update || '')}
+                                                    className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-500 hover:bg-slate-200 transition-colors"
+                                                >
+                                                    Reset
+                                                </button>
+                                            )}
                                             <button
                                                 type="button"
-                                                onClick={() => setCreUpdate(selectedStudentProfile.cre_update || '')}
-                                                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-500 hover:bg-slate-200 transition-colors"
+                                                onClick={handleSaveCreUpdate}
+                                                disabled={savingCreUpdate}
+                                                className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition-colors shadow-sm flex items-center gap-1.5"
                                             >
-                                                Reset
+                                                {savingCreUpdate ? 'Saving...' : 'Save CRE Update'}
                                             </button>
-                                        )}
-                                        <button
-                                            type="button"
-                                            onClick={handleSaveCreUpdate}
-                                            disabled={savingCreUpdate}
-                                            className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition-colors shadow-sm flex items-center gap-1.5"
-                                        >
-                                            {savingCreUpdate ? 'Saving...' : 'Save CRE Update'}
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Activity Log / Interactions */}
-                            <div className="md:col-span-2 text-left bg-slate-50 border border-slate-200 rounded-xl p-4 mt-2">
-                                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Activity Timeline</h3>
-                                
-                                {/* Log New Activity Form */}
-                                <div className="mb-4 bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
-                                    <div className="flex gap-2 mb-2">
-                                        <select 
-                                            value={interactionType} 
-                                            onChange={(e) => setInteractionType(e.target.value)}
-                                            className="text-xs border border-slate-200 rounded-md p-1.5 bg-slate-50 outline-none text-slate-700 font-medium"
-                                        >
-                                            <option value="NOTE">Log Note</option>
-                                            <option value="CALL">Logged Call</option>
-                                            <option value="WHATSAPP">WhatsApp Sent</option>
-                                            <option value="EMAIL">Email Sent</option>
-                                            <option value="MEETING">Meeting Had</option>
-                                        </select>
-                                    </div>
-                                    <textarea 
-                                        value={interactionNotes}
-                                        onChange={(e) => setInteractionNotes(e.target.value)}
-                                        placeholder={`What happened during this ${interactionType.toLowerCase()}?`}
-                                        className="w-full text-xs p-2 border border-slate-200 rounded-md outline-none focus:border-indigo-400 bg-slate-50 resize-none h-16 mb-2"
-                                    />
-                                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-                                        <div className="flex items-center gap-2">
-                                            <label className="text-[10px] font-bold text-slate-500 uppercase">Follow-up:</label>
-                                            <input 
-                                                type="datetime-local" 
-                                                value={nextFollowupDate}
-                                                onChange={(e) => setNextFollowupDate(e.target.value)}
-                                                className="text-xs p-1.5 border border-slate-200 rounded-md outline-none focus:border-indigo-400 bg-white text-slate-700"
-                                            />
                                         </div>
-                                        <button 
-                                            onClick={handleLogInteraction}
-                                            disabled={!interactionNotes.trim()}
-                                            className="bg-indigo-600 text-white text-[10px] font-bold px-4 py-2 rounded-md disabled:opacity-50 hover:bg-indigo-700 transition-colors w-full sm:w-auto"
-                                        >
-                                            Save Activity
-                                        </button>
                                     </div>
                                 </div>
 
-                                {/* Timeline History */}
-                                <div className="space-y-3">
-                                    {loadingInteractions ? (
-                                        <p className="text-slate-400 text-xs italic">Loading history...</p>
-                                    ) : interactions.length > 0 ? (
-                                        interactions.map((interaction) => (
-                                            <div key={interaction.id} className="flex gap-3 bg-white p-3 rounded-lg border border-slate-100 shadow-sm">
-                                                <div className="mt-0.5">
-                                                    {interaction.interaction_type === 'CALL' ? <span className="text-blue-500 bg-blue-50 p-1.5 rounded-full block"><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg></span> :
-                                                     interaction.interaction_type === 'WHATSAPP' ? <span className="text-green-500 bg-green-50 p-1.5 rounded-full block"><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg></span> :
-                                                     interaction.interaction_type === 'EMAIL' ? <span className="text-slate-600 bg-slate-100 p-1.5 rounded-full block"><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg></span> :
-                                                     <span className="text-slate-500 bg-slate-100 p-1.5 rounded-full block"><FileText size={14} /></span>
-                                                    }
-                                                </div>
-                                                <div className="flex-1">
-                                                    <div className="flex justify-between items-start mb-0.5">
-                                                        <p className="text-xs font-bold text-slate-800">{interaction.interaction_type}</p>
-                                                        <p className="text-[10px] text-slate-400 font-medium">
-                                                            {new Date(interaction.date).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
-                                                        </p>
-                                                    </div>
-                                                    <p className="text-xs text-slate-600 whitespace-pre-wrap leading-relaxed">{interaction.notes}</p>
-                                                    {interaction.audio_recording && (
-                                                        <div className="mt-2">
-                                                            <audio preload="none" 
-                                                                controls 
-                                                                className="h-8 w-full max-w-xs"
-                                                                src={interaction.audio_recording.startsWith('http') ? interaction.audio_recording : `${api.defaults.baseURL.split('/api')[0]}${interaction.audio_recording}`}
-                                                            >
-                                                                Your browser does not support the audio element.
-                                                            </audio>
-                                                        </div>
-                                                    )}
-                                                    {interaction.author_name && (
-                                                        <p className="text-[9px] text-slate-400 mt-1 italic">Logged by {interaction.author_name}</p>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        ))
-                                    ) : (
-                                        <p className="text-slate-400 text-xs italic text-center py-4">No activities logged yet.</p>
-                                    )}
-                                </div>
-                            </div>
+                                {/* Activity Log / Interactions */}
+                                <div className="md:col-span-2 text-left bg-slate-50 border border-slate-200 rounded-xl p-4 mt-2">
+                                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Activity Timeline</h3>
 
-                            {/* Scheduled Follow-up Tasks */}
-                            <div className="md:col-span-2 text-left bg-slate-50 border border-slate-200 rounded-xl p-4 mt-2">
-                                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Scheduled Follow-ups</h3>
-                                {loadingTasks ? (
-                                    <p className="text-slate-400 text-xs italic">Loading schedules...</p>
-                                ) : studentTasks.length > 0 ? (
-                                    <div className="space-y-2.5">
-                                        {studentTasks.map(task => (
-                                            <div key={task.id} className="bg-white p-3 rounded-lg border border-slate-100 shadow-sm flex items-center justify-between gap-3">
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center gap-2 mb-1">
-                                                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
-                                                            task.status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
-                                                        }`}>
-                                                            {task.status}
-                                                        </span>
-                                                        <span className="text-[10px] text-slate-400 font-semibold uppercase">{task.task_type}</span>
+                                    {/* Log New Activity Form */}
+                                    <div className="mb-4 bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
+                                        <div className="flex gap-2 mb-2">
+                                            <select
+                                                value={interactionType}
+                                                onChange={(e) => setInteractionType(e.target.value)}
+                                                className="text-xs border border-slate-200 rounded-md p-1.5 bg-slate-50 outline-none text-slate-700 font-medium"
+                                            >
+                                                <option value="NOTE">Log Note</option>
+                                                <option value="CALL">Logged Call</option>
+                                                <option value="WHATSAPP">WhatsApp Sent</option>
+                                                <option value="EMAIL">Email Sent</option>
+                                                <option value="MEETING">Meeting Had</option>
+                                            </select>
+                                        </div>
+                                        <textarea
+                                            value={interactionNotes}
+                                            onChange={(e) => setInteractionNotes(e.target.value)}
+                                            placeholder={`What happened during this ${interactionType.toLowerCase()}?`}
+                                            className="w-full text-xs p-2 border border-slate-200 rounded-md outline-none focus:border-indigo-400 bg-slate-50 resize-none h-16 mb-2"
+                                        />
+                                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                                            <div className="flex items-center gap-2">
+                                                <label className="text-[10px] font-bold text-slate-500 uppercase">Follow-up:</label>
+                                                <input
+                                                    type="datetime-local"
+                                                    value={nextFollowupDate}
+                                                    onChange={(e) => setNextFollowupDate(e.target.value)}
+                                                    className="text-xs p-1.5 border border-slate-200 rounded-md outline-none focus:border-indigo-400 bg-white text-slate-700"
+                                                />
+                                            </div>
+                                            <button
+                                                onClick={handleLogInteraction}
+                                                disabled={!interactionNotes.trim()}
+                                                className="bg-indigo-600 text-white text-[10px] font-bold px-4 py-2 rounded-md disabled:opacity-50 hover:bg-indigo-700 transition-colors w-full sm:w-auto"
+                                            >
+                                                Save Activity
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Timeline History */}
+                                    <div className="space-y-3">
+                                        {loadingInteractions ? (
+                                            <p className="text-slate-400 text-xs italic">Loading history...</p>
+                                        ) : interactions.length > 0 ? (
+                                            interactions.map((interaction) => (
+                                                <div key={interaction.id} className="flex gap-3 bg-white p-3 rounded-lg border border-slate-100 shadow-sm">
+                                                    <div className="mt-0.5">
+                                                        {interaction.interaction_type === 'CALL' ? <span className="text-blue-500 bg-blue-50 p-1.5 rounded-full block"><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg></span> :
+                                                            interaction.interaction_type === 'WHATSAPP' ? <span className="text-green-500 bg-green-50 p-1.5 rounded-full block"><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg></span> :
+                                                                interaction.interaction_type === 'EMAIL' ? <span className="text-slate-600 bg-slate-100 p-1.5 rounded-full block"><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg></span> :
+                                                                    <span className="text-slate-500 bg-slate-100 p-1.5 rounded-full block"><FileText size={14} /></span>
+                                                        }
                                                     </div>
-                                                    <p className={`text-xs font-bold text-slate-800 ${task.status === 'COMPLETED' ? 'line-through text-slate-400' : ''}`}>
-                                                        {task.title}
-                                                    </p>
-                                                    {task.due_date && (
-                                                        <p className="text-[10px] text-slate-500 mt-0.5">
-                                                            Due: {new Date(task.due_date).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
-                                                        </p>
-                                                    )}
-                                                    {task.notes && <p className="text-[10px] text-slate-500 mt-1 italic truncate">{task.notes}</p>}
+                                                    <div className="flex-1">
+                                                        <div className="flex justify-between items-start mb-0.5">
+                                                            <p className="text-xs font-bold text-slate-800">{interaction.interaction_type}</p>
+                                                            <p className="text-[10px] text-slate-400 font-medium">
+                                                                {new Date(interaction.date).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                                                            </p>
+                                                        </div>
+                                                        <p className="text-xs text-slate-600 whitespace-pre-wrap leading-relaxed">{interaction.notes}</p>
+                                                        {interaction.audio_recording && (
+                                                            <div className="mt-2">
+                                                                <audio preload="none"
+                                                                    controls
+                                                                    className="h-8 w-full max-w-xs"
+                                                                    src={interaction.audio_recording.startsWith('http') ? interaction.audio_recording : `${api.defaults.baseURL.split('/api')[0]}${interaction.audio_recording}`}
+                                                                >
+                                                                    Your browser does not support the audio element.
+                                                                </audio>
+                                                            </div>
+                                                        )}
+                                                        {interaction.author_name && (
+                                                            <p className="text-[9px] text-slate-400 mt-1 italic">Logged by {interaction.author_name}</p>
+                                                        )}
+                                                    </div>
                                                 </div>
-                                                <button
-                                                    onClick={() => handleToggleTaskStatus(task.id, task.status)}
-                                                    className={`text-[10px] font-bold px-2.5 py-1.5 rounded transition-all whitespace-nowrap ${
-                                                        task.status === 'COMPLETED'
+                                            ))
+                                        ) : (
+                                            <p className="text-slate-400 text-xs italic text-center py-4">No activities logged yet.</p>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Scheduled Follow-up Tasks */}
+                                <div className="md:col-span-2 text-left bg-slate-50 border border-slate-200 rounded-xl p-4 mt-2">
+                                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Scheduled Follow-ups</h3>
+                                    {loadingTasks ? (
+                                        <p className="text-slate-400 text-xs italic">Loading schedules...</p>
+                                    ) : studentTasks.length > 0 ? (
+                                        <div className="space-y-2.5">
+                                            {studentTasks.map(task => (
+                                                <div key={task.id} className="bg-white p-3 rounded-lg border border-slate-100 shadow-sm flex items-center justify-between gap-3">
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex items-center gap-2 mb-1">
+                                                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${task.status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
+                                                                }`}>
+                                                                {task.status}
+                                                            </span>
+                                                            <span className="text-[10px] text-slate-400 font-semibold uppercase">{task.task_type}</span>
+                                                        </div>
+                                                        <p className={`text-xs font-bold text-slate-800 ${task.status === 'COMPLETED' ? 'line-through text-slate-400' : ''}`}>
+                                                            {task.title}
+                                                        </p>
+                                                        {task.due_date && (
+                                                            <p className="text-[10px] text-slate-500 mt-0.5">
+                                                                Due: {new Date(task.due_date).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                                                            </p>
+                                                        )}
+                                                        {task.notes && <p className="text-[10px] text-slate-500 mt-1 italic truncate">{task.notes}</p>}
+                                                    </div>
+                                                    <button
+                                                        onClick={() => handleToggleTaskStatus(task.id, task.status)}
+                                                        className={`text-[10px] font-bold px-2.5 py-1.5 rounded transition-all whitespace-nowrap ${task.status === 'COMPLETED'
                                                             ? 'bg-slate-100 hover:bg-slate-200 text-slate-600'
                                                             : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-600'
-                                                    }`}
-                                                >
-                                                    {task.status === 'COMPLETED' ? 'Mark Pending' : 'Mark Completed'}
-                                                </button>
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <p className="text-slate-400 text-xs italic text-center py-2">No scheduled follow-up tasks for this lead.</p>
-                                )}
-                            </div>
-
-                            {/* Documents */}
-                            <div className="md:col-span-2 text-left">
-                                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Uploaded Documents</h3>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                    {selectedStudentProfile.documents_list?.length > 0 ? (
-                                        selectedStudentProfile.documents_list.map((doc) => (
-                                            <a
-                                                key={doc.id}
-                                                href={doc.file.startsWith('http') ? doc.file : `${api.defaults.baseURL.split('/api')[0]}${doc.file}`}
-                                                target="_blank"
-                                                rel="noreferrer"
-                                                className="flex items-center gap-2.5 p-2 bg-slate-50 border border-slate-200 rounded-lg hover:border-indigo-300 hover:bg-indigo-50/50 transition-all group"
-                                            >
-                                                <div className="w-8 h-8 rounded bg-white flex items-center justify-center text-slate-400 group-hover:text-indigo-600 border border-slate-200 shadow-sm">
-                                                    <FileText size={16} />
+                                                            }`}
+                                                    >
+                                                        {task.status === 'COMPLETED' ? 'Mark Pending' : 'Mark Completed'}
+                                                    </button>
                                                 </div>
-                                                <div className="flex-1 overflow-hidden">
-                                                    <p className="text-xs font-semibold text-slate-800 truncate">{doc.document_type}</p>
-                                                    <p className="text-[10px] text-slate-400">Click to view</p>
-                                                </div>
-                                            </a>
-                                        ))
+                                            ))}
+                                        </div>
                                     ) : (
-                                        <p className="text-slate-400 text-xs italic">No documents uploaded.</p>
+                                        <p className="text-slate-400 text-xs italic text-center py-2">No scheduled follow-up tasks for this lead.</p>
+                                    )}
+                                </div>
+
+                                {/* Documents */}
+                                <div className="md:col-span-2 text-left">
+                                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Uploaded Documents</h3>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        {selectedStudentProfile.documents_list?.length > 0 ? (
+                                            selectedStudentProfile.documents_list.map((doc) => (
+                                                <a
+                                                    key={doc.id}
+                                                    href={doc.file.startsWith('http') ? doc.file : `${api.defaults.baseURL.split('/api')[0]}${doc.file}`}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    className="flex items-center gap-2.5 p-2 bg-slate-50 border border-slate-200 rounded-lg hover:border-indigo-300 hover:bg-indigo-50/50 transition-all group"
+                                                >
+                                                    <div className="w-8 h-8 rounded bg-white flex items-center justify-center text-slate-400 group-hover:text-indigo-600 border border-slate-200 shadow-sm">
+                                                        <FileText size={16} />
+                                                    </div>
+                                                    <div className="flex-1 overflow-hidden">
+                                                        <p className="text-xs font-semibold text-slate-800 truncate">{doc.document_type}</p>
+                                                        <p className="text-[10px] text-slate-400">Click to view</p>
+                                                    </div>
+                                                </a>
+                                            ))
+                                        ) : (
+                                            <p className="text-slate-400 text-xs italic">No documents uploaded.</p>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Transactions */}
+                                <div className="md:col-span-2 text-left">
+                                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Payment Information</h3>
+                                    {selectedStudentProfile.transactions_list?.length > 0 ? (
+                                        <div className="bg-emerald-50/30 border border-emerald-200 p-4 rounded-xl">
+                                            {selectedStudentProfile.transactions_list.map((txn) => (
+                                                <div key={txn.id} className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 border-b border-emerald-100 last:border-b-0 pb-3 last:pb-0 mb-3 last:mb-0">
+                                                    <div>
+                                                        <p className="text-[10px] text-emerald-700/80 mb-0.5">Transaction ID</p>
+                                                        <p className="font-semibold text-xs text-emerald-900 truncate">{txn.transaction_id || '-'}</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-[10px] text-emerald-700/80 mb-0.5">Amount</p>
+                                                        <p className="font-semibold text-xs text-emerald-900">₹{txn.amount || '-'}</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-[10px] text-emerald-700/80 mb-0.5">Date</p>
+                                                        <p className="font-semibold text-xs text-emerald-900">{new Date(txn.date).toLocaleDateString()}</p>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="bg-amber-50/50 border border-amber-200 p-3 rounded-lg text-center">
+                                            <p className="text-amber-800 text-xs font-medium">No payment record found.</p>
+                                        </div>
                                     )}
                                 </div>
                             </div>
 
-                            {/* Transactions */}
-                            <div className="md:col-span-2 text-left">
-                                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Payment Information</h3>
-                                {selectedStudentProfile.transactions_list?.length > 0 ? (
-                                    <div className="bg-emerald-50/30 border border-emerald-200 p-4 rounded-xl">
-                                        {selectedStudentProfile.transactions_list.map((txn) => (
-                                            <div key={txn.id} className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 border-b border-emerald-100 last:border-b-0 pb-3 last:pb-0 mb-3 last:mb-0">
-                                                <div>
-                                                    <p className="text-[10px] text-emerald-700/80 mb-0.5">Transaction ID</p>
-                                                    <p className="font-semibold text-xs text-emerald-900 truncate">{txn.transaction_id || '-'}</p>
-                                                </div>
-                                                <div>
-                                                    <p className="text-[10px] text-emerald-700/80 mb-0.5">Amount</p>
-                                                    <p className="font-semibold text-xs text-emerald-900">₹{txn.amount || '-'}</p>
-                                                </div>
-                                                <div>
-                                                    <p className="text-[10px] text-emerald-700/80 mb-0.5">Date</p>
-                                                    <p className="font-semibold text-xs text-emerald-900">{new Date(txn.date).toLocaleDateString()}</p>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div className="bg-amber-50/50 border border-amber-200 p-3 rounded-lg text-center">
-                                        <p className="text-amber-800 text-xs font-medium">No payment record found.</p>
-                                    </div>
-                                )}
+                            <div className="mt-6 pt-4 border-t border-slate-100">
+                                <button
+                                    onClick={() => setSelectedStudentProfile(null)}
+                                    className="w-full py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-semibold hover:bg-slate-200 transition-all"
+                                >
+                                    Close Profile
+                                </button>
                             </div>
-                        </div>
-
-                        <div className="mt-6 pt-4 border-t border-slate-100">
-                            <button
-                                onClick={() => setSelectedStudentProfile(null)}
-                                className="w-full py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-semibold hover:bg-slate-200 transition-all"
-                            >
-                                Close Profile
-                            </button>
-                        </div>
-                    </motion.div>
-                </div>
+                        </motion.div>
+                    </div>
                 );
             })()}
 
@@ -3156,36 +3416,36 @@ const SalesModule = () => {
                 </div>
             )}
             {/* BDE Report Modal */}
-            <BDEReport 
-                bdeId={selectedBdeId} 
+            <BDEReport
+                bdeId={selectedBdeId}
                 initialStartDate={selectedBdeDates.start}
                 initialEndDate={selectedBdeDates.end}
-                onClose={() => setSelectedBdeId(null)} 
+                onClose={() => setSelectedBdeId(null)}
                 onLeadClick={async (id) => {
                     try {
                         const res = await api.get(`students/${id}/`);
                         setSelectedStudentProfile(res.data);
-                    } catch(e) {
+                    } catch (e) {
                         console.error("Failed to load student profile", e);
                     }
                 }}
             />
-            
+
             <StatLeadsModal
-    config={statModalConfig}
-    onClose={() => setStatModalConfig(null)}
-    onViewLead={async (id) => {
-        try {
-            const res = await api.get(`students/${id}/`);
-            setSelectedStudentProfile(res.data);
-        } catch (e) {
-            console.error("Failed to load student profile", e);
-        }
-    }}
-    salesSectionFilter={salesSectionFilter}
-    pipelineStages={pipelineStages}
-    salesUsers={salesUsers}
-/>
+                config={statModalConfig}
+                onClose={() => setStatModalConfig(null)}
+                onViewLead={async (id) => {
+                    try {
+                        const res = await api.get(`students/${id}/`);
+                        setSelectedStudentProfile(res.data);
+                    } catch (e) {
+                        console.error("Failed to load student profile", e);
+                    }
+                }}
+                salesSectionFilter={salesSectionFilter}
+                pipelineStages={pipelineStages}
+                salesUsers={salesUsers}
+            />
 
         </div>
     );

@@ -263,21 +263,27 @@ def check_is_sales_manager(user) -> bool:
     """
     Checks if a user has Sales Manager / Team Lead / Executive permissions.
     Preserves the existing business rule:
-    - User has explicit management/lead role (SALES_HEAD, SALES_MANAGER, MANAGER, SUPER_ADMIN, ADMIN, SALES_LEAD)
+    - Super Admin or Django is_superuser
+    - Explicit management/lead role (SUPER_ADMIN, ADMIN, TEAM_LEAD, SALES_HEAD, SALES_MANAGER, MANAGER, SALES_LEAD)
     - User has user.is_manager attribute/property set to True
-    - User has HRMS profile with subordinates, or designation name containing 'lead', 'manager', 'vp', 'head', or 'director'
+    - User has direct reporting subordinates in User model (user.subordinates)
+    - User has HRMS profile with subordinates, or designation name containing 'lead', 'manager', 'vp', 'head', 'director', or 'supervisor'
     """
     if not user or not user.is_authenticated:
         return False
-    if getattr(user, 'role', '') in ['SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SUPER_ADMIN', 'ADMIN', 'SALES_LEAD']:
+    if getattr(user, 'is_superuser', False):
+        return True
+    if getattr(user, 'role', '') in ['SUPER_ADMIN', 'ADMIN', 'TEAM_LEAD', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD']:
         return True
     if getattr(user, 'is_manager', False):
         return True
+    if hasattr(user, 'subordinates') and user.subordinates.exists():
+        return True
     if hasattr(user, 'hrms_profile'):
         profile = user.hrms_profile
-        if profile.subordinates.exists():
+        if hasattr(profile, 'subordinates') and profile.subordinates.exists():
             return True
-        if profile.designation and any(kw in profile.designation.name.lower() for kw in ['lead', 'manager', 'vp', 'head', 'director']):
+        if profile.designation and any(kw in (profile.designation.name or '').lower() for kw in ['lead', 'manager', 'vp', 'head', 'director', 'supervisor', 'tl']):
             return True
     return False
 
