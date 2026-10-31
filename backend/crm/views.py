@@ -9,8 +9,11 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Sum
 from core.models import Student, Program, Transaction, normalize_phone_number
-from .models import PipelineStage, LeadInteraction, Campaign, WebhookEndpoint, WebhookLog, Task
-from .serializers import PipelineStageSerializer, LeadInteractionSerializer, CampaignSerializer, TaskSerializer
+from .models import PipelineStage, LeadInteraction, Campaign, WebhookEndpoint, WebhookLog, Task, LeadTask, LeadTaskItem, LeadTaskAssignmentHistory
+from .serializers import (
+    PipelineStageSerializer, LeadInteractionSerializer, CampaignSerializer, TaskSerializer,
+    LeadTaskListSerializer, LeadTaskDetailSerializer, LeadTaskItemSerializer, LeadTaskAssignmentHistorySerializer
+)
 from .utils import (
     normalize_phone_for_matching, match_lead_by_phone, match_agent_by_phone,
     get_converted_stage_values, get_new_stage_values, get_dropped_stage_values,
@@ -415,6 +418,15 @@ class SalesUserListView(APIView):
             if user_section != 'BOTH':
                 users = users.filter(Q(sales_section=user_section) | Q(sales_section='BOTH'))
 
+        if request.user.role not in ['SUPER_ADMIN', 'ADMIN'] and not request.user.is_superuser:
+            subordinates = request.user.get_all_subordinates() if hasattr(request.user, 'get_all_subordinates') else []
+            if not subordinates and hasattr(request.user, 'hrms_profile') and hasattr(request.user.hrms_profile, 'subordinates'):
+                hrms_subs = request.user.hrms_profile.subordinates.select_related('user').all()
+                subordinates = [sub.user for sub in hrms_subs if sub.user]
+            if subordinates:
+                team_user_ids = [request.user.id] + [s.id for s in subordinates]
+                users = users.filter(id__in=team_user_ids)
+
         section_filter = request.query_params.get('sales_section')
         if section_filter and request.user.role in ['SUPER_ADMIN', 'ADMIN']:
             users = users.filter(Q(sales_section=section_filter) | Q(sales_section='BOTH'))
@@ -747,6 +759,18 @@ class CampaignViewSet(viewsets.ModelViewSet):
     queryset = Campaign.objects.all()
     serializer_class = CampaignSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def check_permissions(self, request):
+        super().check_permissions(request)
+        user = request.user
+        from .utils import check_is_sales_manager
+        # Super Admin, Admin, Marketer, and Team Leads can access Campaigns.
+        # Standard SALES / BDE executives are restricted from Campaigns.
+        if getattr(user, 'role', '') == 'SALES' and not check_is_sales_manager(user):
+            self.permission_denied(
+                request,
+                message="BDE executives do not have permission to access Campaigns."
+            )
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -2196,6 +2220,11 @@ class BulkAssignLeadsView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
+        user = request.user
+        from .utils import check_is_sales_manager
+        if not check_is_sales_manager(user):
+            return Response({'error': 'You do not have permission to assign leads.'}, status=status.HTTP_403_FORBIDDEN)
+
         lead_ids = request.data.get('lead_ids', [])
         sales_user_id = request.data.get('sales_user_id')
 
@@ -2212,3 +2241,541 @@ class BulkAssignLeadsView(APIView):
         except Exception as e:
             logger.error(f"Bulk lead assignment error: {e}")
             return Response({'error': 'Failed to assign leads. Please try again.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class LeadTaskViewSet(viewsets.ModelViewSet):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_serializer_class(self):
+        if self.action in ['retrieve', 'update', 'partial_update']:
+            return LeadTaskDetailSerializer
+        return LeadTaskListSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        if not user or not user.is_authenticated:
+            return LeadTask.objects.none()
+
+        sales_roles = ['SALES', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD', 'SUPER_ADMIN', 'ADMIN', 'TEAM_LEAD']
+        if getattr(user, 'role', '') not in sales_roles and not user.is_superuser:
+            return LeadTask.objects.none()
+
+        from .utils import check_is_sales_manager
+        qs = LeadTask.objects.all().select_related('assigned_to', 'created_by').prefetch_related(
+            'items__lead', 'items__assigned_to', 'items__lead__program_type',
+            'items__lead__course', 'items__lead__assigned_to', 'items__completed_by',
+            'assigned_bdes', 'assignment_history'
+        )
+        if not check_is_sales_manager(user):
+            # Regular BDE only sees tasks assigned to them (either as primary, in assigned_bdes, or having assigned items)
+            from django.db.models import Q
+            qs = qs.filter(
+                Q(assigned_to=user) |
+                Q(assigned_bdes=user) |
+                Q(items__assigned_to=user)
+            ).distinct()
+        else:
+            # Sales manager can optionally filter by assigned_to or status
+            user_section = getattr(user, 'sales_section', 'BOTH')
+            if user_section and user_section != 'BOTH':
+                from django.db.models import Q
+                qs = qs.filter(
+                    Q(assigned_to__sales_section=user_section) |
+                    Q(created_by__sales_section=user_section) |
+                    Q(items__lead__sales_section=user_section) |
+                    Q(assigned_bdes__sales_section=user_section)
+                ).distinct()
+
+            # Team Lead authorized scope filtering:
+            if getattr(user, 'role', '') not in ['SUPER_ADMIN', 'ADMIN'] and not user.is_superuser:
+                subordinates = user.get_all_subordinates() if hasattr(user, 'get_all_subordinates') else []
+                if not subordinates and hasattr(user, 'hrms_profile') and hasattr(user.hrms_profile, 'subordinates'):
+                    hrms_subs = user.hrms_profile.subordinates.select_related('user').all()
+                    subordinates = [sub.user for sub in hrms_subs if sub.user]
+
+                if subordinates:
+                    team_user_ids = [user.id] + [s.id for s in subordinates]
+                    from django.db.models import Q
+                    qs = qs.filter(
+                        Q(assigned_to_id__in=team_user_ids) |
+                        Q(created_by_id__in=team_user_ids) |
+                        Q(assigned_bdes__id__in=team_user_ids) |
+                        Q(items__assigned_to_id__in=team_user_ids)
+                    ).distinct()
+
+            assigned_to = self.request.query_params.get('assigned_to')
+            if assigned_to:
+                from django.db.models import Q
+                qs = qs.filter(
+                    Q(assigned_to_id=assigned_to) |
+                    Q(assigned_bdes__id=assigned_to) |
+                    Q(items__assigned_to_id=assigned_to)
+                ).distinct()
+            status_param = self.request.query_params.get('status')
+            if status_param:
+                qs = qs.filter(status=status_param.upper())
+        return qs
+
+    @action(detail=False, methods=['post'], url_path='validate-csv')
+    def validate_csv(self, request):
+        user = request.user
+        from .utils import check_is_sales_manager
+        if not check_is_sales_manager(user):
+            return Response({'error': 'You do not have permission to upload task leads.'}, status=status.HTTP_403_FORBIDDEN)
+
+        rows = request.data.get('rows')
+        if rows is None and 'file' in request.FILES:
+            import csv
+            import io
+            file_obj = request.FILES['file']
+            try:
+                decoded = file_obj.read().decode('utf-8-sig', errors='replace')
+                reader = csv.DictReader(io.StringIO(decoded))
+                rows = list(reader)
+            except Exception as e:
+                return Response({'error': f'Failed to parse CSV file: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not rows or not isinstance(rows, list):
+            return Response({'error': 'No rows found in the uploaded file or payload.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        first_row = rows[0] if rows else {}
+        headers_lower = {k.strip().lower(): k for k in first_row.keys()}
+
+        id_col = None
+        for candidate in ['crm_student_id', 'lead_id', 'student_id', 'crm_id', 'lead id', 'student id', 'id']:
+            if candidate in headers_lower:
+                id_col = headers_lower[candidate]
+                break
+
+        contact_col = None
+        for candidate in ['mobile', 'contact', 'phone', 'phone_number', 'mobile_number', 'contact_number']:
+            if candidate in headers_lower:
+                contact_col = headers_lower[candidate]
+                break
+
+        email_col = None
+        for candidate in ['email', 'email_address', 'mail']:
+            if candidate in headers_lower:
+                email_col = headers_lower[candidate]
+                break
+
+        if not id_col and not contact_col and not email_col:
+            return Response({
+                'error': (
+                    "CSV must contain at least one recognized lead identifier column: "
+                    "'lead_id' (or 'crm_student_id' / 'id'), 'contact' (or 'mobile'), or 'email'."
+                ),
+                'available_columns': list(first_row.keys())
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        id_vals = set()
+        mobile_vals = set()
+        email_vals = set()
+        for r in rows:
+            if id_col and r.get(id_col):
+                val = str(r[id_col]).strip()
+                if val:
+                    id_vals.add(val)
+            if contact_col and r.get(contact_col):
+                val = str(r[contact_col]).strip()
+                if val:
+                    import re
+                    digits = re.sub(r'\D', '', val)
+                    if digits:
+                        mobile_vals.add(digits)
+                        if len(digits) > 10:
+                            mobile_vals.add(digits[-10:])
+            if email_col and r.get(email_col):
+                val = str(r[email_col]).strip().lower()
+                if val:
+                    email_vals.add(val)
+
+        from django.db.models import Q
+        query = Q()
+        if id_vals:
+            numeric_ids = [int(v) for v in id_vals if v.isdigit()]
+            query |= Q(crm_student_id__in=id_vals)
+            if numeric_ids:
+                query |= Q(id__in=numeric_ids)
+        if mobile_vals:
+            query |= Q(mobile__in=mobile_vals)
+            for m in list(mobile_vals)[:50]:
+                query |= Q(mobile__endswith=m[-10:])
+        if email_vals:
+            query |= Q(email__in=email_vals)
+
+        matching_students = list(
+            Student.objects.filter(query)
+            .select_related('program_type', 'course', 'assigned_to')
+        )
+
+        by_crm_id = {}
+        by_pk = {}
+        by_mobile = {}
+        by_email = {}
+        for s in matching_students:
+            if s.crm_student_id:
+                by_crm_id[s.crm_student_id.strip().upper()] = s
+            by_pk[str(s.id)] = s
+            if s.mobile:
+                import re
+                d = re.sub(r'\D', '', s.mobile)
+                if d:
+                    by_mobile[d] = s
+                    if len(d) >= 10:
+                        by_mobile[d[-10:]] = s
+            if s.email:
+                by_email[s.email.strip().lower()] = s
+
+        matched_leads = []
+        matched_lead_ids = set()
+        duplicate_rows = []
+        unmatched_rows = []
+
+        user_section = getattr(user, 'sales_section', 'BOTH')
+
+        for idx, row in enumerate(rows):
+            row_num = idx + 2
+            matched_student = None
+            used_identifier = None
+
+            if id_col and row.get(id_col):
+                raw_id = str(row[id_col]).strip()
+                if raw_id:
+                    used_identifier = f"ID: {raw_id}"
+                    matched_student = by_crm_id.get(raw_id.upper()) or by_pk.get(raw_id)
+
+            if not matched_student and contact_col and row.get(contact_col):
+                raw_mob = str(row[contact_col]).strip()
+                if raw_mob:
+                    import re
+                    d = re.sub(r'\D', '', raw_mob)
+                    used_identifier = used_identifier or f"Contact: {raw_mob}"
+                    matched_student = by_mobile.get(d) or (by_mobile.get(d[-10:]) if len(d) >= 10 else None)
+
+            if not matched_student and email_col and row.get(email_col):
+                raw_email = str(row[email_col]).strip().lower()
+                if raw_email:
+                    used_identifier = used_identifier or f"Email: {raw_email}"
+                    matched_student = by_email.get(raw_email)
+
+            if not matched_student:
+                unmatched_rows.append({
+                    'row': row_num,
+                    'row_number': row_num,
+                    'identifier': used_identifier or 'Empty row identifier',
+                    'data': {k: str(v)[:40] for k, v in row.items() if v},
+                    'reason': f"No existing CRM lead matches identifier '{used_identifier}'." if used_identifier else 'Empty row identifier.'
+                })
+                continue
+
+            if user_section and user_section != 'BOTH' and getattr(user, 'role', '') not in ['SUPER_ADMIN', 'ADMIN']:
+                if getattr(matched_student, 'sales_section', '') not in [user_section, 'BOTH']:
+                    unmatched_rows.append({
+                        'row': row_num,
+                        'row_number': row_num,
+                        'identifier': used_identifier,
+                        'reason': f"Lead belongs to section '{matched_student.sales_section}', outside your authorized section ({user_section})."
+                    })
+                    continue
+
+            if matched_student.id in matched_lead_ids:
+                duplicate_rows.append({
+                    'row': row_num,
+                    'row_number': row_num,
+                    'identifier': used_identifier,
+                    'lead_id': matched_student.id,
+                    'lead_name': f"{matched_student.first_name or ''} {matched_student.last_name or ''}".strip() or matched_student.crm_student_id,
+                    'reason': f"Duplicate row: Lead {matched_student.crm_student_id} was already matched in an earlier row."
+                })
+                continue
+
+            matched_lead_ids.add(matched_student.id)
+            owner_name = (
+                f"{matched_student.assigned_to.first_name} {matched_student.assigned_to.last_name}".strip()
+                or matched_student.assigned_to.username
+            ) if matched_student.assigned_to else "Unassigned"
+            matched_leads.append({
+                'id': matched_student.id,
+                'lead_id': matched_student.id,
+                'crm_student_id': matched_student.crm_student_id,
+                'name': f"{matched_student.first_name or ''} {matched_student.last_name or ''}".strip() or f"Lead #{matched_student.id}",
+                'mobile': matched_student.mobile or '',
+                'email': matched_student.email or '',
+                'lead_status': matched_student.lead_status or 'NEW',
+                'program_name': matched_student.program_type.name if matched_student.program_type else '',
+                'owner_name': owner_name
+            })
+
+        return Response({
+            'valid': True,
+            'total_rows': len(rows),
+            'matched_count': len(matched_leads),
+            'unmatched_count': len(unmatched_rows),
+            'duplicate_count': len(duplicate_rows),
+            'matched_leads': matched_leads,
+            'unmatched_rows': unmatched_rows,
+            'duplicate_rows': duplicate_rows
+        }, status=status.HTTP_200_OK)
+
+    def create(self, request, *args, **kwargs):
+        user = request.user
+        from .utils import check_is_sales_manager
+        if not check_is_sales_manager(user):
+            return Response({'error': 'You do not have permission to create tasks.'}, status=status.HTTP_403_FORBIDDEN)
+
+        title = str(request.data.get('title', '')).strip()
+        assigned_to_ids = request.data.get('assigned_to_ids')
+        if not assigned_to_ids:
+            single_assignee = request.data.get('assigned_to')
+            if single_assignee:
+                assigned_to_ids = [single_assignee]
+            else:
+                assigned_to_ids = []
+
+        if isinstance(assigned_to_ids, (str, int)):
+            assigned_to_ids = [assigned_to_ids]
+
+        lead_ids = request.data.get('lead_ids', [])
+
+        if not title:
+            return Response({'error': 'Task name is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not assigned_to_ids or not isinstance(assigned_to_ids, list):
+            return Response({'error': 'Please select at least one BDE executive to assign.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not lead_ids or not isinstance(lead_ids, list):
+            return Response({'error': 'At least one lead must be selected.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Normalize IDs to int and preserve specified order
+        normalized_bde_ids = []
+        for x in assigned_to_ids:
+            try:
+                normalized_bde_ids.append(int(x))
+            except (ValueError, TypeError):
+                pass
+        unique_bde_ids = list(dict.fromkeys(normalized_bde_ids))
+
+        bde_qs = User.objects.filter(id__in=unique_bde_ids)
+        bde_map = {u.id: u for u in bde_qs}
+        if len(bde_map) != len(unique_bde_ids):
+            return Response({'error': 'One or more assigned BDE executives do not exist.'}, status=status.HTTP_404_NOT_FOUND)
+        bde_users = [bde_map[uid] for uid in unique_bde_ids]
+
+        # Team Lead authorized scope verification for assignees:
+        if getattr(user, 'role', '') not in ['SUPER_ADMIN', 'ADMIN'] and not user.is_superuser:
+            subordinates = user.get_all_subordinates() if hasattr(user, 'get_all_subordinates') else []
+            if not subordinates and hasattr(user, 'hrms_profile') and hasattr(user.hrms_profile, 'subordinates'):
+                hrms_subs = user.hrms_profile.subordinates.select_related('user').all()
+                subordinates = [sub.user for sub in hrms_subs if sub.user]
+
+            if subordinates:
+                team_user_ids = {user.id} | {s.id for s in subordinates}
+                for bde in bde_users:
+                    if bde.id not in team_user_ids:
+                        return Response({'error': f'You can only assign tasks to executives within your team ({bde.get_full_name() or bde.username} is outside your team).'}, status=status.HTTP_403_FORBIDDEN)
+
+        unique_lead_ids = list(dict.fromkeys(lead_ids))
+        leads = list(Student.objects.filter(id__in=unique_lead_ids))
+        if not leads:
+            return Response({'error': 'No valid leads found from the selected IDs.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        lead_map = {l.id: l for l in leads}
+        ordered_leads = [lead_map[lid] for lid in unique_lead_ids if lid in lead_map]
+
+        user_section = getattr(user, 'sales_section', 'BOTH')
+        if user_section and user_section != 'BOTH' and getattr(user, 'role', '') not in ['SUPER_ADMIN', 'ADMIN']:
+            invalid_scope = [l for l in ordered_leads if getattr(l, 'sales_section', '') not in [user_section, 'BOTH']]
+            if invalid_scope:
+                return Response({'error': f"{len(invalid_scope)} lead(s) are outside your assigned section ({user_section})."}, status=status.HTTP_403_FORBIDDEN)
+
+        # Idempotency / duplicate submission safeguard:
+        from datetime import timedelta
+        from django.utils import timezone
+        recent_duplicate = LeadTask.objects.filter(
+            title__iexact=title,
+            created_by=user,
+            created_at__gte=timezone.now() - timedelta(seconds=15)
+        ).first()
+        if recent_duplicate:
+            existing_lead_ids = set(recent_duplicate.items.values_list('lead_id', flat=True))
+            existing_bde_ids = set(recent_duplicate.assigned_bdes.values_list('id', flat=True))
+            if not existing_bde_ids and recent_duplicate.assigned_to_id:
+                existing_bde_ids = {recent_duplicate.assigned_to_id}
+            if existing_lead_ids == set(unique_lead_ids) and existing_bde_ids == set(bde.id for bde in bde_users):
+                serializer = LeadTaskDetailSerializer(recent_duplicate, context={'request': request})
+                return Response(serializer.data, status=status.HTTP_200_OK)
+
+        # Multiple BDE Workload Distribution:
+        # Deterministic approximately equal distribution across selected BDE executives
+        # e.g. 100 leads across 3 BDEs: 34, 33, 33
+        num_leads = len(ordered_leads)
+        num_bdes = len(bde_users)
+        base = num_leads // num_bdes
+        remainder = num_leads % num_bdes
+
+        with transaction.atomic():
+            task = LeadTask.objects.create(
+                title=title,
+                assigned_to=bde_users[0] if bde_users else None,
+                created_by=user,
+                status='PENDING'
+            )
+            task.assigned_bdes.set(bde_users)
+
+            task_items = []
+            start_idx = 0
+            for i, bde in enumerate(bde_users):
+                count = base + (1 if i < remainder else 0)
+                chunk = ordered_leads[start_idx:start_idx + count]
+                for lead in chunk:
+                    task_items.append(LeadTaskItem(task=task, lead=lead, assigned_to=bde))
+                start_idx += count
+
+            LeadTaskItem.objects.bulk_create(task_items)
+
+            bde_names = ", ".join([u.get_full_name() or u.username for u in bde_users])
+            LeadTaskAssignmentHistory.objects.create(
+                task=task,
+                previous_assignee=None,
+                new_assignee=bde_users[0],
+                reassigned_by=user,
+                notes=f"Task created with {len(ordered_leads)} leads distributed across {len(bde_users)} BDE(s): {bde_names}."
+            )
+
+        serializer = LeadTaskDetailSerializer(task, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='reassign')
+    def reassign(self, request, pk=None):
+        task = self.get_object()
+        user = request.user
+        from .utils import check_is_sales_manager
+        if not check_is_sales_manager(user):
+            return Response({'error': 'Only team leads and managers can reassign tasks.'}, status=status.HTTP_403_FORBIDDEN)
+
+        new_assignee_id = request.data.get('new_assignee_id')
+        lead_id = request.data.get('lead_id')
+        notes = str(request.data.get('notes', '')).strip()
+
+        if not new_assignee_id:
+            return Response({'error': 'new_assignee_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            new_assignee = User.objects.get(id=new_assignee_id)
+        except User.DoesNotExist:
+            return Response({'error': 'New assignee not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Team Lead authorized scope verification:
+        if getattr(user, 'role', '') not in ['SUPER_ADMIN', 'ADMIN'] and not user.is_superuser:
+            subordinates = user.get_all_subordinates() if hasattr(user, 'get_all_subordinates') else []
+            if not subordinates and hasattr(user, 'hrms_profile') and hasattr(user.hrms_profile, 'subordinates'):
+                hrms_subs = user.hrms_profile.subordinates.select_related('user').all()
+                subordinates = [sub.user for sub in hrms_subs if sub.user]
+
+            if subordinates:
+                team_user_ids = {user.id} | {s.id for s in subordinates}
+                if new_assignee.id not in team_user_ids:
+                    return Response({'error': 'You can only reassign tasks to executives within your team.'}, status=status.HTTP_403_FORBIDDEN)
+
+        with transaction.atomic():
+            new_name = new_assignee.get_full_name() or new_assignee.username
+            if lead_id:
+                try:
+                    item = task.items.get(lead_id=lead_id)
+                except LeadTaskItem.DoesNotExist:
+                    return Response({'error': 'Lead item not found in this task.'}, status=status.HTTP_404_NOT_FOUND)
+                old_assignee = item.assigned_to or task.assigned_to
+                if old_assignee and old_assignee.id == new_assignee.id:
+                    return Response({'error': 'Lead is already assigned to this executive.'}, status=status.HTTP_400_BAD_REQUEST)
+                item.assigned_to = new_assignee
+                item.save(update_fields=['assigned_to', 'updated_at'])
+                task.assigned_bdes.add(new_assignee)
+                old_name = old_assignee.get_full_name() or old_assignee.username if old_assignee else 'Unassigned'
+                lead_title = f"{item.lead.first_name or ''} {item.lead.last_name or ''}".strip() or item.lead.crm_student_id
+                LeadTaskAssignmentHistory.objects.create(
+                    task=task,
+                    item=item,
+                    previous_assignee=old_assignee,
+                    new_assignee=new_assignee,
+                    reassigned_by=user,
+                    notes=notes or f"Lead {lead_title} reassigned from {old_name} to {new_name}"
+                )
+            else:
+                old_assignee = task.assigned_to
+                task.assigned_to = new_assignee
+                task.save(update_fields=['assigned_to', 'updated_at'])
+                task.assigned_bdes.add(new_assignee)
+                task.items.update(assigned_to=new_assignee)
+                old_name = old_assignee.get_full_name() or old_assignee.username if old_assignee else 'Unassigned'
+                LeadTaskAssignmentHistory.objects.create(
+                    task=task,
+                    previous_assignee=old_assignee,
+                    new_assignee=new_assignee,
+                    reassigned_by=user,
+                    notes=notes or f"Entire task reassigned from {old_name} to {new_name}"
+                )
+
+        serializer = LeadTaskDetailSerializer(task, context={'request': request})
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'], url_path='update-lead')
+    def update_lead(self, request, pk=None):
+        task = self.get_object()
+        user = request.user
+        from .utils import check_is_sales_manager
+
+        lead_id = request.data.get('lead_id')
+        is_completed = request.data.get('is_completed')
+        notes = request.data.get('notes')
+
+        if lead_id is None:
+            return Response({'error': 'lead_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            item = task.items.get(lead_id=lead_id)
+        except LeadTaskItem.DoesNotExist:
+            return Response({'error': 'Lead item not found in this task.'}, status=status.HTTP_404_NOT_FOUND)
+
+        is_manager = check_is_sales_manager(user)
+        is_item_assignee = (item.assigned_to_id == user.id) or (item.assigned_to_id is None and task.assigned_to_id == user.id)
+        if not is_manager and not is_item_assignee:
+            return Response({'error': 'You do not have permission to update this lead. It is assigned to another executive.'}, status=status.HTTP_403_FORBIDDEN)
+
+        with transaction.atomic():
+            from django.utils import timezone
+            if is_completed is not None:
+                item.is_completed = bool(is_completed)
+                if item.is_completed:
+                    item.completed_at = timezone.now()
+                    item.completed_by = user
+                else:
+                    item.completed_at = None
+                    item.completed_by = None
+            if notes is not None:
+                item.notes = str(notes).strip()
+
+            item.save()
+            task.update_status_from_items(save=True)
+
+        serializer = LeadTaskDetailSerializer(task, context={'request': request})
+        return Response(serializer.data)
+
+    def update(self, request, *args, **kwargs):
+        user = request.user
+        from .utils import check_is_sales_manager
+        if not check_is_sales_manager(user):
+            return Response({'error': 'You do not have permission to edit task details.'}, status=status.HTTP_403_FORBIDDEN)
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        user = request.user
+        from .utils import check_is_sales_manager
+        if not check_is_sales_manager(user):
+            return Response({'error': 'You do not have permission to edit task details.'}, status=status.HTTP_403_FORBIDDEN)
+        return super().partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        user = request.user
+        from .utils import check_is_sales_manager
+        if not check_is_sales_manager(user):
+            return Response({'error': 'You do not have permission to delete tasks.'}, status=status.HTTP_403_FORBIDDEN)
+        return super().destroy(request, *args, **kwargs)

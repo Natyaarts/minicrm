@@ -57,7 +57,9 @@ function App() {
           <Route path="/crm/dashboard" element={<SalesModule />} />
           <Route path="/crm/pipeline" element={<SalesModule />} />
           <Route path="/crm/leads" element={<SalesModule />} />
+          <Route path="/crm/assigned-tasks" element={<SalesModule />} />
           <Route path="/crm/tasks" element={<SalesModule />} />
+          <Route path="/crm/reminders" element={<SalesModule />} />
           <Route path="/crm/campaigns" element={<SalesModule />} />
           <Route path="/crm/reports" element={<SalesModule />} />
           <Route path="/crm/analytics" element={<SalesModule />} />

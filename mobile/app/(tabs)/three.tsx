@@ -58,6 +58,7 @@ export default function MenuHubScreen() {
         ...(hasDialerAccess
           ? [
               { title: 'Sales/Leads', icon: 'user-friends', route: '/(tabs)/two' },
+              { title: 'Assigned Lead Tasks', icon: 'tasks', route: '/(tabs)/two?mode=TASKS' },
               { title: 'General Dialer', icon: 'phone-alt', route: '/dialpad?leadId=0' },
             ]
           : []),
