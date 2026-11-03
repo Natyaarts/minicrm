@@ -104,6 +104,7 @@ class UserAuthToken(models.Model):
         on_delete=models.CASCADE
     )
     created = models.DateTimeField(default=timezone.now)
+    last_used = models.DateTimeField(default=timezone.now)
     device_name = models.CharField(max_length=255, blank=True, default='')
 
     class Meta:

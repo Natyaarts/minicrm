@@ -3,6 +3,7 @@ import re
 from typing import Optional, Tuple
 from core.models import Student, normalize_phone_number
 from crm.models import LeadInteraction
+from django.db import IntegrityError, transaction
 
 logger = logging.getLogger(__name__)
 
@@ -151,47 +152,74 @@ def record_reengagement_interaction(
     **kwargs
 ) -> Optional[LeadInteraction]:
     """
-    Safely record an interaction / note on an existing student when they re-engage
-    through an external campaign or webhook.
-    
-    Idempotency:
-    - If event_id is supplied, checks if a note containing that event_id was already logged.
-    - Prevents webhook retries from creating redundant interaction notes.
+    Record a re-engagement interaction.
+
+    Event-based idempotency is enforced by the database unique constraint
+    on source_name + source_event_id.
     """
     if not student:
         return None
-        
+
+    source_name = (source_name or "Unknown").strip()
+    event_id = str(event_id).strip() if event_id else None
+
     details = extra_notes or notes or kwargs.get('detail')
-    # Construct distinct note content
+
     parts = [f"Re-engaged lead from {source_name}."]
+
     if campaign_name:
         parts.append(f"Campaign: {campaign_name}.")
+
     if event_id:
         parts.append(f"[Event ID: {event_id}]")
+
     if duplicate_reason:
         parts.append(duplicate_reason)
+
     if details:
         parts.append(f"Details: {details}")
-        
+
     full_note = " ".join(parts).strip()
-    
-    # Idempotency check 1: Specific event_id
-    if event_id and LeadInteraction.objects.filter(student=student, notes__contains=f"[Event ID: {event_id}]").exists():
-        logger.info(f"Skipping duplicate interaction log for student {student.id}, Event ID {event_id} already recorded.")
-        return None
-        
-    # Idempotency check 2: Exact matching note text
-    if LeadInteraction.objects.filter(student=student, notes=full_note).exists():
-        logger.info(f"Skipping duplicate interaction log for student {student.id}, identical note already exists.")
-        return None
-        
-    interaction = LeadInteraction.objects.create(
+
+    # Existing exact-note protection for callers without event IDs.
+    if LeadInteraction.objects.filter(
         student=student,
-        author=None,
-        interaction_type='NOTE',
         notes=full_note
-    )
-    return interaction
+    ).exists():
+        logger.info(
+            "Skipping duplicate interaction for student %s.",
+            student.id
+        )
+        return None
+
+    try:
+        with transaction.atomic():
+            interaction = LeadInteraction.objects.create(
+                student=student,
+                author=None,
+                interaction_type='NOTE',
+                notes=full_note,
+                source_name=source_name,
+                source_event_id=event_id,
+            )
+
+        return interaction
+
+    except IntegrityError:
+        # Confirm that the conflict was caused by an already-recorded
+        # external event. Re-raise unrelated database integrity errors.
+        if event_id and LeadInteraction.objects.filter(
+            source_name=source_name,
+            source_event_id=event_id,
+        ).exists():
+            logger.info(
+                "Skipping duplicate event %s from %s.",
+                event_id,
+                source_name
+            )
+            return None
+
+        raise
 
 
 def create_duplicate_lead(
@@ -274,9 +302,9 @@ def create_duplicate_lead(
             resolved_section = 'BOTH'
 
     # 5. Generate unique CRM ID
-    crm_id = Student.generate_next_crm_id()
-
     with transaction.atomic():
+        crm_id = Student.generate_next_crm_id()
+
         user = User.objects.create_user(
             username=username,
             email=clean_email or (email if email else '') or '',

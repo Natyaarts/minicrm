@@ -3,6 +3,8 @@ from django.db import models
 from django.conf import settings
 from core.models import Student
 from core.validators import validate_audio_recording_file
+from django.utils import timezone
+from django.db.models import Q
 
 class PipelineStage(models.Model):
     name = models.CharField(max_length=50) # e.g. "New Lead", "Follow-up", "In Discussion", "Enrolled", "Dropped"
@@ -23,6 +25,18 @@ class LeadInteraction(models.Model):
         ('EMAIL', 'Email'),
         ('MEETING', 'Meeting'),
         ('WHATSAPP', 'WhatsApp'),
+    )
+    source_name = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        db_index=True,
+    )
+
+    source_event_id = models.CharField(
+        max_length=200,
+        null=True,
+        blank=True,
     )
     CALL_DIRECTION_CHOICES = (
         ('INCOMING', 'Incoming'),
@@ -66,6 +80,18 @@ class LeadInteraction(models.Model):
 
     class Meta:
         ordering = ['-date']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['source_name', 'source_event_id'],
+                condition=(
+                    Q(source_name__isnull=False)
+                    & ~Q(source_name='')
+                    & Q(source_event_id__isnull=False)
+                    & ~Q(source_event_id='')
+                ),
+                name='unique_external_source_event',
+            ),
+        ]
 
     def __str__(self):
         target = f"{self.student.first_name} {self.student.last_name}".strip() if self.student else (self.customer_number or self.caller_number or 'Unknown')
@@ -242,6 +268,7 @@ class WebhookLog(models.Model):
         return f"{self.endpoint.name} - {self.status} at {self.timestamp}"
 
 
+
 class LeadTask(models.Model):
     STATUS_CHOICES = (
         ('PENDING', 'Pending'),
@@ -330,3 +357,100 @@ class LeadTaskAssignmentHistory(models.Model):
 
     def __str__(self):
         return f"Task {self.task_id} assigned to {self.new_assignee} at {self.reassigned_at}"
+
+
+
+
+
+
+class MetaConversionEvent(models.Model):
+    STATUS_CHOICES = [
+        ('PENDING', 'Pending'),
+        ('PROCESSING', 'Processing'),
+        ('SENT', 'Sent'),
+        ('FAILED', 'Failed'),
+    ]
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False
+    )
+
+    student = models.ForeignKey(
+        Student,
+        on_delete=models.CASCADE,
+        related_name='meta_conversion_events'
+    )
+
+    campaign = models.ForeignKey(
+        "crm.Campaign",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="meta_conversion_events",
+    )
+
+    event_name = models.CharField(max_length=150)
+    idempotency_key = models.CharField(
+        max_length=255,
+        unique=True,
+        null=True,
+        blank=True,
+        help_text="Unique key preventing duplicate Meta conversion events.",
+    )
+    payload = models.JSONField(default=dict, blank=True)
+    previous_stage = models.CharField(
+        max_length=100, blank=True, null=True
+    )
+    current_stage = models.CharField(max_length=100)
+
+    event_time = models.DateTimeField(default=timezone.now)
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='PENDING',
+        db_index=True
+    )
+
+    attempts = models.PositiveIntegerField(default=0)
+    max_attempts = models.PositiveIntegerField(default=8)
+
+    next_retry_at = models.DateTimeField(
+        default=timezone.now,
+        db_index=True
+    )
+
+    processing_started_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+    )
+
+    last_http_status = models.PositiveIntegerField(
+        null=True, blank=True
+    )
+
+    meta_response = models.JSONField(default=dict, blank=True)
+    last_error = models.TextField(blank=True, default='')
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    sent_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['created_at']
+        indexes = [
+            models.Index(
+                fields=['status', 'next_retry_at'],
+                name='meta_event_retry_idx'
+            ),
+            models.Index(
+                fields=['student', 'created_at'],
+                name='meta_event_student_idx'
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.event_name} - {self.student_id} - {self.status}"
+

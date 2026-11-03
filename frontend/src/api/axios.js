@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { emitForbidden } from '../auth/forbiddenBus';   // NEW
 
 // In production, use a relative URL so it goes through Nginx on the same server.
 // In development (localhost), fall back to the local dev server.
@@ -26,7 +27,9 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
     (response) => response,
     (error) => {
-        if (error.response && error.response.status === 401) {
+        const status = error.response?.status;
+
+        if (status === 401) {
             const requestUrl = error.config?.url || '';
             const isLoginRequest = requestUrl.includes('auth/login');
             // Do not clear the MiniCRM session on third-party OAuth/integration authorization errors
@@ -39,6 +42,19 @@ api.interceptors.response.use(
                 }
             }
         }
+
+        // NEW: permission denied. Let the Layout decide what to show.
+        if (status === 403 && !error.config?.skipForbidden) {
+            const requestUrl = error.config?.url || '';
+            const isThirdPartyAuthError = requestUrl.includes('crm/google/') || requestUrl.includes('integrations/google');
+            if (!isThirdPartyAuthError) {
+                emitForbidden({
+                    method: (error.config?.method || 'get').toLowerCase(),
+                    url: requestUrl,
+                });
+            }
+        }
+
         return Promise.reject(error);
     }
 );

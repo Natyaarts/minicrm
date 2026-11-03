@@ -27,6 +27,10 @@ load_dotenv(os.path.join(BASE_DIR, '.env'))
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = 'django-insecure-q0=@&zybkaavtq6)7%17@25lg6-@pa3haej28@dju-s6m9n_1m'
 
+if not SECRET_KEY:
+    raise ValueError("SECRET_KEY is not configured")
+
+
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', 'False').lower() in ('true', '1', 't')
 
@@ -355,7 +359,7 @@ LOGGING = {
 #   the webhook in Meta App Dashboard > Webhooks
 # META_APP_SECRET: Your Meta App Secret (from Meta App Dashboard > Settings > Basic)
 import os
-META_WEBHOOK_VERIFY_TOKEN = os.environ.get('META_WEBHOOK_VERIFY_TOKEN', 'natyaarts_meta_webhook_2024')
+META_WEBHOOK_VERIFY_TOKEN = os.environ.get('META_WEBHOOK_VERIFY_TOKEN')
 META_APP_SECRET = os.environ.get('META_APP_SECRET', None)
 
 

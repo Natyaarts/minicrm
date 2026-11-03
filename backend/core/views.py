@@ -10,6 +10,7 @@ from django.utils import timezone
 from decimal import Decimal, InvalidOperation
 import pandas as pd
 from django.db.models import ProtectedError
+import uuid
 
 
 from .models import Program, SubProgram, Course, Batch, Student, Transaction, Document, SyllabusPart, ClassSession, Attendance, BatchResource, Exam, ExamResult, Question, QuestionOption, StudentSubmission, MonthlyPayment, StudentTeacherHandover
@@ -379,51 +380,113 @@ class StudentViewSet(viewsets.ModelViewSet):
                 return Response({'detail': 'You do not have permission to modify CRE Update.'}, status=status.HTTP_403_FORBIDDEN)
         return super().update(request, *args, **kwargs)
 
+    
+
     def perform_update(self, serializer):
         instance = self.get_object()
         old_status = getattr(instance, 'lead_status', None)
+
+        # Prevent unauthenticated users from changing lead status
+        if (
+            'lead_status' in serializer.validated_data
+            and not self.request.user.is_authenticated
+        ):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied(
+                "Authentication is required to change lead status."
+            )
+
         updated_instance = serializer.save()
         new_status = getattr(updated_instance, 'lead_status', None)
-        
-        if old_status != new_status:
-            try:
-                from crm.models import PipelineStage, LeadInteraction
-                stages_map = {str(stage.id): stage.name for stage in PipelineStage.objects.all()}
-                standard_mapping = {
-                    'NEW': 'New Lead',
-                    'FOLLOW_UP': 'Follow-up',
-                    'PAYMENT_PENDING': 'Payment Pending',
-                    'ENROLLED': 'Converted',
-                    'CONVERTED': 'Converted',
-                    'DROPPED': 'Dropped'
-                }
-                old_name = stages_map.get(str(old_status)) or standard_mapping.get(str(old_status).upper()) or str(old_status)
-                new_name = stages_map.get(str(new_status)) or standard_mapping.get(str(new_status).upper()) or str(new_status)
-                
-                author = self.request.user if (self.request.user and self.request.user.is_authenticated) else None
-                LeadInteraction.objects.create(
+
+        if old_status == new_status:
+            return
+
+        try:
+            from crm.models import PipelineStage, LeadInteraction
+            from crm.utils import get_converted_stage_values
+
+            stages_map = {
+                str(stage.id): stage.name
+                for stage in PipelineStage.objects.all()
+            }
+
+            old_name = stages_map.get(str(old_status), str(old_status))
+            new_name = stages_map.get(str(new_status), str(new_status))
+
+            converted_values = {
+                str(value).strip().casefold()
+                for value in get_converted_stage_values()
+            }
+
+            old_is_converted = (
+                str(old_status).strip().casefold() in converted_values
+            )
+            new_is_converted = (
+                str(new_status).strip().casefold() in converted_values
+            )
+
+            # Send Meta event only when entering converted/enrolled status
+            if new_is_converted and not old_is_converted:
+                from crm.services.meta_capi import queue_meta_event
+
+                queue_meta_event(
                     student=updated_instance,
-                    author=author,
-                    interaction_type='NOTE',
-                    notes=f"Status changed from '{old_name}' to '{new_name}'"
+                    event_name="CompleteRegistration",
+                    request=self.request,
+                    action_source="other",
+                    idempotency_key=(
+                        f"registration:student:{updated_instance.pk}:{uuid.uuid4()}"
+                    ),
                 )
-            except Exception as e:
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.error(f"Auto log status change failed: {e}")
-    
+
+            author = (
+                self.request.user
+                if self.request.user and self.request.user.is_authenticated
+                else None
+            )
+
+            LeadInteraction.objects.create(
+                student=updated_instance,
+                author=author,
+                interaction_type='NOTE',
+                notes=f"Status changed from '{old_name}' to '{new_name}'"
+            )
+
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception(
+                "Status update processing failed for Student %s",
+                updated_instance.id
+            )
+
     def get_permissions(self):
-        if self.action in ['create', 'public_lookup', 'partial_update']:
+        if self.action in ['create', 'public_lookup']:
             return [permissions.AllowAny()]
-        # Allow students, mentors, teachers, and academic staff to view relevant profiles/lists and perform fee/handover actions; delete is SUPER_ADMIN only
+
+        if self.action == 'partial_update':
+            return [permissions.IsAuthenticated()]
+
         if self.request.user.is_authenticated:
             user_role = str(self.request.user.role).upper().strip()
+
             if self.action == 'destroy':
                 return [permissions.IsAuthenticated()]
-            elif self.action in ['list', 'retrieve', 'fee_defaulters', 'collected_fees', 'break_metrics', 'record_payment', 'update_fee', 'handover_teacher', 'fee_logs', 'payment_records', 'edit_payment', 'delete_payment']:
-                if user_role in ['STUDENT', 'MENTOR', 'TEACHER', 'ACADEMIC', 'ACADEMIC_COORDINATOR', 'ADMIN', 'SUPER_ADMIN']:
+
+            elif self.action in [
+                'list', 'retrieve', 'fee_defaulters', 'collected_fees',
+                'break_metrics', 'record_payment', 'update_fee',
+                'handover_teacher', 'fee_logs', 'payment_records',
+                'edit_payment', 'delete_payment'
+            ]:
+                if user_role in [
+                    'STUDENT', 'MENTOR', 'TEACHER', 'ACADEMIC',
+                    'ACADEMIC_COORDINATOR', 'ADMIN', 'SUPER_ADMIN'
+                ]:
                     return [permissions.IsAuthenticated()]
+
         return super().get_permissions()
+
 
 
     @action(detail=False, methods=['get'], permission_classes=[permissions.AllowAny])
@@ -452,32 +515,59 @@ class StudentViewSet(viewsets.ModelViewSet):
             'email': student.email
         })
 
+    
     def perform_create(self, serializer):
         from rest_framework.exceptions import ValidationError
+        from crm.services.meta_capi import queue_meta_event
 
-        user = self.request.user if (self.request.user and self.request.user.is_authenticated) else None
+        user = (
+            self.request.user
+            if self.request.user and self.request.user.is_authenticated
+            else None
+        )
 
-        # Block public submissions to a deactivated brand (staff can still add leads internally)
+        # Block public submissions to a deactivated brand
         program = serializer.validated_data.get('program_type')
         if program and not program.is_active and not user:
-            raise ValidationError({"error": "This brand is not accepting applications."})
+            raise ValidationError({
+                "error": "This brand is not accepting applications."
+            })
 
+        # Save the lead only once
         if user and user.role == 'SALES':
             student = serializer.save(assigned_to=user)
         else:
             student = serializer.save()
 
+        # Queue Meta Lead event for ALL lead sources
+        queue_meta_event(
+            student=student,
+            event_name="Lead",
+            request=self.request,
+            action_source="other",
+            idempotency_key=f"lead:student:{student.pk}",
+        )
+
+        # Notify administrators
         from notifications.models import Notification
+
         User = get_user_model()
-        staff_users = User.objects.filter(role__in=['ADMIN', 'SUPER_ADMIN'])
+        staff_users = User.objects.filter(
+            role__in=['ADMIN', 'SUPER_ADMIN']
+        )
+
         for u in staff_users:
             Notification.objects.create(
                 user=u,
                 title="New Application Received",
-                message=f"Student {student.first_name} {student.last_name} has applied for {student.program_type.name}.",
+                message=(
+                    f"Student {student.first_name} {student.last_name} "
+                    f"has applied for {student.program_type.name}."
+                ),
                 notification_type='APPLICATION',
                 target_url=f"/sales?student={student.id}"
             )
+
 
     def get_queryset(self):
         from django.db.models import Q
@@ -1891,6 +1981,22 @@ class StudentViewSet(viewsets.ModelViewSet):
                 student.fee_due_date = parsed_date
                 
         student.save()
+
+        from crm.services.meta_capi import queue_meta_event
+
+        queue_meta_event(
+            student=student,
+            event_name="Purchase",
+            request=request,
+            action_source="other",
+            event_time=txn.date,
+            idempotency_key=f"purchase:transaction:{txn.pk}",
+            custom_data={
+                "value": float(txn.amount),
+                "currency": "INR",
+                "order_id": txn.transaction_id,
+            },
+        )
         
         serializer = self.get_serializer(student)
         return Response({

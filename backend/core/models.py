@@ -1,4 +1,5 @@
-from django.db import models
+from django.db import models, transaction
+from django.db.models import F
 from django.conf import settings
 import datetime
 from .validators import validate_student_document_file, validate_batch_resource_file
@@ -111,6 +112,18 @@ class NormalizedEmailField(models.EmailField):
             return str(val).strip().lower()
         return val
 
+class CRMIDCounter(models.Model):
+    name = models.CharField(max_length=50, primary_key=True)
+    value = models.PositiveBigIntegerField(default=0)
+
+    class Meta:
+        db_table = "core_crmid_counter"
+
+    def __str__(self):
+        return f"{self.name}: {self.value}"
+
+    
+
 class Student(models.Model):
     LEAD_STATUS_CHOICES = [
         ('NEW', 'New Lead'),
@@ -154,18 +167,71 @@ class Student(models.Model):
 
     @classmethod
     def generate_next_crm_id(cls):
-        import re
-        max_num = 0
-        for s_id in cls.objects.filter(crm_student_id__startswith="NATYA-").values_list('crm_student_id', flat=True):
-            match = re.search(r'NATYA-(\d+)', s_id)
-            if match:
-                num = int(match.group(1))
-                if num > max_num:
-                    max_num = num
-        new_num = max_num + 1
-        if new_num < 1000:
-            return f"NATYA-{new_num:04d}"
-        return f"NATYA-{new_num}"
+        with transaction.atomic():
+            updated = CRMIDCounter.objects.filter(
+                pk="student"
+            ).update(
+                value=F("value") + 1
+            )
+
+            if updated != 1:
+                raise RuntimeError(
+                    "CRM ID counter is not initialized. "
+                    "Please run database migrations."
+                )
+
+            counter_value = CRMIDCounter.objects.values_list(
+                "value",
+                flat=True
+            ).get(pk="student")
+
+        if counter_value < 1000:
+            return f"NATYA-{counter_value:04d}"
+
+        return f"NATYA-{counter_value}"
+
+
+    @classmethod
+    def generate_next_llad_id(cls, target_date=None):
+        if target_date is None:
+            target_date = datetime.date.today()
+
+        prefix = f"LLAD-{target_date.strftime('%d%m%y')}"
+        counter_name = f"llad_{target_date.strftime('%Y%m%d')}"
+
+        with transaction.atomic():
+            max_num = 0
+
+            existing_ids = cls.objects.filter(
+                crm_student_id__startswith=prefix
+            ).values_list("crm_student_id", flat=True)
+
+            for existing_id in existing_ids:
+                suffix = existing_id[len(prefix):]
+
+                if suffix.isdigit():
+                    max_num = max(max_num, int(suffix))
+
+            CRMIDCounter.objects.get_or_create(
+                name=counter_name,
+                defaults={"value": max_num}
+            )
+
+            updated = CRMIDCounter.objects.filter(
+                pk=counter_name
+            ).update(
+                value=F("value") + 1
+            )
+
+            if updated != 1:
+                raise RuntimeError("LLAD counter could not be updated.")
+
+            counter_value = CRMIDCounter.objects.values_list(
+                "value",
+                flat=True
+            ).get(pk=counter_name)
+
+        return f"{prefix}{counter_value:03d}"
 
     # Personal Info - Minimal required for system, others optional
     first_name = models.CharField(max_length=50, blank=True, null=True)

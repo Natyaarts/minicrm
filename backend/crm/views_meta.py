@@ -1,13 +1,12 @@
 """
 Meta Facebook Lead Ads webhook receiver and Lead Quality Conversions API feedback.
 """
-import json
 import hashlib
 import hmac
 import logging
 import requests
-import time
 from django.conf import settings
+from django.db import IntegrityError, transaction
 from django.http import HttpResponse
 from django.utils.crypto import get_random_string
 from rest_framework.views import APIView
@@ -28,64 +27,6 @@ from .utils import check_is_sales_manager
 logger = logging.getLogger(__name__)
 
 
-def _hash_data(value: str):
-    if not value:
-        return None
-    return hashlib.sha256(value.strip().lower().encode()).hexdigest()
-
-
-def _send_meta_conversions_event(campaign, student, event_name: str):
-    pixel_id = campaign.meta_pixel_id or getattr(settings, "META_DATASET_ID", "")
-    access_token = campaign.meta_access_token or getattr(settings, "META_CAPI_ACCESS_TOKEN", "")
-
-    if not pixel_id or not access_token:
-        logger.warning(f"Campaign {campaign.id} has no Meta pixel/token configured. Skipping CAPI event.")
-        return False
-
-    version = getattr(settings, "META_API_VERSION", "v26.0")
-    url = f"https://graph.facebook.com/{version}/{pixel_id}/events"
-
-    user_data = {}
-    if student.meta_lead_id and str(student.meta_lead_id).isdigit():
-        user_data["lead_id"] = int(student.meta_lead_id)
-    if student.mobile:
-        digits = "".join(ch for ch in student.mobile if ch.isdigit())
-        if len(digits) == 10:
-            digits = "91" + digits
-        if digits:
-            user_data["ph"] = [_hash_data(digits)]
-    if student.email:
-        user_data["em"] = [_hash_data(student.email)]
-    if student.first_name:
-        user_data["fn"] = [_hash_data(student.first_name)]
-    if student.last_name:
-        user_data["ln"] = [_hash_data(student.last_name)]
-
-    payload = {
-        "data": [{
-            "event_name": event_name,
-            "event_time": int(time.time()),
-            "action_source": "system_generated",
-            "user_data": user_data,
-            "custom_data": {"event_source": "crm", "lead_event_source": "MiniCRM"},
-        }],
-        "access_token": access_token,
-    }
-    test_code = getattr(settings, "META_TEST_EVENT_CODE", "")
-    if test_code:
-        payload["test_event_code"] = test_code
-
-    try:
-        resp = requests.post(url, json=payload, timeout=10)
-        if not resp.ok:
-            logger.error(f"Meta CAPI error for student {student.id}: {resp.status_code} {resp.text[:300]}")
-            return False
-        logger.info(f"Meta CAPI event '{event_name}' sent for student {student.id}: {resp.text[:200]}")
-        return True
-    except Exception as e:
-        logger.error(f"Failed to send Meta CAPI event for student {student.id}: {e}")
-        return False
-
 
 class MetaLeadWebhookView(APIView):
     """
@@ -102,7 +43,14 @@ class MetaLeadWebhookView(APIView):
         mode = request.query_params.get("hub.mode")
         token = request.query_params.get("hub.verify_token")
         challenge = request.query_params.get("hub.challenge")
-        verify_token = getattr(settings, "META_WEBHOOK_VERIFY_TOKEN", "natyaarts_meta_webhook_2024")
+        verify_token = getattr(settings, "META_WEBHOOK_VERIFY_TOKEN", None)
+
+        if not verify_token:
+            logger.error("META_WEBHOOK_VERIFY_TOKEN is not configured.")
+            return HttpResponse(
+                "Webhook verification is not configured",
+                status=500
+            )
 
         if mode == "subscribe" and token == verify_token:
             logger.info("Meta webhook verified successfully.")
@@ -117,15 +65,27 @@ class MetaLeadWebhookView(APIView):
             body = request.body
             payload = request.data
 
-            # Validate signature if app secret is configured
+            # Validate Meta webhook signature
             app_secret = getattr(settings, "META_APP_SECRET", None)
-            if app_secret:
-                sig_header = request.META.get("HTTP_X_HUB_SIGNATURE_256", "")
-                expected_sig = "sha256=" + hmac.new(
-                    app_secret.encode(), body, hashlib.sha256
-                ).hexdigest()
-                if not hmac.compare_digest(sig_header, expected_sig):
-                    return Response({"error": "Invalid signature"}, status=403)
+
+            if not app_secret:
+                logger.error("META_APP_SECRET is not configured.")
+                return Response(
+                    {"error": "Webhook security is not configured"},
+                    status=500
+                )
+
+            sig_header = request.META.get("HTTP_X_HUB_SIGNATURE_256", "")
+
+            expected_sig = "sha256=" + hmac.new(
+                app_secret.encode(),
+                body,
+                hashlib.sha256
+            ).hexdigest()
+
+            if not hmac.compare_digest(sig_header, expected_sig):
+                logger.warning("Invalid Meta webhook signature.")
+                return Response({"error": "Invalid signature"}, status=403)
 
             object_type = payload.get("object")
             if object_type not in ("page", "instagram"):
@@ -153,53 +113,132 @@ class MetaLeadWebhookView(APIView):
                         logger.info(f"Duplicate Meta lead_id {lead_id}, skipping.")
                         continue
 
-                    # Find matching Campaign
+                    # Find matching Campaign using Page ID + Form ID
                     from crm.models import Campaign
-                    campaign = None
-                    if form_id:
-                        campaign = Campaign.objects.filter(meta_form_id=form_id, meta_auto_import=True).first()
-                    if not campaign and page_id:
-                        campaign = Campaign.objects.filter(meta_page_id=page_id, meta_auto_import=True).first()
-                    if not campaign and ad_id:
-                        campaign = Campaign.objects.filter(meta_ad_id=ad_id, meta_auto_import=True).first()
 
+                    campaign = None
+
+                    campaigns = Campaign.objects.filter(meta_auto_import=True)
+
+                    if page_id and form_id:
+                        campaign = campaigns.filter(
+                            meta_page_id=page_id,
+                            meta_form_id=form_id,
+                        ).first()
+
+                    # Use Ad ID only when the Page/Form combination is unavailable
+                    if not campaign and page_id and ad_id:
+                        campaign = campaigns.filter(
+                            meta_page_id=page_id,
+                            meta_ad_id=ad_id,
+                        ).first()
+
+                    if not campaign:
+                        logger.warning(
+                            "No matching active Meta campaign. Page ID: %s, Form ID: %s, Ad ID: %s",
+                            page_id,
+                            form_id,
+                            ad_id,
+                        )
+                        continue
+
+                    
+                
                     # Fetch full lead details from Meta Graph API
                     name = ""
                     phone = ""
                     email = ""
 
-                    if campaign and campaign.meta_access_token:
-                        try:
-                            graph_url = f"https://graph.facebook.com/v20.0/{lead_id}"
-                            params = {
-                                "fields": "field_data,created_time,ad_id,form_id",
-                                "access_token": campaign.meta_access_token,
-                            }
-                            graph_resp = requests.get(graph_url, params=params, timeout=10)
-                            graph_data = graph_resp.json()
-                            for field in graph_data.get("field_data", []):
-                                field_name = field.get("name", "").lower()
-                                values = field.get("values", [])
-                                val = values[0] if values else ""
-                                if "name" in field_name and not name:
-                                    name = val
-                                elif any(k in field_name for k in ("phone", "mobile", "whatsapp")):
-                                    phone = val
-                                elif "email" in field_name:
-                                    email = val
-                        except Exception as e:
-                            logger.error(f"Failed to fetch lead details from Meta Graph API: {e}")
+                    if not campaign or not campaign.meta_access_token:
+                        logger.error(
+                            "Meta campaign or Page Access Token missing. "
+                            "Lead ID: %s, Campaign: %s",
+                            lead_id,
+                            campaign.id if campaign else None,
+                        )
+                        continue
+
+                    try:
+                        version = getattr(settings, "META_API_VERSION", "v26.0")
+                        graph_url = f"https://graph.facebook.com/{version}/{lead_id}"
+
+                        params = {
+                            "fields": "field_data,created_time,ad_id,form_id",
+                            "access_token": campaign.meta_access_token,
+                        }
+
+                        graph_resp = requests.get(
+                            graph_url,
+                            params=params,
+                            timeout=15,
+                        )
+                        graph_resp.raise_for_status()
+
+                        graph_data = graph_resp.json()
+
+                        if "error" in graph_data:
+                            raise ValueError(
+                                graph_data["error"].get(
+                                    "message", "Meta Graph API error"
+                                )
+                            )
+
+                        first_name_value = ""
+                        last_name_value = ""
+
+                        for field in graph_data.get("field_data", []):
+                            field_name = (
+                                field.get("name", "")
+                                .strip()
+                                .lower()
+                                .replace(" ", "_")
+                            )
+                            values = field.get("values", [])
+                            val = str(values[0]).strip() if values and values[0] else ""
+
+                            if not val:
+                                continue
+
+                            if field_name in ("full_name", "name") and not name:
+                                name = val
+                            elif field_name in ("first_name", "firstname"):
+                                first_name_value = val
+                            elif field_name in ("last_name", "lastname"):
+                                last_name_value = val
+                            elif any(
+                                key in field_name
+                                for key in ("phone", "mobile", "whatsapp")
+                            ):
+                                phone = val
+                            elif "email" in field_name:
+                                email = val
+
+                        if not name:
+                            name = " ".join(
+                                part
+                                for part in (first_name_value, last_name_value)
+                                if part
+                            )
+
+                    except Exception:
+                        logger.exception(
+                            "Failed to fetch Meta lead details. Lead ID: %s",
+                            lead_id,
+                        )
+                        continue
 
                     first_name = name.split()[0] if name else "Meta"
-                    last_name = " ".join(name.split()[1:]) if len(name.split()) > 1 else "Lead"
+                    last_name = (
+                        " ".join(name.split()[1:])
+                        if len(name.split()) > 1
+                        else "Lead"
+                    )
 
                     clean_phone = normalize_lead_phone(phone)
                     clean_em = normalize_lead_email(email)
 
                     try:
                         from django.contrib.auth import get_user_model
-                        from django.db import transaction
-                        import datetime
                         User = get_user_model()
 
                         # Centralized duplicate check
@@ -243,9 +282,8 @@ class MetaLeadWebhookView(APIView):
                                 role="STUDENT",
                             )
 
-                            today = datetime.date.today()
-                            count = Student.objects.filter(user__date_joined__date=today).count() + 1
-                            crm_id = f"LLAD-{today.strftime('%d%m%y')}{count:03d}"
+                            
+                            crm_id = Student.generate_next_llad_id()
                             program = None
                             if campaign and campaign.section == 'CAREER_ACADEMY':
                                 program = Program.objects.filter(name='Natya Career Academy').first()
@@ -276,8 +314,25 @@ class MetaLeadWebhookView(APIView):
                             leads_created += 1
                             logger.info(f"Created new Meta lead: {student.crm_student_id} - {name} ({clean_phone})")
 
-                    except Exception as e:
-                        logger.error(f"Failed to create student from Meta lead {lead_id}: {e}")
+                    except IntegrityError:
+                        # Another webhook request may have created this Meta lead first.
+                        if Student.objects.filter(meta_lead_id=str(lead_id)).exists():
+                            logger.info(
+                                "Meta lead %s was already processed by another request. Skipping.",
+                                lead_id,
+                            )
+                            continue
+
+                        logger.exception(
+                            "Database integrity error while processing Meta lead %s.",
+                            lead_id,
+                        )
+
+                    except Exception:
+                        logger.exception(
+                            "Failed to create student from Meta lead %s.",
+                            lead_id,
+                        )
 
             return Response({"status": "ok", "leads_created": leads_created})
 
@@ -315,17 +370,18 @@ class LeadQualityFeedbackView(APIView):
         student.save(update_fields=["lead_quality"])
 
         capi_sent = False
-        capi_message = ""
+        capi_queued = False
 
-        if quality == "QUALITY" and student.campaign:
-            campaign = student.campaign
-            has_pixel = campaign.meta_pixel_id or getattr(settings, "META_DATASET_ID", "")
-            has_token = campaign.meta_access_token or getattr(settings, "META_CAPI_ACCESS_TOKEN", "")
-            if has_pixel and has_token:
-                capi_sent = _send_meta_conversions_event(campaign, student, "Lead")
-                capi_message = "Meta Conversions API Lead event sent." if capi_sent else "Meta CAPI call failed - check server logs."
-            else:
-                capi_message = "No Meta Pixel/Token configured for this campaign. CAPI event not sent."
+        if quality == "QUALITY":
+            capi_queued = bool(
+                student.meta_lead_id
+                and student._old_quality != "QUALITY"
+            )
+            capi_message = (
+                "Meta QualityLead event queued."
+                if capi_queued
+                else "Lead marked as Quality. No new Meta event was required."
+            )
         elif quality == "FAKE":
             capi_message = "Marked as Fake. No Meta event sent."
         else:
@@ -335,5 +391,6 @@ class LeadQualityFeedbackView(APIView):
             "status": "ok",
             "lead_quality": student.lead_quality,
             "capi_sent": capi_sent,
+            "capi_queued": capi_queued,
             "message": capi_message,
         })

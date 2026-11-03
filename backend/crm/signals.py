@@ -1,59 +1,76 @@
+
 from django.db import transaction
 from django.db.models.signals import pre_save, post_save
 from django.dispatch import receiver
 
 from core.models import Student
-from integrations.meta_capi import send_crm_event
+from crm.services.meta_capi import queue_meta_event
+import uuid
 
-# CRM lead_status -> Meta event name. Statuses not listed are not sent.
+
 STATUS_EVENTS = {
-    'NEW': 'Lead',
-    'FOLLOW_UP': 'Contacted',
-    'PAYMENT_PENDING': 'QualifiedLead',
-    'ENROLLED': 'Converted',
+    "FOLLOW_UP": "Contacted",
+    "PAYMENT_PENDING": "QualifiedLead",
 }
+
 QUALITY_EVENTS = {
-    'QUALITY': 'QualityLead',
-    'FAKE': 'JunkLead',
+    "QUALITY": "QualityLead",
+    "FAKE": "JunkLead",
 }
-
-
-def _phone(mobile):
-    digits = ''.join(ch for ch in (mobile or '') if ch.isdigit())
-    if len(digits) == 10:       # Indian number without country code
-        digits = '91' + digits
-    return digits or None
 
 
 @receiver(pre_save, sender=Student)
 def remember_old_values(sender, instance, **kwargs):
     old = None
+
     if instance.pk:
-        old = (Student.objects.filter(pk=instance.pk)
-               .values('lead_status', 'lead_quality').first())
-    instance._old_status = old['lead_status'] if old else None
-    instance._old_quality = old['lead_quality'] if old else None
+        old = (
+            Student.objects.filter(pk=instance.pk)
+            .values("lead_status", "lead_quality")
+            .first()
+        )
+
+    instance._old_status = old["lead_status"] if old else None
+    instance._old_quality = old["lead_quality"] if old else None
 
 
 @receiver(post_save, sender=Student)
 def sync_to_meta(sender, instance, created, **kwargs):
-    if not instance.meta_lead_id:       # only leads that came from Meta Lead Ads
+    if not instance.meta_lead_id:
         return
 
     events = []
-    if created or instance.lead_status != getattr(instance, '_old_status', None):
+
+    # Lead creation: use the same key as perform_create()
+    if created:
+        events.append(
+            ("Lead", f"lead:student:{instance.pk}")
+        )
+
+    # Only send events for actual status changes
+    elif instance.lead_status != getattr(instance, "_old_status", None):
         name = STATUS_EVENTS.get(instance.lead_status)
         if name:
-            events.append(name)
-    if instance.lead_quality != getattr(instance, '_old_quality', None):
+            events.append((
+                name,
+                f"status:student:{instance.pk}:{uuid.uuid4()}",
+            ))
+
+    # Only send events for actual quality changes
+    if instance.lead_quality != getattr(instance, "_old_quality", None):
         name = QUALITY_EVENTS.get(instance.lead_quality)
         if name:
-            events.append(name)
+            events.append((
+                name,
+                f"quality:student:{instance.pk}:{uuid.uuid4()}",
+            ))
 
-    for name in events:
-        transaction.on_commit(lambda n=name: send_crm_event(
-            n,
-            lead_id=instance.meta_lead_id,
-            email=instance.email,
-            phone=_phone(instance.mobile),
-        ))
+    for event_name, idempotency_key in events:
+        transaction.on_commit(
+            lambda name=event_name, key=idempotency_key: queue_meta_event(
+                student=instance,
+                event_name=name,
+                action_source="other",
+                idempotency_key=key,
+            )
+        )
