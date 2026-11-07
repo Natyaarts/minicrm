@@ -1,66 +1,56 @@
 """
 Centralized Rate Limiting & Throttling Classes (VA-010 Remediation).
-Defines targeted throttle policies for authentication, credential modification,
-public forms, expensive analytics, and bulk data processing.
 """
 
-from rest_framework.throttling import AnonRateThrottle, UserRateThrottle, SimpleRateThrottle
+from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
 
-
-def get_client_ip(request):
-    """
-    Safely extract client IP from request headers, respecting reverse proxy headers.
-    """
-    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-    if x_forwarded_for:
-        # The first IP in the X-Forwarded-For chain is the client IP
-        return x_forwarded_for.split(',')[0].strip()
-    return request.META.get('REMOTE_ADDR', '127.0.0.1')
+SAFE_METHODS = ("GET", "HEAD", "OPTIONS")
 
 
 class SecureAnonRateThrottle(AnonRateThrottle):
     """
-    Anonymous rate throttle using safe client IP resolution.
+    Anonymous throttle. Client IP comes from DRF's get_ident(), which
+    honours REST_FRAMEWORK['NUM_PROXIES'] and can't be spoofed via
+    a client-supplied X-Forwarded-For header.
     """
-    def get_ident(self, request):
-        return get_client_ip(request)
+    pass
 
 
 class LoginRateThrottle(SecureAnonRateThrottle):
-    """
-    Strict rate throttle on authentication/login to prevent brute-force attacks.
-    Rate: 5 requests per minute per IP.
-    """
+    """5 requests per minute per IP."""
     scope = 'auth_login'
 
 
 class PasswordChangeRateThrottle(UserRateThrottle):
-    """
-    Rate throttle on password changes to prevent credential abuse.
-    Rate: 5 requests per minute per user.
-    """
+    """5 requests per minute per user."""
     scope = 'auth_password_change'
 
 
 class PublicFormSubmissionRateThrottle(SecureAnonRateThrottle):
-    """
-    Rate throttle on public student applications & lead lookups to prevent spam.
-    Rate: 20 requests per minute per IP.
-    """
+    """20 requests per minute per IP."""
     scope = 'public_form'
 
 
 class AnalyticsRateThrottle(UserRateThrottle):
-    """
-    Rate throttle on expensive analytics and aggregation queries.
-    Rate: 60 requests per minute per user.
-    """
+    """60 requests per minute per user."""
     scope = 'analytics'
 
 
 class BulkImportRateThrottle(UserRateThrottle):
-    """
-    Rate throttle on spreadsheet parsing and bulk operations.
-    Rate: 10 requests per minute per user.
-    """
+    """10 requests per minute per user."""
     scope = 'bulk_upload'
+
+
+class WriteRateThrottle(UserRateThrottle):
+    """Sustained limit on POST/PUT/PATCH/DELETE. Rate: 'write' (30/min)."""
+    scope = 'write'
+
+    def allow_request(self, request, view):
+        if request.method in SAFE_METHODS:
+            return True
+        return super().allow_request(request, view)
+
+
+class WriteBurstThrottle(WriteRateThrottle):
+    """Short-window limit that stops fast floods. Rate: 'write_burst' (5/sec)."""
+    scope = 'write_burst'

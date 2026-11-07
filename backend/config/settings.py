@@ -268,6 +268,7 @@ else:
 # REST Framework Settings (VA-005 & VA-010 Remediation)
 REST_FRAMEWORK = {
     'EXCEPTION_HANDLER': 'core.exceptions.custom_exception_handler',
+    'NUM_PROXIES': 1,
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'users.authentication.ExpiringTokenAuthentication',
         'rest_framework.authentication.SessionAuthentication',
@@ -281,6 +282,8 @@ REST_FRAMEWORK = {
     'DEFAULT_THROTTLE_CLASSES': [
         'core.throttling.SecureAnonRateThrottle',
         'rest_framework.throttling.UserRateThrottle',
+        'core.throttling.WriteRateThrottle',
+        'core.throttling.WriteBurstThrottle',
     ],
     'DEFAULT_THROTTLE_RATES': {
         'anon': '100/min',
@@ -290,6 +293,9 @@ REST_FRAMEWORK = {
         'public_form': '20/min',
         'analytics': '60/min',
         'bulk_upload': '10/min',
+
+        'write': '30/min',
+        'write_burst': '5/sec',
     },
 }
 

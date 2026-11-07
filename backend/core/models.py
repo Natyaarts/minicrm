@@ -1,17 +1,28 @@
 from django.db import models, transaction
 from django.db.models import F
 from django.conf import settings
+from django.db.models.functions import Lower
 import datetime
 from .validators import validate_student_document_file, validate_batch_resource_file
 
 
 class Program(models.Model):
-    name = models.CharField(max_length=100) # e.g., Natya, Natya Career Academy
+    name = models.CharField(max_length=100, unique=True) # e.g., Natya, Natya Career Academy
     description = models.TextField(blank=True)
     slug = models.SlugField(unique=True, blank=True, null=True)
     require_payment = models.BooleanField(default=False)
     registration_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     is_active = models.BooleanField(default=True)
+
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                Lower('name'),
+                name='uniq_program_name_ci',
+            )
+        ]
+
 
     def save(self, *args, **kwargs):
         if not self.slug and self.name:
@@ -35,6 +46,16 @@ class SubProgram(models.Model):
     name = models.CharField(max_length=100) # e.g., STED, AISECT
     require_payment = models.BooleanField(default=False)
     registration_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['program', 'name'],
+                name='uniq_subprogram_name_per_program',
+            )
+        ]
+        
     
     def __str__(self):
         return f"{self.program.name} - {self.name}"

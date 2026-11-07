@@ -24,6 +24,26 @@ class SubProgramSerializer(serializers.ModelSerializer):
         model = SubProgram
         fields = '__all__'
 
+    def validate_name(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Name cannot be blank.")
+        return value
+
+    def validate(self, attrs):
+        program = attrs.get('program', getattr(self.instance, 'program', None))
+        name = attrs.get('name', getattr(self.instance, 'name', None))
+
+        if program and name:
+            qs = SubProgram.objects.filter(program=program, name__iexact=name)
+            if self.instance:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    {'name': 'A sub-program with this name already exists in this program.'}
+                )
+        return attrs
+
 class CourseSerializer(serializers.ModelSerializer):
     class Meta:
         model = Course
