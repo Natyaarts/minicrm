@@ -3472,7 +3472,7 @@ const fetchCollectedFees = async () => {
                             Manually enter the Wise User UUID for <b>{wiseLinkStudent?.first_name}</b>.
                             <br />
                             <span className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded mt-1 inline-block">
-                                ⚠️ Only use this if Auto-Link fails.
+                                Only use this if Auto-Link fails.
                             </span>
                         </p>
 

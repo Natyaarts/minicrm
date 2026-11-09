@@ -688,10 +688,10 @@ const Dialpad = () => {
             setRecordingUploadStatus('✅ Recording uploaded successfully');
             setTimeout(() => setRecordingUploadStatus(null), 3000);
           } else if (status === 'permanent_failure') {
-            setRecordingUploadStatus('⚠️ Interaction not found; recording archived safely');
+            setRecordingUploadStatus('Interaction not found; recording archived safely');
             setTimeout(() => setRecordingUploadStatus(null), 5000);
           } else if (status === 'failed') {
-            setRecordingUploadStatus('⚠️ Recording upload queued for retry');
+            setRecordingUploadStatus('Recording upload queued for retry');
             setTimeout(() => setRecordingUploadStatus(null), 4000);
           }
         }).catch(err => {
@@ -1101,7 +1101,6 @@ const Dialpad = () => {
                     )}
                   </View>
                   <Text style={styles.historyPhone}>
-                    {isIncoming ? '↙ ' : '↗ '}
                     {displayPhone}
                   </Text>
                   {cleanNote ? (

@@ -929,7 +929,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-center font-bold text-indigo-700">
                                             <span className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-lg text-xs border border-indigo-100">
-                                                ⏱️ {rep.formatted_call_duration || '0s'}
+                                                {rep.formatted_call_duration || '0s'}
                                             </span>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-center font-medium text-green-600">
@@ -975,8 +975,8 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                 className="bg-transparent text-sm font-semibold text-indigo-700 outline-none cursor-pointer"
                             >
                                 <option value="" className="text-slate-900 bg-white">All Sections</option>
-                                <option value="REGULAR" className="text-slate-900 bg-white">🎓 Regular</option>
-                                <option value="CAREER_ACADEMY" className="text-slate-900 bg-white">🏫 Career Academy</option>
+                                <option value="REGULAR" className="text-slate-900 bg-white">Regular</option>
+                                <option value="CAREER_ACADEMY" className="text-slate-900 bg-white">Career Academy</option>
                             </select>
                         </div>
                     </div>
@@ -1342,7 +1342,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                                             <div className="flex items-center justify-between text-[11px] font-medium text-slate-600">
                                                                 <span>Contacted: <strong className="text-emerald-700">{rep.contacted}</strong></span>
                                                                 <span className="flex items-center gap-1 bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md font-bold text-[10px] border border-indigo-100">
-                                                                    ⏱️ {rep.formatted_call_duration || '0s'} ({rep.total_calls || 0} calls)
+                                                                    {rep.formatted_call_duration || '0s'} ({rep.total_calls || 0} calls)
                                                                 </span>
                                                             </div>
                                                             <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
@@ -1522,7 +1522,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                     className="bg-transparent text-xs font-semibold text-indigo-700 outline-none cursor-pointer"
                                 >
                                     <option value="" className="text-slate-900 bg-white">All Statuses</option>
-                                    <option value="DUPLICATE" className="text-red-700 bg-rose-50 font-bold">⚠️ DUPLICATE LEADS</option>
+                                    <option value="DUPLICATE" className="text-red-700 bg-rose-50 font-bold">DUPLICATE LEADS</option>
                                     {Object.keys(pipelineStages).map(stageId => (
                                         <option key={stageId} value={stageId} className="text-slate-900 bg-white">
                                             {pipelineStages[stageId]}
@@ -1550,14 +1550,14 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                     className="bg-transparent text-xs font-semibold text-indigo-700 outline-none cursor-pointer"
                                 >
                                     <option value="" className="text-slate-900 bg-white">All Sections</option>
-                                    <option value="REGULAR" className="text-slate-900 bg-white">🎓 Regular</option>
-                                    <option value="CAREER_ACADEMY" className="text-slate-900 bg-white">🏫 Career Academy</option>
+                                    <option value="REGULAR" className="text-slate-900 bg-white">Regular</option>
+                                    <option value="CAREER_ACADEMY" className="text-slate-900 bg-white">Career Academy</option>
                                 </select>
                             </div>
 
                             {/* Campaign Filter */}
                             <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 focus-within:ring-2 focus-within:ring-indigo-500/20">
-                                <span className="text-xs font-semibold text-slate-500 whitespace-nowrap">📢 Campaign:</span>
+                                <span className="text-xs font-semibold text-slate-500 whitespace-nowrap">Campaign:</span>
                                 <select
                                     value={selectedCampaignFilter}
                                     onChange={(e) => { setSelectedCampaignFilter(e.target.value); setCurrentPage(1); }}
@@ -1750,7 +1750,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                                                      ? 'bg-red-200/60 text-red-800 border border-red-300/40' 
                                                                      : 'bg-indigo-50 text-indigo-700 border border-indigo-100/50'
                                                              }`}>
-                                                                 📢 {lead.campaign_name}
+                                                                {lead.campaign_name}
                                                              </span>
                                                          )}
                                                      </div>
@@ -1770,7 +1770,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     {(() => {
-                                                        const displayStatus = isDuplicate ? '⚠️ DUPLICATE' : (
+                                                        const displayStatus = isDuplicate ? 'DUPLICATE' : (
                                                             lead.lead_status_display ||
                                                             (lead.lead_stage_id != null ? pipelineStages[lead.lead_stage_id] : null) ||
                                                             pipelineStages[lead.lead_status] ||
@@ -2734,8 +2734,8 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                         className="bg-transparent text-xs font-semibold text-indigo-700 outline-none cursor-pointer w-full"
                                     >
                                         <option value="" className="text-slate-900 bg-white">All Sections</option>
-                                        <option value="REGULAR" className="text-slate-900 bg-white">🎓 Regular</option>
-                                        <option value="CAREER_ACADEMY" className="text-slate-900 bg-white">🏫 Career Academy</option>
+                                        <option value="REGULAR" className="text-slate-900 bg-white">Regular</option>
+                                        <option value="CAREER_ACADEMY" className="text-slate-900 bg-white">Career Academy</option>
                                     </select>
                                 </div>
 
@@ -2866,7 +2866,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                                                 <span className={`px-2 py-0.5 text-[9px] font-bold rounded-md uppercase tracking-wider ${
                                                                     isIncoming ? 'bg-blue-50 text-blue-600 border border-blue-100' : 'bg-emerald-50 text-emerald-600 border border-emerald-100'
                                                                 }`}>
-                                                                    {isIncoming ? '↙ INCOMING' : '↗ OUTGOING'}
+                                                                    {isIncoming ? 'INCOMING' : 'OUTGOING'}
                                                                 </span>
                                                                 <span className={`text-[9px] font-semibold ${
                                                                     item.call_status === 'CONNECTED' ? 'text-emerald-600' : 'text-rose-600'

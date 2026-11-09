@@ -1576,7 +1576,7 @@ const SalesModule = () => {
                                             className="bg-rose-50 border border-rose-200 rounded-lg text-xs font-bold text-rose-700 px-3 py-1.5 outline-none flex-1 sm:flex-initial shadow-sm"
                                         >
                                             <option value="">Normal Pipeline View</option>
-                                            <option value="DUPLICATE">⚠️ View Duplicate Leads</option>
+                                            <option value="DUPLICATE">View Duplicate Leads</option>
                                         </select>
                                     )}
                                     {selectedStageFilter === 'DUPLICATE' && (
@@ -1800,7 +1800,7 @@ const SalesModule = () => {
                                                                     {student.campaign_name && (
                                                                         <div className="mt-1">
                                                                             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200 text-[10px] font-semibold">
-                                                                                📢 {student.campaign_name}
+                                                                                {student.campaign_name}
                                                                             </span>
                                                                         </div>
                                                                     )}
@@ -1954,7 +1954,7 @@ const SalesModule = () => {
                                                             {student.campaign_name && (
                                                                 <div className="mt-1">
                                                                     <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200 text-[10px] font-semibold">
-                                                                        📢 {student.campaign_name}
+                                                                        {student.campaign_name}
                                                                     </span>
                                                                 </div>
                                                             )}

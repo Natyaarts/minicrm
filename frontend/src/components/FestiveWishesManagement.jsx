@@ -1,17 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Calendar, Image as ImageIcon, Send, Trash2, CheckCircle2, AlertCircle, Eye, RefreshCw, Layers, MessageSquare, Pencil } from 'lucide-react';
+import { Wheat, Sparkles, Calendar, Image as ImageIcon, Send, Trash2, CheckCircle2, AlertCircle, Eye, RefreshCw, Layers, MessageSquare, Pencil } from 'lucide-react';
 import api from '../api/axios';
 
 const THEME_PRESETS = [
-  { id: 'ONAM', name: 'Onam Festival 🌾🌸', bg: 'from-amber-500 via-orange-500 to-yellow-400', bannerBg: '#FEF3C7', textColor: '#92400E', icon: '🌸' },
-  { id: 'DIWALI', name: 'Diwali Festival 🪔✨', bg: 'from-purple-900 via-indigo-800 to-amber-500', bannerBg: '#EEF2FF', textColor: '#3730A3', icon: '🪔' },
-  { id: 'NEW_YEAR', name: 'New Year 🎉🥂', bg: 'from-blue-900 via-slate-900 to-indigo-900', bannerBg: '#E0F2FE', textColor: '#075985', icon: '🎉' },
-  { id: 'CHRISTMAS', name: 'Christmas 🎄⭐', bg: 'from-emerald-800 via-green-900 to-red-700', bannerBg: '#DCFCE7', textColor: '#166534', icon: '🎄' },
-  { id: 'EID', name: 'Eid Mubarak 🌙✨', bg: 'from-emerald-900 via-teal-800 to-amber-400', bannerBg: '#CCFBF1', textColor: '#115E59', icon: '🌙' },
-  { id: 'BIRTHDAY', name: 'Birthday Wish 🎂🎈', bg: 'from-pink-500 via-rose-500 to-purple-600', bannerBg: '#FCE7F3', textColor: '#9D174D', icon: '🎂' },
-  { id: 'HOLI', name: 'Holi Colors 🎨✨', bg: 'from-fuchsia-600 via-pink-500 to-amber-400', bannerBg: '#FEE2E2', textColor: '#991B1B', icon: '🎨' },
-  { id: 'COMPANY_MILESTONE', name: 'Company Milestone 🏆🚀', bg: 'from-blue-600 via-indigo-600 to-violet-700', bannerBg: '#EFF6FF', textColor: '#1E40AF', icon: '🏆' },
-  { id: 'CUSTOM', name: 'Custom Festival / Announcement 🌟', bg: 'from-slate-800 via-slate-900 to-gray-900', bannerBg: '#F3F4F6', textColor: '#1F2937', icon: '🌟' },
+  { id: 'ONAM', name: 'Onam Festival', bg: 'from-amber-500 via-orange-500 to-yellow-400', bannerBg: '#FEF3C7', textColor: '#92400E', icon: '🌸' },
+  { id: 'DIWALI', name: 'Diwali Festival', bg: 'from-purple-900 via-indigo-800 to-amber-500', bannerBg: '#EEF2FF', textColor: '#3730A3', icon: '🪔' },
+  { id: 'NEW_YEAR', name: 'New Year', bg: 'from-blue-900 via-slate-900 to-indigo-900', bannerBg: '#E0F2FE', textColor: '#075985', icon: '🎉' },
+  { id: 'CHRISTMAS', name: 'Christmas', bg: 'from-emerald-800 via-green-900 to-red-700', bannerBg: '#DCFCE7', textColor: '#166534', icon: '🎄' },
+  { id: 'EID', name: 'Eid Mubarak', bg: 'from-emerald-900 via-teal-800 to-amber-400', bannerBg: '#CCFBF1', textColor: '#115E59', icon: '🌙' },
+  { id: 'BIRTHDAY', name: 'Birthday Wish', bg: 'from-pink-500 via-rose-500 to-purple-600', bannerBg: '#FCE7F3', textColor: '#9D174D', icon: '🎂' },
+  { id: 'HOLI', name: 'Holi Colors', bg: 'from-fuchsia-600 via-pink-500 to-amber-400', bannerBg: '#FEE2E2', textColor: '#991B1B', icon: '🎨' },
+  { id: 'COMPANY_MILESTONE', name: 'Company Milestone', bg: 'from-blue-600 via-indigo-600 to-violet-700', bannerBg: '#EFF6FF', textColor: '#1E40AF', icon: '🏆' },
+  { id: 'CUSTOM', name: 'Custom Festival / Announcement', bg: 'from-slate-800 via-slate-900 to-gray-900', bannerBg: '#F3F4F6', textColor: '#1F2937', icon: '🌟' },
 ];
 
 export default function FestiveWishesManagement() {
@@ -217,7 +217,7 @@ export default function FestiveWishesManagement() {
           className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-amber-500 to-orange-600 text-white font-bold px-5 py-2.5 rounded-xl shadow-lg shadow-amber-500/20 hover:from-amber-600 hover:to-orange-700 transition"
         >
           <Sparkles className="w-5 h-5" />
-          + Create Festive Wish / Banner
+          Create Festive Wish / Banner
         </button>
       </div>
 
@@ -229,7 +229,7 @@ export default function FestiveWishesManagement() {
       ) : greetings.length === 0 ? (
         <div className="bg-white rounded-2xl p-12 text-center border border-slate-200 shadow-sm max-w-2xl mx-auto">
           <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">
-            🌾
+            <Wheat size={32} strokeWidth={2} />
           </div>
           <h3 className="text-lg font-bold text-slate-800">No Festive Greetings Created Yet</h3>
           <p className="text-sm text-slate-500 mt-1 mb-6">
@@ -355,9 +355,9 @@ export default function FestiveWishesManagement() {
           <div className="bg-white rounded-3xl max-w-4xl w-full shadow-2xl overflow-hidden border border-slate-100 my-8">
             <div className="bg-slate-900 text-white p-6 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-amber-500/20 text-amber-400 rounded-xl flex items-center justify-center text-xl font-bold">
+                {/* <div className="w-10 h-10 bg-amber-500/20 text-amber-400 rounded-xl flex items-center justify-center text-xl font-bold">
                   🌸
-                </div>
+                </div> */}
                 <div>
                   <h3 className="text-lg font-extrabold">{editingGreeting ? 'Edit Festive Wish / HR Banner' : 'Create Festive Wish / HR Banner'}</h3>
                   <p className="text-xs text-slate-400">{editingGreeting ? 'Update the theme, poster image, and greeting details' : 'Configure theme, poster image, and greetings for employees & students'}</p>
@@ -389,7 +389,7 @@ export default function FestiveWishesManagement() {
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Happy Onam! 🌸🌾"
+                    placeholder="e.g. Happy Onam!"
                     value={formData.title}
                     onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-sm font-bold text-slate-900 focus:ring-2 focus:ring-amber-500 outline-none"
@@ -493,7 +493,7 @@ export default function FestiveWishesManagement() {
                       <span className="bg-white/20 backdrop-blur-md px-3 py-1 rounded-full text-xs font-extrabold text-white mb-2 inline-block">
                         {selectedThemePreset.name}
                       </span>
-                      <h4 className="text-2xl font-black">{formData.title || 'Happy Festive Season! 🌸'}</h4>
+                      <h4 className="text-2xl font-black">{formData.title || 'Happy Festive Season!'}</h4>
                       <p className="text-xs text-white/90 font-medium mt-0.5">{formData.sub_title || 'Wishing you and your family infinite joy!'}</p>
                     </div>
                   </div>
@@ -503,7 +503,7 @@ export default function FestiveWishesManagement() {
                       {formData.message || 'May this festival bring good health, prosperity, and happiness to your home!'}
                     </p>
                     <button className="w-full bg-gradient-to-r from-amber-500 to-orange-500 text-white font-black py-2.5 rounded-xl shadow-md text-xs uppercase tracking-wider flex items-center justify-center gap-1.5">
-                      <span>Celebrate & Wish Back 🎉</span>
+                      <span>Celebrate & Wish Back</span>
                     </button>
                   </div>
                 </div>
