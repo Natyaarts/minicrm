@@ -338,7 +338,11 @@ export default function BDEReportScreen() {
             </View>
             <View style={[styles.metricCard, isDark && styles.darkCard]}>
                <Text style={styles.metricLabel}>CALLS LOGGED</Text>
-               <Text style={[styles.metricValue, {color: '#10B981'}]}>{report.metrics.total_interactions}</Text>
+               <Text style={[styles.metricValue, {color: '#10B981'}]}>{report.metrics.total_calls ?? report.metrics.total_interactions}</Text>
+            </View>
+            <View style={[styles.metricCard, isDark && styles.darkCard]}>
+               <Text style={styles.metricLabel}>WHATSAPP CONNECTED</Text>
+               <Text style={[styles.metricValue, {color: '#059669'}]}>{report.metrics.whatsapp_connected || 0}</Text>
             </View>
          </View>
 

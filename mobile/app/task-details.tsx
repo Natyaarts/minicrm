@@ -14,7 +14,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import client from '../src/api/client';
 
@@ -27,9 +27,12 @@ interface LeadTaskItem {
   mobile: string;
   email: string;
   lead_status: string;
+  campaign?: number | null;
+  campaign_name?: string | null;
   program_name: string | null;
   course_name: string | null;
   owner_name: string;
+  assigned_to_name?: string;
   is_completed: boolean;
   completed_at: string | null;
   completed_by_name: string | null;
@@ -52,6 +55,9 @@ interface TaskData {
   total_leads: number;
   completed_leads: number;
   progress_percent: number;
+  my_leads_count?: number;
+  my_completed_leads?: number;
+  my_progress_percent?: number;
   created_at: string;
   items: LeadTaskItem[];
 }
@@ -90,6 +96,12 @@ export default function TaskDetailsScreen() {
   useEffect(() => {
     fetchTaskDetails();
   }, [fetchTaskDetails]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchTaskDetails();
+    }, [fetchTaskDetails])
+  );
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -144,10 +156,10 @@ export default function TaskDetailsScreen() {
     } as any);
   };
 
-  const handleOpenLeadDetails = (leadId: number) => {
+  const handleOpenLeadDetails = (leadId: number, campaignName?: string | null) => {
     router.push({
       pathname: '/lead-details',
-      params: { leadId: String(leadId) },
+      params: { leadId: String(leadId), initialCampaignName: campaignName || '' },
     } as any);
   };
 
@@ -187,7 +199,7 @@ export default function TaskDetailsScreen() {
 
           <TouchableOpacity
             style={styles.headerInfo}
-            onPress={() => handleOpenLeadDetails(item.lead)}
+            onPress={() => handleOpenLeadDetails(item.lead, item.campaign_name)}
           >
             <View style={styles.nameRow}>
               <Text style={[styles.leadName, isDark && styles.darkText]} numberOfLines={1}>
@@ -200,6 +212,12 @@ export default function TaskDetailsScreen() {
             <View style={styles.statusRow}>
               <View style={styles.statusPill}>
                 <Text style={styles.statusPillText}>{item.lead_status || 'NEW'}</Text>
+              </View>
+              <View style={styles.campaignPill}>
+                <FontAwesome5 name="bullhorn" size={9} color="#4F46E5" />
+                <Text style={styles.campaignPillText} numberOfLines={1}>
+                  {item.campaign_name || 'Direct / Organic'}
+                </Text>
               </View>
               {item.program_name ? (
                 <Text style={styles.programText} numberOfLines={1}>
@@ -291,7 +309,7 @@ export default function TaskDetailsScreen() {
 
           <TouchableOpacity
             style={styles.detailsButton}
-            onPress={() => handleOpenLeadDetails(item.lead)}
+            onPress={() => handleOpenLeadDetails(item.lead, item.campaign_name)}
           >
             <FontAwesome5 name="user-edit" size={13} color="#3B82F6" />
             <Text style={styles.detailsButtonText}>CRM Details</Text>
@@ -353,15 +371,17 @@ export default function TaskDetailsScreen() {
         <View style={styles.summaryTopRow}>
           <Text style={[styles.summaryTitle, isDark && styles.darkText]}>Task Progress</Text>
           <Text style={styles.summaryCount}>
-            <Text style={{ fontWeight: '800', color: '#1E293B' }}>{task.completed_leads}</Text> / {task.total_leads} Leads ({task.progress_percent}%)
+            <Text style={{ fontWeight: '800', color: isDark ? '#F1F5F9' : '#1E293B' }}>
+              {task.my_completed_leads !== undefined ? task.my_completed_leads : task.completed_leads}
+            </Text> / {task.my_leads_count !== undefined ? task.my_leads_count : task.total_leads} Leads ({task.my_progress_percent !== undefined ? task.my_progress_percent : task.progress_percent}%)
           </Text>
         </View>
         <View style={styles.progressBarTrack}>
           <View
             style={[
               styles.progressBarFill,
-              { width: `${task.progress_percent}%` },
-              task.progress_percent === 100 && { backgroundColor: '#10B981' },
+              { width: `${task.my_progress_percent !== undefined ? task.my_progress_percent : task.progress_percent}%` },
+              (task.my_progress_percent !== undefined ? task.my_progress_percent : task.progress_percent) === 100 && { backgroundColor: '#10B981' },
             ]}
           />
         </View>
@@ -608,6 +628,24 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     color: '#2563EB',
+  },
+  campaignPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#EEF2FF',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E0E7FF',
+    maxWidth: 150,
+  },
+  campaignPillText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#4F46E5',
+    flexShrink: 1,
   },
   programText: {
     fontSize: 11,

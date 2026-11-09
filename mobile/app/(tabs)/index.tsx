@@ -723,9 +723,12 @@ const welcomeName = user ? `${user.first_name || user.username}` : 'Member';
               </TouchableOpacity>
             </View>
              {tasks.length > 0 ? tasks.map(task => (
-                <TouchableOpacity key={task.id} style={[styles.taskItem, { borderTopColor: '#F3F4F6' }]} onPress={() => router.push(`/lead-details?leadId=${task.student}` as any)}>
+                <TouchableOpacity key={task.id} style={[styles.taskItem, { borderTopColor: '#F3F4F6' }]} onPress={() => { if (task.student) router.push(`/lead-details?leadId=${task.student}` as any); }}>
                    <View style={{flex: 1}}>
                       <Text style={[styles.taskTitle, { color: '#111827' }]} numberOfLines={1}>{task.title}</Text>
+                      {(task.notes || task.description) ? (
+                        <Text style={{ fontSize: 11, color: '#6B7280', marginTop: 2 }} numberOfLines={1}>{task.notes || task.description}</Text>
+                      ) : null}
                       <Text style={styles.taskDate}>
                         <FontAwesome5 name="clock" size={10} color="#F59E0B" /> {task.due_date ? new Date(task.due_date).toLocaleString([], {month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit'}) : 'No due date'}
                       </Text>

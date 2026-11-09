@@ -118,11 +118,24 @@ function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }) {
         const employeeModules = ['Workforce Hub', 'Attendance', 'Leave Management', 'Tasks', 'Performance Reviews', 'Payroll', 'Asset Management', 'Employee Lifecycle'];
         if (employeeModules.includes(item.label) && user.role === 'EMPLOYEE') return true;
 
-        // Restrict CRM modules for non-manager sales users
-        const managerOnlyCrmModules = ['Dashboard', 'Campaigns', 'Team Reports', 'Call Analytics'];
-        if (managerOnlyCrmModules.includes(item.label)) {
-            const isManager = ['SUPER_ADMIN', 'ADMIN', 'TEAM_LEAD', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD'].includes(user.role) || user.is_manager;
+        const isSalesRole = ['SALES', 'TEAM_LEAD', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD'].includes(user.role);
+        const isManager = ['SUPER_ADMIN', 'ADMIN', 'TEAM_LEAD', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD'].includes(user.role) || user.is_manager;
+
+        // Restrict manager-only CRM modules (Campaigns & Team Reports) for non-manager users
+        const managerOnlyCrmModuleKeys = ['CRM_CAMPAIGNS', 'CRM_REPORTS'];
+        if (managerOnlyCrmModuleKeys.includes(item.module)) {
             if (!isManager) return false;
+            const explicitPerm = user.permissions?.[item.module];
+            if (explicitPerm !== undefined) return explicitPerm.view === true;
+            return isSalesRole;
+        }
+
+        // Allow BDE Executives (SALES) and Sales Managers access to core CRM modules
+        const bdeCrmModuleKeys = ['SALES', 'CRM_DASHBOARD', 'CRM_PIPELINE', 'CRM_LEADS_TABLE', 'CRM_TASKS', 'CRM_CALL_ANALYTICS'];
+        if (isSalesRole && bdeCrmModuleKeys.includes(item.module)) {
+            const explicitPerm = user.permissions?.[item.module];
+            if (explicitPerm !== undefined) return explicitPerm.view === true;
+            return true;
         }
 
         if (item.module === 'COMMON') return true;

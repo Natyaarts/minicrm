@@ -375,7 +375,7 @@ class StudentViewSet(viewsets.ModelViewSet):
             user = request.user
             if not user or not user.is_authenticated:
                 return Response({'detail': 'Authentication required to modify CRE Update.'}, status=status.HTTP_401_UNAUTHORIZED)
-            allowed_roles = ['SALES', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD', 'ADMIN', 'SUPER_ADMIN']
+            allowed_roles = ['SALES', 'TEAM_LEAD', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD', 'ADMIN', 'SUPER_ADMIN']
             if user.role not in allowed_roles and not user.is_superuser and not user.is_staff:
                 return Response({'detail': 'You do not have permission to modify CRE Update.'}, status=status.HTTP_403_FORBIDDEN)
         return super().update(request, *args, **kwargs)
@@ -578,7 +578,9 @@ class StudentViewSet(viewsets.ModelViewSet):
         
         # Staff/Internal View
         qs = Student.objects.select_related(
-            'user', 'program_type', 'sub_program', 'course', 'batch'
+            'user', 'program_type', 'sub_program', 'course', 'batch',
+            'campaign', 'assigned_to', 'duplicate_of',
+            'duplicate_of__campaign', 'duplicate_of__assigned_to'
         ).prefetch_related('dynamic_values__field', 'documents', 'transactions', 'monthly_payments').all()
             
         from crm.utils import get_converted_stage_values
@@ -597,7 +599,7 @@ class StudentViewSet(viewsets.ModelViewSet):
             # Normal lead queries: strictly isolate by excluding duplicates for ALL roles
             qs = qs.exclude(lead_status__iexact='DUPLICATE')
 
-        if user.role in ['SALES', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD']:
+        if user.role in ['SALES', 'TEAM_LEAD', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD']:
             user_section = getattr(user, 'sales_section', 'BOTH')
             if user_section and user_section != 'BOTH':
                 from django.db.models import Q
@@ -610,6 +612,14 @@ class StudentViewSet(viewsets.ModelViewSet):
             if not check_is_sales_manager(user) and not is_duplicate_requested:
                 # STRICT ACCESS CONTROL: Standard SALES employee only sees leads assigned to them
                 qs = qs.filter(assigned_to=user)
+            elif user.role == 'TEAM_LEAD' and not is_duplicate_requested:
+                subordinates = user.get_all_subordinates() if hasattr(user, 'get_all_subordinates') else []
+                if not subordinates and hasattr(user, 'hrms_profile') and hasattr(user.hrms_profile, 'subordinates'):
+                    hrms_subs = user.hrms_profile.subordinates.select_related('user').all()
+                    subordinates = [sub.user for sub in hrms_subs if sub.user]
+                if subordinates:
+                    team_user_ids = [user.id] + [s.id for s in subordinates]
+                    qs = qs.filter(assigned_to_id__in=team_user_ids)
         elif user.role in ['MENTOR', 'TEACHER']:
             subordinates = user.get_all_subordinates()
             if subordinates:
@@ -828,7 +838,11 @@ class StudentViewSet(viewsets.ModelViewSet):
 
         sales_section = self.request.query_params.get('sales_section')
         if sales_section and sales_section.upper() != 'ALL':
-            qs = qs.filter(Q(sales_section=sales_section) | Q(assigned_to__sales_section=sales_section))
+            qs = qs.filter(
+                Q(sales_section=sales_section) |
+                Q(campaign__section=sales_section) |
+                Q(assigned_to__sales_section=sales_section)
+            )
 
         date_preset = self.request.query_params.get('date_preset')
         start_date_str = self.request.query_params.get('start_date')

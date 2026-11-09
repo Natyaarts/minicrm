@@ -168,6 +168,14 @@ class Student(models.Model):
     # Lead Assignment (Sales Process)
     assigned_to = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_leads')
     campaign = models.ForeignKey('crm.Campaign', on_delete=models.SET_NULL, null=True, blank=True, related_name='leads')
+    # Links a duplicate lead to the original CRM student record
+    duplicate_of = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='duplicate_leads'
+    )
     
     SALES_SECTION_CHOICES = (
         ('CAREER_ACADEMY', 'Career Academy'),

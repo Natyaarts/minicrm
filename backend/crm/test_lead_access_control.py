@@ -509,3 +509,95 @@ class SalesLeadAccessControlSecurityTests(TestCase):
         })
         self.assertEqual(res_student.status_code, status.HTTP_403_FORBIDDEN)
 
+    # 26. BDE Executive receives default CRM permissions and can access Leads Table even if RolePermission table is empty
+    def test_26_bde_executive_default_permissions_when_db_empty(self):
+        RolePermission.objects.all().delete()
+
+        res_me = self.client_a.get('/api/auth/me/')
+        self.assertEqual(res_me.status_code, status.HTTP_200_OK)
+        perms = res_me.data.get('permissions', {})
+        for mod in ['SALES', 'CRM_DASHBOARD', 'CRM_PIPELINE', 'CRM_LEADS_TABLE', 'CRM_TASKS', 'CRM_CALL_ANALYTICS']:
+            self.assertIn(mod, perms)
+            self.assertTrue(perms[mod]['view'])
+            self.assertTrue(perms[mod]['edit'])
+        # Manager-only modules should not be granted by default to non-manager BDE Executive
+        self.assertNotIn('CRM_CAMPAIGNS', perms)
+        self.assertNotIn('CRM_REPORTS', perms)
+
+        res_leads = self.client_a.get('/api/students/')
+        self.assertEqual(res_leads.status_code, status.HTTP_200_OK)
+        results = res_leads.data.get('results', res_leads.data)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]['id'], self.lead_a.id)
+
+    # 27. BDE Executive sees Campaign Information on assigned leads
+    def test_27_bde_executive_campaign_info_on_assigned_leads(self):
+        campaign = Campaign.objects.create(
+            name='Summer Dance Workshop 2026',
+            section='REGULAR'
+        )
+        self.lead_a.campaign = campaign
+        self.lead_a.save()
+
+        res_list = self.client_a.get('/api/students/')
+        self.assertEqual(res_list.status_code, status.HTTP_200_OK)
+        results = res_list.data.get('results', res_list.data)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]['campaign'], campaign.id)
+        self.assertEqual(results[0]['campaign_name'], 'Summer Dance Workshop 2026')
+
+        res_detail = self.client_a.get(f'/api/students/{self.lead_a.id}/')
+        self.assertEqual(res_detail.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_detail.data['campaign'], campaign.id)
+        self.assertEqual(res_detail.data['campaign_name'], 'Summer Dance Workshop 2026')
+
+    # 28. BDE Executive Call Analytics and Call Logs access and cross-BDE isolation
+    def test_28_bde_executive_call_analytics_and_call_logs_isolation(self):
+        call_a = LeadInteraction.objects.create(
+            student=self.lead_a,
+            author=self.employee_a,
+            interaction_type='CALL',
+            call_status='CONNECTED',
+            call_direction='OUTGOING',
+            call_duration=125,
+            notes='Discussed Kathak schedule'
+        )
+        call_b = LeadInteraction.objects.create(
+            student=self.lead_b,
+            author=self.employee_b,
+            interaction_type='CALL',
+            call_status='CONNECTED',
+            call_direction='OUTGOING',
+            call_duration=240,
+            notes='Discussed Bharatanatyam schedule'
+        )
+
+        # BDE A accesses Call Analytics and sees only their own call stats & call history logs
+        res_analytics_a = self.client_a.get('/api/crm/call-analytics/')
+        self.assertEqual(res_analytics_a.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_analytics_a.data['summary']['total_calls'], 1)
+        self.assertEqual(res_analytics_a.data['summary']['total_duration'], 125)
+        self.assertEqual(len(res_analytics_a.data['history']), 1)
+        self.assertEqual(res_analytics_a.data['history'][0]['id'], call_a.id)
+
+        # BDE A cannot view BDE B's Call Analytics via employee_id parameter
+        res_cross = self.client_a.get(f'/api/crm/call-analytics/?employee_id={self.employee_b.id}')
+        self.assertEqual(res_cross.status_code, status.HTTP_403_FORBIDDEN)
+
+        # BDE A accesses Call Logs / Lead Interactions and sees only their own lead's interactions
+        res_inter = self.client_a.get('/api/crm/interactions/')
+        self.assertEqual(res_inter.status_code, status.HTTP_200_OK)
+        inter_ids = [i['id'] for i in res_inter.data.get('results', res_inter.data)]
+        self.assertIn(call_a.id, inter_ids)
+        self.assertNotIn(call_b.id, inter_ids)
+
+    # 29. BDE Executive can access own BDE Report and cannot access another BDE's report
+    def test_29_bde_executive_own_bde_report_and_cross_bde_restriction(self):
+        res_own = self.client_a.get(f'/api/crm/bde-report/{self.employee_a.id}/')
+        self.assertEqual(res_own.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_own.data['bde']['id'], self.employee_a.id)
+
+        res_other = self.client_a.get(f'/api/crm/bde-report/{self.employee_b.id}/')
+        self.assertEqual(res_other.status_code, status.HTTP_403_FORBIDDEN)
+
+

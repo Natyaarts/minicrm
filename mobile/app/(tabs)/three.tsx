@@ -45,7 +45,7 @@ export default function MenuHubScreen() {
     }
   };
 
-  const hasDialerAccess = user?.role === 'SALES' || user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';
+  const hasDialerAccess = ['SALES', 'TEAM_LEAD', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD', 'ADMIN', 'SUPER_ADMIN'].includes(user?.role) || Boolean(user?.is_manager);
   const isAcademicStaff = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || user?.role === 'ACADEMIC_COORDINATOR' || user?.role === 'TEACHER';
   const isAdminStaff = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
 

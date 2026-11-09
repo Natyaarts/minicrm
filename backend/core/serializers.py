@@ -266,6 +266,8 @@ class StudentSerializer(serializers.ModelSerializer):
     # Assignment
     assigned_to_name = serializers.SerializerMethodField()
     teacher_name = serializers.SerializerMethodField()
+    original_campaign_name = serializers.SerializerMethodField()
+    original_assigned_bde = serializers.SerializerMethodField()
 
     # Resolved Lead Status metadata
     lead_status_display = serializers.SerializerMethodField()
@@ -334,6 +336,49 @@ class StudentSerializer(serializers.ModelSerializer):
         if obj.batch and obj.batch.teacher:
             return f"{obj.batch.teacher.first_name} {obj.batch.teacher.last_name}".strip() or obj.batch.teacher.username
         return "Not Assigned"
+
+    def _get_original_lead(self, obj):
+        if hasattr(obj, '_cached_original_lead'):
+            return obj._cached_original_lead
+
+        if (getattr(obj, 'lead_status', '') or '').upper() != 'DUPLICATE':
+            obj._cached_original_lead = None
+            return None
+
+        candidate = getattr(obj, 'duplicate_of', None)
+        visited = {obj.id} if getattr(obj, 'id', None) else set()
+        while candidate is not None and candidate.id not in visited:
+            visited.add(candidate.id)
+            if (getattr(candidate, 'lead_status', '') or '').upper() != 'DUPLICATE':
+                obj._cached_original_lead = candidate
+                return candidate
+            candidate = getattr(candidate, 'duplicate_of', None)
+
+        obj._cached_original_lead = None
+        return None
+
+    def get_original_campaign_name(self, obj):
+        if (getattr(obj, 'lead_status', '') or '').upper() != 'DUPLICATE':
+            return None
+        original = self._get_original_lead(obj)
+        if original and getattr(original, 'campaign', None) and getattr(original.campaign, 'name', None):
+            return original.campaign.name
+        return None
+
+    def get_original_assigned_bde(self, obj):
+        if (getattr(obj, 'lead_status', '') or '').upper() != 'DUPLICATE':
+            return None
+        original = self._get_original_lead(obj)
+        if not original:
+            return None
+        assignee = getattr(original, 'assigned_to', None)
+        if not assignee and hasattr(original, 'task_items'):
+            task_item = original.task_items.select_related('assigned_to', 'task__assigned_to').order_by('-id').first()
+            if task_item:
+                assignee = task_item.assigned_to or (task_item.task.assigned_to if task_item.task else None)
+        if assignee:
+            return f"{assignee.first_name} {assignee.last_name}".strip() or assignee.username
+        return None
 
 
     def get_total_due(self, obj):

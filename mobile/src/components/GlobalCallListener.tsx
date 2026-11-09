@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, TextInput, Platform, ScrollView, Alert, ActivityIndicator, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { listenToCallState, listenToMissedCalls, startNativeRecording, stopNativeRecording, getLatestCallLogDuration, extractDurationFromAudio } from '../utils/CallManager';
-import { generateMobileCallId, queueOfflineCall, markRecordingConsumed, uploadCallRecordingAsync } from '../utils/SyncManager';
+import { listenToCallState, listenToMissedCalls, startNativeRecording, stopNativeRecording, cancelNativeRecording, findRecentRecordingInMappedFolder, markCallSessionEnded, getLastCallSessionEndTimeMs, getLatestCallLogDuration, extractDurationFromAudio } from '../utils/CallManager';
+import { generateMobileCallId, queueOfflineCall, markRecordingConsumed, getConsumedRecordings, isRecordingConsumed, uploadCallRecordingAsync } from '../utils/SyncManager';
 import client from '../api/client';
 import * as DocumentPicker from 'expo-document-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -166,7 +166,8 @@ export default function GlobalCallListener() {
 
         if (isIncomingRef.current) {
           const endTime = Date.now();
-          const startTime = callStartTimeRef.current || (Date.now() - 5000);
+          const rawStart = callStartTimeRef.current || (Date.now() - 5000);
+          const startTime = Math.max(rawStart, getLastCallSessionEndTimeMs());
           const wasOffhook = isOffhookRef.current;
           const phone = incomingPhoneRef.current || displayPhone;
 
@@ -193,18 +194,29 @@ export default function GlobalCallListener() {
           }
 
           if (Platform.OS === 'android' && wasOffhook && isConnected && authoritativeDuration > 0) {
-            const path = await stopNativeRecording();
-            if (path) {
+            const consumedSet = await getConsumedRecordings();
+            let path = await stopNativeRecording();
+            if (path && isRecordingConsumed(path, consumedSet)) {
+              path = null;
+            }
+            if (!path && phone) {
+              path = await findRecentRecordingInMappedFolder(phone, startTime, endTime, consumedSet);
+            }
+            if (path && !isRecordingConsumed(path, consumedSet)) {
               setRecordedFilePath(path);
               const exactDuration = await extractDurationFromAudio(path);
               if (exactDuration && exactDuration > 0) {
                 authoritativeDuration = exactDuration;
               }
+            } else {
+              setRecordedFilePath(null);
             }
           } else if (Platform.OS === 'android') {
-            await stopNativeRecording();
+            await cancelNativeRecording();
             setRecordedFilePath(null);
           }
+
+          markCallSessionEnded(Date.now());
 
           // Unified rule: duration > 0 -> CONNECTED, duration == 0 -> MISSED
           const finalDuration = isConnected && authoritativeDuration > 0 ? authoritativeDuration : 0;
@@ -212,6 +224,9 @@ export default function GlobalCallListener() {
 
           setCallDuration(finalDuration);
           setCallStatusState(finalStatus);
+          setManualRecordingFile(null);
+          setPostCallNotes('');
+          setNextFollowupDate(null);
           
           // Show post-call review modal
           setIsModalVisible(true);
@@ -297,6 +312,9 @@ export default function GlobalCallListener() {
     const isConnected = callDuration > 0 && callStatusState === 'CONNECTED';
     const status = isConnected ? 'CONNECTED' : 'MISSED';
     const finalDuration = isConnected ? callDuration.toString() : '0';
+    const notesContent = postCallNotes
+      ? `Incoming Call - Duration: ${formatDuration(callDuration)}\nNotes: ${postCallNotes}`
+      : (isConnected ? `Incoming Call from ${displayPhone} (CONNECTED, ${formatDuration(callDuration)})` : `Missed Incoming Call from ${displayPhone}`);
 
     const parameters: Record<string, string> = {
       mobile_call_id: mobileCallId,

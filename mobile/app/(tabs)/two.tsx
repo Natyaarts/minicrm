@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   StyleSheet, FlatList, TextInput, ActivityIndicator,
-  TouchableOpacity, Alert, Text, View, useColorScheme, StatusBar
+  TouchableOpacity, Alert, Text, View, useColorScheme, StatusBar, Modal, ScrollView
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { getStudents } from '../../src/api/sales';
@@ -53,6 +53,14 @@ export default function SalesScreen() {
   const [showPicker, setShowPicker] = useState<'start' | 'end' | null>(null);
   const [viewMode, setViewMode] = useState<'NEW' | 'PIPELINE' | 'CALLS' | 'TASKS'>('NEW');
 
+  // ── BDE Executive Filter States (Admin / Team Lead / Super Admin) ─────────
+  const [bdeExecutives, setBdeExecutives] = useState<any[]>([]);
+  const [selectedBde, setSelectedBde] = useState<string>('');
+  const [showBdeModal, setShowBdeModal] = useState(false);
+  const [bdeSearch, setBdeSearch] = useState('');
+  const [mappedFolderUri, setMappedFolderUri] = useState<string | null>(null);
+  const [mappedFolderInfo, setMappedFolderInfo] = useState<{ folderName: string; audioRecordingsCount: number } | null>(null);
+
   // ── Lead Tasks States ─────────────────────────────────────────────────────
   const [leadTasks, setLeadTasks] = useState<any[]>([]);
   const [loadingLeadTasks, setLoadingLeadTasks] = useState(false);
@@ -60,7 +68,9 @@ export default function SalesScreen() {
   const fetchLeadTasks = async () => {
     try {
       setLoadingLeadTasks(true);
-      const res = await client.get('/crm/lead-tasks/');
+      const taskParams: any = {};
+      if (selectedBde) taskParams.assigned_to = selectedBde;
+      const res = await client.get('/crm/lead-tasks/', { params: taskParams });
       const data = res.data?.results || res.data || [];
       setLeadTasks(data);
     } catch (e) {
@@ -85,15 +95,140 @@ export default function SalesScreen() {
   const [playingAudio, setPlayingAudio] = useState<string | null>(null);
   const [sound, setSound] = useState<Audio.Sound | null>(null);
 
+  const loadMappedFolder = async () => {
+    try {
+      const { getMappedRecordingFolder, scanRecordingFolder } = await import('../../src/utils/CallManager');
+      const uri = await getMappedRecordingFolder();
+      if (uri) {
+        const info = await scanRecordingFolder(uri);
+        if (info && info.accessible) {
+          setMappedFolderUri(uri);
+          setMappedFolderInfo({
+            folderName: info.folderName,
+            audioRecordingsCount: info.audioRecordingsCount,
+          });
+          const { syncMissingRecordings } = await import('../../src/utils/SyncManager');
+          syncMissingRecordings().catch(() => {});
+        } else {
+          setMappedFolderUri(null);
+          setMappedFolderInfo(null);
+        }
+      }
+    } catch (_) {}
+  };
+
+  const openFolderPickerAndMap = async () => {
+    const { pickAndMapRecordingFolder } = await import('../../src/utils/CallManager');
+    const result = await pickAndMapRecordingFolder();
+    if (result.status === 'selected' && result.uri) {
+      const folderName = result.folderInfo?.folderName || 'Selected Folder';
+      const recCount = result.folderInfo?.audioRecordingsCount ?? 0;
+      setMappedFolderUri(result.uri);
+      setMappedFolderInfo({
+        folderName,
+        audioRecordingsCount: recCount,
+      });
+      const { syncMissingRecordings } = await import('../../src/utils/SyncManager');
+      syncMissingRecordings().catch(() => {});
+      Alert.alert(
+        'Folder Mapped',
+        `Folder: ${folderName}\nAvailable Recordings: ${recCount} audio file(s)\n\nCall recordings will now be scanned from this folder!`
+      );
+    } else if (result.status === 'denied') {
+      Alert.alert(
+        'Permission Required',
+        result.errorMessage || 'Please grant directory access permission to scan call recordings.'
+      );
+    } else if (result.status === 'unsupported') {
+      Alert.alert('Not Supported', result.errorMessage || 'Folder mapping is only supported on Android devices.');
+    } else if (result.status === 'error') {
+      Alert.alert('Folder Mapping Error', result.errorMessage || 'Unable to open the system folder picker.');
+    }
+  };
+
+  const handleMapFolderPress = async () => {
+    if (!mappedFolderUri) {
+      await openFolderPickerAndMap();
+      return;
+    }
+
+    const { scanRecordingFolder } = await import('../../src/utils/CallManager');
+    const info = await scanRecordingFolder(mappedFolderUri);
+    if (!info || !info.accessible) {
+      setMappedFolderUri(null);
+      setMappedFolderInfo(null);
+      await openFolderPickerAndMap();
+      return;
+    }
+
+    setMappedFolderInfo({
+      folderName: info.folderName,
+      audioRecordingsCount: info.audioRecordingsCount,
+    });
+
+    Alert.alert(
+      'Mapped Recording Folder',
+      `Folder: ${info.folderName}\nAvailable Recordings: ${info.audioRecordingsCount} audio file(s)\n\nCall recordings in this folder are automatically scanned and linked to leads.`,
+      [
+        {
+          text: 'Rescan Folder',
+          onPress: async () => {
+            const refreshed = await scanRecordingFolder(mappedFolderUri);
+            if (refreshed && refreshed.accessible) {
+              setMappedFolderInfo({
+                folderName: refreshed.folderName,
+                audioRecordingsCount: refreshed.audioRecordingsCount,
+              });
+              const { syncMissingRecordings } = await import('../../src/utils/SyncManager');
+              await syncMissingRecordings().catch(() => {});
+              Alert.alert(
+                'Scan Complete',
+                `Scanned ${refreshed.folderName}\nFound ${refreshed.audioRecordingsCount} audio recording(s).`
+              );
+            }
+          },
+        },
+        {
+          text: 'Change Folder',
+          onPress: () => {
+            openFolderPickerAndMap();
+          },
+        },
+        { text: 'Close', style: 'cancel' },
+      ]
+    );
+  };
+
   // ── Init ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     loadUser();
-    fetchStats();
     fetchPipelineStages();
+    loadMappedFolder();
   }, []);
+
+  const canFilterByBde = ['SUPER_ADMIN', 'ADMIN', 'TEAM_LEAD', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD'].includes(user?.role) || Boolean(user?.is_manager);
+
+  useEffect(() => {
+    if (!authLoading && canFilterByBde) {
+      fetchBdeExecutives();
+    }
+  }, [authLoading, canFilterByBde]);
+
+  const fetchBdeExecutives = async () => {
+    try {
+      const res = await client.get('/crm/sales-users/');
+      const list = Array.isArray(res.data) ? res.data : (res.data?.results || []);
+      setBdeExecutives(list);
+    } catch (e) {
+      console.log('Failed to fetch BDE executives:', e);
+    }
+  };
+
+  const hasInitialFetchedRef = useRef(false);
 
   useEffect(() => {
     if (authLoading) return;
+    fetchStats();
     if (viewMode === 'TASKS') {
       fetchLeadTasks();
       return;
@@ -108,7 +243,25 @@ export default function SalesScreen() {
       fetchLeads(1, true);
     }, 300);
     return () => clearTimeout(t);
-  }, [search, selectedFilter, sortOrder, startDate, endDate, viewMode, authLoading, user?.role]);
+  }, [search, selectedFilter, selectedBde, sortOrder, startDate, endDate, viewMode, authLoading, user?.role]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (authLoading) return;
+      if (!hasInitialFetchedRef.current) {
+        hasInitialFetchedRef.current = true;
+        return;
+      }
+      fetchStats();
+      if (viewMode === 'TASKS') {
+        fetchLeadTasks();
+      } else if (viewMode === 'CALLS') {
+        fetchRecentCalls(1, false);
+      } else {
+        fetchLeads(1, false);
+      }
+    }, [authLoading, viewMode, selectedBde, selectedFilter, search, sortOrder, startDate, endDate])
+  );
 
   const loadUser = async () => {
     try {
@@ -140,7 +293,11 @@ export default function SalesScreen() {
 
   const fetchStats = async () => {
     try {
-      const res = await client.get('/crm/dashboard-stats/');
+      const params: any = {};
+      if (selectedBde) params.assigned_to = selectedBde;
+      if (startDate) params.start_date = startDate.toISOString().split('T')[0];
+      if (endDate) params.end_date = endDate.toISOString().split('T')[0];
+      const res = await client.get('/crm/dashboard-stats/', { params });
       if (res.data) setStats(res.data);
     } catch (e) {}
   };
@@ -157,10 +314,9 @@ export default function SalesScreen() {
     if (reset) setLoading(true);
     else setLoadingMore(true);
 
-    const isSalesOnly = user?.role === 'SALES';
-
     const params: any = { page, page_size: PAGE_SIZE, ordering: sortOrder };
     if (search) params.search = search;
+    if (selectedBde) params.assigned_to = selectedBde;
     if (selectedFilter.type === 'lead_status') params.lead_status = selectedFilter.value;
     else if (selectedFilter.type === 'upcoming_followups') params.upcoming_followups = 'true';
     if (startDate) params.start_date = startDate.toISOString().split('T')[0];
@@ -220,6 +376,7 @@ export default function SalesScreen() {
     try {
       const params: any = { interaction_type: 'CALL', page };
       if (search) params.search = search;
+      if (selectedBde) params.assigned_to = selectedBde;
       if (startDate) params.start_date = startDate.toISOString().split('T')[0];
       if (endDate) params.end_date = endDate.toISOString().split('T')[0];
       
@@ -358,8 +515,9 @@ export default function SalesScreen() {
   };
 
   // ── Helpers ───────────────────────────────────────────────────────────────
-  const hasAccess = user?.role === 'SALES' || user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';
-  const isManager = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || user?.is_manager;
+  const hasAccess = ['SALES', 'TEAM_LEAD', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD', 'ADMIN', 'SUPER_ADMIN'].includes(user?.role) || Boolean(user?.is_manager);
+  const isManager = canFilterByBde;
+  const selectedBdeObj = bdeExecutives.find((b: any) => String(b.id) === String(selectedBde));
 
   const resolveStage = (raw: string): string => {
     if (!raw) return 'New';
@@ -405,6 +563,7 @@ export default function SalesScreen() {
     const ss = stageStyle(raw);
     const stageName = resolveStage(raw);
     const phone = item.phone || item.mobile || '';
+    const campaignLabel = item.campaign_name || '';
     const initials = ((item.first_name?.[0] || '') + (item.last_name?.[0] || '')).toUpperCase() || '?';
 
     return (
@@ -421,7 +580,8 @@ export default function SalesScreen() {
             initialProgramName: item.program_name || item.program || '',
             initialCourseName: item.course_name || item.course || '',
             initialLeadStatus: item.lead_status || item.status || '',
-            initialCrmId: item.crm_student_id || ''
+            initialCrmId: item.crm_student_id || '',
+            initialCampaignName: campaignLabel
           }
         } as any)}
         activeOpacity={0.6}
@@ -443,15 +603,28 @@ export default function SalesScreen() {
             <View style={[styles.stagePill, { backgroundColor: ss.bg }]}>
               <Text style={[styles.stageTxt, { color: ss.text }]}>{stageName}</Text>
             </View>
+            <View style={[styles.campaignPill, isDark && styles.campaignPillDark]}>
+              <FontAwesome5 name="bullhorn" size={9} color={isDark ? '#A5B4FC' : '#4F46E5'} />
+              <Text style={[styles.campaignTxt, isDark && { color: '#A5B4FC' }]} numberOfLines={1}>
+                {campaignLabel || 'Direct / Organic'}
+              </Text>
+            </View>
             {item.program_name || item.program ? (
               <Text style={styles.program} numberOfLines={1}>{item.program_name || item.program}</Text>
             ) : null}
           </View>
-          {phone ? (
-            <Text style={[styles.phoneRow, isDark && { color: '#64748B' }]} numberOfLines={1}>
-              {phone}
-            </Text>
-          ) : null}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 3 }}>
+            {phone ? (
+              <Text style={[styles.phoneRow, { marginTop: 0 }, isDark && { color: '#64748B' }]} numberOfLines={1}>
+                {phone}
+              </Text>
+            ) : null}
+            {canFilterByBde && item.assigned_to_name ? (
+              <Text style={[styles.phoneRow, { marginTop: 0, color: '#6366F1', fontWeight: '700' }]} numberOfLines={1}>
+                • BDE: {item.assigned_to_name}
+              </Text>
+            ) : null}
+          </View>
         </View>
 
         {/* Call button */}
@@ -470,7 +643,7 @@ export default function SalesScreen() {
         </TouchableOpacity>
       </TouchableOpacity>
     );
-  }, [isDark, pipelineStages]);
+  }, [isDark, pipelineStages, canFilterByBde]);
 
   const renderLeadTaskCard = useCallback(({ item }: { item: any }) => {
     const isCompleted = item.status === 'COMPLETED';
@@ -481,7 +654,9 @@ export default function SalesScreen() {
       ? { bg: '#DBEAFE', text: '#1E40AF', label: 'In Progress' }
       : { bg: '#FEF3C7', text: '#92400E', label: 'Pending' };
 
-    const percent = item.progress_percent || 0;
+    const totalCount = (!canFilterByBde && item.my_leads_count !== undefined) ? item.my_leads_count : (item.total_leads || 0);
+    const completedCount = (!canFilterByBde && item.my_completed_leads !== undefined) ? item.my_completed_leads : (item.completed_leads || 0);
+    const percent = (!canFilterByBde && item.my_progress_percent !== undefined) ? item.my_progress_percent : (item.progress_percent || 0);
 
     return (
       <TouchableOpacity
@@ -515,7 +690,7 @@ export default function SalesScreen() {
             />
           </View>
           <Text style={styles.taskProgressText}>
-            {item.completed_leads || 0}/{item.total_leads || 0} Leads ({percent}%)
+            {completedCount}/{totalCount} Leads ({percent}%)
           </Text>
         </View>
 
@@ -525,7 +700,7 @@ export default function SalesScreen() {
         </View>
       </TouchableOpacity>
     );
-  }, [isDark]);
+  }, [isDark, canFilterByBde]);
 
   // ── Guards ────────────────────────────────────────────────────────────────
   if (authLoading) {
@@ -554,25 +729,69 @@ export default function SalesScreen() {
       {/* ── HEADER ── */}
       <View style={[styles.header, isDark && styles.headerDark, { paddingTop: Math.max(insets.top + 8, 16) }]}>
         <View style={styles.headerTop}>
-          <View>
+          <View style={{ flex: 1, marginRight: 8 }}>
             <Text style={[styles.headerTitle, isDark && { color: '#F1F5F9' }]}>Sales & Admissions</Text>
-            <Text style={[styles.headerSub, isDark && { color: '#64748B' }]}>
+            <Text style={[styles.headerSub, isDark && { color: '#64748B' }]} numberOfLines={1}>
               {totalLeads > 0 ? `${totalLeads} leads` : 'Loading...'}
+              {mappedFolderInfo ? ` • ${mappedFolderInfo.folderName} (${mappedFolderInfo.audioRecordingsCount} rec)` : ''}
             </Text>
           </View>
-          {/* Map Folder — call recording, DO NOT CHANGE */}
+          {/* Map Folder — call recording */}
           <TouchableOpacity
-            style={styles.mapBtn}
-            onPress={async () => {
-              const { selectRecordingFolder } = await import('../../src/utils/CallManager');
-              const uri = await selectRecordingFolder();
-              if (uri) Alert.alert('Folder Mapped', 'Call recordings will now be scanned from this folder!');
-            }}
+            style={[styles.mapBtn, mappedFolderUri && { backgroundColor: '#10B981' }]}
+            onPress={handleMapFolderPress}
           >
             <FontAwesome5 name="folder-open" size={13} color="#fff" />
-            <Text style={styles.mapBtnTxt}>Map Folder</Text>
+            <Text style={styles.mapBtnTxt}>{mappedFolderUri ? 'Folder Mapped' : 'Map Folder'}</Text>
           </TouchableOpacity>
         </View>
+
+        {/* BDE Executive Filter (Admin / Team Lead / Super Admin) */}
+        {canFilterByBde && (
+          <View style={styles.bdeFilterRow}>
+            <TouchableOpacity
+              style={[
+                styles.bdeFilterBtn,
+                isDark && styles.bdeFilterBtnDark,
+                Boolean(selectedBde) && styles.bdeFilterBtnActive
+              ]}
+              onPress={() => setShowBdeModal(true)}
+            >
+              <FontAwesome5
+                name="user-tie"
+                size={12}
+                color={selectedBde ? '#FFFFFF' : (isDark ? '#94A3B8' : '#475569')}
+              />
+              <Text
+                style={[
+                  styles.bdeFilterTxt,
+                  isDark && { color: '#E2E8F0' },
+                  Boolean(selectedBde) && { color: '#FFFFFF' }
+                ]}
+                numberOfLines={1}
+              >
+                BDE Executive: {selectedBdeObj ? selectedBdeObj.name : 'All Executives'}
+              </Text>
+              <FontAwesome5
+                name="chevron-down"
+                size={10}
+                color={selectedBde ? '#FFFFFF' : '#94A3B8'}
+              />
+            </TouchableOpacity>
+            {Boolean(selectedBde) && (
+              <TouchableOpacity
+                style={styles.bdeClearBtn}
+                onPress={() => {
+                  setSelectedBde('');
+                  setCurrentPage(1);
+                }}
+              >
+                <FontAwesome5 name="times" size={11} color="#EF4444" />
+                <Text style={styles.bdeClearTxt}>All</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
 
         {/* Stats row — show to sales so they can see the converted count */}
         {stats && (
@@ -816,7 +1035,6 @@ export default function SalesScreen() {
             onRefresh={handleRefresh}
             onEndReached={handleLoadMore}
             onEndReachedThreshold={0.4}
-            getItemLayout={(_, i) => ({ length: 55, offset: 55 * i, index: i })}
             ListEmptyComponent={
               <View style={styles.center}>
                 <FontAwesome5 name="inbox" size={36} color="#CBD5E1" />
@@ -838,6 +1056,97 @@ export default function SalesScreen() {
           />
         )
       )}
+
+      {/* ── BDE EXECUTIVE FILTER MODAL ── */}
+      <Modal
+        visible={showBdeModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowBdeModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalSheet, isDark && styles.modalSheetDark]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, isDark && { color: '#F1F5F9' }]}>Filter by BDE Executive</Text>
+              <TouchableOpacity onPress={() => setShowBdeModal(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <FontAwesome5 name="times" size={16} color="#94A3B8" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={[styles.searchBar, isDark && styles.searchBarDark, { marginBottom: 10 }]}>
+              <FontAwesome5 name="search" size={13} color="#94A3B8" style={{ marginRight: 8 }} />
+              <TextInput
+                style={[styles.searchInput, isDark && { color: '#F1F5F9' }]}
+                placeholder="Search BDE executive..."
+                placeholderTextColor="#94A3B8"
+                value={bdeSearch}
+                onChangeText={setBdeSearch}
+              />
+              {bdeSearch.length > 0 && (
+                <TouchableOpacity onPress={() => setBdeSearch('')}>
+                  <FontAwesome5 name="times-circle" size={14} color="#94A3B8" />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <ScrollView style={{ maxHeight: 360 }} showsVerticalScrollIndicator={false}>
+              <TouchableOpacity
+                style={[
+                  styles.bdeOptionItem,
+                  !selectedBde && styles.bdeOptionItemActive,
+                  isDark && styles.bdeOptionItemDark
+                ]}
+                onPress={() => {
+                  setSelectedBde('');
+                  setCurrentPage(1);
+                  setShowBdeModal(false);
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <FontAwesome5 name="users" size={14} color={!selectedBde ? '#3B82F6' : '#64748B'} />
+                  <Text style={[styles.bdeOptionTxt, isDark && { color: '#F1F5F9' }, !selectedBde && { color: '#3B82F6', fontWeight: '800' }]}>
+                    All BDE Executives
+                  </Text>
+                </View>
+                {!selectedBde && <FontAwesome5 name="check" size={13} color="#3B82F6" />}
+              </TouchableOpacity>
+
+              {bdeExecutives
+                .filter((b: any) => !bdeSearch || (b.name || '').toLowerCase().includes(bdeSearch.toLowerCase()))
+                .map((bde: any) => {
+                  const isSelected = String(selectedBde) === String(bde.id);
+                  return (
+                    <TouchableOpacity
+                      key={bde.id}
+                      style={[
+                        styles.bdeOptionItem,
+                        isSelected && styles.bdeOptionItemActive,
+                        isDark && styles.bdeOptionItemDark
+                      ]}
+                      onPress={() => {
+                        setSelectedBde(String(bde.id));
+                        setCurrentPage(1);
+                        setShowBdeModal(false);
+                      }}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.bdeOptionTxt, isDark && { color: '#F1F5F9' }, isSelected && { color: '#3B82F6', fontWeight: '800' }]}>
+                          {bde.name}
+                        </Text>
+                        {bde.sales_section && bde.sales_section !== 'BOTH' && (
+                          <Text style={{ fontSize: 10, color: '#94A3B8', marginTop: 2 }}>
+                            Section: {bde.sales_section === 'CAREER_ACADEMY' ? 'Career Academy' : 'Regular'}
+                          </Text>
+                        )}
+                      </View>
+                      {isSelected && <FontAwesome5 name="check" size={13} color="#3B82F6" />}
+                    </TouchableOpacity>
+                  );
+                })}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -966,8 +1275,76 @@ const styles = StyleSheet.create({
     paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6,
   },
   stageTxt: { fontSize: 10, fontWeight: '800', letterSpacing: 0.2 },
+  campaignPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: '#EEF2FF', paddingHorizontal: 7, paddingVertical: 2,
+    borderRadius: 6, borderWidth: 1, borderColor: '#E0E7FF', maxWidth: 150,
+  },
+  campaignPillDark: {
+    backgroundColor: '#1E1B4B', borderColor: '#312E81',
+  },
+  campaignTxt: { fontSize: 10, fontWeight: '700', color: '#4F46E5', flexShrink: 1 },
   program: { fontSize: 10, color: '#F59E0B', fontWeight: '700', flexShrink: 1 },
   phoneRow: { fontSize: 11, color: '#94A3B8', marginTop: 3, fontWeight: '500' },
+
+  // BDE Executive Filter
+  bdeFilterRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8,
+  },
+  bdeFilterBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#CBD5E1',
+    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10,
+  },
+  bdeFilterBtnDark: {
+    backgroundColor: '#0F172A', borderColor: '#334155',
+  },
+  bdeFilterBtnActive: {
+    backgroundColor: '#3B82F6', borderColor: '#2563EB',
+  },
+  bdeFilterTxt: {
+    flex: 1, fontSize: 12, fontWeight: '700', color: '#334155',
+  },
+  bdeClearBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FECACA',
+    paddingHorizontal: 10, paddingVertical: 7, borderRadius: 10,
+  },
+  bdeClearTxt: {
+    fontSize: 11, fontWeight: '800', color: '#EF4444',
+  },
+  modalOverlay: {
+    flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: '#FFFFFF', borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    padding: 18, paddingBottom: 28,
+  },
+  modalSheetDark: {
+    backgroundColor: '#1E293B',
+  },
+  modalHeader: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    marginBottom: 14,
+  },
+  modalTitle: {
+    fontSize: 16, fontWeight: '800', color: '#0F172A',
+  },
+  bdeOptionItem: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingVertical: 12, paddingHorizontal: 12, borderRadius: 10,
+    borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
+  },
+  bdeOptionItemDark: {
+    borderBottomColor: '#334155',
+  },
+  bdeOptionItemActive: {
+    backgroundColor: '#EFF6FF',
+  },
+  bdeOptionTxt: {
+    fontSize: 14, fontWeight: '600', color: '#1E293B',
+  },
 
   // Call button
   callBtn: {

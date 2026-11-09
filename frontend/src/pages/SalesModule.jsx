@@ -95,10 +95,17 @@ const SalesModule = () => {
                 setActiveTab('campaigns');
             }
         }
-        else if (location.pathname === '/crm/reports') setActiveTab('reports');
+        else if (location.pathname === '/crm/reports') {
+            const isManager = ['SUPER_ADMIN', 'ADMIN', 'TEAM_LEAD', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD'].includes(authUser?.role) || authUser?.is_manager;
+            if (authUser?.role === 'SALES' && !isManager) {
+                setActiveTab('dashboard');
+            } else {
+                setActiveTab('reports');
+            }
+        }
         else if (location.pathname === '/crm/analytics') setActiveTab('analytics');
         else if (location.pathname === '/sales') setActiveTab('dashboard');
-    }, [location.pathname, searchParams]);
+    }, [location.pathname, searchParams, authUser]);
 
     // Student List Data
     const [studentList, setStudentList] = useState([]);
@@ -376,10 +383,14 @@ const SalesModule = () => {
             if (selectedSubProgram) params.append('sub_program', selectedSubProgram);
             if (selectedCourse) params.append('course', selectedCourse);
             if (selectedStageFilter) params.append('lead_status', selectedStageFilter);
-            if (selectedAssigneeFilter) params.append('assigned_to', selectedAssigneeFilter);
+            if (selectedAssigneeFilter && selectedStageFilter !== 'DUPLICATE') params.append('assigned_to', selectedAssigneeFilter);
             if (selectedContactedFilter) params.append('contacted', selectedContactedFilter);
             if (hideConverted && !searchTerm) params.append('hide_converted', 'true');
             if (salesSectionFilter && salesSectionFilter !== 'ALL') params.append('sales_section', salesSectionFilter);
+            const startDateParam = searchParams.get('start_date');
+            const endDateParam = searchParams.get('end_date');
+            if (startDateParam) params.append('start_date', startDateParam);
+            if (endDateParam) params.append('end_date', endDateParam);
 
             const res = await api.get(`students/export_csv/?${params.toString()}`, { responseType: 'blob' });
             const urlBlob = window.URL.createObjectURL(new Blob([res.data]));
@@ -439,10 +450,13 @@ const SalesModule = () => {
                 const res = await api.get('programs/');
                 setPrograms(res.data);
 
-                try {
-                    const campRes = await api.get('crm/campaigns/');
-                    setCampaigns(campRes.data.results || campRes.data || []);
-                } catch (e) { }
+                const isManager = ['SUPER_ADMIN', 'ADMIN', 'TEAM_LEAD', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD'].includes(authUser?.role) || authUser?.is_manager;
+                if (isManager) {
+                    try {
+                        const campRes = await api.get('crm/campaigns/');
+                        setCampaigns(campRes.data.results || campRes.data || []);
+                    } catch (e) { }
+                }
 
                 try {
                     const suRes = await api.get('crm/sales-users/');
@@ -521,10 +535,14 @@ const SalesModule = () => {
             if (selectedSubProgram) params.append('sub_program', selectedSubProgram);
             if (selectedCourse) params.append('course', selectedCourse);
             if (selectedStageFilter) params.append('lead_status', selectedStageFilter);
-            if (selectedAssigneeFilter) params.append('assigned_to', selectedAssigneeFilter);
+            if (selectedAssigneeFilter && selectedStageFilter !== 'DUPLICATE') params.append('assigned_to', selectedAssigneeFilter);
             if (selectedContactedFilter) params.append('contacted', selectedContactedFilter);
             if (hideConverted && !searchTerm) params.append('hide_converted', 'true');
             if (salesSectionFilter && salesSectionFilter !== 'ALL') params.append('sales_section', salesSectionFilter);
+            const startDateParam = searchParams.get('start_date');
+            const endDateParam = searchParams.get('end_date');
+            if (startDateParam) params.append('start_date', startDateParam);
+            if (endDateParam) params.append('end_date', endDateParam);
 
             const res = await api.get(`students/?${params.toString()}`);
             const data = res.data;
@@ -558,13 +576,13 @@ const SalesModule = () => {
             }, 500);
             return () => clearTimeout(timer);
         }
-    }, [activeTab, isAuthenticated, isTrashView, studentPage, searchTerm, selectedProgram, selectedSubProgram, selectedCourse, selectedStageFilter, selectedAssigneeFilter, hideConverted, salesSectionFilter]);
+    }, [activeTab, isAuthenticated, isTrashView, studentPage, searchTerm, selectedProgram, selectedSubProgram, selectedCourse, selectedStageFilter, selectedAssigneeFilter, hideConverted, salesSectionFilter, searchParams]);
 
     // Reset pagination on mode change
     useEffect(() => {
         setStudentPage(1);
         setSelectedLeadIds([]);
-    }, [isTrashView, searchTerm, selectedProgram, selectedSubProgram, selectedCourse, selectedStageFilter, selectedAssigneeFilter, hideConverted, salesSectionFilter]);
+    }, [isTrashView, searchTerm, selectedProgram, selectedSubProgram, selectedCourse, selectedStageFilter, selectedAssigneeFilter, hideConverted, salesSectionFilter, searchParams]);
 
 
     // Handle Program Change UI
@@ -1779,6 +1797,13 @@ const SalesModule = () => {
                                                                         {student.first_name} {student.last_name}
                                                                     </div>
                                                                     <div className="text-[10px] text-slate-400">ID: {student.crm_student_id || student.id}</div>
+                                                                    {student.campaign_name && (
+                                                                        <div className="mt-1">
+                                                                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200 text-[10px] font-semibold">
+                                                                                📢 {student.campaign_name}
+                                                                            </span>
+                                                                        </div>
+                                                                    )}
                                                                 </div>
                                                             </div>
                                                         </td>
@@ -1843,7 +1868,7 @@ const SalesModule = () => {
 
                                                                 {!isTrashView ? (
                                                                     <>
-                                                                        {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.SALES?.edit) && (
+                                                                        {(authUser?.role === 'SUPER_ADMIN' || authUser?.role === 'ADMIN' || authUser?.role === 'SALES' || authUser?.permissions?.SALES?.edit || authUser?.permissions?.CRM_LEADS_TABLE?.edit) && (
                                                                             <button
                                                                                 onClick={() => handleEditClick(student)}
                                                                                 className="p-1.5 bg-amber-50 text-amber-600 rounded-md hover:bg-amber-100 transition-all"
@@ -1864,7 +1889,7 @@ const SalesModule = () => {
                                                                     </>
                                                                 ) : (
                                                                     <>
-                                                                        {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.SALES?.edit) && (
+                                                                        {(authUser?.role === 'SUPER_ADMIN' || authUser?.role === 'ADMIN' || authUser?.role === 'SALES' || authUser?.permissions?.SALES?.edit || authUser?.permissions?.CRM_LEADS_TABLE?.edit) && (
                                                                             <button
                                                                                 onClick={() => handleRestore(student.id)}
                                                                                 className="p-1.5 bg-green-50 text-green-600 rounded-md hover:bg-green-100 transition-all"
@@ -1926,6 +1951,13 @@ const SalesModule = () => {
                                                                 {student.first_name} {student.last_name}
                                                             </div>
                                                             <div className="text-[10px] text-slate-400 font-medium">ID: {student.crm_student_id || student.id}</div>
+                                                            {student.campaign_name && (
+                                                                <div className="mt-1">
+                                                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200 text-[10px] font-semibold">
+                                                                        📢 {student.campaign_name}
+                                                                    </span>
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     </div>
                                                     <div>
@@ -1994,7 +2026,7 @@ const SalesModule = () => {
 
                                                     {!isTrashView ? (
                                                         <>
-                                                            {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.SALES?.edit) && (
+                                                            {(authUser?.role === 'SUPER_ADMIN' || authUser?.role === 'ADMIN' || authUser?.role === 'SALES' || authUser?.permissions?.SALES?.edit || authUser?.permissions?.CRM_LEADS_TABLE?.edit) && (
                                                                 <button
                                                                     onClick={() => handleEditClick(student)}
                                                                     className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-600 rounded-lg hover:bg-amber-100 transition-all text-xs font-semibold flex-1"
@@ -2015,7 +2047,7 @@ const SalesModule = () => {
                                                         </>
                                                     ) : (
                                                         <>
-                                                            {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.SALES?.edit) && (
+                                                            {(authUser?.role === 'SUPER_ADMIN' || authUser?.role === 'ADMIN' || authUser?.role === 'SALES' || authUser?.permissions?.SALES?.edit || authUser?.permissions?.CRM_LEADS_TABLE?.edit) && (
                                                                 <button
                                                                     onClick={() => handleRestore(student.id)}
                                                                     className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-all text-xs font-semibold flex-1"
@@ -2438,6 +2470,22 @@ const SalesModule = () => {
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {(selectedStudentProfile.lead_status || '').toUpperCase() === 'DUPLICATE' && (
+                                    <div className="md:col-span-2 bg-slate-50 p-4 rounded-xl border border-slate-200 text-left">
+                                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Original Lead Information</h3>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                                            <div>
+                                                <p className="text-[10px] text-slate-500 mb-0.5">Original Campaign</p>
+                                                <p className="font-semibold text-xs text-slate-800">{selectedStudentProfile.original_campaign_name || 'Not Available'}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-[10px] text-slate-500 mb-0.5">Original Assigned BDE</p>
+                                                <p className="font-semibold text-xs text-slate-800">{selectedStudentProfile.original_assigned_bde || 'Not Available'}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
                                 {/* Live Wise LMS Data */}
                                 <div className="md:col-span-2 bg-slate-50 p-4 rounded-xl border border-slate-200 text-left">
                                     <div className="flex justify-between items-center mb-4">
@@ -2502,7 +2550,7 @@ const SalesModule = () => {
                                 {/* Program Info */}
                                 <div className="md:col-span-2 bg-slate-50 p-4 rounded-xl border border-slate-200 text-left">
                                     <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Enrollment Details</h3>
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+                                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 sm:gap-4">
                                         <div>
                                             <p className="text-[10px] text-slate-500 mb-0.5">Program</p>
                                             <p className="font-semibold text-xs text-slate-800">{selectedStudentProfile.program_name}</p>
@@ -2514,6 +2562,10 @@ const SalesModule = () => {
                                         <div>
                                             <p className="text-[10px] text-slate-500 mb-0.5">Course</p>
                                             <p className="font-semibold text-xs text-slate-800">{selectedStudentProfile.course_name || '-'}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-[10px] text-slate-500 mb-0.5">Campaign</p>
+                                            <p className="font-semibold text-xs text-purple-700">{selectedStudentProfile.campaign_name ? `📢 ${selectedStudentProfile.campaign_name}` : '-'}</p>
                                         </div>
                                     </div>
                                 </div>

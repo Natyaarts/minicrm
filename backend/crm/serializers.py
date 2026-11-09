@@ -129,6 +129,8 @@ class LeadTaskItemSerializer(serializers.ModelSerializer):
     mobile = serializers.CharField(source='lead.mobile', read_only=True)
     email = serializers.CharField(source='lead.email', read_only=True)
     lead_status = serializers.CharField(source='lead.lead_status', read_only=True)
+    campaign = serializers.IntegerField(source='lead.campaign_id', read_only=True)
+    campaign_name = serializers.SerializerMethodField()
     program_name = serializers.SerializerMethodField()
     course_name = serializers.SerializerMethodField()
     owner_name = serializers.SerializerMethodField()
@@ -141,7 +143,7 @@ class LeadTaskItemSerializer(serializers.ModelSerializer):
         model = LeadTaskItem
         fields = [
             'id', 'task', 'lead', 'lead_name', 'crm_student_id', 'mobile', 'email',
-            'lead_status', 'program_name', 'course_name', 'owner_name',
+            'lead_status', 'campaign', 'campaign_name', 'program_name', 'course_name', 'owner_name',
             'assigned_to', 'assigned_to_name',
             'is_completed', 'completed_at', 'completed_by', 'completed_by_name',
             'notes', 'created_at', 'updated_at', 'last_interaction', 'recent_interactions'
@@ -153,6 +155,11 @@ class LeadTaskItemSerializer(serializers.ModelSerializer):
             name = f"{obj.lead.first_name or ''} {obj.lead.last_name or ''}".strip()
             return name or f"Lead #{obj.lead.id}"
         return "Unknown Lead"
+
+    def get_campaign_name(self, obj):
+        if obj.lead and obj.lead.campaign:
+            return obj.lead.campaign.name
+        return None
 
     def get_program_name(self, obj):
         if obj.lead and obj.lead.program_type:
@@ -335,6 +342,9 @@ class LeadTaskDetailSerializer(serializers.ModelSerializer):
     total_leads = serializers.IntegerField(read_only=True)
     completed_leads = serializers.IntegerField(read_only=True)
     progress_percent = serializers.IntegerField(read_only=True)
+    my_leads_count = serializers.SerializerMethodField()
+    my_completed_leads = serializers.SerializerMethodField()
+    my_progress_percent = serializers.SerializerMethodField()
     items = serializers.SerializerMethodField()
     assignment_history = LeadTaskAssignmentHistorySerializer(many=True, read_only=True)
 
@@ -344,6 +354,7 @@ class LeadTaskDetailSerializer(serializers.ModelSerializer):
             'id', 'title', 'assigned_to', 'assigned_to_name', 'assigned_bdes', 'bde_progress',
             'created_by', 'created_by_name', 'status',
             'total_leads', 'completed_leads', 'progress_percent',
+            'my_leads_count', 'my_completed_leads', 'my_progress_percent',
             'created_at', 'updated_at',
             'items', 'assignment_history'
         ]
@@ -396,11 +407,38 @@ class LeadTaskDetailSerializer(serializers.ModelSerializer):
             })
         return result
 
+    def get_my_leads_count(self, obj):
+        req = self.context.get('request')
+        user = req.user if req else None
+        if user and user.is_authenticated:
+            from .utils import check_is_sales_manager
+            if not check_is_sales_manager(user):
+                from django.db.models import Q
+                return obj.items.filter(Q(assigned_to=user) | Q(assigned_to__isnull=True, task__assigned_to=user)).count()
+        return obj.total_leads
+
+    def get_my_completed_leads(self, obj):
+        req = self.context.get('request')
+        user = req.user if req else None
+        if user and user.is_authenticated:
+            from .utils import check_is_sales_manager
+            if not check_is_sales_manager(user):
+                from django.db.models import Q
+                return obj.items.filter(Q(assigned_to=user) | Q(assigned_to__isnull=True, task__assigned_to=user), is_completed=True).count()
+        return obj.completed_leads
+
+    def get_my_progress_percent(self, obj):
+        total = self.get_my_leads_count(obj)
+        if total == 0:
+            return 0
+        completed = self.get_my_completed_leads(obj)
+        return int((completed / total) * 100)
+
     def get_items(self, obj):
         request = self.context.get('request')
         user = request.user if request else None
         from .utils import check_is_sales_manager
-        items_qs = obj.items.all().select_related('lead', 'lead__program_type', 'lead__course', 'lead__assigned_to', 'completed_by', 'assigned_to')
+        items_qs = obj.items.all().select_related('lead', 'lead__campaign', 'lead__program_type', 'lead__course', 'lead__assigned_to', 'completed_by', 'assigned_to')
         if user and user.is_authenticated and not check_is_sales_manager(user):
             from django.db.models import Q
             items_qs = items_qs.filter(Q(assigned_to=user) | Q(assigned_to__isnull=True, task__assigned_to=user))

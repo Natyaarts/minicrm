@@ -2,8 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { PhoneIncoming, PhoneOutgoing, PhoneMissed, PhoneOff, Clock, Users, PhoneCall, Calendar, BarChart2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from 'recharts';
 import api from '../api/axios';
+import { useAuth } from '../context/AuthContext';
 
 const CallAnalyticsDashboard = () => {
+    const { user } = useAuth();
+    const isManager = ['SUPER_ADMIN', 'ADMIN', 'TEAM_LEAD', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD'].includes(user?.role) || user?.is_manager || user?.is_superuser;
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('summary');
@@ -123,12 +126,19 @@ const CallAnalyticsDashboard = () => {
             {/* Filters Row */}
             <div className="mb-6 flex flex-wrap items-center justify-between gap-4 bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
                 <div className="flex flex-wrap items-center gap-3">
-                    <select value={employeeId} onChange={(e) => { setEmployeeId(e.target.value); setCurrentPage(1); }} className="px-3 py-1.5 text-sm border border-slate-300 rounded bg-slate-50 outline-none text-slate-700 focus:border-orange-500 focus:ring-1 focus:ring-orange-500">
-                        <option value="">All Employees</option>
-                        {salesUsers.map(u => (
-                            <option key={u.id} value={u.id}>{u.name}</option>
-                        ))}
-                    </select>
+                    {isManager ? (
+                        <select value={employeeId} onChange={(e) => { setEmployeeId(e.target.value); setCurrentPage(1); }} className="px-3 py-1.5 text-sm border border-slate-300 rounded bg-slate-50 outline-none text-slate-700 focus:border-orange-500 focus:ring-1 focus:ring-orange-500">
+                            <option value="">All Employees</option>
+                            {salesUsers.map(u => (
+                                <option key={u.id} value={u.id}>{u.name}</option>
+                            ))}
+                        </select>
+                    ) : (
+                        <div className="px-3 py-1.5 text-sm border border-indigo-200 rounded bg-indigo-50 text-indigo-700 font-semibold flex items-center gap-1.5">
+                            <Users size={14} />
+                            <span>{user?.first_name ? `${user.first_name} ${user.last_name || ''}`.trim() : user?.username || 'My Calls'}</span>
+                        </div>
+                    )}
                     <select value={direction} onChange={(e) => { setDirection(e.target.value); setCurrentPage(1); }} className="px-3 py-1.5 text-sm border border-slate-300 rounded bg-slate-50 outline-none text-slate-700 focus:border-orange-500 focus:ring-1 focus:ring-orange-500">
                         <option value="">All Directions</option>
                         <option value="INCOMING">Incoming</option>

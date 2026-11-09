@@ -96,14 +96,71 @@ def normalize_lead_email(raw_email: Optional[str]) -> str:
     return val
 
 
+def _get_phone_variants(clean_mobile: Optional[str]) -> list:
+    if not clean_mobile:
+        return []
+    variants = [clean_mobile]
+    digits = re.sub(r'\D', '', clean_mobile)
+    if len(digits) >= 10:
+        d10 = digits[-10:]
+        for v in (f"+91{d10}", d10, f"91{d10}", f"0{d10}"):
+            if v not in variants:
+                variants.append(v)
+    return variants
+
+
+def _resolve_root_student(student: Optional[Student]) -> Optional[Student]:
+    """
+    Follows `duplicate_of` pointers to return the original non-duplicate root Student.
+    Never returns a record whose lead_status is 'DUPLICATE'.
+    """
+    if not student:
+        return None
+
+    candidate = student
+    visited = set()
+    while candidate is not None and candidate.id not in visited:
+        visited.add(candidate.id)
+        if (getattr(candidate, 'lead_status', '') or '').upper() != 'DUPLICATE':
+            return candidate
+        candidate = getattr(candidate, 'duplicate_of', None)
+
+    # Fallback if a legacy duplicate record had no duplicate_of pointer set
+    clean_mobile = normalize_lead_phone(getattr(student, 'mobile', None))
+    clean_email = normalize_lead_email(getattr(student, 'email', None))
+    phone_variants = _get_phone_variants(clean_mobile)
+
+    base_qs = Student.objects.exclude(lead_status__iexact='DUPLICATE')
+    if phone_variants:
+        root = base_qs.filter(mobile__in=phone_variants, is_active=True).order_by('id').first()
+        if root:
+            return root
+    if clean_email:
+        root = base_qs.filter(email__iexact=clean_email, is_active=True).order_by('id').first()
+        if root:
+            return root
+    if phone_variants:
+        root = base_qs.filter(mobile__in=phone_variants).order_by('-is_active', 'id').first()
+        if root:
+            return root
+    if clean_email:
+        root = base_qs.filter(email__iexact=clean_email).order_by('-is_active', 'id').first()
+        if root:
+            return root
+
+    return None
+
+
 def lookup_existing_student(mobile: Optional[str] = None, email: Optional[str] = None) -> Tuple[Optional[Student], Optional[str]]:
     """
     Centralized duplicate lookup for any incoming lead.
     
     Checks by normalized mobile number first, then by normalized email.
+    Always resolves and returns the original root non-duplicate Student when available.
     
     Active/Inactive Student Priority Rule:
-    - Active records (is_active=True) are matched with primary priority.
+    - Active non-duplicate records (is_active=True) are matched with primary priority (oldest/original first).
+    - If only duplicate records match, resolves their root non-duplicate lead.
     - If no active record exists, soft-deleted/inactive records (is_active=False)
       are matched secondarily to prevent duplicate User accounts or orphaned collisions.
       
@@ -115,26 +172,64 @@ def lookup_existing_student(mobile: Optional[str] = None, email: Optional[str] =
     
     if not clean_mobile and not clean_email:
         return None, None
+
+    phone_variants = _get_phone_variants(clean_mobile)
         
-    # 1. Primary check against active records (is_active=True)
-    if clean_mobile:
-        student = Student.objects.filter(mobile=clean_mobile, is_active=True).order_by('-id').first()
+    # 1. Primary check against active non-duplicate records (is_active=True)
+    if phone_variants:
+        student = (
+            Student.objects.filter(mobile__in=phone_variants, is_active=True)
+            .exclude(lead_status__iexact='DUPLICATE')
+            .order_by('id')
+            .first()
+        )
+        if not student:
+            dup_match = Student.objects.filter(mobile__in=phone_variants, is_active=True).order_by('id').first()
+            if dup_match:
+                student = _resolve_root_student(dup_match) or dup_match
         if student:
             return student, f"Duplicate mobile: {clean_mobile} (Original CRM ID: {student.crm_student_id})"
             
     if clean_email:
-        student = Student.objects.filter(email=clean_email, is_active=True).order_by('-id').first()
+        student = (
+            Student.objects.filter(email__iexact=clean_email, is_active=True)
+            .exclude(lead_status__iexact='DUPLICATE')
+            .order_by('id')
+            .first()
+        )
+        if not student:
+            dup_match = Student.objects.filter(email__iexact=clean_email, is_active=True).order_by('id').first()
+            if dup_match:
+                student = _resolve_root_student(dup_match) or dup_match
         if student:
             return student, f"Duplicate email: {clean_email} (Original CRM ID: {student.crm_student_id})"
             
     # 2. Secondary check against inactive / soft-deleted records (is_active=False)
-    if clean_mobile:
-        inactive_student = Student.objects.filter(mobile=clean_mobile).order_by('-is_active', '-id').first()
+    if phone_variants:
+        inactive_student = (
+            Student.objects.filter(mobile__in=phone_variants)
+            .exclude(lead_status__iexact='DUPLICATE')
+            .order_by('-is_active', 'id')
+            .first()
+        )
+        if not inactive_student:
+            dup_match = Student.objects.filter(mobile__in=phone_variants).order_by('-is_active', 'id').first()
+            if dup_match:
+                inactive_student = _resolve_root_student(dup_match) or dup_match
         if inactive_student:
             return inactive_student, f"Duplicate mobile (Inactive Lead): {clean_mobile} (Original CRM ID: {inactive_student.crm_student_id})"
             
     if clean_email:
-        inactive_student = Student.objects.filter(email=clean_email).order_by('-is_active', '-id').first()
+        inactive_student = (
+            Student.objects.filter(email__iexact=clean_email)
+            .exclude(lead_status__iexact='DUPLICATE')
+            .order_by('-is_active', 'id')
+            .first()
+        )
+        if not inactive_student:
+            dup_match = Student.objects.filter(email__iexact=clean_email).order_by('-is_active', 'id').first()
+            if dup_match:
+                inactive_student = _resolve_root_student(dup_match) or dup_match
         if inactive_student:
             return inactive_student, f"Duplicate email (Inactive Lead): {clean_email} (Original CRM ID: {inactive_student.crm_student_id})"
             
@@ -259,18 +354,21 @@ def create_duplicate_lead(
     clean_mobile = normalize_lead_phone(mobile)
     clean_email = normalize_lead_email(email)
 
+    root_student = _resolve_root_student(existing_student)
+    target_original = root_student or existing_student
+
     # 1. Optionally log re-engagement on the original student
-    if log_reengagement and existing_student and source_name:
+    if log_reengagement and target_original and source_name:
         record_reengagement_interaction(
-            student=existing_student,
+            student=target_original,
             source_name=source_name,
             campaign_name=campaign.name if campaign and hasattr(campaign, 'name') else None,
             event_id=str(event_id) if event_id else None,
             duplicate_reason=duplicate_reason,
         )
 
-    fname = (first_name or (existing_student.first_name if existing_student else '') or 'Lead').strip()
-    lname = (last_name or (existing_student.last_name if existing_student else '') or '').strip()
+    fname = (first_name or (target_original.first_name if target_original else '') or 'Lead').strip()
+    lname = (last_name or (target_original.last_name if target_original else '') or '').strip()
 
     # 2. Generate unique username for the duplicate Student's User
     base_ident = clean_mobile or clean_email or fname
@@ -286,8 +384,8 @@ def create_duplicate_lead(
             resolved_program = Program.objects.filter(name='Natya Career Academy').first()
         elif campaign and getattr(campaign, 'section', None) == 'REGULAR':
             resolved_program = Program.objects.filter(name='Natya').first()
-        if not resolved_program and existing_student and existing_student.program_type:
-            resolved_program = existing_student.program_type
+        if not resolved_program and target_original and target_original.program_type:
+            resolved_program = target_original.program_type
         if not resolved_program:
             resolved_program = Program.objects.exclude(name="Wise Import").first() or Program.objects.first()
 
@@ -296,8 +394,8 @@ def create_duplicate_lead(
     if not resolved_section:
         if campaign and getattr(campaign, 'section', None):
             resolved_section = campaign.section
-        elif existing_student and existing_student.sales_section:
-            resolved_section = existing_student.sales_section
+        elif target_original and target_original.sales_section:
+            resolved_section = target_original.sales_section
         else:
             resolved_section = 'BOTH'
 
@@ -325,6 +423,7 @@ def create_duplicate_lead(
             'mobile': clean_mobile or (mobile if mobile else None),
             'program_type': resolved_program,
             'campaign': campaign,
+            'duplicate_of': root_student,
             'sales_section': resolved_section,
             'lead_status': 'DUPLICATE',
             'assigned_to': None,
@@ -341,5 +440,5 @@ def create_duplicate_lead(
 
         duplicate_student = Student.objects.create(**student_kwargs)
 
-    logger.info(f"Created DUPLICATE lead {duplicate_student.crm_student_id} for incoming duplicate (Original CRM ID: {existing_student.crm_student_id if existing_student else 'N/A'})")
+    logger.info(f"Created DUPLICATE lead {duplicate_student.crm_student_id} for incoming duplicate (Original CRM ID: {root_student.crm_student_id if root_student else 'N/A'})")
     return duplicate_student
