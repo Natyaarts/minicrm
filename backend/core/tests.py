@@ -1,9 +1,10 @@
 import json
 from django.test import TestCase
+from django.db import IntegrityError, transaction
 from django.contrib.auth import get_user_model
 from rest_framework.test import APITestCase
 from rest_framework import status
-from core.models import Program, Student
+from core.models import Program, SubProgram, Student
 from forms_builder.models import DynamicField, StudentDynamicValue
 from notifications.models import Notification
 
@@ -352,11 +353,227 @@ class NSDCRegistrationFlowTests(APITestCase):
         self.assertEqual(existing_student.perm_address, "Old Address In CRM")
 
     def test_program_slug_auto_generated(self):
-        """Verify that program slug is properly generated automatically."""
+        """Verify that program slug is properly generated automatically without duplicate Program names."""
         prog = Program.objects.create(name="Skill India Mission")
         self.assertEqual(prog.slug, "skill-india-mission")
-        prog2 = Program.objects.create(name="Skill India Mission")
+
+        # Distinct Program name that slugifies to the same base slug receives '-1' suffix
+        prog2 = Program.objects.create(name="Skill India - Mission!")
         self.assertEqual(prog2.slug, "skill-india-mission-1")
+
+        # Distinct Program name generates its own expected slug
+        prog3 = Program.objects.create(name="Classical Dance Academy")
+        self.assertEqual(prog3.slug, "classical-dance-academy")
+
+
+class ProgramAndSubProgramUniquenessTests(TestCase):
+    def test_program_name_must_be_unique(self):
+        """Program names must be unique (exact match rejected)."""
+        Program.objects.create(name="Kathak Mastery")
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                Program.objects.create(name="Kathak Mastery")
+
+    def test_program_name_must_be_unique_case_insensitive(self):
+        """Program names must be unique regardless of letter casing (uniq_program_name_ci)."""
+        Program.objects.create(name="Bharatanatyam Conservatory")
+        for variant in ["bharatanatyam conservatory", "BHARATANATYAM CONSERVATORY", "BhArAtAnAtYaM cOnSeRvAtOrY"]:
+            with self.assertRaises(IntegrityError):
+                with transaction.atomic():
+                    Program.objects.create(name=variant)
+
+    def test_different_program_names_generate_expected_slugs(self):
+        """Different Program names generate the expected slugs and handle NSDC base slug collision."""
+        p1 = Program.objects.create(name="Carnatic Vocal Foundation")
+        p2 = Program.objects.create(name="Hindustani Instrumental")
+        p3 = Program.objects.create(name="NSDC Vocational Arts")
+        p4 = Program.objects.create(name="NSDC Advanced Performing Arts")
+
+        self.assertEqual(p1.slug, "carnatic-vocal-foundation")
+        self.assertEqual(p2.slug, "hindustani-instrumental")
+        self.assertEqual(p3.slug, "nsdc")
+        self.assertEqual(p4.slug, "nsdc-1")
+
+    def test_subprogram_names_unique_within_same_program(self):
+        """SubProgram names must be unique within the same Program."""
+        prog = Program.objects.create(name="Natya Regular")
+        SubProgram.objects.create(program=prog, name="STED")
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                SubProgram.objects.create(program=prog, name="STED")
+
+    def test_identical_subprogram_names_allowed_under_different_programs(self):
+        """Identical SubProgram names are allowed under different Programs."""
+        prog_a = Program.objects.create(name="Natya Regular Program")
+        prog_b = Program.objects.create(name="Natya Career Academy")
+
+        sub_a = SubProgram.objects.create(program=prog_a, name="STED")
+        sub_b = SubProgram.objects.create(program=prog_b, name="STED")
+
+        self.assertEqual(sub_a.name, "STED")
+        self.assertEqual(sub_b.name, "STED")
+        self.assertNotEqual(sub_a.program_id, sub_b.program_id)
+
+    def test_migration_0045_precheck_fails_with_clear_explanation_on_duplicates(self):
+        """Migration 0045 pre-check uses database-side Lower('name') and fails clearly on duplicates."""
+        import importlib
+        from types import SimpleNamespace
+        from django.apps import apps
+        from django.db import connection
+
+        mod_0045 = importlib.import_module("core.migrations.0045_alter_program_name_program_uniq_program_name_ci")
+        dummy_schema_editor = SimpleNamespace(connection=connection)
+
+        # 1. Passes when all Program names are unique
+        Program.objects.create(name="Distinct Program Alpha", slug="distinct-alpha")
+        mod_0045.verify_no_duplicate_programs(apps, dummy_schema_editor)
+
+        # 2. Drop the case-insensitive expression index within the test transaction so we can insert
+        #    'Test' (ID=4) and 'test' (ID=12) into the real core_program table and verify that
+        #    verify_no_duplicate_programs detects them via database-side Lower('name') aggregation.
+        with connection.cursor() as cursor:
+            cursor.execute('DROP INDEX IF EXISTS "uniq_program_name_ci"')
+
+        try:
+            p4 = Program(id=4, name="Test", slug=None)
+            super(Program, p4).save(force_insert=True)
+            p12 = Program(id=12, name="test", slug="test")
+            super(Program, p12).save(force_insert=True)
+
+            u = User.objects.create_user(username="dup_prog_stud", email="dup_prog@example.com")
+            Student.objects.create(
+                user=u,
+                crm_student_id="NATYA-DUP-4",
+                first_name="Student",
+                last_name="One",
+                mobile="+919800009999",
+                program_type=p4,
+            )
+
+            with self.assertRaises(RuntimeError) as ctx:
+                mod_0045.verify_no_duplicate_programs(apps, dummy_schema_editor)
+
+            err_msg = str(ctx.exception)
+            self.assertIn("Normalized name 'test'", err_msg)
+            self.assertIn("ID=4 (name='Test', slug=None, students=1, subprograms=0)", err_msg)
+            self.assertIn("ID=12 (name='test', slug='test', students=0, subprograms=0)", err_msg)
+            self.assertIn("Disambiguate duplicate Program.name values", err_msg)
+        finally:
+            Student.objects.filter(crm_student_id="NATYA-DUP-4").delete()
+            Program.objects.filter(id__in=[4, 12]).delete()
+            with connection.cursor() as cursor:
+                cursor.execute('CREATE UNIQUE INDEX IF NOT EXISTS "uniq_program_name_ci" ON "core_program" (LOWER("name"))')
+
+
+class ProgramSerializerAPITests(APITestCase):
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+        self.super_admin = User.objects.create_superuser(
+            username="prog_api_admin",
+            email="prog_api_admin@example.com",
+            password="password123",
+            role="SUPER_ADMIN",
+        )
+        self.client.force_authenticate(user=self.super_admin)
+        self.prog_a = Program.objects.create(
+            name="Kathak Diploma",
+            description="Classical Kathak Diploma",
+            slug="kathak-diploma",
+        )
+        self.prog_b = Program.objects.create(
+            name="Bharatanatyam Certificate",
+            description="Classical Bharatanatyam Certificate",
+            slug="bharatanatyam-certificate",
+        )
+
+    def test_create_duplicate_exact_name_returns_400(self):
+        """Duplicate exact Program name on create returns HTTP 400."""
+        res = self.client.post("/api/programs/", {"name": "Kathak Diploma"}, format="json")
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("name", res.data)
+
+    def test_create_case_insensitive_duplicate_name_returns_400(self):
+        """Case-insensitive duplicate Program name on create returns HTTP 400."""
+        for variant in ["kathak diploma", "KATHAK DIPLOMA", "KaThAk DiPlOmA"]:
+            res = self.client.post("/api/programs/", {"name": variant}, format="json")
+            self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+            self.assertIn("name", res.data)
+
+    def test_update_program_without_changing_name_succeeds(self):
+        """Updating a Program without changing its name (or changing only its own casing) succeeds."""
+        res_patch = self.client.patch(
+            f"/api/programs/{self.prog_a.id}/",
+            {"name": "Kathak Diploma", "description": "Updated description"},
+            format="json",
+        )
+        self.assertEqual(res_patch.status_code, status.HTTP_200_OK)
+        self.prog_a.refresh_from_db()
+        self.assertEqual(self.prog_a.description, "Updated description")
+
+        res_put = self.client.put(
+            f"/api/programs/{self.prog_a.id}/",
+            {
+                "name": "Kathak Diploma",
+                "description": "Full PUT update",
+                "require_payment": True,
+                "registration_fee": "500.00",
+                "is_active": True,
+            },
+            format="json",
+        )
+        self.assertEqual(res_put.status_code, status.HTTP_200_OK)
+
+    def test_update_program_to_another_existing_program_name_returns_400(self):
+        """Updating a Program to another existing Program's name (exact or case-insensitive) returns HTTP 400."""
+        for conflict_name in ["Bharatanatyam Certificate", "bharatanatyam certificate", "BHARATANATYAM CERTIFICATE"]:
+            res = self.client.patch(
+                f"/api/programs/{self.prog_a.id}/",
+                {"name": conflict_name},
+                format="json",
+            )
+            self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+            self.assertIn("name", res.data)
+
+    def test_whitespace_handling_on_create_and_update(self):
+        """Leading/trailing whitespace is stripped and blank/whitespace-only or padded duplicates return HTTP 400."""
+        # Create with surrounding whitespace -> stripped and saved cleanly
+        res_create = self.client.post(
+            "/api/programs/",
+            {"name": "   Mohiniyattam Foundation   "},
+            format="json",
+        )
+        self.assertEqual(res_create.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(res_create.data["name"], "Mohiniyattam Foundation")
+
+        # Padded case-insensitive duplicate on create -> rejected with HTTP 400
+        res_dup = self.client.post(
+            "/api/programs/",
+            {"name": "  mohiniyattam foundation  "},
+            format="json",
+        )
+        self.assertEqual(res_dup.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("name", res_dup.data)
+
+        # Padded duplicate on update to another Program's name -> rejected with HTTP 400
+        res_upd_dup = self.client.patch(
+            f"/api/programs/{self.prog_a.id}/",
+            {"name": "   bharatanatyam certificate   "},
+            format="json",
+        )
+        self.assertEqual(res_upd_dup.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("name", res_upd_dup.data)
+
+        # Whitespace-only name -> rejected with HTTP 400
+        res_blank = self.client.post(
+            "/api/programs/",
+            {"name": "     "},
+            format="json",
+        )
+        self.assertEqual(res_blank.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("name", res_blank.data)
+
+
 
 
 class AnalyticsDetailTests(APITestCase):
