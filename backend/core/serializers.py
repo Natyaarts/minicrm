@@ -19,6 +19,17 @@ class ProgramSerializer(serializers.ModelSerializer):
         model = Program
         fields = ('id', 'name', 'description', 'slug', 'require_payment', 'registration_fee', 'is_active')
 
+    def validate_name(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Name cannot be blank.")
+        qs = Program.objects.filter(name__iexact=value)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError("A program with this name already exists.")
+        return value
+
 class SubProgramSerializer(serializers.ModelSerializer):
     class Meta:
         model = SubProgram

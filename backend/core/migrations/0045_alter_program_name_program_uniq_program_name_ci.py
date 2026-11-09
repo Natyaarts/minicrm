@@ -4,6 +4,48 @@ import django.db.models.functions.text
 from django.db import migrations, models
 
 
+def verify_no_duplicate_programs(apps, schema_editor):
+    Program = apps.get_model('core', 'Program')
+    Student = apps.get_model('core', 'Student')
+    SubProgram = apps.get_model('core', 'SubProgram')
+    db_alias = schema_editor.connection.alias
+
+    duplicate_groups = list(
+        Program.objects.using(db_alias)
+        .annotate(lower_name=django.db.models.functions.text.Lower('name'))
+        .values('lower_name')
+        .annotate(name_count=models.Count('id'))
+        .filter(name_count__gt=1)
+        .order_by('lower_name')
+    )
+
+    if duplicate_groups:
+        details = []
+        for group in duplicate_groups:
+            norm_name = group['lower_name']
+            rows = (
+                Program.objects.using(db_alias)
+                .annotate(lower_name=django.db.models.functions.text.Lower('name'))
+                .filter(lower_name=norm_name)
+                .order_by('id')
+            )
+            row_summaries = []
+            for p in rows:
+                student_count = Student.objects.using(db_alias).filter(program_type_id=p.id).count()
+                subprog_count = SubProgram.objects.using(db_alias).filter(program_id=p.id).count()
+                row_summaries.append(
+                    f"ID={p.id} (name={p.name!r}, slug={p.slug!r}, students={student_count}, subprograms={subprog_count})"
+                )
+            details.append(f"  - Normalized name {norm_name!r}: " + "; ".join(row_summaries))
+        raise RuntimeError(
+            "Cannot apply Program name uniqueness constraints (unique=True and uniq_program_name_ci) "
+            "because unresolved duplicate Program names exist in the database:\n"
+            + "\n".join(details)
+            + "\nRemediation required: Disambiguate duplicate Program.name values while preserving "
+            "existing Program IDs, relationships, and slugs before re-running migrate."
+        )
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -11,6 +53,10 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.RunPython(
+            verify_no_duplicate_programs,
+            migrations.RunPython.noop,
+        ),
         migrations.AlterField(
             model_name='program',
             name='name',
