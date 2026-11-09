@@ -51,9 +51,25 @@ class DynamicRolePermission(permissions.BasePermission):
             modules += SALES_SUBMODULES
 
         RolePermission = apps.get_model('users', 'RolePermission')
-        return RolePermission.objects.filter(
-            role=user.role, module__in=modules, **{flag: True}
-        ).exists()
+        roles_to_check = [user.role]
+        if module_name == 'SALES' and user.role in [
+            'TEAM_LEAD', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD'
+        ]:
+            roles_to_check.append('SALES')
+        if RolePermission.objects.filter(
+            role__in=roles_to_check, module__in=modules, **{flag: True}
+        ).exists():
+            return True
+
+        if module_name == 'SALES' and user.role in [
+            'SALES', 'TEAM_LEAD', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD'
+        ]:
+            if not RolePermission.objects.filter(
+                role__in=roles_to_check, module__in=modules
+            ).exists():
+                return flag in ['can_view', 'can_add', 'can_edit']
+
+        return False
 
 class IsMentorOwner(permissions.BasePermission):
     """

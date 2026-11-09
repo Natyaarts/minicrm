@@ -1,4 +1,5 @@
 import * as FileSystem from 'expo-file-system/legacy';
+import { File as ExpoFile } from 'expo-file-system';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import client from '../api/client';
 
@@ -87,9 +88,14 @@ export const archiveUnlinkedRecording = async (item: UnlinkedRecordingItem) => {
 
 /**
  * Queues a recording file for background upload linked to an interaction ID.
+ * Immediately marks the recording file as consumed so concurrent calls or background
+ * syncs cannot attach the same audio file to another call.
  */
 export const queuePendingRecording = async (item: PendingRecordingItem) => {
   try {
+    if (item?.fileUri) {
+      await markRecordingConsumed([item.fileUri, item.fileName || '']);
+    }
     const current = await getPendingRecordings();
     const exists = current.some(
       (p) => (item.interactionId && String(p.interactionId) === String(item.interactionId)) ||
@@ -284,6 +290,10 @@ export const markRecordingConsumed = async (identifiers: string | string[]) => {
       currentSet.add(item);
       const basename = item.split('/').pop();
       if (basename) currentSet.add(basename);
+      try {
+        const decodedBase = decodeURIComponent(item).split('/').pop()?.split(':').pop();
+        if (decodedBase) currentSet.add(decodedBase);
+      } catch (_) {}
     });
 
     const arrayToSave = Array.from(currentSet).slice(-1000);
@@ -301,6 +311,10 @@ export const isRecordingConsumed = (filePathOrName: string, consumedSet?: Set<st
   if (consumedSet.has(filePathOrName)) return true;
   const basename = filePathOrName.split('/').pop();
   if (basename && consumedSet.has(basename)) return true;
+  try {
+    const decodedBase = decodeURIComponent(filePathOrName).split('/').pop()?.split(':').pop();
+    if (decodedBase && consumedSet.has(decodedBase)) return true;
+  } catch (_) {}
   return false;
 };
 
@@ -332,6 +346,9 @@ export const queueOfflineCall = async (callData: any) => {
     // Deduplicate by mobile_call_id in queue
     const exists = queue.some((item: any) => item.mobile_call_id === callData.mobile_call_id);
     if (!exists) {
+      if (callData.recordedFilePath && Number(callData.call_duration || 0) > 0 && (callData.call_status || '').toUpperCase() === 'CONNECTED') {
+        await markRecordingConsumed(callData.recordedFilePath);
+      }
       queue.push({
         ...callData,
         queued_at: Date.now()
@@ -423,10 +440,34 @@ export const syncPendingCalls = async () => {
 
 let isSyncingRecordingsInProgress = false;
 
+const extractFileNameTimestamp = (fileName: string): number => {
+  if (!fileName) return 0;
+  const epochMatch = fileName.match(/(?:^|[^\d])(1[6-9]\d{11})(?:[^\d]|$)/);
+  if (epochMatch) {
+    const ts = Number(epochMatch[1]);
+    if (!isNaN(ts) && ts > 1600000000000) return ts;
+  }
+  const dateMatch = fileName.match(/(20\d{2})[-_.]?(0[1-9]|1[0-2])[-_.]?(0[1-9]|[12]\d|3[01])[-_.\sT]+([01]\d|2[0-3])[-_.]?([0-5]\d)[-_.]?([0-5]\d)/);
+  if (dateMatch) {
+    const [, year, month, day, hour, min, sec] = dateMatch;
+    const parsed = new Date(
+      Number(year),
+      Number(month) - 1,
+      Number(day),
+      Number(hour),
+      Number(min),
+      Number(sec)
+    ).getTime();
+    if (!isNaN(parsed) && parsed > 0) return parsed;
+  }
+  return 0;
+};
+
 /**
  * Scans local storage cache for audio recordings and links them to interactions missing recordings.
- * Strictly verifies identity: call ID or normalized phone number + tight timestamp window.
- * Never guesses or attaches arbitrary files.
+ * Strictly verifies identity: call ID or normalized phone number + tight asymmetric timestamp window.
+ * Pre-filters filenames in JS memory and caches file metadata so large folders (500–1000+ files)
+ * scan in milliseconds without O(M * N) native bridge file I/O.
  * Marks uploaded recordings as consumed in persistent storage without deleting from device.
  */
 export const syncMissingRecordings = async () => {
@@ -445,15 +486,29 @@ export const syncMissingRecordings = async () => {
 
     console.log('[SyncManager] Starting background sync check for missing call recordings...');
 
-    // 2. Fetch recent call interactions
-    const res = await client.get('/crm/interactions/');
-    const interactions = res.data.results || res.data || [];
+    // 3. Fetch recent CONNECTED CALL interactions directly via query params
+    const res = await client.get('/crm/interactions/', {
+      params: { interaction_type: 'CALL', call_status: 'CONNECTED' }
+    });
+    const interactions = res.data?.results || res.data || [];
+
+    // Exclude any interaction that already has a pending recording upload queued
+    const pendingList = await getPendingRecordings();
+    const pendingInteractionIds = new Set(pendingList.map((p) => String(p.interactionId)));
 
     // Filter for CONNECTED CALL interactions with duration > 0 that are missing audio (Missed calls must not receive recordings)
-    const missingAudioCalls = interactions.filter((item: any) => {
-      const isConnected = (item.call_status || '').toUpperCase() === 'CONNECTED' && Number(item.call_duration || 0) > 0;
-      return isConnected && item.interaction_type === 'CALL' && (!item.audio_recording || item.audio_recording === '') && (!item.recording_url || item.recording_url === '');
-    });
+    const missingAudioCalls = interactions
+      .filter((item: any) => {
+        const isConnected = (item.call_status || '').toUpperCase() === 'CONNECTED' && Number(item.call_duration || 0) > 0;
+        const hasAudio = Boolean((item.audio_recording && item.audio_recording !== '') || (item.recording_url && item.recording_url !== ''));
+        return isConnected && item.interaction_type === 'CALL' && !hasAudio && !pendingInteractionIds.has(String(item.id));
+      })
+      // Sort chronologically (oldest -> newest) so consecutive calls to the same lead claim their own recording in order
+      .sort((a: any, b: any) => {
+        const timeA = a.start_time ? new Date(a.start_time).getTime() : new Date(a.date).getTime();
+        const timeB = b.start_time ? new Date(b.start_time).getTime() : new Date(b.date).getTime();
+        return (timeA || 0) - (timeB || 0);
+      });
 
     if (missingAudioCalls.length === 0) {
       console.log('[SyncManager] No missing audio recordings found.');
@@ -462,73 +517,213 @@ export const syncMissingRecordings = async () => {
 
     console.log(`[SyncManager] Found ${missingAudioCalls.length} calls missing audio recordings.`);
 
-    // 3. Scan the app's cache directory
-    if (!FileSystem.cacheDirectory) return;
-    const files = await FileSystem.readDirectoryAsync(FileSystem.cacheDirectory);
+    // 4. Scan the app's cache directory and any mapped SAF recording folder
+    const candidateFiles: { fileName: string; fileUri: string; cleanDigits: string; foundOtherPhone: string | null }[] = [];
+    const addCandidateIfValid = (rawName: string, rawUri: string) => {
+      const lowerName = rawName.toLowerCase();
+      const isAudioExt =
+        lowerName.endsWith('.m4a') ||
+        lowerName.endsWith('.mp4') ||
+        lowerName.endsWith('.3gp') ||
+        lowerName.endsWith('.wav') ||
+        lowerName.endsWith('.mp3') ||
+        lowerName.endsWith('.amr') ||
+        lowerName.endsWith('.aac') ||
+        lowerName.endsWith('.ogg') ||
+        lowerName.endsWith('.opus');
+      const isRecFile =
+        rawName.startsWith('fallback_recording') ||
+        rawName.startsWith('saf_recorded') ||
+        rawName.startsWith('incoming_record') ||
+        rawName.startsWith('recorded_call') ||
+        rawName.startsWith('offline_rec') ||
+        rawName.startsWith('sync_record') ||
+        rawName.startsWith('record_') ||
+        rawName.startsWith('Call_') ||
+        rawName.startsWith('REC_') ||
+        rawName.startsWith('rec_') ||
+        (rawUri.startsWith('content://') && isAudioExt) ||
+        isAudioExt;
+      if (!isRecFile) return;
+
+      const cleanDigits = rawName.replace(/\D/g, '');
+      const otherNumberMatch = rawName.match(/(?:\+?91|0)?([6-9]\d{9})/);
+      const foundOtherPhone = otherNumberMatch ? otherNumberMatch[1] : null;
+      candidateFiles.push({
+        fileName: rawName,
+        fileUri: rawUri,
+        cleanDigits,
+        foundOtherPhone,
+      });
+    };
+
+    if (FileSystem.cacheDirectory) {
+      const cacheFiles = await FileSystem.readDirectoryAsync(FileSystem.cacheDirectory).catch(() => []);
+      for (const f of cacheFiles) {
+        addCandidateIfValid(f, `${FileSystem.cacheDirectory}${f}`);
+      }
+    }
+    const mappedFolderUri = await AsyncStorage.getItem('@mapped_recording_folder_uri').catch(() => null);
+    if (mappedFolderUri && FileSystem.StorageAccessFramework) {
+      const safFiles = await FileSystem.StorageAccessFramework.readDirectoryAsync(mappedFolderUri).catch(() => []);
+      for (const safUri of safFiles) {
+        const decodedUri = decodeURIComponent(safUri);
+        const decodedName = decodedUri.split('/').pop()?.split(':').pop() || safUri;
+        const lowerDecoded = decodedName.toLowerCase();
+        const isAudio =
+          lowerDecoded.endsWith('.m4a') ||
+          lowerDecoded.endsWith('.mp4') ||
+          lowerDecoded.endsWith('.3gp') ||
+          lowerDecoded.endsWith('.wav') ||
+          lowerDecoded.endsWith('.mp3') ||
+          lowerDecoded.endsWith('.amr') ||
+          lowerDecoded.endsWith('.aac') ||
+          lowerDecoded.endsWith('.ogg') ||
+          lowerDecoded.endsWith('.opus');
+        if (isAudio) {
+          addCandidateIfValid(decodedName, safUri);
+        } else {
+          // Only check 1 level deeper if the entry does NOT look like a regular file with extension
+          const hasExtension = /\.[a-z0-9]{2,5}$/i.test(decodedName);
+          if (!hasExtension) {
+            try {
+              const subFiles = await FileSystem.StorageAccessFramework.readDirectoryAsync(safUri);
+              for (const subUri of subFiles) {
+                const subDecoded = decodeURIComponent(subUri);
+                const subName = subDecoded.split('/').pop()?.split(':').pop() || subUri;
+                addCandidateIfValid(subName, subUri);
+              }
+            } catch (_) {}
+          }
+        }
+      }
+    }
+    if (candidateFiles.length === 0) return;
 
     // Load persistent consumed recordings set
     const persistentConsumed = await getConsumedRecordings();
     const inMemoryConsumed = new Set<string>(persistentConsumed);
 
-    for (const call of missingAudioCalls) {
+    // Cache file metadata per fileUri so getInfoAsync is called at most once per matching candidate
+    const fileMetadataCache = new Map<string, { exists: boolean; fileTime: number }>();
+
+    const getCachedFileMetadata = async (fileUri: string, fileName: string): Promise<{ exists: boolean; fileTime: number }> => {
+      const cached = fileMetadataCache.get(fileUri);
+      if (cached) return cached;
+
+      let exists = false;
+      let fileTime = 0;
+
+      try {
+        const fileInfo = await FileSystem.getInfoAsync(fileUri);
+        if (fileInfo && fileInfo.exists) {
+          exists = true;
+          if (fileInfo.modificationTime) {
+            fileTime = fileInfo.modificationTime > 1e12
+              ? fileInfo.modificationTime
+              : fileInfo.modificationTime * 1000;
+          }
+        }
+      } catch (_) {}
+
+      if (!fileTime && fileUri.startsWith('content://') && typeof ExpoFile !== 'undefined') {
+        try {
+          const safFileObj = new ExpoFile(fileUri);
+          if (safFileObj.modificationTime) {
+            exists = true;
+            fileTime = safFileObj.modificationTime > 1e12
+              ? safFileObj.modificationTime
+              : safFileObj.modificationTime * 1000;
+          }
+        } catch (_) {}
+      }
+
+      if (!fileTime) {
+        const parsedFromName = extractFileNameTimestamp(fileName);
+        if (parsedFromName > 0) {
+          fileTime = parsedFromName;
+        }
+      }
+
+      const meta = { exists, fileTime };
+      fileMetadataCache.set(fileUri, meta);
+      return meta;
+    };
+
+    for (let idx = 0; idx < missingAudioCalls.length; idx++) {
+      const call = missingAudioCalls[idx];
       const targetPhone = (call.student_phone || call.customer_number || call.caller_number || call.receiver_number || '').replace(/\D/g, '').slice(-10);
-      const callTime = call.start_time ? new Date(call.start_time).getTime() : new Date(call.date).getTime();
+      const callStartTime = call.start_time ? new Date(call.start_time).getTime() : new Date(call.date).getTime();
+      const callDurationMs = Math.max(0, Number(call.call_duration || 0)) * 1000;
+      const callEndTime = callStartTime + callDurationMs;
 
-      // Find a matching file in the cache with strict phone/call identity
+      // Determine upper time bound if another call to the same phone number occurred shortly after
+      let nextCallStartTime = Infinity;
+      for (let nextIdx = idx + 1; nextIdx < missingAudioCalls.length; nextIdx++) {
+        const nextCall = missingAudioCalls[nextIdx];
+        const nextPhone = (nextCall.student_phone || nextCall.customer_number || nextCall.caller_number || nextCall.receiver_number || '').replace(/\D/g, '').slice(-10);
+        if (nextPhone && nextPhone === targetPhone) {
+          const nextStart = nextCall.start_time ? new Date(nextCall.start_time).getTime() : new Date(nextCall.date).getTime();
+          if (nextStart > callStartTime) {
+            nextCallStartTime = nextStart;
+            break;
+          }
+        }
+      }
+
       let bestMatchingFile: string | null = null;
-      let minDiff = 180000; // 3 minutes max tolerance around call time
+      let minDiff = 180000; // 3 minutes max tolerance
 
-      for (const fileName of files) {
-        if (isRecordingConsumed(fileName, inMemoryConsumed)) continue;
+      for (const { fileName, fileUri, cleanDigits, foundOtherPhone } of candidateFiles) {
+        if (isRecordingConsumed(fileName, inMemoryConsumed) || isRecordingConsumed(fileUri, inMemoryConsumed)) continue;
 
-        // Check if the file is a recognized call recording prefix
-        const isRecFile = fileName.startsWith('fallback_recording') ||
-                          fileName.startsWith('saf_recorded') ||
-                          fileName.startsWith('incoming_record') ||
-                          fileName.startsWith('recorded_call') ||
-                          fileName.startsWith('offline_rec') ||
-                          fileName.startsWith('sync_record') ||
-                          fileName.startsWith('record_') ||
-                          fileName.startsWith('Call_') ||
-                          fileName.startsWith('REC_') ||
-                          fileName.startsWith('rec_');
+        // Pure JS pre-filtering BEFORE any native file I/O (eliminates O(M * N) bridge bottleneck)
+        const hasCallIdMatch = Boolean(call.mobile_call_id && fileName.includes(call.mobile_call_id));
 
-        if (isRecFile) {
-          const fileUri = `${FileSystem.cacheDirectory}${fileName}`;
-          if (isRecordingConsumed(fileUri, inMemoryConsumed)) continue;
+        if (targetPhone && targetPhone.length >= 6 && foundOtherPhone && foundOtherPhone !== targetPhone) {
+          continue;
+        }
 
-          try {
-            const fileInfo = await FileSystem.getInfoAsync(fileUri);
+        let isPhoneMatch = false;
+        if (targetPhone && targetPhone.length >= 6) {
+          isPhoneMatch = cleanDigits.includes(targetPhone) || fileName.includes(targetPhone);
+        }
 
-            if (fileInfo.exists) {
-              const cleanFileName = fileName.replace(/\D/g, '');
-              const hasCallIdMatch = Boolean(call.mobile_call_id && fileName.includes(call.mobile_call_id));
+        // Strictly require explicit call ID or verified phone number match
+        if (!hasCallIdMatch && !isPhoneMatch) continue;
 
-              // If the file contains a different 10-digit phone number, strictly reject
-              const otherNumberMatch = fileName.match(/(?:\+?91|0)?([6-9]\d{9})/);
-              const foundOtherPhone = otherNumberMatch ? otherNumberMatch[1] : null;
-              if (targetPhone && targetPhone.length >= 6 && foundOtherPhone && foundOtherPhone !== targetPhone) {
-                continue;
-              }
+        const { exists, fileTime } = await getCachedFileMetadata(fileUri, fileName);
+        if (!exists) continue;
 
-              let isPhoneMatch = false;
-              if (targetPhone && targetPhone.length >= 6) {
-                isPhoneMatch = cleanFileName.includes(targetPhone) || fileName.includes(targetPhone);
-              }
+        let timeDiff: number;
+        if (hasCallIdMatch) {
+          timeDiff = 0;
+        } else {
+          // Without explicit mobile_call_id in the filename, a valid timestamp within the call's causal window is mandatory.
+          // Never default unknown timestamps to 120000ms (which previously caused old recordings to attach to new calls).
+          if (!fileTime || !callStartTime) continue;
 
-              // Strictly require explicit call ID or verified phone number match.
-              // Never attach an arbitrary audio file based merely on proximity.
-              if (hasCallIdMatch || isPhoneMatch) {
-                const fileTime = fileInfo.modificationTime ? fileInfo.modificationTime * 1000 : 0;
-                const timeDiff = fileTime && callTime ? Math.abs(fileTime - callTime) : 0;
+          // Causal window: a recording cannot be finalized more than 15s BEFORE the call started,
+          // nor more than 3 minutes after the call ended, nor after the next call to the same number started.
+          const minAllowedTime = callStartTime - 15000;
+          const maxAllowedTime = Math.min(callEndTime + 180000, nextCallStartTime + 2000);
+          if (fileTime < minAllowedTime || fileTime > maxAllowedTime) {
+            continue;
+          }
 
-                if (timeDiff < minDiff) {
-                  bestMatchingFile = fileUri;
-                  minDiff = timeDiff;
-                }
-              }
-            }
-          } catch (_) {}
+          // Measure proximity to call window [callStartTime, callEndTime]
+          if (fileTime >= callStartTime && fileTime <= callEndTime) {
+            timeDiff = 0;
+          } else if (fileTime < callStartTime) {
+            timeDiff = callStartTime - fileTime;
+          } else {
+            timeDiff = fileTime - callEndTime;
+          }
+        }
+
+        if (timeDiff < minDiff) {
+          bestMatchingFile = fileUri;
+          minDiff = timeDiff;
         }
       }
 
@@ -536,13 +731,16 @@ export const syncMissingRecordings = async () => {
         console.log(`[SyncManager] Found matching local recording for call ID ${call.id}: ${bestMatchingFile}`);
 
         try {
-          // Prepare multipart upload
           const formData = new FormData();
-          const extMatch = bestMatchingFile.match(/\.([a-zA-Z0-9]+)$/);
+          const decodedBestUri = decodeURIComponent(bestMatchingFile);
+          const extMatch = decodedBestUri.match(/\.([a-zA-Z0-9]+)$/);
           const ext = extMatch ? extMatch[1].toLowerCase() : 'm4a';
           let mimeType = 'audio/m4a';
           if (ext === 'mp3') mimeType = 'audio/mpeg';
           else if (ext === 'wav') mimeType = 'audio/wav';
+          else if (ext === 'amr') mimeType = 'audio/amr';
+          else if (ext === 'aac') mimeType = 'audio/aac';
+          else if (ext === 'ogg' || ext === 'opus') mimeType = 'audio/ogg';
 
           formData.append('audio_recording', {
             uri: bestMatchingFile,
@@ -550,7 +748,6 @@ export const syncMissingRecordings = async () => {
             name: `sync_record_${targetPhone ? targetPhone + '_' : ''}${call.id}_${Date.now()}.${ext}`
           } as any);
 
-          // Upload via PATCH
           await client.patch(`/crm/interactions/${call.id}/`, formData, {
             headers: { 'Content-Type': 'multipart/form-data' }
           });
@@ -559,9 +756,11 @@ export const syncMissingRecordings = async () => {
 
           // Mark consumed in persistent storage and in-memory set; original file remains on phone
           const basename = bestMatchingFile.split('/').pop() || '';
+          const decodedBase = decodeURIComponent(bestMatchingFile).split('/').pop()?.split(':').pop() || '';
           inMemoryConsumed.add(bestMatchingFile);
           if (basename) inMemoryConsumed.add(basename);
-          await markRecordingConsumed([bestMatchingFile, basename]);
+          if (decodedBase) inMemoryConsumed.add(decodedBase);
+          await markRecordingConsumed([bestMatchingFile, basename, decodedBase]);
         } catch (uploadErr) {
           console.warn(`[SyncManager] Upload failed for call ID ${call.id}, keeping eligible for retry:`, uploadErr);
         }

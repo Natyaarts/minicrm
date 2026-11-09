@@ -58,15 +58,19 @@ export default function AllTasksScreen() {
   const renderTaskItem = ({ item }: { item: any }) => (
     <TouchableOpacity 
       style={[styles.taskCard, isDark && styles.darkCard]}
-      onPress={() => router.push(`/lead-details?leadId=${item.student}` as any)}
+      onPress={() => {
+        if (item.student) {
+          router.push(`/lead-details?leadId=${item.student}` as any);
+        }
+      }}
     >
       <View style={{ flex: 1 }}>
         <Text style={[styles.taskTitle, isDark && styles.darkText]} numberOfLines={2}>
           {item.title}
         </Text>
-        {item.description ? (
+        {(item.notes || item.description) ? (
           <Text style={styles.taskDesc} numberOfLines={2}>
-            {item.description}
+            {item.notes || item.description}
           </Text>
         ) : null}
         <View style={styles.taskMetaRow}>

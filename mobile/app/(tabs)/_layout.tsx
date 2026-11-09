@@ -58,7 +58,7 @@ export default function TabLayout() {
     }
   };
 
-  const hasDialerAccess = user?.role === 'SALES' || user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';
+  const hasDialerAccess = ['SALES', 'TEAM_LEAD', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD', 'ADMIN', 'SUPER_ADMIN'].includes(user?.role) || Boolean(user?.is_manager);
   
   // Register for push notifications when tabs load
   usePushNotifications();

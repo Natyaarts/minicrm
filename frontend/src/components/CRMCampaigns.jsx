@@ -80,6 +80,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
     
     // UI States for Campaigns
     const [searchTerm, setSearchTerm] = useState('');
+    const [campaignSectionFilter, setCampaignSectionFilter] = useState('');
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [editingCampaign, setEditingCampaign] = useState(null);
     const [isWebhooksModalOpen, setIsWebhooksModalOpen] = useState(false);
@@ -217,6 +218,24 @@ const CRMCampaigns = ({ onLeadClick }) => {
     }, [activeTab]);
 
     useEffect(() => {
+        if (selectedSectionFilter && selectedCampaignFilter && campaigns.length > 0) {
+            const selectedCamp = campaigns.find(c => String(c.id) === String(selectedCampaignFilter));
+            if (!selectedCamp || (selectedCamp.section || '').toUpperCase() !== selectedSectionFilter.toUpperCase()) {
+                setSelectedCampaignFilter('');
+            }
+        }
+    }, [selectedSectionFilter, selectedCampaignFilter, campaigns]);
+
+    useEffect(() => {
+        if (popupSection && popupCampaign && campaigns.length > 0) {
+            const selectedCamp = campaigns.find(c => String(c.id) === String(popupCampaign));
+            if (!selectedCamp || (selectedCamp.section || '').toUpperCase() !== popupSection.toUpperCase()) {
+                setPopupCampaign('');
+            }
+        }
+    }, [popupSection, popupCampaign, campaigns]);
+
+    useEffect(() => {
         if (activeTab === 'leads' || activeTab === 'assigned') {
             fetchLeads(leadsStartDate, leadsEndDate, selectedAssigneeFilter, searchTerm, selectedStageFilter, selectedSectionFilter, selectedCampaignFilter);
             fetchAssignedStats(leadsStartDate, leadsEndDate, selectedAssigneeFilter, selectedSectionFilter, selectedCampaignFilter);
@@ -305,12 +324,6 @@ const CRMCampaigns = ({ onLeadClick }) => {
             if (campaignId) url += `&campaign_id=${encodeURIComponent(campaignId)}`;
             if (stage) {
                 url += `&lead_status=${encodeURIComponent(stage)}`;
-            } else if (!search) {
-                url += `&hide_converted=true`;
-            }
-            if (stage === 'DUPLICATE') {
-                // Ensure hide_converted is not passed in url params
-                url = url.replace('&hide_converted=true', '');
             }
 
             console.log('[fetchLeads] URL:', url);
@@ -495,7 +508,49 @@ const CRMCampaigns = ({ onLeadClick }) => {
     const handleBulkUpload = async (e) => {
         e.preventDefault();
         if (!uploadFile || !uploadCampaignId) {
-            alert('Please select a campaign and a CSV file.');
+            alert('Please select a campaign and a spreadsheet file.');
+            return;
+        }
+
+        const isExcel = /\.(xlsx|xls)$/i.test(uploadFile.name || '');
+        if (isExcel) {
+            setIsUploading(true);
+            setUploadStats({
+                total: 1,
+                processed: 0,
+                success: 0,
+                duplicates: 0,
+                failed: 0,
+                errors: []
+            });
+            try {
+                const formDataObj = new FormData();
+                formDataObj.append('file', uploadFile);
+                if (uploadProgramId) formDataObj.append('program_id', uploadProgramId);
+                const res = await api.post(`crm/campaigns/${uploadCampaignId}/bulk_upload/`, formDataObj, {
+                    headers: { 'Content-Type': 'multipart/form-data' }
+                });
+                const totalRows = res.data.total ?? ((res.data.added_count || 0) + (res.data.duplicate_count || 0) + (res.data.skipped_count || 0));
+                setUploadStats({
+                    total: totalRows || 1,
+                    processed: totalRows || 1,
+                    success: res.data.added_count || 0,
+                    duplicates: res.data.duplicate_count || 0,
+                    failed: res.data.skipped_count || 0,
+                    errors: []
+                });
+                if (activeTab === 'dashboard') fetchDashboardData();
+                if (activeTab === 'leads' || activeTab === 'assigned') {
+                    fetchLeads();
+                    fetchAssignedStats();
+                }
+                fetchCampaigns();
+            } catch (err) {
+                alert(err.response?.data?.error || 'Failed to upload spreadsheet file.');
+                setUploadStats(null);
+            } finally {
+                setIsUploading(false);
+            }
             return;
         }
 
@@ -536,10 +591,10 @@ const CRMCampaigns = ({ onLeadClick }) => {
 
                             const batchResults = res.data.results || [];
                             batchResults.forEach((item, index) => {
-                                if (item.status === 'SUCCESS') {
-                                    localSuccess++;
-                                } else if (item.status === 'DUPLICATE') {
+                                if (item.is_duplicate || item.status === 'DUPLICATE') {
                                     localDuplicates++;
+                                } else if (item.status === 'SUCCESS') {
+                                    localSuccess++;
                                 } else {
                                     localFailed++;
                                     localErrors.push({
@@ -572,8 +627,12 @@ const CRMCampaigns = ({ onLeadClick }) => {
                     }
 
                     setIsUploading(false);
-                    // Refresh dashboard stats or active campaigns view
+                    // Refresh dashboard stats or active campaigns/leads view
                     if (activeTab === 'dashboard') fetchDashboardData();
+                    if (activeTab === 'leads' || activeTab === 'assigned') {
+                        fetchLeads();
+                        fetchAssignedStats();
+                    }
                     fetchCampaigns();
                 },
                 error: (parseError) => {
@@ -620,16 +679,36 @@ const CRMCampaigns = ({ onLeadClick }) => {
         }
     };
 
-    const filteredCampaigns = campaigns.filter(c => 
-        c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        c.platform.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const filteredCampaigns = campaigns.filter(c => {
+        const matchesSearch =
+            (c.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (c.platform || '').toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesSection = !campaignSectionFilter ||
+            (c.section || '').toUpperCase() === campaignSectionFilter.toUpperCase();
+        return matchesSearch && matchesSection;
+    });
+
+    const sectionFilteredCampaigns = selectedSectionFilter
+        ? campaigns.filter(c => (c.section || '').toUpperCase() === selectedSectionFilter.toUpperCase())
+        : campaigns;
+
+    const popupSectionFilteredCampaigns = popupSection
+        ? campaigns.filter(c => (c.section || '').toUpperCase() === popupSection.toUpperCase())
+        : campaigns;
     
-    const filteredLeads = leads.filter(l => 
-        (l.first_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (l.last_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (l.mobile && l.mobile.includes(searchTerm))
-    );
+    const filteredLeads = leads.filter(l => {
+        if (!searchTerm) return true;
+        const q = searchTerm.toLowerCase();
+        return (
+            (l.first_name || '').toLowerCase().includes(q) ||
+            (l.last_name || '').toLowerCase().includes(q) ||
+            `${l.first_name || ''} ${l.last_name || ''}`.toLowerCase().includes(q) ||
+            (l.mobile && l.mobile.toLowerCase().includes(q)) ||
+            (l.email && l.email.toLowerCase().includes(q)) ||
+            (l.crm_student_id && l.crm_student_id.toLowerCase().includes(q)) ||
+            (l.campaign_name && l.campaign_name.toLowerCase().includes(q))
+        );
+    });
 
     const sortedLeads = [...filteredLeads].sort((a, b) => {
         const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
@@ -669,7 +748,6 @@ const CRMCampaigns = ({ onLeadClick }) => {
             if (leadsStartDate) params.append('start_date', leadsStartDate);
             if (leadsEndDate) params.append('end_date', leadsEndDate);
             if (selectedStageFilter) params.append('lead_status', selectedStageFilter);
-            else if (!searchTerm) params.append('hide_converted', 'true');
             if (selectedSectionFilter) params.append('sales_section', selectedSectionFilter);
             if (selectedCampaignFilter) params.append('campaign_id', selectedCampaignFilter);
             if (searchTerm) params.append('search', searchTerm);
@@ -878,15 +956,29 @@ const CRMCampaigns = ({ onLeadClick }) => {
             <div className="space-y-6">
                 {/* Search & Actions */}
                 <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div className="relative max-w-md w-full">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
-                        <input
-                            type="text"
-                            placeholder="Search campaigns..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-sm"
-                        />
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto flex-1 max-w-xl">
+                        <div className="relative flex-1">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
+                            <input
+                                type="text"
+                                placeholder="Search campaigns..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-sm"
+                            />
+                        </div>
+                        <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus-within:ring-2 focus-within:ring-indigo-500/20">
+                            <span className="text-xs font-semibold text-slate-500 whitespace-nowrap">Section:</span>
+                            <select
+                                value={campaignSectionFilter}
+                                onChange={(e) => setCampaignSectionFilter(e.target.value)}
+                                className="bg-transparent text-sm font-semibold text-indigo-700 outline-none cursor-pointer"
+                            >
+                                <option value="" className="text-slate-900 bg-white">All Sections</option>
+                                <option value="REGULAR" className="text-slate-900 bg-white">🎓 Regular</option>
+                                <option value="CAREER_ACADEMY" className="text-slate-900 bg-white">🏫 Career Academy</option>
+                            </select>
+                        </div>
                     </div>
                     <div className="flex items-center gap-3">
                         <button
@@ -1309,7 +1401,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                     {selectedAssigneeFilter === 'unassigned' ? 'Total Unassigned' : 'Total Assigned'}: <strong className="text-indigo-600 text-sm ml-1">{assignedStats?.assigned_leads ?? totalLeadsCount}</strong> Leads
                                 </div>
                                 <button 
-                                    onClick={() => { setLeadsStartDate(''); setLeadsEndDate(''); setSelectedAssigneeFilter(''); setSelectedStageFilter(''); setSearchTerm(''); setCurrentPage(1); }}
+                                    onClick={() => { setLeadsStartDate(''); setLeadsEndDate(''); setSelectedAssigneeFilter(''); setSelectedStageFilter(''); setSelectedSectionFilter(''); setSelectedCampaignFilter(''); setSearchTerm(''); setCurrentPage(1); }}
                                     className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
                                     title="Reset filters"
                                 >
@@ -1444,7 +1536,17 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                 <span className="text-xs font-semibold text-slate-500 whitespace-nowrap">Section:</span>
                                 <select
                                     value={selectedSectionFilter}
-                                    onChange={(e) => { setSelectedSectionFilter(e.target.value); setCurrentPage(1); }}
+                                    onChange={(e) => {
+                                        const newSection = e.target.value;
+                                        setSelectedSectionFilter(newSection);
+                                        if (newSection && selectedCampaignFilter) {
+                                            const selectedCamp = campaigns.find(c => String(c.id) === String(selectedCampaignFilter));
+                                            if (!selectedCamp || (selectedCamp.section || '').toUpperCase() !== newSection.toUpperCase()) {
+                                                setSelectedCampaignFilter('');
+                                            }
+                                        }
+                                        setCurrentPage(1);
+                                    }}
                                     className="bg-transparent text-xs font-semibold text-indigo-700 outline-none cursor-pointer"
                                 >
                                     <option value="" className="text-slate-900 bg-white">All Sections</option>
@@ -1462,7 +1564,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                     className="bg-transparent text-xs font-semibold text-indigo-700 outline-none cursor-pointer max-w-[140px]"
                                 >
                                     <option value="" className="text-slate-900 bg-white">All Campaigns</option>
-                                    {campaigns.map(c => (
+                                    {sectionFilteredCampaigns.map(c => (
                                         <option key={c.id} value={c.id} className="text-slate-900 bg-white">{c.name}</option>
                                     ))}
                                 </select>
@@ -1540,9 +1642,9 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                 />
                             </div>
 
-                            {(leadsStartDate || leadsEndDate || selectedAssigneeFilter || selectedStageFilter || searchTerm) && (
+                            {(leadsStartDate || leadsEndDate || selectedAssigneeFilter || selectedStageFilter || selectedSectionFilter || selectedCampaignFilter || searchTerm) && (
                                 <button 
-                                    onClick={() => { setLeadsStartDate(''); setLeadsEndDate(''); setSelectedAssigneeFilter(''); setSelectedStageFilter(''); setSearchTerm(''); setCurrentPage(1); }}
+                                    onClick={() => { setLeadsStartDate(''); setLeadsEndDate(''); setSelectedAssigneeFilter(''); setSelectedStageFilter(''); setSelectedSectionFilter(''); setSelectedCampaignFilter(''); setSearchTerm(''); setCurrentPage(1); }}
                                     className="px-2.5 py-1 text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors flex items-center gap-1 border border-rose-200/60"
                                     title="Reset all filters"
                                 >
@@ -1807,7 +1909,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
                     <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[85vh]">
                         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                             <h2 className="text-lg font-bold text-slate-800">Bulk Upload Leads CSV</h2>
-                            <button onClick={() => { setIsUploadModalOpen(false); setUploadStats(null); }} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100">
+                            <button onClick={() => { setIsUploadModalOpen(false); setUploadStats(null); setUploadFile(null); }} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100">
                                 <X className="w-5 h-5" />
                             </button>
                         </div>
@@ -1875,7 +1977,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                     <div className="flex justify-end pt-4 border-t border-slate-100">
                                         <button 
                                             type="button" 
-                                            onClick={() => { setIsUploadModalOpen(false); setUploadStats(null); }}
+                                            onClick={() => { setIsUploadModalOpen(false); setUploadStats(null); setUploadFile(null); }}
                                             className="px-6 py-2.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-sm"
                                         >
                                             Done
@@ -1900,11 +2002,11 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Upload CSV File *</label>
-                                    <input required type="file" accept=".csv" onChange={(e) => setUploadFile(e.target.files[0])} className="w-full text-sm text-slate-500 file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
+                                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Upload CSV / Excel File *</label>
+                                    <input required type="file" accept=".csv, .xlsx, .xls" onChange={(e) => setUploadFile(e.target.files[0])} className="w-full text-sm text-slate-500 file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
                                     <div className="flex items-center justify-between mt-2">
                                         <p className="text-[10px] text-slate-500 leading-relaxed">
-                                            CSV must include columns: <b>Name</b>, <b>date</b>, <b>place</b>, <b>contact</b>, <b>email</b>, <b>tag</b>.
+                                            CSV/Excel must include columns: <b>Name</b>, <b>date</b>, <b>place</b>, <b>contact</b>, <b>email</b>, <b>tag</b>.
                                         </p>
                                         <a 
                                             href="data:text/csv;charset=utf-8,Name,date,place,contact,email,tag%0A" 
@@ -1917,7 +2019,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                     </div>
                                 </div>
                                 <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
-                                    <button type="button" onClick={() => setIsUploadModalOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 rounded-xl">Cancel</button>
+                                    <button type="button" onClick={() => { setIsUploadModalOpen(false); setUploadFile(null); }} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 rounded-xl">Cancel</button>
                                     <button type="submit" disabled={isUploading} className="px-6 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl disabled:opacity-50 flex items-center gap-2">
                                         Upload Leads
                                     </button>
@@ -2618,7 +2720,17 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                     <Layers className="text-slate-400 w-3.5 h-3.5 mr-1.5 flex-shrink-0" />
                                     <select
                                         value={popupSection}
-                                        onChange={(e) => { setPopupSection(e.target.value); setPopupPage(1); }}
+                                        onChange={(e) => {
+                                            const newSection = e.target.value;
+                                            setPopupSection(newSection);
+                                            if (newSection && popupCampaign) {
+                                                const selectedCamp = campaigns.find(c => String(c.id) === String(popupCampaign));
+                                                if (!selectedCamp || (selectedCamp.section || '').toUpperCase() !== newSection.toUpperCase()) {
+                                                    setPopupCampaign('');
+                                                }
+                                            }
+                                            setPopupPage(1);
+                                        }}
                                         className="bg-transparent text-xs font-semibold text-indigo-700 outline-none cursor-pointer w-full"
                                     >
                                         <option value="" className="text-slate-900 bg-white">All Sections</option>
@@ -2636,7 +2748,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                         className="bg-transparent text-xs font-semibold text-indigo-700 outline-none cursor-pointer w-full"
                                     >
                                         <option value="" className="text-slate-900 bg-white">All Campaigns</option>
-                                        {campaigns.map(c => (
+                                        {popupSectionFilteredCampaigns.map(c => (
                                             <option key={c.id} value={c.id} className="text-slate-900 bg-white">{c.name}</option>
                                         ))}
                                     </select>

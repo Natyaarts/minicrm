@@ -295,9 +295,12 @@ def get_canonical_new_lead_stage():
     Resolves the canonical 'New Lead' pipeline stage dynamically.
     Enforces the single canonical pipeline stage named 'New Lead'.
     Never assumes a hardcoded stage ID.
+    Never falls back to Converted, Enrolled, Dropped, Lost, or Duplicate.
     Returns the PipelineStage model instance.
     """
     from .models import PipelineStage
+    forbidden_pattern = r'(convert|enroll|drop|lost|duplicate)'
+
     # 1. Exact match on 'New Lead'
     stage = PipelineStage.objects.filter(name__iexact='New Lead').first()
     if stage:
@@ -310,17 +313,17 @@ def get_canonical_new_lead_stage():
         stage.save(update_fields=['name'])
         return stage
 
-    # 3. Match regex or is_default
-    stage = PipelineStage.objects.filter(Q(name__iregex=r'^new( lead)?$') | Q(is_default=True)).order_by('order', 'id').first()
+    # 3. Match regex or is_default (excluding terminal/duplicate stages)
+    stage = (
+        PipelineStage.objects.filter(Q(name__iregex=r'^new( lead)?$') | Q(is_default=True))
+        .exclude(name__iregex=forbidden_pattern)
+        .order_by('order', 'id')
+        .first()
+    )
     if stage:
         return stage
 
-    # 4. Fallback to order=1 or first stage
-    stage = PipelineStage.objects.order_by('order', 'id').first()
-    if stage:
-        return stage
-
-    # 5. Create if pipeline stages table is empty
+    # 4. Create 'New Lead' if it does not exist (without altering existing stage IDs)
     return PipelineStage.objects.create(name='New Lead', order=1, is_default=True)
 
 
@@ -539,26 +542,29 @@ class LeadStatusResolver:
 
     def _resolve_canonical_new(self):
         import re
-        exact_matches = [s for s in self.stages if (s.name or '').strip().lower() == 'new lead']
+        forbidden = re.compile(r'(convert|enroll|drop|lost|duplicate)', re.I)
+        valid_stages = [s for s in self.stages if not forbidden.search((s.name or '').strip())]
+
+        exact_matches = [s for s in valid_stages if (s.name or '').strip().lower() == 'new lead']
         if len(exact_matches) == 1:
             return exact_matches[0]
         elif len(exact_matches) > 1:
             return None
 
-        default_stages = [s for s in self.stages if getattr(s, 'is_default', False)]
+        default_stages = [s for s in valid_stages if getattr(s, 'is_default', False)]
         if len(default_stages) == 1:
             return default_stages[0]
         elif len(default_stages) > 1:
             return None
 
-        pattern_matches = [s for s in self.stages if re.match(r'^new( lead)?$', (s.name or '').strip(), re.I)]
+        pattern_matches = [s for s in valid_stages if re.match(r'^new( lead)?$', (s.name or '').strip(), re.I)]
         if len(pattern_matches) == 1:
             return pattern_matches[0]
         elif len(pattern_matches) > 1:
             return None
 
-        if len(self.stages) == 1:
-            return self.stages[0]
+        if len(valid_stages) == 1:
+            return valid_stages[0]
         return None
 
     def _resolve_canonical_converted(self):

@@ -3,8 +3,8 @@ import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Dimensions, Pla
 import { Ionicons } from '@expo/vector-icons';
 import * as Notifications from 'expo-notifications';
 import { useLocalSearchParams, router } from 'expo-router';
-import { startNativeRecording, stopNativeRecording, listenToCallEvents, requestCallPermissions, listenToCallState, makeDirectCall, getLatestCallLogDuration } from '../src/utils/CallManager';
-import { generateMobileCallId, queueOfflineCall, markRecordingConsumed, uploadCallRecordingAsync, syncPendingRecordings } from '../src/utils/SyncManager';
+import { startNativeRecording, stopNativeRecording, cancelNativeRecording, findRecentRecordingInMappedFolder, markCallSessionEnded, getLastCallSessionEndTimeMs, listenToCallEvents, requestCallPermissions, listenToCallState, makeDirectCall, getLatestCallLogDuration } from '../src/utils/CallManager';
+import { generateMobileCallId, queueOfflineCall, markRecordingConsumed, getConsumedRecordings, isRecordingConsumed, uploadCallRecordingAsync, syncPendingRecordings } from '../src/utils/SyncManager';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
@@ -59,6 +59,34 @@ const Dialpad = () => {
   const callDurationRef = useRef<number>(0);
   const callStatusStateRef = useRef(callStatusState);
   const isFinalizingRef = useRef(false);
+  const activeSessionIdRef = useRef<string>('');
+  const currentMobileCallIdRef = useRef<string>('');
+
+  // Reset all call-specific state whenever route parameters (leadId or phone) change
+  useEffect(() => {
+    if (phone && typeof phone === 'string') {
+      setPhoneNumber(phone);
+      phoneRef.current = phone;
+    }
+    if (callStatusRef.current === 'IDLE' || callStatusRef.current === 'POST_CALL') {
+      setCallStatus('IDLE');
+      callStatusRef.current = 'IDLE';
+      setActiveCallTimer(0);
+      setCallDuration(0);
+      callDurationRef.current = 0;
+      setCallStatusState('MISSED');
+      callStatusStateRef.current = 'MISSED';
+      setRecordedFilePath(null);
+      setManualRecordingFile(null);
+      setPostCallNotes('');
+      setNextFollowupDate(null);
+      setIsProcessingRecording(false);
+      callStartTimeRef.current = 0;
+      isFinalizingRef.current = false;
+      activeSessionIdRef.current = '';
+      currentMobileCallIdRef.current = '';
+    }
+  }, [leadId, phone]);
 
   useEffect(() => {
     phoneRef.current = phoneNumber;
@@ -159,7 +187,7 @@ const Dialpad = () => {
     }
   }, [activeTab]);
 
-  const hasDialerAccess = user?.role === 'SALES' || user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';
+  const hasDialerAccess = ['SALES', 'TEAM_LEAD', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD', 'ADMIN', 'SUPER_ADMIN'].includes(user?.role) || Boolean(user?.is_manager);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -204,15 +232,21 @@ const Dialpad = () => {
     if (isFinalizingRef.current) return;
     isFinalizingRef.current = true;
 
+    const sessionId = activeSessionIdRef.current;
     stopTimer();
-    const startTime = callStartTimeRef.current > 0 ? callStartTimeRef.current : (Date.now() - 5000);
+    const rawStart = callStartTimeRef.current > 0 ? callStartTimeRef.current : (Date.now() - 5000);
+    const startTime = Math.max(rawStart, getLastCallSessionEndTimeMs());
     const targetPhone = phoneRef.current;
 
     // Immediately enter POST_CALL review with initial safe defaults (0 duration, MISSED, no recording)
     setCallStatus('POST_CALL');
+    callStatusRef.current = 'POST_CALL';
     setCallDuration(0);
+    callDurationRef.current = 0;
     setCallStatusState('MISSED');
+    callStatusStateRef.current = 'MISSED';
     setRecordedFilePath(null);
+    setManualRecordingFile(null);
     setIsProcessingRecording(true);
 
     let authoritativeDuration = 0;
@@ -236,32 +270,65 @@ const Dialpad = () => {
       }
     }
 
-    // 2. Handle native call recording
+    // Abort if a newer call session was started while awaiting CallLog
+    if (sessionId && activeSessionIdRef.current !== sessionId) {
+      isFinalizingRef.current = false;
+      return;
+    }
+
+    // 2. Handle native call recording strictly based on connection state
     if (Platform.OS === 'android') {
       try {
-        const filePath = await stopNativeRecording();
-        // ONLY attach recording if the call was confirmed CONNECTED with CallLog duration > 0
-        if (filePath && isConnected && authoritativeDuration > 0) {
-          setRecordedFilePath(filePath);
-          // Recording duration may synchronize displayed duration ONLY after call is proven CONNECTED
-          const exactDuration = await extractDurationFromAudio(filePath);
-          if (exactDuration && exactDuration > 0) {
-            authoritativeDuration = exactDuration;
-          }
-        } else {
+        if (!isConnected || authoritativeDuration <= 0) {
+          // Unanswered, rejected, or failed call: cancel immediately (< 5ms) without 30s polling
+          // and guarantee zero recording inheritance from any previous call.
+          await cancelNativeRecording();
           setRecordedFilePath(null);
+        } else {
+          const consumedSet = await getConsumedRecordings();
+          let filePath = await stopNativeRecording();
+
+          // Reject if already consumed by a previous call
+          if (filePath && isRecordingConsumed(filePath, consumedSet)) {
+            filePath = null;
+          }
+
+          // Fast fallback check in mapped SAF folder for the current session window if native module returned null
+          if (!filePath && targetPhone) {
+            filePath = await findRecentRecordingInMappedFolder(targetPhone, startTime, Date.now(), consumedSet);
+          }
+
+          if (sessionId && activeSessionIdRef.current !== sessionId) {
+            isFinalizingRef.current = false;
+            return;
+          }
+
+          if (filePath && !isRecordingConsumed(filePath, consumedSet)) {
+            setRecordedFilePath(filePath);
+            // Recording duration may synchronize displayed duration ONLY after call is proven CONNECTED
+            const exactDuration = await extractDurationFromAudio(filePath);
+            if (exactDuration && exactDuration > 0) {
+              authoritativeDuration = exactDuration;
+            }
+          } else {
+            setRecordedFilePath(null);
+          }
         }
       } catch (recErr) {
-        console.warn('[dialpad] Error stopping recording:', recErr);
+        console.warn('[dialpad] Error handling recording at call end:', recErr);
         setRecordedFilePath(null);
       }
     }
+
+    markCallSessionEnded(Date.now());
 
     const finalDuration = (isConnected && authoritativeDuration > 0) ? authoritativeDuration : 0;
     const finalStatus = finalDuration > 0 ? 'CONNECTED' : 'MISSED';
 
     setCallDuration(finalDuration);
+    callDurationRef.current = finalDuration;
     setCallStatusState(finalStatus);
+    callStatusStateRef.current = finalStatus;
     setIsProcessingRecording(false);
     isFinalizingRef.current = false;
   };
@@ -343,13 +410,18 @@ const Dialpad = () => {
     // 1. Listen for events from our Kotlin MediaStore sync (which runs after stopRecording)
     const unsubscribeEvents = listenToCallEvents(async (path) => {
       console.log("Recording saved at:", path);
-      // Audio recording must ONLY be accepted if the call was already confirmed CONNECTED with duration > 0
+      // Audio recording must ONLY be accepted if the call was already confirmed CONNECTED with duration > 0 and not already consumed
       if (path && callStatusRef.current === 'POST_CALL' && callDurationRef.current > 0 && callStatusStateRef.current === 'CONNECTED') {
+        const consumed = await getConsumedRecordings();
+        if (isRecordingConsumed(path, consumed)) {
+          return;
+        }
         setRecordedFilePath(path);
         try {
           const exactDuration = await extractDurationFromAudio(path);
           if (exactDuration && exactDuration > 0) {
             setCallDuration(exactDuration);
+            callDurationRef.current = exactDuration;
           }
         } catch (_) {}
       }
@@ -434,11 +506,18 @@ const Dialpad = () => {
 
     // Reset all call states before initiating new call
     stopTimer();
+    const newSessionId = generateMobileCallId(cleanNumber, 'OUTGOING');
+    activeSessionIdRef.current = newSessionId;
+    currentMobileCallIdRef.current = newSessionId;
     setActiveCallTimer(0);
     setCallDuration(0);
+    callDurationRef.current = 0;
     setCallStatusState('MISSED');
+    callStatusStateRef.current = 'MISSED';
     setRecordedFilePath(null);
     setManualRecordingFile(null);
+    setPostCallNotes('');
+    setNextFollowupDate(null);
     callStartTimeRef.current = Date.now();
     isFinalizingRef.current = false;
 
@@ -463,18 +542,24 @@ const Dialpad = () => {
 
   const handleCancelCall = async () => {
     stopTimer();
+    activeSessionIdRef.current = '';
+    currentMobileCallIdRef.current = '';
     setActiveCallTimer(0);
     setCallStatus('IDLE');
+    callStatusRef.current = 'IDLE';
     setCallDuration(0);
+    callDurationRef.current = 0;
     setCallStatusState('MISSED');
+    callStatusStateRef.current = 'MISSED';
     callStartTimeRef.current = 0;
     setRecordedFilePath(null);
+    setManualRecordingFile(null);
     isFinalizingRef.current = false;
     if (Platform.OS === 'android') {
       try {
-        await stopNativeRecording();
+        await cancelNativeRecording();
       } catch (err) {
-        console.log('Error stopping recording on call cancel:', err);
+        console.log('Error cancelling recording on call cancel:', err);
       }
     }
   };
@@ -512,7 +597,9 @@ const Dialpad = () => {
     setIsSubmitting(true);
 
     const cleanNumber = (phoneNumber || '').replace(/[\s\-().]/g, '');
-    const mobileCallId = generateMobileCallId(cleanNumber, 'OUTGOING');
+    const mobileCallId = currentMobileCallIdRef.current || generateMobileCallId(cleanNumber, 'OUTGOING');
+    currentMobileCallIdRef.current = '';
+    activeSessionIdRef.current = '';
     
     // UNIFIED RULE:
     // duration > 0 -> CONNECTED
@@ -617,6 +704,11 @@ const Dialpad = () => {
       }
 
       setCallStatus('IDLE');
+      callStatusRef.current = 'IDLE';
+      setCallDuration(0);
+      callDurationRef.current = 0;
+      setCallStatusState('MISSED');
+      callStatusStateRef.current = 'MISSED';
       setPostCallNotes('');
       setRecordedFilePath(null);
       setManualRecordingFile(null);
@@ -639,6 +731,11 @@ const Dialpad = () => {
       });
       Alert.alert('Saved Offline', 'Call logged locally and will sync automatically.');
       setCallStatus('IDLE');
+      callStatusRef.current = 'IDLE';
+      setCallDuration(0);
+      callDurationRef.current = 0;
+      setCallStatusState('MISSED');
+      callStatusStateRef.current = 'MISSED';
       setPostCallNotes('');
       setRecordedFilePath(null);
       setManualRecordingFile(null);

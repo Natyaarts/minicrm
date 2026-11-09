@@ -56,9 +56,13 @@ class DashboardStatsView(APIView):
             # Super Admin / Admin section filter (optional, if they want to drill down)
             section_filter = request.query_params.get('sales_section')
             if section_filter and section_filter.upper() != 'ALL' and request.user.role in ['SUPER_ADMIN', 'ADMIN']:
-                students = students.filter(Q(sales_section=section_filter) | Q(assigned_to__sales_section=section_filter))
+                students = students.filter(
+                    Q(sales_section=section_filter) |
+                    Q(campaign__section=section_filter) |
+                    Q(assigned_to__sales_section=section_filter)
+                )
 
-            if request.user.role in ['SALES', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD']:
+            if request.user.role in ['SALES', 'TEAM_LEAD', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD']:
                 user_section = getattr(request.user, 'sales_section', 'BOTH')
                 if user_section and user_section != 'BOTH':
                     students = students.filter(
@@ -68,6 +72,7 @@ class DashboardStatsView(APIView):
                 elif section_filter and section_filter.upper() != 'ALL':
                     students = students.filter(
                         Q(assigned_to__sales_section=section_filter) |
+                        Q(campaign__section=section_filter) |
                         Q(sales_section=section_filter)
                     )
                     
@@ -78,6 +83,14 @@ class DashboardStatsView(APIView):
                     # STRICT ACCESS CONTROL: Standard SALES rep only sees their own assigned leads
                     students = students.filter(assigned_to=request.user)
                 else:
+                    if request.user.role == 'TEAM_LEAD':
+                        subordinates = request.user.get_all_subordinates() if hasattr(request.user, 'get_all_subordinates') else []
+                        if not subordinates and hasattr(request.user, 'hrms_profile') and hasattr(request.user.hrms_profile, 'subordinates'):
+                            hrms_subs = request.user.hrms_profile.subordinates.select_related('user').all()
+                            subordinates = [sub.user for sub in hrms_subs if sub.user]
+                        if subordinates:
+                            team_user_ids = [request.user.id] + [s.id for s in subordinates]
+                            students = students.filter(assigned_to_id__in=team_user_ids)
                     assigned_to_param = request.query_params.get('assigned_to')
                     if assigned_to_param:
                         if assigned_to_param == 'unassigned':
@@ -174,8 +187,8 @@ class DashboardStatsView(APIView):
 
             
             # Leaderboard & Call Duration per Sales Rep
-            sales_reps = User.objects.filter(Q(role__in=['SALES', 'SALES_HEAD', 'SALES_MANAGER', 'SALES_LEAD', 'MANAGER']) | Q(assigned_leads__isnull=False), is_active=True).distinct()
-            if request.user.role in ['SALES', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD']:
+            sales_reps = User.objects.filter(Q(role__in=['SALES', 'TEAM_LEAD', 'SALES_HEAD', 'SALES_MANAGER', 'SALES_LEAD', 'MANAGER']) | Q(assigned_leads__isnull=False), is_active=True).distinct()
+            if request.user.role in ['SALES', 'TEAM_LEAD', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD']:
                 user_section = getattr(request.user, 'sales_section', 'BOTH')
                 if user_section and user_section != 'BOTH':
                     sales_reps = sales_reps.filter(Q(sales_section=user_section) | Q(sales_section='BOTH'))
@@ -183,6 +196,14 @@ class DashboardStatsView(APIView):
                     sales_reps = sales_reps.filter(Q(sales_section=section_filter) | Q(sales_section='BOTH'))
                 if not is_sales_manager:
                     sales_reps = sales_reps.filter(id=request.user.id)
+                elif request.user.role == 'TEAM_LEAD':
+                    subordinates = request.user.get_all_subordinates() if hasattr(request.user, 'get_all_subordinates') else []
+                    if not subordinates and hasattr(request.user, 'hrms_profile') and hasattr(request.user.hrms_profile, 'subordinates'):
+                        hrms_subs = request.user.hrms_profile.subordinates.select_related('user').all()
+                        subordinates = [sub.user for sub in hrms_subs if sub.user]
+                    if subordinates:
+                        team_user_ids = [request.user.id] + [s.id for s in subordinates]
+                        sales_reps = sales_reps.filter(id__in=team_user_ids)
             elif section_filter and section_filter.upper() != 'ALL' and request.user.role in ['SUPER_ADMIN', 'ADMIN']:
                 sales_reps = sales_reps.filter(Q(sales_section=section_filter) | Q(sales_section='BOTH'))
 
@@ -411,12 +432,15 @@ class SalesUserListView(APIView):
     
     def get(self, request):
         from django.db.models import Q
-        users = User.objects.filter(Q(role__in=['SALES', 'SALES_HEAD', 'SALES_MANAGER', 'SALES_LEAD', 'MANAGER', 'BDE']) | Q(assigned_leads__isnull=False), is_active=True).distinct()
+        from .utils import check_is_sales_manager
+        users = User.objects.filter(Q(role__in=['SALES', 'TEAM_LEAD', 'SALES_HEAD', 'SALES_MANAGER', 'SALES_LEAD', 'MANAGER', 'BDE']) | Q(assigned_leads__isnull=False), is_active=True).distinct()
         
-        if request.user.role == 'SALES':
+        if request.user.role in ['SALES', 'TEAM_LEAD', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD']:
             user_section = getattr(request.user, 'sales_section', 'BOTH')
-            if user_section != 'BOTH':
+            if user_section and user_section != 'BOTH':
                 users = users.filter(Q(sales_section=user_section) | Q(sales_section='BOTH'))
+            if not check_is_sales_manager(request.user):
+                users = users.filter(id=request.user.id)
 
         if request.user.role not in ['SUPER_ADMIN', 'ADMIN'] and not request.user.is_superuser:
             subordinates = request.user.get_all_subordinates() if hasattr(request.user, 'get_all_subordinates') else []
@@ -431,7 +455,7 @@ class SalesUserListView(APIView):
         if section_filter and request.user.role in ['SUPER_ADMIN', 'ADMIN']:
             users = users.filter(Q(sales_section=section_filter) | Q(sales_section='BOTH'))
 
-        data = [{'id': u.id, 'name': u.get_full_name() or u.username, 'sales_section': getattr(u, 'sales_section', 'BOTH')} for u in users]
+        data = [{'id': u.id, 'name': u.get_full_name() or u.username, 'role': getattr(u, 'role', 'SALES'), 'sales_section': getattr(u, 'sales_section', 'BOTH')} for u in users]
         return Response(data)
 
 class PipelineStageViewSet(viewsets.ModelViewSet):
@@ -444,8 +468,8 @@ class LeadInteractionViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        queryset = LeadInteraction.objects.all()
-        if self.request.user.role in ['SALES', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD']:
+        queryset = LeadInteraction.objects.select_related('student', 'author').all()
+        if self.request.user.role in ['SALES', 'TEAM_LEAD', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD']:
             from .utils import check_is_sales_manager
             if not check_is_sales_manager(self.request.user):
                 from django.db.models import Q
@@ -459,6 +483,18 @@ class LeadInteractionViewSet(viewsets.ModelViewSet):
                         Q(student__sales_section=user_section) |
                         Q(author__sales_section=user_section)
                     )
+                if self.request.user.role == 'TEAM_LEAD':
+                    subordinates = self.request.user.get_all_subordinates() if hasattr(self.request.user, 'get_all_subordinates') else []
+                    if not subordinates and hasattr(self.request.user, 'hrms_profile') and hasattr(self.request.user.hrms_profile, 'subordinates'):
+                        hrms_subs = self.request.user.hrms_profile.subordinates.select_related('user').all()
+                        subordinates = [sub.user for sub in hrms_subs if sub.user]
+                    if subordinates:
+                        from django.db.models import Q
+                        team_user_ids = [self.request.user.id] + [s.id for s in subordinates]
+                        queryset = queryset.filter(
+                            Q(student__assigned_to_id__in=team_user_ids) |
+                            Q(author_id__in=team_user_ids)
+                        )
         student_id = self.request.query_params.get('student_id', None)
         if student_id is not None:
             if str(student_id).lower() in ['null', 'none', 'unmatched', '0']:
@@ -612,12 +648,16 @@ class LeadInteractionViewSet(viewsets.ModelViewSet):
             dur_int = 0
 
         raw_status = request.data.get('call_status')
-        if raw_status:
-            call_status = str(raw_status).strip().upper()
-        elif dur_int > 0:
-            call_status = 'CONNECTED'
+        is_call_interaction = str(interaction_type).upper() == 'CALL'
+        if is_call_interaction:
+            if raw_status:
+                call_status = str(raw_status).strip().upper()
+            elif dur_int > 0:
+                call_status = 'CONNECTED'
+            else:
+                call_status = 'MISSED'
         else:
-            call_status = 'MISSED'
+            call_status = str(raw_status).strip().upper() if raw_status else 'INITIATED'
 
         # Fallback for customer number based on call direction
         if not customer_number:
@@ -626,21 +666,25 @@ class LeadInteractionViewSet(viewsets.ModelViewSet):
             else:
                 customer_number = receiver_number or caller_number
 
-        # STRICT UNIFIED RULES:
+        # STRICT UNIFIED RULES FOR CALLS:
         # A call is ONLY confirmed connected if CallLog duration > 0 and call_status is not missed/unanswered/rejected/failed.
         # If dur_int <= 0 or call_status in ['MISSED', 'REJECTED', 'UNANSWERED', 'FAILED']:
         # -> Call is UNCONNECTED: MISSED, duration exactly 0, NO audio/recording attached.
         # -> NEVER use fallback mic or OEM recording duration to determine whether the call connected.
-        if dur_int <= 0 or call_status in ['MISSED', 'REJECTED', 'UNANSWERED', 'FAILED']:
-            call_status = 'MISSED' if call_status not in ['REJECTED', 'UNANSWERED', 'FAILED'] else call_status
-            dur_int = 0
-            audio_file = None
-            rec_url = None
-            file_hash = None
+        if is_call_interaction:
+            if dur_int <= 0 or call_status in ['MISSED', 'REJECTED', 'UNANSWERED', 'FAILED']:
+                call_status = 'MISSED' if call_status not in ['REJECTED', 'UNANSWERED', 'FAILED'] else call_status
+                dur_int = 0
+                audio_file = None
+                rec_url = None
+                file_hash = None
+            else:
+                # Call is confirmed CONNECTED by authoritative CallLog duration > 0.
+                # Recording duration may synchronize the displayed duration only after call is already confirmed CONNECTED.
+                call_status = 'CONNECTED'
+                audio_file = request.FILES.get('audio_recording')
+                rec_url = request.data.get('recording_url')
         else:
-            # Call is confirmed CONNECTED by authoritative CallLog duration > 0.
-            # Recording duration may synchronize the displayed duration only after call is already confirmed CONNECTED.
-            call_status = 'CONNECTED'
             audio_file = request.FILES.get('audio_recording')
             rec_url = request.data.get('recording_url')
 
@@ -730,16 +774,22 @@ class LeadInteractionViewSet(viewsets.ModelViewSet):
             except (ValueError, TypeError):
                 pass
 
-        # STRICT UNIFIED RULES:
-        if not is_already_connected_with_recording and (instance.call_duration <= 0 or (instance.call_status or '').upper() in ['MISSED', 'REJECTED', 'UNANSWERED', 'FAILED']):
-            instance.call_status = 'MISSED' if (instance.call_status or '').upper() not in ['REJECTED', 'UNANSWERED', 'FAILED'] else instance.call_status
-            instance.call_duration = 0
-            instance.audio_recording = None
-            instance.audio_file_hash = None
-            instance.recording_url = None
-            # Do not accept audio recording for unconnected calls
+        # STRICT UNIFIED RULES FOR CALLS:
+        if (instance.interaction_type or '').upper() == 'CALL':
+            if not is_already_connected_with_recording and (instance.call_duration <= 0 or (instance.call_status or '').upper() in ['MISSED', 'REJECTED', 'UNANSWERED', 'FAILED']):
+                instance.call_status = 'MISSED' if (instance.call_status or '').upper() not in ['REJECTED', 'UNANSWERED', 'FAILED'] else instance.call_status
+                instance.call_duration = 0
+                instance.audio_recording = None
+                instance.audio_file_hash = None
+                instance.recording_url = None
+                # Do not accept audio recording for unconnected calls
+            else:
+                instance.call_status = 'CONNECTED'
+                if request.FILES.get('audio_recording'):
+                    instance.audio_recording = request.FILES.get('audio_recording')
+                if request.data.get('recording_url'):
+                    instance.recording_url = request.data.get('recording_url')
         else:
-            instance.call_status = 'CONNECTED'
             if request.FILES.get('audio_recording'):
                 instance.audio_recording = request.FILES.get('audio_recording')
             if request.data.get('recording_url'):
@@ -785,7 +835,10 @@ class CampaignViewSet(viewsets.ModelViewSet):
         section_param = self.request.query_params.get('section') or self.request.query_params.get('sales_section')
         if section_param and section_param.upper() != 'ALL':
             from django.db.models import Q
-            queryset = queryset.filter(Q(section=section_param.upper()) | Q(section='BOTH'))
+            if self.request.query_params.get('strict_section') == 'true':
+                queryset = queryset.filter(section=section_param.upper())
+            else:
+                queryset = queryset.filter(Q(section=section_param.upper()) | Q(section='BOTH'))
 
         return queryset
 
@@ -824,29 +877,32 @@ class CampaignViewSet(viewsets.ModelViewSet):
                 default_program = Program.objects.exclude(name="Wise Import").first() or Program.objects.first()
             
         try:
-            decoded_file = file.read().decode('utf-8-sig')
-            io_string = io.StringIO(decoded_file)
-            reader = csv.DictReader(io_string)
-            
+            file.seek(0)
+            if file.name.lower().endswith(('.xlsx', '.xls')):
+                import pandas as pd
+                df = pd.read_excel(file).fillna('')
+                rows_iter = df.to_dict(orient='records')
+            else:
+                decoded_file = file.read().decode('utf-8-sig')
+                io_string = io.StringIO(decoded_file)
+                rows_iter = list(csv.DictReader(io_string))
+
             leads_created = 0
-            duplicates_skipped = 0
+            added_count = 0
+            duplicate_count = 0
             skipped_leads = 0
             total_rows = 0
-            
-            # Reset reader pointer by reading from file again if we want to run loop correctly
-            file.seek(0)
-            decoded_file = file.read().decode('utf-8-sig')
-            io_string = io.StringIO(decoded_file)
-            reader = csv.DictReader(io_string)
+            results = []
 
-            for row in reader:
+            for row in rows_iter:
                 total_rows += 1
                 # Clean up column headers (lowercase, strip whitespace)
-                clean_row = {str(k).strip().lower(): v for k, v in row.items() if k}
+                clean_row = {str(k).strip().lower(): ('' if v is None else str(v)) for k, v in row.items() if k}
                 
                 raw_name = (
                     clean_row.get('full name') or 
                     clean_row.get('fullname') or 
+                    clean_row.get('full_name') or 
                     clean_row.get('student name') or 
                     clean_row.get('student_name') or 
                     clean_row.get('name') or 
@@ -854,24 +910,57 @@ class CampaignViewSet(viewsets.ModelViewSet):
                     clean_row.get('first_name') or 
                     ''
                 ).strip()
-                name_parts = raw_name.split(' ', 1)
-                first_name = name_parts[0] if name_parts[0] else 'Unknown'
-                last_name = name_parts[1] if len(name_parts) > 1 else (clean_row.get('last name') or clean_row.get('lastname') or clean_row.get('last_name', '')).strip()
-                
-                email = clean_row.get('email', '').strip()
-                mobile = (clean_row.get('contact') or clean_row.get('mobile') or clean_row.get('phone') or '').strip()
+                last_name_col = (
+                    clean_row.get('last name') or
+                    clean_row.get('lastname') or
+                    clean_row.get('last_name') or
+                    clean_row.get('surname') or
+                    ''
+                ).strip()
+
+                email = (
+                    clean_row.get('email') or
+                    clean_row.get('email_address') or
+                    clean_row.get('email address') or
+                    clean_row.get('mail') or
+                    ''
+                ).strip()
+                raw_mobile = (
+                    clean_row.get('contact') or
+                    clean_row.get('mobile') or
+                    clean_row.get('phone') or
+                    clean_row.get('phone_number') or
+                    clean_row.get('phone number') or
+                    clean_row.get('mobile_number') or
+                    clean_row.get('mobile number') or
+                    clean_row.get('contact_number') or
+                    clean_row.get('contact number') or
+                    clean_row.get('whatsapp') or
+                    ''
+                ).strip()
+                if raw_mobile.endswith('.0'):
+                    raw_mobile = raw_mobile[:-2].strip()
+                mobile = raw_mobile
                 
                 clean_phone = normalize_lead_phone(mobile)
                 clean_em = normalize_lead_email(email)
                 
-                place = clean_row.get('place', '').strip()
-                tag = clean_row.get('tag', '').strip()
+                place = (clean_row.get('place') or clean_row.get('city') or clean_row.get('location') or '').strip()
+                tag = (clean_row.get('tag') or clean_row.get('course') or clean_row.get('course_name') or '').strip()
                 
-                if first_name or clean_phone or clean_em:
+                if raw_name or clean_phone or clean_em:
+                    if last_name_col:
+                        first_name = raw_name if raw_name else 'Unknown'
+                        last_name = last_name_col
+                    else:
+                        name_parts = raw_name.split(' ', 1)
+                        first_name = name_parts[0] if name_parts[0] else 'Unknown'
+                        last_name = name_parts[1] if len(name_parts) > 1 else ''
+
                     # Centralized duplicate check
                     dup_student, dup_reason = lookup_existing_student(mobile=mobile, email=email)
                     if dup_student:
-                        create_duplicate_lead(
+                        new_dup = create_duplicate_lead(
                             existing_student=dup_student,
                             first_name=first_name,
                             last_name=last_name,
@@ -885,6 +974,14 @@ class CampaignViewSet(viewsets.ModelViewSet):
                             log_reengagement=False
                         )
                         leads_created += 1
+                        duplicate_count += 1
+                        results.append({
+                            'status': 'DUPLICATE',
+                            'name': f"{first_name} {last_name}".strip() or 'Lead',
+                            'message': f"Duplicate lead created (Original CRM ID: {dup_student.crm_student_id})",
+                            'crm_id': new_dup.crm_student_id,
+                            'is_duplicate': True
+                        })
                         continue
 
                     with transaction.atomic():
@@ -929,15 +1026,28 @@ class CampaignViewSet(viewsets.ModelViewSet):
                             lead_status=stage_id
                         )
                         leads_created += 1
+                        added_count += 1
+                        results.append({
+                            'status': 'SUCCESS',
+                            'name': f"{first_name} {last_name}".strip(),
+                            'message': 'Successfully imported',
+                            'crm_id': student.crm_student_id,
+                            'is_duplicate': False
+                        })
                 else:
                     skipped_leads += 1
                     
             return Response({
-                'message': f'CSV upload processed. Total rows: {total_rows}. Successful additions: {leads_created}. Duplicates skipped: {duplicates_skipped}. Skipped (invalid): {skipped_leads}.'
+                'message': f'Upload processed. Total rows: {total_rows}. Added: {added_count}. Duplicates: {duplicate_count}. Skipped (invalid): {skipped_leads}.',
+                'total': total_rows,
+                'added_count': added_count,
+                'duplicate_count': duplicate_count,
+                'skipped_count': skipped_leads,
+                'results': results
             })
         except Exception as e:
-            logger.error(f"Upload leads CSV error: {e}")
-            return Response({'error': 'Failed to process CSV file. Please verify format and column structure.'}, status=status.HTTP_400_BAD_REQUEST)
+            logger.error(f"Upload leads spreadsheet error: {e}")
+            return Response({'error': 'Failed to process file. Please verify format and column structure.'}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=True, methods=['post'])
     def bulk_upload_batch(self, request, pk=None):
@@ -959,11 +1069,12 @@ class CampaignViewSet(viewsets.ModelViewSet):
 
         results = []
         for i, row in enumerate(rows):
-            clean_row = {str(k).strip().lower(): v for k, v in row.items() if k}
+            clean_row = {str(k).strip().lower(): ('' if v is None else str(v)) for k, v in row.items() if k}
             
             raw_name = (
                 clean_row.get('full name') or 
                 clean_row.get('fullname') or 
+                clean_row.get('full_name') or 
                 clean_row.get('student name') or 
                 clean_row.get('student_name') or 
                 clean_row.get('name') or 
@@ -971,26 +1082,59 @@ class CampaignViewSet(viewsets.ModelViewSet):
                 clean_row.get('first_name') or 
                 ''
             ).strip()
-            name_parts = raw_name.split(' ', 1)
-            first_name = name_parts[0] if name_parts[0] else 'Unknown'
-            last_name = name_parts[1] if len(name_parts) > 1 else (clean_row.get('last name') or clean_row.get('lastname') or clean_row.get('last_name', '')).strip()
+            last_name_col = (
+                clean_row.get('last name') or
+                clean_row.get('lastname') or
+                clean_row.get('last_name') or
+                clean_row.get('surname') or
+                ''
+            ).strip()
 
-            email = clean_row.get('email', '').strip()
-            mobile = clean_row.get('contact', clean_row.get('mobile', '')).strip()
+            email = (
+                clean_row.get('email') or
+                clean_row.get('email_address') or
+                clean_row.get('email address') or
+                clean_row.get('mail') or
+                ''
+            ).strip()
+            raw_mobile = (
+                clean_row.get('contact') or
+                clean_row.get('mobile') or
+                clean_row.get('phone') or
+                clean_row.get('phone_number') or
+                clean_row.get('phone number') or
+                clean_row.get('mobile_number') or
+                clean_row.get('mobile number') or
+                clean_row.get('contact_number') or
+                clean_row.get('contact number') or
+                clean_row.get('whatsapp') or
+                ''
+            ).strip()
+            if raw_mobile.endswith('.0'):
+                raw_mobile = raw_mobile[:-2].strip()
+            mobile = raw_mobile
 
             clean_phone = normalize_lead_phone(mobile)
             clean_em = normalize_lead_email(email)
 
-            place = clean_row.get('place', '').strip()
-            tag = clean_row.get('tag', '').strip()
+            place = (clean_row.get('place') or clean_row.get('city') or clean_row.get('location') or '').strip()
+            tag = (clean_row.get('tag') or clean_row.get('course') or clean_row.get('course_name') or '').strip()
 
-            if not first_name and not clean_phone and not clean_em:
+            if not raw_name and not clean_phone and not clean_em:
                 results.append({
                     'status': 'SKIPPED',
                     'name': 'Row ' + str(i+1),
                     'message': 'Empty name, mobile, and email'
                 })
                 continue
+
+            if last_name_col:
+                first_name = raw_name if raw_name else 'Unknown'
+                last_name = last_name_col
+            else:
+                name_parts = raw_name.split(' ', 1)
+                first_name = name_parts[0] if name_parts[0] else 'Unknown'
+                last_name = name_parts[1] if len(name_parts) > 1 else ''
 
             # Centralized duplicate check
             dup_student, dup_reason = lookup_existing_student(mobile=mobile, email=email)
@@ -1009,7 +1153,7 @@ class CampaignViewSet(viewsets.ModelViewSet):
                     log_reengagement=False
                 )
                 results.append({
-                    'status': 'SUCCESS',
+                    'status': 'DUPLICATE',
                     'name': f"{first_name} {last_name}".strip() or 'Lead',
                     'message': f"Duplicate lead created (Original CRM ID: {dup_student.crm_student_id})",
                     'crm_id': new_dup.crm_student_id,
@@ -1185,6 +1329,8 @@ class BDEReportView(APIView):
 
         from .utils import check_is_sales_manager
         if request.user.role == 'SALES' and not check_is_sales_manager(request.user):
+            if str(user_id).isdigit() and int(user_id) != request.user.id:
+                return Response({"error": "Permission denied. You can only view your own report."}, status=status.HTTP_403_FORBIDDEN)
             bde = request.user
         else:
             if user_id == 'me' or user_id == 'undefined' or not str(user_id).isdigit():
@@ -1479,24 +1625,35 @@ class TaskViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        from django.db.models import Q
         queryset = super().get_queryset()
-        if self.request.user.role in ['SALES', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD']:
+        if self.request.user.role in ['SALES', 'TEAM_LEAD', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD']:
             from .utils import check_is_sales_manager
             if not check_is_sales_manager(self.request.user):
-                from django.db.models import Q
                 queryset = queryset.filter(Q(assigned_to=self.request.user) | Q(student__assigned_to=self.request.user))
             else:
                 user_section = getattr(self.request.user, 'sales_section', 'BOTH')
                 if user_section and user_section != 'BOTH':
-                    from django.db.models import Q
                     queryset = queryset.filter(
                         Q(assigned_to__sales_section=user_section) |
                         Q(student__sales_section=user_section) |
                         Q(student__assigned_to__sales_section=user_section)
                     )
+                if self.request.user.role == 'TEAM_LEAD':
+                    subordinates = self.request.user.get_all_subordinates() if hasattr(self.request.user, 'get_all_subordinates') else []
+                    if not subordinates and hasattr(self.request.user, 'hrms_profile') and hasattr(self.request.user.hrms_profile, 'subordinates'):
+                        hrms_subs = self.request.user.hrms_profile.subordinates.select_related('user').all()
+                        subordinates = [sub.user for sub in hrms_subs if sub.user]
+                    if subordinates:
+                        team_user_ids = [self.request.user.id] + [s.id for s in subordinates]
+                        queryset = queryset.filter(
+                            Q(assigned_to_id__in=team_user_ids) |
+                            Q(student__assigned_to_id__in=team_user_ids)
+                        )
         student_id = self.request.query_params.get('student_id', None)
         status_param = self.request.query_params.get('status', None)
         assigned_to_me = self.request.query_params.get('assigned_to_me', None)
+        assigned_to = self.request.query_params.get('assigned_to', None)
         due_date_after = self.request.query_params.get('due_date_after', None)
         ordering = self.request.query_params.get('ordering', 'due_date')
 
@@ -1505,7 +1662,9 @@ class TaskViewSet(viewsets.ModelViewSet):
         if status_param:
             queryset = queryset.filter(status=status_param)
         if assigned_to_me == 'true':
-            queryset = queryset.filter(assigned_to=self.request.user)
+            queryset = queryset.filter(Q(assigned_to=self.request.user) | Q(student__assigned_to=self.request.user))
+        if assigned_to:
+            queryset = queryset.filter(Q(assigned_to_id=assigned_to) | Q(student__assigned_to_id=assigned_to))
         if due_date_after:
             queryset = queryset.filter(due_date__date__gte=due_date_after)
 
@@ -2232,7 +2391,10 @@ class BulkAssignLeadsView(APIView):
             return Response({'error': 'lead_ids and sales_user_id are required'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            sales_user = User.objects.get(id=sales_user_id, role='SALES')
+            sales_user = User.objects.get(
+                id=sales_user_id,
+                role__in=['SALES', 'SALES_HEAD', 'SALES_MANAGER', 'SALES_LEAD', 'MANAGER', 'BDE']
+            )
             students = Student.objects.filter(id__in=lead_ids).exclude(lead_status__iexact='DUPLICATE')
             updated = students.update(assigned_to=sales_user)
             return Response({'message': f'Successfully assigned {updated} leads to {sales_user.username}'})
@@ -2262,7 +2424,7 @@ class LeadTaskViewSet(viewsets.ModelViewSet):
 
         from .utils import check_is_sales_manager
         qs = LeadTask.objects.all().select_related('assigned_to', 'created_by').prefetch_related(
-            'items__lead', 'items__assigned_to', 'items__lead__program_type',
+            'items__lead', 'items__lead__campaign', 'items__assigned_to', 'items__lead__program_type',
             'items__lead__course', 'items__lead__assigned_to', 'items__completed_by',
             'assigned_bdes', 'assignment_history'
         )

@@ -46,7 +46,8 @@ export default function LeadDetailsScreen() {
     initialProgramName,
     initialCourseName,
     initialLeadStatus,
-    initialCrmId
+    initialCrmId,
+    initialCampaignName
   } = useLocalSearchParams();
   const router = useRouter();
   const colorScheme = useColorScheme();
@@ -203,6 +204,7 @@ export default function LeadDetailsScreen() {
 
   // New interaction form state
   const [noteType, setNoteType] = useState('NOTE');
+  const [whatsappStatus, setWhatsappStatus] = useState<'CONNECTED' | 'INITIATED'>('CONNECTED');
   const [noteText, setNoteText] = useState('');
   const [submittingNote, setSubmittingNote] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -219,6 +221,7 @@ export default function LeadDetailsScreen() {
   }, [leadId]);
 
   const [justCalled, setJustCalled] = useState(false);
+  const [justWhatsApped, setJustWhatsApped] = useState(false);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', nextAppState => {
@@ -226,13 +229,18 @@ export default function LeadDetailsScreen() {
         setJustCalled(false);
         setNoteType('CALL');
         setShowAddForm(true);
+      } else if (nextAppState === 'active' && justWhatsApped) {
+        setJustWhatsApped(false);
+        setNoteType('WHATSAPP');
+        setWhatsappStatus('CONNECTED');
+        setShowAddForm(true);
       }
     });
 
     return () => {
       subscription.remove();
     };
-  }, [justCalled]);
+  }, [justCalled, justWhatsApped]);
 
   const fetchLeadDetails = async () => {
     try {
@@ -257,6 +265,7 @@ export default function LeadDetailsScreen() {
           email: (initialEmail as string) || '',
           program_name: (initialProgramName as string) || '',
           course_name: (initialCourseName as string) || '',
+          campaign_name: (initialCampaignName as string) || '',
           lead_status: (initialLeadStatus as string) || 'NEW',
           status: (initialLeadStatus as string) || 'NEW'
         });
@@ -312,6 +321,10 @@ export default function LeadDetailsScreen() {
         interaction_type: noteType,
         notes: noteText
       };
+
+      if (noteType === 'WHATSAPP') {
+        payload.call_status = whatsappStatus;
+      }
       
       if (followUpDate) {
         payload.next_followup_date = followUpDate.toISOString();
@@ -335,6 +348,7 @@ export default function LeadDetailsScreen() {
       const newAct: InteractionItem = {
         id: Date.now(),
         interaction_type: noteType,
+        call_status: noteType === 'WHATSAPP' ? whatsappStatus : undefined,
         notes: noteText,
         date: new Date().toISOString(),
         author_name: 'Super Admin'
@@ -390,6 +404,35 @@ export default function LeadDetailsScreen() {
 
   const connectedCalls = callInteractions.filter(i => i.call_status === 'CONNECTED').length;
   const missedCalls = callInteractions.filter(i => i.call_status === 'MISSED').length;
+
+  const whatsappInteractions = interactions.filter(i => i.interaction_type === 'WHATSAPP');
+  const currentStageLower = getStageName(student?.lead_status).toLowerCase();
+  const isWhatsappStageConnected = currentStageLower.includes('whatsapp') && !['attempt', 'sent', 'send', 'initiated', 'pending', 'undelivered', 'unread'].some(neg => currentStageLower.includes(neg));
+  const isWhatsappConnected = isWhatsappStageConnected || whatsappInteractions.some(i => (i.call_status || '').toUpperCase() === 'CONNECTED');
+  const campaignDisplayName = student?.campaign_name || (initialCampaignName as string) || 'Direct / Organic';
+
+  const handleMarkWhatsAppConnected = async (interactionId?: number) => {
+    try {
+      if (interactionId) {
+        await client.patch(`/crm/interactions/${interactionId}/`, {
+          call_status: 'CONNECTED',
+        });
+      } else {
+        await client.post('/crm/interactions/', {
+          student: parseInt(leadId as string),
+          interaction_type: 'WHATSAPP',
+          call_status: 'CONNECTED',
+          notes: 'Customer connected / replied on WhatsApp.',
+        });
+      }
+      Alert.alert('WhatsApp Connected', 'This lead is now marked as WhatsApp Connected.');
+      fetchLeadDetails();
+      fetchInteractions();
+    } catch (err) {
+      console.log('Failed to mark WhatsApp connected:', err);
+      Alert.alert('Error', 'Could not update WhatsApp connection status.');
+    }
+  };
 
   return (
     <>
@@ -464,7 +507,7 @@ export default function LeadDetailsScreen() {
 
           <View style={[styles.divider, isDark && styles.darkDivider]} />
 
-          {/* Academic Info */}
+          {/* Academic & Campaign Info */}
           <View style={styles.infoRow}>
             <View style={styles.infoCol}>
               <Text style={styles.infoLabel}>PROGRAM</Text>
@@ -473,6 +516,27 @@ export default function LeadDetailsScreen() {
             <View style={styles.infoCol}>
               <Text style={styles.infoLabel}>COURSE</Text>
               <Text style={[styles.infoValue, isDark && styles.darkText]}>{student?.course_name || 'Not Specified'}</Text>
+            </View>
+          </View>
+
+          <View style={[styles.infoRow, { marginTop: 10 }]}>
+            <View style={styles.infoCol}>
+              <Text style={styles.infoLabel}>CAMPAIGN</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                <FontAwesome5 name="bullhorn" size={11} color="#4F46E5" />
+                <Text style={[styles.infoValue, { color: '#4F46E5' }, isDark && styles.darkText]} numberOfLines={2}>
+                  {campaignDisplayName}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.infoCol}>
+              <Text style={styles.infoLabel}>WHATSAPP STATUS</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                <FontAwesome5 name="whatsapp" size={12} color={isWhatsappConnected ? '#10B981' : '#94A3B8'} />
+                <Text style={{ fontSize: 12, fontWeight: '800', color: isWhatsappConnected ? '#059669' : '#64748B' }}>
+                  {isWhatsappConnected ? 'Connected' : (whatsappInteractions.length > 0 ? 'Message Sent' : 'Not Connected')}
+                </Text>
+              </View>
             </View>
           </View>
 
@@ -553,13 +617,42 @@ export default function LeadDetailsScreen() {
               <Text style={[styles.subStatValue, { color: '#EF4444', fontWeight: '800' }]}>{missedCalls}</Text>
             </View>
           </View>
+
+          <View style={styles.dividerSub} />
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <FontAwesome5 name="whatsapp" size={14} color="#10B981" />
+              <Text style={styles.subStatLabel}>WhatsApp Connected</Text>
+            </View>
+            {isWhatsappConnected ? (
+              <View style={{ backgroundColor: '#D1FAE5', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
+                <Text style={{ fontSize: 11, fontWeight: '800', color: '#065F46' }}>✓ Confirmed Connected</Text>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={{ backgroundColor: '#ECFDF5', borderWidth: 1, borderColor: '#A7F3D0', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 5 }}
+                onPress={() => handleMarkWhatsAppConnected()}
+              >
+                <FontAwesome5 name="check-circle" size={11} color="#059669" />
+                <Text style={{ fontSize: 11, fontWeight: '800', color: '#059669' }}>Mark WhatsApp Connected</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
 
         {/* Action Panel */}
         <View style={styles.actionPanel}>
           <TouchableOpacity 
             style={[styles.actionBtn, { backgroundColor: '#10B981' }]}
-            onPress={() => phoneNum && Linking.openURL(`https://wa.me/${phoneNum.replace(/\D/g, '')}`)}
+            onPress={() => {
+              if (phoneNum) {
+                setJustWhatsApped(true);
+                Linking.openURL(`https://wa.me/${phoneNum.replace(/\D/g, '')}`);
+              } else {
+                Alert.alert('No Phone', 'This lead has no phone number for WhatsApp.');
+              }
+            }}
           >
             <FontAwesome5 name="whatsapp" size={14} color="#FFF" />
             <Text style={styles.actionBtnText}>WhatsApp</Text>
@@ -588,7 +681,7 @@ export default function LeadDetailsScreen() {
             <Text style={styles.formTitle}>LOG NEW INTERACTION</Text>
             
             <View style={styles.typeSelector}>
-              {['NOTE', 'CALL', 'MEETING', 'EMAIL'].map((type) => (
+              {['NOTE', 'CALL', 'WHATSAPP', 'MEETING', 'EMAIL'].map((type) => (
                 <TouchableOpacity
                   key={type}
                   style={[styles.typeBtn, noteType === type && styles.typeBtnActive]}
@@ -598,6 +691,50 @@ export default function LeadDetailsScreen() {
                 </TouchableOpacity>
               ))}
             </View>
+
+            {noteType === 'WHATSAPP' && (
+              <View style={{ marginBottom: 12 }}>
+                <Text style={{ fontSize: 11, fontWeight: '800', color: '#059669', marginBottom: 6, letterSpacing: 0.4 }}>
+                  WHATSAPP CONNECTION OUTCOME
+                </Text>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <TouchableOpacity
+                    style={{
+                      flex: 1,
+                      paddingVertical: 8,
+                      paddingHorizontal: 10,
+                      borderRadius: 8,
+                      borderWidth: 1,
+                      borderColor: whatsappStatus === 'CONNECTED' ? '#10B981' : '#E2E8F0',
+                      backgroundColor: whatsappStatus === 'CONNECTED' ? '#ECFDF5' : '#F8FAFC',
+                      alignItems: 'center',
+                    }}
+                    onPress={() => setWhatsappStatus('CONNECTED')}
+                  >
+                    <Text style={{ fontSize: 11, fontWeight: '800', color: whatsappStatus === 'CONNECTED' ? '#065F46' : '#64748B' }}>
+                      ✓ Connected / Replied
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={{
+                      flex: 1,
+                      paddingVertical: 8,
+                      paddingHorizontal: 10,
+                      borderRadius: 8,
+                      borderWidth: 1,
+                      borderColor: whatsappStatus === 'INITIATED' ? '#F59E0B' : '#E2E8F0',
+                      backgroundColor: whatsappStatus === 'INITIATED' ? '#FFFBEB' : '#F8FAFC',
+                      alignItems: 'center',
+                    }}
+                    onPress={() => setWhatsappStatus('INITIATED')}
+                  >
+                    <Text style={{ fontSize: 11, fontWeight: '800', color: whatsappStatus === 'INITIATED' ? '#92400E' : '#64748B' }}>
+                      Message Sent Only
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
 
             <TextInput
               style={[styles.formInput, isDark && styles.darkInput]}
@@ -723,10 +860,36 @@ export default function LeadDetailsScreen() {
                   </View>
                   <View style={[styles.timelineCard, isDark && styles.darkCard]}>
                     <View style={styles.timelineHeader}>
-                      <Text style={[styles.timelineType, isDark && styles.darkText]}>{item.interaction_type}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Text style={[styles.timelineType, isDark && styles.darkText]}>{item.interaction_type}</Text>
+                        {item.interaction_type === 'WHATSAPP' && (
+                          <View style={{
+                            backgroundColor: (item.call_status || '').toUpperCase() === 'CONNECTED' ? '#D1FAE5' : '#FEF3C7',
+                            paddingHorizontal: 6,
+                            paddingVertical: 2,
+                            borderRadius: 6,
+                          }}>
+                            <Text style={{
+                              fontSize: 9,
+                              fontWeight: '800',
+                              color: (item.call_status || '').toUpperCase() === 'CONNECTED' ? '#065F46' : '#92400E',
+                            }}>
+                              {(item.call_status || '').toUpperCase() === 'CONNECTED' ? 'CONNECTED' : 'SENT'}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
                       <Text style={styles.timelineDate}>{formatTime(item.date)}</Text>
                     </View>
                     <Text style={styles.timelineNotes}>{item.notes}</Text>
+                    {item.interaction_type === 'WHATSAPP' && (item.call_status || '').toUpperCase() !== 'CONNECTED' && (
+                      <TouchableOpacity
+                        style={{ marginTop: 6, alignSelf: 'flex-start', backgroundColor: '#ECFDF5', borderWidth: 1, borderColor: '#A7F3D0', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}
+                        onPress={() => handleMarkWhatsAppConnected(item.id)}
+                      >
+                        <Text style={{ fontSize: 10, fontWeight: '800', color: '#059669' }}>✓ Mark as WhatsApp Connected</Text>
+                      </TouchableOpacity>
+                    )}
                     {item.audio_recording && (
                       <TouchableOpacity 
                         style={styles.audioPlayerMini} 

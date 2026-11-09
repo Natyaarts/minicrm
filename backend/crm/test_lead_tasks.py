@@ -737,3 +737,102 @@ class LeadTaskManagementTests(TestCase):
         self.assertEqual(hist.new_assignee, self.bde2)
         self.assertEqual(hist.reassigned_by, self.manager)
         self.assertIn('lead1 to BDE 2', hist.notes)
+
+    def test_21_mobile_crm_enhancements_bde_filter_campaign_and_whatsapp(self):
+        """
+        Verifies the Mobile CRM enhancements:
+        1. Campaign visibility on StudentSerializer (/api/students/) and LeadTaskItemSerializer (/api/crm/lead-tasks/{id}/).
+        2. Multi-BDE task detail serializer returns my_leads_count, my_completed_leads, my_progress_percent for BDE.
+        3. BDE Executive Filter (/api/crm/sales-users/, /api/students/?assigned_to=..., /api/crm/dashboard-stats/?assigned_to=...)
+           respects role-based access control for Super Admin, Admin, Team Lead (subordinate scope), and BDE.
+        4. WhatsApp-connected interaction logging via POST & PATCH /api/crm/interactions/ and BDE report metric.
+        """
+        from users.models import RolePermission
+        RolePermission.objects.get_or_create(
+            role='SALES',
+            module='SALES',
+            defaults={'can_view': True, 'can_add': True, 'can_edit': True}
+        )
+        self.lead1.campaign = self.campaign
+        self.lead1.save(update_fields=['campaign'])
+        self.lead2.assigned_to = self.bde2
+        self.lead2.save(update_fields=['assigned_to'])
+
+        # 1. Campaign visibility on /api/students/ for BDE 1
+        self.client.force_authenticate(user=self.bde1)
+        res_students = self.client.get('/api/students/')
+        self.assertEqual(res_students.status_code, status.HTTP_200_OK)
+        results = res_students.data.get('results', res_students.data)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]['id'], self.lead1.id)
+        self.assertEqual(results[0]['campaign_name'], self.campaign.name)
+
+        # 2. Campaign visibility & per-BDE progress on /api/crm/lead-tasks/{id}/
+        task = LeadTask.objects.create(title='Campaign Task', created_by=self.super_admin, status='PENDING')
+        task.assigned_bdes.set([self.bde1, self.bde2])
+        LeadTaskItem.objects.create(task=task, lead=self.lead1, assigned_to=self.bde1, is_completed=True)
+        LeadTaskItem.objects.create(task=task, lead=self.lead2, assigned_to=self.bde2, is_completed=False)
+        task.update_status_from_items()
+
+        res_task_detail = self.client.get(f'/api/crm/lead-tasks/{task.id}/')
+        self.assertEqual(res_task_detail.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_task_detail.data['my_leads_count'], 1)
+        self.assertEqual(res_task_detail.data['my_completed_leads'], 1)
+        self.assertEqual(res_task_detail.data['my_progress_percent'], 100)
+        self.assertEqual(res_task_detail.data['items'][0]['campaign_name'], self.campaign.name)
+
+        # 3. BDE Executive Filter & Team Lead scope isolation
+        self.client.force_authenticate(user=self.team_lead)
+        res_tl_users = self.client.get('/api/crm/sales-users/')
+        self.assertEqual(res_tl_users.status_code, status.HTTP_200_OK)
+        tl_user_ids = [u['id'] for u in res_tl_users.data]
+        self.assertIn(self.bde1.id, tl_user_ids)
+        self.assertNotIn(self.bde2.id, tl_user_ids)
+
+        # Team Lead filtering by subordinate bde1 succeeds
+        res_tl_b1 = self.client.get(f'/api/students/?assigned_to={self.bde1.id}')
+        self.assertEqual(res_tl_b1.status_code, status.HTTP_200_OK)
+        tl_b1_ids = [s['id'] for s in res_tl_b1.data.get('results', res_tl_b1.data)]
+        self.assertIn(self.lead1.id, tl_b1_ids)
+
+        # Team Lead attempting to filter by out-of-scope bde2 returns 0 records
+        res_tl_b2 = self.client.get(f'/api/students/?assigned_to={self.bde2.id}')
+        self.assertEqual(res_tl_b2.status_code, status.HTTP_200_OK)
+        tl_b2_ids = [s['id'] for s in res_tl_b2.data.get('results', res_tl_b2.data)]
+        self.assertEqual(len(tl_b2_ids), 0)
+
+        # Admin can filter by both bde1 and bde2
+        self.client.force_authenticate(user=self.admin_user)
+        res_admin_b2 = self.client.get(f'/api/students/?assigned_to={self.bde2.id}')
+        admin_b2_ids = [s['id'] for s in res_admin_b2.data.get('results', res_admin_b2.data)]
+        self.assertEqual(admin_b2_ids, [self.lead2.id])
+
+        # 4. WhatsApp interaction via API (INITIATED vs CONNECTED)
+        self.client.force_authenticate(user=self.bde1)
+        res_wa_sent = self.client.post('/api/crm/interactions/', {
+            'student': self.lead1.id,
+            'interaction_type': 'WHATSAPP',
+            'call_status': 'INITIATED',
+            'notes': 'Sent course brochure on WhatsApp.'
+        }, format='json')
+        self.assertEqual(res_wa_sent.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(res_wa_sent.data['call_status'], 'INITIATED')
+        wa_inter_id = res_wa_sent.data['id']
+
+        # BDE report before connection shows whatsapp_connected == 0
+        res_rep_before = self.client.get(f'/api/crm/bde-report/{self.bde1.id}/')
+        self.assertEqual(res_rep_before.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_rep_before.data['metrics']['whatsapp_connected'], 0)
+
+        # Mark WhatsApp interaction as CONNECTED via PATCH
+        res_wa_conn = self.client.patch(f'/api/crm/interactions/{wa_inter_id}/', {
+            'call_status': 'CONNECTED'
+        }, format='json')
+        self.assertEqual(res_wa_conn.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_wa_conn.data['call_status'], 'CONNECTED')
+
+        # BDE report after connection shows whatsapp_connected == 1
+        res_rep_after = self.client.get(f'/api/crm/bde-report/{self.bde1.id}/')
+        self.assertEqual(res_rep_after.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_rep_after.data['metrics']['whatsapp_connected'], 1)
+

@@ -226,6 +226,14 @@ const KanbanBoard = ({ program, subProgram, course, searchTerm, hideConverted, s
                                         <div className="text-xs text-slate-500 mb-2 truncate">
                                             {lead.program_name} {lead.course_name ? `- ${lead.course_name}` : ''}
                                         </div>
+
+                                        {lead.campaign_name && (
+                                            <div className="mb-1.5">
+                                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-purple-50 text-purple-700 rounded text-[10px] font-semibold border border-purple-200 max-w-full truncate">
+                                                    📢 {lead.campaign_name}
+                                                </span>
+                                            </div>
+                                        )}
                                         
                                         {lead.assigned_to_name && (
                                              <div className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-indigo-50 text-indigo-700 rounded text-[10px] font-semibold border border-indigo-100 mb-2">

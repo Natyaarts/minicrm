@@ -244,6 +244,11 @@ const StatLeadsModal = ({ config, onClose, onViewLead, salesSectionFilter, pipel
                                             <tr key={lead.id} className="hover:bg-slate-50 transition-colors">
                                                 <td className="px-4 py-3">
                                                     <p className="text-sm font-bold text-slate-800">{lead.first_name} {lead.last_name}</p>
+                                                    {lead.campaign_name && (
+                                                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 mt-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200 text-[10px] font-semibold">
+                                                            📢 {lead.campaign_name}
+                                                        </span>
+                                                    )}
                                                     <p className="text-xs font-medium text-slate-500 flex items-center gap-1 mt-0.5">
                                                         <Clock size={12} />
                                                         {new Date(lead.created_at).toLocaleDateString()}

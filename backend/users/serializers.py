@@ -41,12 +41,37 @@ class UserSerializer(serializers.ModelSerializer):
         # Super Admins get all permissions implicitely, but for frontend simplicity
         # let's return a list of permissions
         perms = RolePermission.objects.filter(role=obj.role)
-        return {p.module: {
+        perm_dict = {p.module: {
             'view': p.can_view,
             'add': p.can_add,
             'edit': p.can_edit,
             'delete': p.can_delete
         } for p in perms}
+
+        if obj.role in ['SALES', 'TEAM_LEAD', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD']:
+            is_mgr = obj.role in ['TEAM_LEAD', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD'] or self.get_is_manager(obj)
+            default_crm_modules = [
+                'SALES',
+                'CRM_DASHBOARD',
+                'CRM_PIPELINE',
+                'CRM_LEADS_TABLE',
+                'CRM_TASKS',
+                'CRM_CALL_ANALYTICS',
+            ]
+            if is_mgr:
+                default_crm_modules.extend(['CRM_CAMPAIGNS', 'CRM_REPORTS'])
+
+            base_sales_perm = perm_dict.get('SALES', {
+                'view': True,
+                'add': True,
+                'edit': True,
+                'delete': False,
+            })
+            for mod in default_crm_modules:
+                if mod not in perm_dict:
+                    perm_dict[mod] = dict(base_sales_perm)
+
+        return perm_dict
 
     def validate_role(self, value):
         request = self.context.get('request')
