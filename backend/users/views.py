@@ -1,3 +1,8 @@
+import secrets
+from django.conf import settings
+from django.core.cache import cache
+from rest_framework.throttling import ScopedRateThrottle
+from .login_crypto import NONCE_PREFIX, InvalidLogin, consume_credentials, public_key_pem
 
 from rest_framework import status, views, viewsets, generics, filters
 from rest_framework.response import Response
@@ -14,6 +19,24 @@ from core.throttling import LoginRateThrottle, PasswordChangeRateThrottle
 
 User = get_user_model()
 
+
+
+class LoginPublicKeyView(views.APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'auth_nonce'
+
+    def get(self, request):
+        nonce = secrets.token_urlsafe(32)
+        cache.set(NONCE_PREFIX + nonce, 1, timeout=settings.LOGIN_NONCE_TTL)
+        response = Response({'public_key': public_key_pem(), 'nonce': nonce})
+        response['Cache-Control'] = 'no-store'
+        return response
+
+
+    
+
 class LoginView(views.APIView):
     permission_classes = [AllowAny]
     authentication_classes = []  # No CSRF enforcement for public login endpoint
@@ -27,8 +50,17 @@ class LoginView(views.APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        username = request.data.get('username')
-        password = request.data.get('password')
+        encrypted = request.data.get('credentials_enc')
+        if encrypted:
+            try:
+                username, password = consume_credentials(encrypted)
+            except InvalidLogin:
+                return Response({'error': 'Invalid Credentials'}, status=status.HTTP_400_BAD_REQUEST)
+        elif settings.LOGIN_ALLOW_PLAINTEXT:
+            username = request.data.get('username')
+            password = request.data.get('password')
+        else:
+            return Response({'error': 'Invalid Credentials'}, status=status.HTTP_400_BAD_REQUEST)
         
         if not username or not password:
             return Response({'error': 'Invalid Credentials'}, status=status.HTTP_400_BAD_REQUEST)

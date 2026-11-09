@@ -5,6 +5,12 @@ import Constants from 'expo-constants';
 import { handleSessionExpired } from './session';
 
 const getBaseUrl = () => {
+
+  if (__DEV__) {
+    // Beta server
+    return 'https://3.110.41.206.sslip.io/api/';
+  }
+  
   // Point to the live production server domain
   return 'https://natyaarts.org/api/';
 };

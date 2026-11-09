@@ -1685,7 +1685,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                                             : !isResolved
                                                             ? 'bg-amber-100 text-amber-800 border border-amber-300'
                                                             : isNew
-                                                            ? 'bg-amber-50 text-amber-600'
+                                                            ? 'bg-emerald-100 text-emerald-700'
                                                             : isEnrolled
                                                             ? 'bg-green-50 text-green-600'
                                                             : 'bg-slate-100 text-slate-600';

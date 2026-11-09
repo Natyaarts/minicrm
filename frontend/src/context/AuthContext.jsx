@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import api from '../api/axios';
+import { secureLogin } from '../api/secureLogin';
 
 const AuthContext = createContext();
 
@@ -28,17 +29,18 @@ export const AuthProvider = ({ children }) => {
 
     const login = async (username, password) => {
         try {
-            const response = await api.post('auth/login/', { username, password });
-            const { token, user } = response.data;
+            const { token } = await secureLogin(username, password);
             localStorage.setItem('token', token);
-            setUser(user);
-            return { success: true, user };
+            const me = await api.get('auth/me/');   // fresh from the server, not from the login body
+            setUser(me.data);
+            return { success: true, user: me.data };
         } catch (error) {
+            localStorage.removeItem('token');
             console.error('Login failed:', error);
-            return {
-                success: false,
-                error: error.response?.data?.error || 'Login failed'
-            };
+            if (error.status === 429 || error.response?.status === 429) {
+                return { success: false, error: 'Too many attempts. Please wait a minute and try again.' };
+            }
+            return { success: false, error: error.response?.data?.error || error.message || 'Login failed' };
         }
     };
 

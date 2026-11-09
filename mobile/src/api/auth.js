@@ -1,26 +1,42 @@
 import client from './client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
+import { secureLogin } from './secureLogin';
 export { handleSessionExpired } from './session';
 
 export const loginUser = async (username, password) => {
   try {
     const deviceName = Platform.OS === 'android' ? 'Android Mobile' : Platform.OS === 'ios' ? 'iOS Mobile' : 'Mobile App';
-    const response = await client.post('/auth/login/', { username, password, device_name: deviceName });
 
-    
-    if (response.data && response.data.token) {
-      // Store token and user info
-      await AsyncStorage.setItem('userToken', response.data.token);
-      if (response.data.user && response.data.user.role) {
-        await AsyncStorage.setItem('userInfo', JSON.stringify(response.data.user));
-      }
-      return { success: true, user: response.data.user };
+    // 1. Encrypted login (RSA-OAEP happens inside secureLogin)
+    const data = await secureLogin(username, password, { device_name: deviceName });
+
+    if (!data || !data.token) {
+      return { success: false, error: 'Login failed' };
     }
-    return { success: false, error: 'Login failed' };
+
+    // 2. Save the token first, because the client interceptor reads it for the next call
+    await AsyncStorage.setItem('userToken', data.token);
+
+    // 3. Get the authoritative profile from the server, not from the login body
+    let me;
+    try {
+      me = (await client.get('/auth/me/')).data;
+    } catch (e) {
+      await AsyncStorage.multiRemove(['userToken', 'userInfo']);
+      return { success: false, error: 'Login failed. Please try again.' };
+    }
+
+    if (me && me.role) {
+      await AsyncStorage.setItem('userInfo', JSON.stringify(me));
+    }
+    return { success: true, user: me };
   } catch (error) {
-    const errorMsg = error.response?.data?.error || error.response?.data?.detail || 'Server error. Please try again.';
-    return { success: false, error: errorMsg };
+    if (error.status === 429) {
+      return { success: false, error: 'Too many attempts. Please wait a minute and try again.' };
+    }
+    // secureLogin puts the server's error text into error.message
+    return { success: false, error: error.message || 'Server error. Please try again.' };
   }
 };
 

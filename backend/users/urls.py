@@ -1,7 +1,7 @@
 
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import LoginView, LogoutView, PasswordChangeView, UserDetailView, UserViewSet, MentorListView, TeacherListView, TeacherViewSet, RolePermissionViewSet, ExpoTokenView
+from .views import LoginView, LogoutView, LoginPublicKeyView, PasswordChangeView, UserDetailView, UserViewSet, MentorListView, TeacherListView, TeacherViewSet, RolePermissionViewSet, ExpoTokenView
 
 router = DefaultRouter()
 router.register(r'users', UserViewSet, basename='user')
@@ -9,6 +9,7 @@ router.register(r'teachers', TeacherViewSet, basename='teacher-management')
 router.register(r'permissions', RolePermissionViewSet)
 
 urlpatterns = [
+    path('public-key/', LoginPublicKeyView.as_view(), name='login-public-key'),
     path('login/', LoginView.as_view(), name='login'),
     path('logout/', LogoutView.as_view(), name='logout'),
     path('change-password/', PasswordChangeView.as_view(), name='change-password'),

@@ -272,7 +272,7 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'users.authentication.ExpiringTokenAuthentication',
         'rest_framework.authentication.SessionAuthentication',
-        'rest_framework.authentication.BasicAuthentication',
+        # 'rest_framework.authentication.BasicAuthentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
@@ -296,11 +296,24 @@ REST_FRAMEWORK = {
 
         'write': '30/min',
         'write_burst': '5/sec',
+        'auth_nonce': '30/min',
     },
 }
 
 # Token Expiration Settings (None = no forced 24h expiration; active sessions persist until explicit logout/password change)
-AUTH_TOKEN_EXPIRATION_HOURS = None
+AUTH_TOKEN_EXPIRATION_HOURS = 168
+
+
+
+LOGIN_RSA_PRIVATE_KEY_PATH = os.getenv('LOGIN_RSA_PRIVATE_KEY_PATH', '')
+LOGIN_RSA_PUBLIC_KEY_PATH = os.getenv('LOGIN_RSA_PUBLIC_KEY_PATH', '')
+LOGIN_NONCE_TTL = 60
+
+
+# True during rollout so old clients keep working; set to False once the frontend is deployed
+LOGIN_ALLOW_PLAINTEXT = os.getenv('LOGIN_ALLOW_PLAINTEXT', 'True').lower() in ('true', '1', 't')
+
+
 
 
 # Media files
