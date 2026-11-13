@@ -53,6 +53,7 @@ const AttendanceModule = () => {
         leaveCount: 0,
         halfDayCount: 0,
         absentCount: 0,
+        missedClockOutCount: 0,
         wfhCount: 0,
         totalEmployees: 0
     });
@@ -63,6 +64,7 @@ const AttendanceModule = () => {
         on_leave: [],
         half_day: [],
         absent: [],
+        missed_clock_out: [],
         wfh: []
     });
     const [allEmployees, setAllEmployees] = useState([]);
@@ -120,7 +122,11 @@ const AttendanceModule = () => {
             if (startDate) query += `&start_date=${startDate}`;
             if (endDate) query += `&end_date=${endDate}`;
             if (filterType && filterType !== 'all') {
-                query += `&status=${filterType.toUpperCase()}`;
+                if (filterType === 'missed_clock_out') {
+                    query += `&missed_clock_out=true`;
+                } else {
+                    query += `&status=${filterType.toUpperCase()}`;
+                }
             }
             if (currentSearch && currentSearch.trim()) {
                 query += `&search=${encodeURIComponent(currentSearch.trim())}&page_size=1000`;
@@ -149,6 +155,7 @@ const AttendanceModule = () => {
                     leaveCount: summaryData.counts.on_leave_count || 0,
                     halfDayCount: summaryData.counts.half_day_count || 0,
                     absentCount: summaryData.counts.absent_count || 0,
+                    missedClockOutCount: summaryData.counts.missed_clock_out_count || 0,
                     wfhCount: summaryData.counts.wfh_count || 0,
                     totalEmployees: summaryData.counts.total_employees || 0
                 });
@@ -187,7 +194,11 @@ const AttendanceModule = () => {
         try {
             let exportUrl = `hrms/attendance/date_range_report/?start_date=${startDate || getTodayIST()}&end_date=${endDate || getTodayIST()}`;
             if (filterType && filterType !== 'all') {
-                exportUrl += `&status_filter=${filterType.toUpperCase()}`;
+                if (filterType === 'missed_clock_out') {
+                    exportUrl += `&filter_type=missed_clock_out`;
+                } else {
+                    exportUrl += `&status_filter=${filterType.toUpperCase()}`;
+                }
             }
             if (searchTerm && searchTerm.trim()) {
                 exportUrl += `&search=${encodeURIComponent(searchTerm.trim())}`;
@@ -519,6 +530,7 @@ const AttendanceModule = () => {
                                  selectedDashboardStat === 'present' ? 'Present / Late' : 
                                  selectedDashboardStat === 'leave' ? 'On Leave' : 
                                  selectedDashboardStat === 'absent' ? 'Absent' : 
+                                 selectedDashboardStat === 'missedClockOut' ? 'Missed Clock-Out' : 
                                  selectedDashboardStat === 'wfh' ? 'Work From Home' : 'Half Day'} Employees
                             </h2>
                             <div className="space-y-3">
@@ -529,6 +541,7 @@ const AttendanceModule = () => {
                                         selectedDashboardStat === 'leave' ? (statLists.on_leave || []) :
                                         selectedDashboardStat === 'halfDay' ? (statLists.half_day || []) :
                                         selectedDashboardStat === 'absent' ? (statLists.absent || []) :
+                                        selectedDashboardStat === 'missedClockOut' ? (statLists.missed_clock_out || []) :
                                         selectedDashboardStat === 'wfh' ? (statLists.wfh || []) : [];
 
                                     if (!list.length) {
@@ -562,6 +575,7 @@ const AttendanceModule = () => {
                                                 {selectedDashboardStat === 'leave' && <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs font-bold rounded">On Leave</span>}
                                                 {selectedDashboardStat === 'halfDay' && <span className="px-2 py-1 bg-amber-100 text-amber-700 text-xs font-bold rounded">Half Day</span>}
                                                 {selectedDashboardStat === 'absent' && <span className="px-2 py-1 bg-slate-200 text-slate-700 text-xs font-bold rounded">Absent</span>}
+                                                {selectedDashboardStat === 'missedClockOut' && <span className="px-2 py-1 bg-rose-100 text-rose-700 text-xs font-bold rounded">Missed Out</span>}
                                                 {selectedDashboardStat === 'wfh' && <span className="px-2 py-1 bg-indigo-100 text-indigo-700 text-xs font-bold rounded">WFH</span>}
                                             </div>
                                         </div>
@@ -631,7 +645,7 @@ const AttendanceModule = () => {
             </div>
 
             {isAdmin && (
-                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
                     <div 
                         onClick={() => setSelectedDashboardStat('active')}
                         className={`bg-white p-4 rounded-xl border ${selectedDashboardStat === 'active' ? 'border-emerald-500 shadow-md ring-2 ring-emerald-200' : 'border-slate-200 shadow-sm hover:border-emerald-300 hover:shadow-md'} flex items-center justify-between cursor-pointer transition-all`}
@@ -702,6 +716,18 @@ const AttendanceModule = () => {
                         </div>
                         <div className="w-9 h-9 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600">
                             <MapPin size={18} />
+                        </div>
+                    </div>
+                    <div 
+                        onClick={() => setSelectedDashboardStat('missedClockOut')}
+                        className={`bg-white p-4 rounded-xl border ${selectedDashboardStat === 'missedClockOut' ? 'border-rose-500 shadow-md ring-2 ring-rose-200' : 'border-slate-200 shadow-sm hover:border-rose-300 hover:shadow-md'} flex items-center justify-between cursor-pointer transition-all`}
+                    >
+                        <div>
+                            <p className="text-slate-500 text-[11px] font-semibold uppercase tracking-wider mb-0.5">Missed Out</p>
+                            <h3 className="text-xl font-bold text-slate-800">{dashboardStats.missedClockOutCount}</h3>
+                        </div>
+                        <div className="w-9 h-9 rounded-full bg-rose-50 flex items-center justify-center text-rose-600">
+                            <Clock size={18} />
                         </div>
                     </div>
                 </div>
@@ -856,6 +882,7 @@ const AttendanceModule = () => {
                                         <option value="on_leave">On Leave</option>
                                         <option value="absent">Absent</option>
                                         <option value="wfh">WFH</option>
+                                        <option value="missed_clock_out">Missed Out</option>
                                     </select>
                                     <div className="relative">
                                         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
