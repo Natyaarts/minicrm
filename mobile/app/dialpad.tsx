@@ -187,7 +187,7 @@ const Dialpad = () => {
     }
   }, [activeTab]);
 
-  const hasDialerAccess = ['SALES', 'TEAM_LEAD', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD', 'ADMIN', 'SUPER_ADMIN'].includes(user?.role) || Boolean(user?.is_manager);
+  const hasDialerAccess = ['SALES', 'TEAM_LEAD', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD', 'ADMIN', 'SUPER_ADMIN', 'MENTOR', 'HEAD - MENTOR', 'ACADEMIC MENTOR'].includes(user?.role) || Boolean(user?.is_manager);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 

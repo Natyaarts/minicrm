@@ -129,7 +129,7 @@ function Dashboard() {
                                     setSelectedMentor(val);
                                     fetchData(val);
                                 }}
-                                className="bg-transparent text-xs font-semibold text-slate-700 outline-none"
+                                className="bg-transparent text-xs font-semibold text-slate-700 outline-none cursor-pointer"
                             >
                                 {teamMembers.map(m => (
                                     <option key={m.id} value={m.id}>{m.name}</option>

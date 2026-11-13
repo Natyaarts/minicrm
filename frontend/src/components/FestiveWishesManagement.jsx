@@ -204,7 +204,6 @@ export default function FestiveWishesManagement() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-extrabold text-slate-900 flex items-center gap-2">
-            <Sparkles className="w-7 h-7 text-amber-500" />
             HR Festive Wishes & Special Day Greetings
           </h1>
           <p className="text-sm text-slate-600 mt-1">
@@ -216,7 +215,7 @@ export default function FestiveWishesManagement() {
           onClick={() => { setEditingGreeting(null); setFormData({ title: '', sub_title: '', message: '', theme: 'ONAM', target_audience: 'ALL', start_date: new Date().toISOString().split('T')[0], end_date: '', is_active: true, banner_image: null, banner_preview: '' }); setShowModal(true); }}
           className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-amber-500 to-orange-600 text-white font-bold px-5 py-2.5 rounded-xl shadow-lg shadow-amber-500/20 hover:from-amber-600 hover:to-orange-700 transition"
         >
-          <Sparkles className="w-5 h-5" />
+          {/* <Sparkles className="w-5 h-5" /> */}
           Create Festive Wish / Banner
         </button>
       </div>
@@ -228,9 +227,9 @@ export default function FestiveWishesManagement() {
         </div>
       ) : greetings.length === 0 ? (
         <div className="bg-white rounded-2xl p-12 text-center border border-slate-200 shadow-sm max-w-2xl mx-auto">
-          <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">
+          {/* <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">
             <Wheat size={32} strokeWidth={2} />
-          </div>
+          </div> */}
           <h3 className="text-lg font-bold text-slate-800">No Festive Greetings Created Yet</h3>
           <p className="text-sm text-slate-500 mt-1 mb-6">
             Create festive wishes for special occasions like Onam, Diwali, New Year, or Birthdays to greet all employees & students when they open the CRM!
@@ -288,7 +287,7 @@ export default function FestiveWishesManagement() {
                       <div className="flex items-center justify-between text-xs font-black text-amber-900 mb-2">
                         <span className="flex items-center gap-1.5">
                           <MessageSquare className="w-4 h-4 text-amber-600" />
-                          💬 {g.comments.length} Team Wishes Received
+                          {g.comments.length} Team Wishes Received
                         </span>
                       </div>
                       <div className="space-y-1.5 max-h-28 overflow-y-auto pr-1">

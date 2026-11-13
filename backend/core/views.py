@@ -3,7 +3,8 @@ from rest_framework import viewsets, permissions, status, filters
 from rest_framework.filters import SearchFilter
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from django.db.models import Q, Sum, Count, F
+from django.db.models import Q, Sum, Count, F, Count
+from rest_framework.permissions import IsAuthenticated
 from django.http import HttpResponse
 from django.contrib.auth import get_user_model
 from django.utils import timezone
@@ -11,14 +12,17 @@ from decimal import Decimal, InvalidOperation
 import pandas as pd
 from django.db.models import ProtectedError
 import uuid
+from django.utils import timezone
+from datetime import timedelta
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
 
-from .models import Program, SubProgram, Course, Batch, Student, Transaction, Document, SyllabusPart, ClassSession, Attendance, BatchResource, Exam, ExamResult, Question, QuestionOption, StudentSubmission, MonthlyPayment, StudentTeacherHandover
+from .models import Program, SubProgram, Course, Batch, Student, Transaction, Document, SyllabusPart, ClassSession, Attendance, BatchResource, Exam, ExamResult, Question, QuestionOption, StudentSubmission, MonthlyPayment, StudentTeacherHandover, StudentFeedback
 from .serializers import (
     ProgramSerializer, SubProgramSerializer, CourseSerializer, 
     BatchSerializer, StudentSerializer, TransactionSerializer, DocumentSerializer,
     ProgramHierarchySerializer, SyllabusPartSerializer, ClassSessionSerializer, AttendanceSerializer, BatchResourceSerializer,
-    ExamSerializer, ExamResultSerializer, QuestionSerializer, StudentSubmissionSerializer, MonthlyPaymentSerializer, StudentTeacherHandoverSerializer
+    ExamSerializer, ExamResultSerializer, QuestionSerializer, StudentSubmissionSerializer, MonthlyPaymentSerializer, StudentTeacherHandoverSerializer,StudentFeedbackSerializer
 )
 from rest_framework.views import APIView
 from .permissions import DynamicRolePermission, IsMentorOwner
@@ -170,7 +174,11 @@ class BatchViewSet(viewsets.ModelViewSet):
             pass
         elif user.role in ['MENTOR', 'TEACHER']:
             # Include subordinates if any
-            subordinates = user.get_all_subordinates()
+            subordinates = (
+                user.get_all_subordinates()
+                if hasattr(user, 'get_all_subordinates')
+                else []
+            )
             if subordinates:
                 # User can see their own batches AND their subordinates' batches
                 users_to_check = [user] + subordinates
@@ -485,6 +493,11 @@ class StudentViewSet(viewsets.ModelViewSet):
                 ]:
                     return [permissions.IsAuthenticated()]
 
+
+            elif self.action in ['add_feedback', 'feedbacks', 'recent_feedbacks', 'feedback_summary']:
+                if user_role in ['MENTOR', 'TEACHER', 'ACADEMIC', 'ACADEMIC_COORDINATOR', 'ADMIN', 'SUPER_ADMIN']:
+                    return [permissions.IsAuthenticated()]
+
         return super().get_permissions()
 
 
@@ -578,10 +591,20 @@ class StudentViewSet(viewsets.ModelViewSet):
         
         # Staff/Internal View
         qs = Student.objects.select_related(
-            'user', 'program_type', 'sub_program', 'course', 'batch',
+            'user', 'program_type', 'sub_program', 'course', 'batch', 'batch__primary_mentor', 'batch__teacher',
             'campaign', 'assigned_to', 'duplicate_of',
             'duplicate_of__campaign', 'duplicate_of__assigned_to'
         ).prefetch_related('dynamic_values__field', 'documents', 'transactions', 'monthly_payments').all()
+
+
+
+        from django.db.models import OuterRef, Subquery
+        latest_fb = StudentFeedback.objects.filter(student=OuterRef('pk')).order_by('-feedback_date', '-id')
+        qs = qs.annotate(
+            last_feedback_date=Subquery(latest_fb.values('feedback_date')[:1]),
+            last_feedback_status=Subquery(latest_fb.values('status')[:1]),
+            next_followup_date=Subquery(latest_fb.values('next_followup_date')[:1]),
+        )
             
         from crm.utils import get_converted_stage_values
         converted_stage_ids = get_converted_stage_values()
@@ -621,20 +644,15 @@ class StudentViewSet(viewsets.ModelViewSet):
                     team_user_ids = [user.id] + [s.id for s in subordinates]
                     qs = qs.filter(assigned_to_id__in=team_user_ids)
         elif user.role in ['MENTOR', 'TEACHER']:
-            subordinates = user.get_all_subordinates()
-            if subordinates:
-                users_to_check = [user] + subordinates
-                qs = qs.filter(
-                    Q(batch__primary_mentor__in=users_to_check) | 
-                    Q(batch__secondary_mentors__in=users_to_check) |
-                    Q(batch__teacher__in=users_to_check)
-                ).filter(lead_status__in=converted_stage_ids).distinct()
-            else:
-                qs = qs.filter(
-                    Q(batch__primary_mentor=user) | 
-                    Q(batch__secondary_mentors=user) | 
-                    Q(batch__teacher=user)
-                ).filter(lead_status__in=converted_stage_ids).distinct()
+            # Mobile app sends own_only=true: only this mentor's own batches, no subordinates
+            own_only = self.request.query_params.get('own_only') == 'true'
+            subordinates = [] if own_only else list(user.get_all_subordinates())
+            users_to_check = [user] + subordinates
+            qs = qs.filter(
+                Q(batch__primary_mentor__in=users_to_check) |
+                Q(batch__secondary_mentors__in=users_to_check) |
+                Q(batch__teacher__in=users_to_check)
+            ).filter(lead_status__in=converted_stage_ids).distinct()
         elif user.role in ['ACADEMIC', 'ACADEMIC_COORDINATOR'] or self.request.query_params.get('group', '').upper() == 'ACADEMIC':
             qs = qs.filter(lead_status__in=converted_stage_ids)
         elif user.role == 'STUDENT':
@@ -2055,6 +2073,228 @@ class StudentViewSet(viewsets.ModelViewSet):
             'status': 'Fee details updated successfully',
             'student': serializer.data
         })
+
+    @action(detail=True, methods=['post'])
+    def send_message(self, request, pk=None):
+        student = self.get_object()
+        message = (request.data.get('message') or '').strip()
+        if not message:
+            return Response({'error': 'Message is required'}, status=status.HTTP_400_BAD_REQUEST)
+        if not student.user:
+            return Response({'error': 'Student has no user account'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from notifications.models import Notification
+        is_welcome = request.data.get('message_type') == 'WELCOME'
+        Notification.objects.create(
+            user=student.user,
+            title="Welcome!" if is_welcome else "Message from your mentor",
+            message=message,
+            notification_type='BATCH',
+            target_url="/"
+        )
+        if is_welcome:
+            student.welcome_sent = True
+            student.welcome_sent_at = timezone.now()
+            student.save(update_fields=['welcome_sent', 'welcome_sent_at'])
+        return Response({'status': 'Message sent'})
+
+    @action(detail=True, methods=['post'])
+    def mark_welcome_sent(self, request, pk=None):
+        """Used when the message was sent through WhatsApp."""
+        student = self.get_object()
+        student.welcome_sent = True
+        student.welcome_sent_at = timezone.now()
+        student.save(update_fields=['welcome_sent', 'welcome_sent_at'])
+        return Response({'status': 'ok'})
+
+
+
+
+    @action(detail=True, methods=['post'])
+    def add_feedback(self, request, pk=None):
+        student = self.get_object()   # already scoped to the mentor's own students
+        status_val = request.data.get('status')
+        if status_val not in dict(StudentFeedback.STATUS_CHOICES):
+            return Response({'error': 'Valid status is required'}, status=400)
+        fb = StudentFeedback.objects.create(
+            student=student,
+            mentor=request.user,
+            feedback_date=request.data.get('feedback_date') or timezone.localdate(),
+            status=status_val,
+            feedback=(request.data.get('feedback') or '').strip(),
+            next_followup_date=request.data.get('next_followup_date') or None,
+        )
+        return Response(StudentFeedbackSerializer(fb).data, status=201)
+
+    @action(detail=True, methods=['get'])
+    def feedbacks(self, request, pk=None):
+        student = self.get_object()
+        qs = student.feedbacks.select_related('mentor')[:100]
+        return Response(StudentFeedbackSerializer(qs, many=True).data)
+
+    @action(detail=False, methods=['get'])
+    def feedback_summary(self, request):
+        today = timezone.localdate()
+        qs = self.get_queryset().filter(academic_status='ACTIVE')
+        rows = list(qs.values_list(
+            'batch__primary_mentor__first_name', 'batch__primary_mentor__last_name',
+            'batch__primary_mentor__username', 'last_feedback_status', 'last_feedback_date'))
+
+        by_status, mentors = {}, {}
+        for first, last, uname, st, dt in rows:
+            name = (f"{first or ''} {last or ''}".strip() or uname or 'Unassigned')
+            m = mentors.setdefault(name, {'mentor': name, 'total': 0, 'done': 0})
+            m['total'] += 1
+            if dt == today:
+                m['done'] += 1
+                by_status[st] = by_status.get(st, 0) + 1
+
+        done = sum(m['done'] for m in mentors.values())
+        return Response({
+            'total': len(rows), 'taken': done, 'not_taken': len(rows) - done,
+            'by_status': by_status,
+            'by_mentor': sorted(mentors.values(), key=lambda x: x['done'] - x['total']),
+        })
+
+
+
+    @action(
+        detail=False,
+        methods=['get'],
+        url_path='mentor-batches',
+        permission_classes=[permissions.IsAuthenticated]
+    )
+    def mentor_batches(self, request):
+        from core.models import Batch
+
+        user = request.user
+        role = str(user.role).upper().strip()
+
+        qs = Batch.objects.select_related(
+            'course',
+            'primary_mentor',
+            'teacher',
+        ).prefetch_related('secondary_mentors')
+
+        # Administrators can see all batches.
+        if role in ['SUPER_ADMIN', 'ADMIN'] or user.is_superuser:
+            pass
+
+        # Mentors and teachers see batches assigned to them.
+        elif role in ['MENTOR', 'TEACHER']:
+            qs = qs.filter(
+                Q(primary_mentor=user) |
+                Q(secondary_mentors=user) |
+                Q(teacher=user)
+            ).distinct()
+
+        else:
+            return Response(
+                {'detail': 'You do not have permission to view mentor batches.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Match the existing StudentViewSet visibility rules.
+        from crm.utils import get_converted_stage_values
+        converted_stage_ids = get_converted_stage_values()
+
+        student_filters = (
+            Q(students__is_active=True) &
+            ~Q(students__lead_status__iexact='DUPLICATE') &
+            Q(students__lead_status__in=converted_stage_ids)
+        )
+
+        qs = qs.annotate(
+            student_count=Count(
+                'students',
+                filter=student_filters,
+                distinct=True
+            )
+        ).order_by('name')
+
+        data = []
+
+        for batch in qs:
+            primary = batch.primary_mentor
+            teacher = batch.teacher
+
+            secondary = [
+                mentor.get_full_name() or mentor.username
+                for mentor in batch.secondary_mentors.all()
+            ]
+
+            data.append({
+                'id': batch.id,
+                'name': batch.name,
+                'course': batch.course.name if batch.course else '',
+                'start_date': batch.start_date,
+                'end_date': batch.end_date,
+                'primary_mentor': (
+                    primary.get_full_name() or primary.username
+                    if primary else None
+                ),
+                'secondary_mentors': secondary,
+                'teacher': (
+                    teacher.get_full_name() or teacher.username
+                    if teacher else None
+                ),
+                'student_count': batch.student_count,
+            })
+
+        return Response(data)
+
+
+
+    from django.db.models import Q
+    @action(detail=False, methods=['get'])
+    def recent_feedbacks(self, request):
+        user = request.user
+        qs = StudentFeedback.objects.select_related('student', 'mentor').order_by('-feedback_date', '-id')
+
+        # Admins see everything; mentors see their own and their batches' students
+        if getattr(user, 'role', None) not in ('ADMIN', 'SUPER_ADMIN'):
+            qs = qs.filter(
+                Q(mentor=user) |
+                Q(student__batch__primary_mentor=user) |
+                Q(student__batch__secondary_mentors=user)
+            ).distinct()
+
+        if request.query_params.get('calls_only') == 'true':
+            qs = qs.filter(
+                Q(call_duration__gt=0) |
+                Q(status__in=['CALL_DONE', 'NO_ANSWER', 'NOT_REACHABLE', 'CALL_BACK'])
+            )
+
+        search = request.query_params.get('search')
+        if search:
+            qs = qs.filter(
+                Q(student__first_name__icontains=search) |
+                Q(student__last_name__icontains=search) |
+                Q(student__mobile__icontains=search)
+            )
+
+        page = self.paginate_queryset(qs)
+        rows = [{
+            'id': f.id,
+            'student': f.student_id,
+            'student_name': f"{f.student.first_name} {f.student.last_name}".strip(),
+            'student_phone': f.student.mobile,
+            'status': f.status,
+            'status_display': f.get_status_display(),
+            'feedback': f.feedback,
+            'feedback_date': f.feedback_date,
+            'next_followup_date': f.next_followup_date,
+            'mentor_name': (f.mentor.get_full_name() or f.mentor.username) if f.mentor else '',
+            'call_duration': getattr(f, 'call_duration', 0),
+            'call_direction': getattr(f, 'call_direction', ''),
+            'call_status': getattr(f, 'call_status', ''),
+            'customer_number': getattr(f, 'customer_number', ''),
+            'recording_url': f.recording_url or (f.audio_recording.url if f.audio_recording else None),
+        } for f in page]
+        return self.get_paginated_response(rows)
+
+
+    
 
 class TransactionViewSet(viewsets.ModelViewSet):
     queryset = Transaction.objects.all()

@@ -1309,6 +1309,161 @@ const fetchCollectedFees = async () => {
 
     const currentMonthStr = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-01`;
 
+
+    // ---- Mentor + Welcome Message ----
+    const getMentorName = (s) =>
+        s?.mentor_name ||
+        s?.primary_mentor_name ||
+        s?.batch_primary_mentor_name ||
+        s?.batch?.primary_mentor_details?.username ||
+        '-';
+
+    const FEEDBACK_STATUS = {
+        CALL_DONE:     { label: 'Call Done',       cls: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
+        NO_ANSWER:     { label: 'No Answer',       cls: 'bg-amber-50 text-amber-700 border-amber-100' },
+        NOT_REACHABLE: { label: 'Not Reachable',   cls: 'bg-orange-50 text-orange-700 border-orange-100' },
+        CALL_BACK:     { label: 'Call Back Later', cls: 'bg-blue-50 text-blue-700 border-blue-100' },
+        MESSAGE_SENT:  { label: 'Message Sent',    cls: 'bg-indigo-50 text-indigo-700 border-indigo-100' },
+        OTHER:         { label: 'Other',           cls: 'bg-slate-100 text-slate-600 border-slate-200' },
+    };
+
+    const todayStr = () => {
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    };
+
+    const renderFeedbackStatus = (s) => {
+        if (s.last_feedback_date === todayStr() && FEEDBACK_STATUS[s.last_feedback_status]) {
+            const f = FEEDBACK_STATUS[s.last_feedback_status];
+            return <span className={`px-2 py-0.5 border rounded-md text-[10px] font-bold ${f.cls}`}>✓ {f.label}</span>;
+        }
+        return (
+            <div className="flex flex-col items-center gap-0.5">
+                <span className="px-2 py-0.5 bg-red-50 text-red-600 border border-red-100 rounded-md text-[10px] font-bold">✗ Not taken today</span>
+                {s.last_feedback_date && <span className="text-[9px] text-slate-400">Last: {s.last_feedback_date}</span>}
+            </div>
+        );
+    };
+
+    const [studentFilterFeedback, setStudentFilterFeedback] = useState('');
+    const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
+    const [feedbackStudent, setFeedbackStudent] = useState(null);
+    const [feedbackHistory, setFeedbackHistory] = useState([]);
+    const [feedbackLoading, setFeedbackLoading] = useState(false);
+    const [feedbackForm, setFeedbackForm] = useState({ status: 'CALL_DONE', feedback: '', next_followup_date: '' });
+    const [feedbackSummary, setFeedbackSummary] = useState(null);
+
+
+
+    const fetchFeedbackSummary = async () => {
+        try {
+            const res = await api.get(`students/feedback_summary/?lead_status=CONVERTED${selectedTeamMentor ? `&mentor_id=${selectedTeamMentor}` : ''}`);
+            setFeedbackSummary(res.data);
+        } catch (err) { console.error('Failed to fetch feedback summary', err); }
+    };
+
+    const openFeedbackModal = async (student) => {
+        setFeedbackStudent(student);
+        setFeedbackForm({ status: 'CALL_DONE', feedback: '', next_followup_date: '' });
+        setIsFeedbackModalOpen(true);
+        setFeedbackLoading(true);
+        try {
+            const res = await api.get(`students/${student.id}/feedbacks/`);
+            setFeedbackHistory(res.data || []);
+        } catch (err) { setFeedbackHistory([]); }
+        finally { setFeedbackLoading(false); }
+    };
+
+    const handleSubmitFeedback = async (e) => {
+        e.preventDefault();
+        setFeedbackLoading(true);
+        try {
+            const res = await api.post(`students/${feedbackStudent.id}/add_feedback/`, feedbackForm);
+            setFeedbackHistory(prev => [res.data, ...prev]);
+            setAllStudents(prev => prev.map(s => s.id === feedbackStudent.id
+                ? { ...s, last_feedback_status: res.data.status, last_feedback_date: res.data.feedback_date } : s));
+            setFeedbackForm({ status: 'CALL_DONE', feedback: '', next_followup_date: '' });
+            fetchFeedbackSummary();
+        } catch (err) {
+            alert(err.response?.data?.error || 'Failed to save feedback');
+        } finally { setFeedbackLoading(false); }
+    };
+
+    const isSuperAdmin = authUser?.role === 'SUPER_ADMIN';
+
+    const renderWelcomeStatus = (s) => s.welcome_sent ? (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-md text-[10px] font-bold">
+            ✓ Welcome sent{s.welcome_sent_at ? ` • ${new Date(s.welcome_sent_at).toLocaleDateString('en-IN')}` : ''}
+        </span>
+    ) : (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-50 text-red-600 border border-red-100 rounded-md text-[10px] font-bold">
+            ✗ Welcome not sent
+        </span>
+    );
+
+    const isNewAdmission = (s) => s?.is_new_admission === true && !s?.welcome_sent;
+
+    const [isWelcomeModalOpen, setIsWelcomeModalOpen] = useState(false);
+    const [welcomeStudent, setWelcomeStudent] = useState(null);
+    const [welcomeMessage, setWelcomeMessage] = useState('');
+    const [welcomeSending, setWelcomeSending] = useState(false);
+
+    const buildDefaultWelcomeMessage = (s) => [
+        `Hi ${s.first_name || ''},`,
+        '',
+        `Welcome to ${s.course_name || s.program_name || 'our program'}! 🎉`,
+        s.batch_name
+            ? `You have been added to the batch "${s.batch_name}".`
+            : 'Your batch will be assigned shortly.',
+        `Your mentor is ${getMentorName(s)}${s.teacher_name ? ` and your teacher is ${s.teacher_name}` : ''}.`,
+        '',
+        'If you have any questions, feel free to reply to this message.',
+        '',
+        'Best wishes!'
+    ].join('\n');
+
+    const openWelcomeModal = (student) => {
+        setWelcomeStudent(student);
+        setWelcomeMessage(buildDefaultWelcomeMessage(student)); // editable default
+        setIsWelcomeModalOpen(true);
+    };
+
+    const handleSendWelcome = async (e) => {
+        e.preventDefault();
+        if (!welcomeStudent || !welcomeMessage.trim()) return;
+        setWelcomeSending(true);
+        try {
+            // Needs a backend endpoint that stores/sends the message to the student
+            await api.post(`students/${welcomeStudent.id}/send_message/`, {
+                message: welcomeMessage,
+                message_type: 'WELCOME'
+            });
+            alert('Message sent to student successfully!');
+            setIsWelcomeModalOpen(false);
+            fetchStudentsWithPagination();
+        } catch (err) {
+            alert(err.response?.data?.error || 'Failed to send message');
+        } finally {
+            setWelcomeSending(false);
+        }
+    };
+
+    const handleWelcomeWhatsApp = async () => {
+        if (!welcomeStudent?.mobile) return alert('Student has no mobile number');
+        const num = String(welcomeStudent.mobile).replace(/\D/g, '');
+        window.open(`https://wa.me/${num.length === 10 ? '91' + num : num}?text=${encodeURIComponent(welcomeMessage)}`, '_blank');
+        try {
+            await api.post(`students/${welcomeStudent.id}/mark_welcome_sent/`);
+            setAllStudents(prev => prev.map(s =>
+                s.id === welcomeStudent.id ? { ...s, welcome_sent: true } : s
+            ));
+            setIsWelcomeModalOpen(false);
+        } catch (err) {
+            console.error('Failed to mark welcome as sent', err);
+        }
+    };
+
+
     return (
         <div className="min-h-screen w-full bg-slate-50 font-sans text-slate-900 pb-10">
             {/* Top Minimal Navigation */}
@@ -1912,6 +2067,7 @@ const fetchCollectedFees = async () => {
                                         <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Student</th>
                                         <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-center">Program</th>
                                         <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-center">Course & Batch</th>
+                                        <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-center">Mentor</th>
                                         <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-center">Total Fee</th>
                                         <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-center">Paid Fee</th>
                                         <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-center">Due Date</th>
@@ -1935,6 +2091,7 @@ const fetchCollectedFees = async () => {
                                                             )}
                                                         </div>
                                                         <div className="text-xs text-slate-400">{student.crm_student_id}</div>
+                                                        {isSuperAdmin && <div className="mt-1">{renderWelcomeStatus(student)}</div>}
                                                     </div>
                                                 </div>
                                             </td>
@@ -1948,6 +2105,9 @@ const fetchCollectedFees = async () => {
                                                     <span className="text-slate-800 font-bold">{student.course_name || student.lms_course_names || <span className="text-slate-300 italic text-xs font-normal">No Course</span>}</span>
                                                     <span className="text-xs text-slate-500">{student.batch_name || 'Unassigned Batch'}</span>
                                                 </div>
+                                            </td>
+                                            <td className="px-6 py-5 bg-white border-y border-slate-100 text-center">
+                                                <span className="text-sm font-semibold text-indigo-600">{getMentorName(student)}</span>
                                             </td>
                                             <td className="px-6 py-5 bg-white border-y border-slate-100 text-center font-bold text-slate-700">
                                                 ₹{student.total_fee || 0}
@@ -1996,6 +2156,27 @@ const fetchCollectedFees = async () => {
                                             </td>
                                             <td className="px-6 py-5 bg-white border-y border-r border-slate-100 rounded-r-2xl text-right">
                                                 <div className="flex justify-end gap-2 flex-wrap">
+
+                                                    {isNewAdmission(student) && (
+                                                        <button
+                                                            onClick={() => openWelcomeModal(student)}
+                                                            className="px-3 py-2 rounded-xl text-xs font-bold transition-all bg-blue-50 text-blue-700 border border-blue-100 hover:bg-blue-100 flex items-center gap-1"
+                                                            title="Send welcome message"
+                                                        >
+                                                            ✉ Send Welcome
+                                                        </button>
+                                                    )}
+
+
+                                                    <button
+                                                        onClick={() => openFeedbackModal(student)}
+                                                        className="px-3 py-2 rounded-xl text-xs font-bold transition-all bg-blue-50 text-blue-700 border border-blue-100 hover:bg-blue-100 flex items-center gap-1"
+                                                        title="View call records and student feedback"
+                                                    >
+                                                        <History size={12} />
+                                                        Call & Feedback
+                                                    </button>
+
                                                     {/* Manage Fee Button */}
                                                     <button
                                                         onClick={() => handleOpenFeeModal(student)}
@@ -2161,6 +2342,14 @@ const fetchCollectedFees = async () => {
                                     </div>
 
                                     <div className="grid grid-cols-2 gap-2 pt-3 border-t border-slate-100">
+                                        <button
+                                            onClick={() => openFeedbackModal(student)}
+                                            className="w-full py-2.5 bg-blue-50 text-blue-700 border border-blue-100 rounded-xl text-xs font-bold flex items-center justify-center gap-2"
+                                        >
+                                            <History size={13} />
+                                            Call & Feedback
+                                        </button>
+
                                         <button
                                             onClick={() => handleWiseLinkClick(student)}
                                             className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all text-center border ${student.lms_student_id ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-slate-100 text-slate-600 border-slate-200'}`}
@@ -4753,6 +4942,253 @@ const fetchCollectedFees = async () => {
                     </div>
                 </div>
             )}
+
+
+            {isWelcomeModalOpen && welcomeStudent && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-[95]">
+                    <div className="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl animate-fadeIn">
+                        <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-blue-50/50">
+                            <div>
+                                <h2 className="text-lg font-bold text-slate-800">Send Welcome Message</h2>
+                                <p className="text-xs text-slate-500 mt-1">
+                                    To: {welcomeStudent.first_name} {welcomeStudent.last_name} • Mentor: {getMentorName(welcomeStudent)}
+                                </p>
+                            </div>
+                            <button onClick={() => setIsWelcomeModalOpen(false)} className="text-slate-400 hover:text-slate-600 bg-white hover:bg-slate-100 p-2 rounded-full border border-slate-200">
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <form onSubmit={handleSendWelcome} className="p-6 space-y-4">
+                            <div>
+                                <div className="flex justify-between items-center mb-2">
+                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest">Message</label>
+                                    <button
+                                        type="button"
+                                        onClick={() => setWelcomeMessage(buildDefaultWelcomeMessage(welcomeStudent))}
+                                        className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase"
+                                    >
+                                        Reset to default
+                                    </button>
+                                </div>
+                                <textarea
+                                    value={welcomeMessage}
+                                    onChange={(e) => setWelcomeMessage(e.target.value)}
+                                    className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 resize-none h-56 text-sm"
+                                    required
+                                />
+                            </div>
+                            <div className="flex flex-wrap gap-3 justify-end">
+                                <button type="button" onClick={() => setIsWelcomeModalOpen(false)} className="px-5 py-2.5 text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl">Cancel</button>
+                                <button type="button" onClick={handleWelcomeWhatsApp} className="px-5 py-2.5 text-sm font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-100 rounded-xl">
+                                    Open WhatsApp
+                                </button>
+                                {/* <button type="submit" disabled={welcomeSending} className="px-5 py-2.5 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md disabled:opacity-50">
+                                    {welcomeSending ? 'Sending...' : 'Send Message'}
+                                </button> */}
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+        
+            {isFeedbackModalOpen && feedbackStudent && (
+                <div className="fixed inset-0 z-[110] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-white w-full max-w-4xl max-h-[90vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col">
+
+                        {/* Header */}
+                        <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-blue-50/50">
+                            <div>
+                                <h2 className="text-lg font-bold text-slate-800">
+                                    Call Records & Student Feedback
+                                </h2>
+                                <p className="text-sm text-slate-500 mt-1">
+                                    {feedbackStudent.first_name} {feedbackStudent.last_name}
+                                    {' '}• {feedbackStudent.crm_student_id}
+                                </p>
+                            </div>
+
+                            <button
+                                onClick={() => setIsFeedbackModalOpen(false)}
+                                className="p-2 rounded-full bg-white border border-slate-200 text-slate-500 hover:bg-slate-100"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        {/* Content */}
+                        <div className="p-6 overflow-y-auto flex-1">
+
+                            {feedbackLoading ? (
+                                <div className="py-12 text-center text-slate-500">
+                                    Loading call records...
+                                </div>
+                            ) : feedbackHistory.length === 0 ? (
+                                <div className="py-12 text-center">
+                                    <History size={35} className="mx-auto text-slate-300 mb-3" />
+                                    <p className="font-semibold text-slate-600">
+                                        No call records or feedback found
+                                    </p>
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    {feedbackHistory.map((item, index) => {
+                                        const recording =
+                                            item.recording_url || item.audio_recording;
+
+                                        return (
+                                            <div
+                                                key={item.id || index}
+                                                className="border border-slate-200 rounded-2xl p-5 space-y-4"
+                                            >
+                                                {/* Feedback heading */}
+                                                <div className="flex flex-wrap justify-between gap-3">
+                                                    <div>
+                                                        <h3 className="font-bold text-slate-800">
+                                                            {item.type_display || item.feedback_type || 'Student Feedback'}
+                                                        </h3>
+
+                                                        <p className="text-xs text-slate-400 mt-1">
+                                                            {item.feedback_date
+                                                                ? new Date(item.feedback_date).toLocaleDateString('en-IN')
+                                                                : '-'}
+                                                            {' '}• Mentor: {item.mentor_name || 'System'}
+                                                        </p>
+                                                    </div>
+
+                                                    <span className="px-3 py-1 rounded-lg bg-blue-50 text-blue-700 border border-blue-100 text-xs font-bold h-fit">
+                                                        {item.status_display || item.status || 'N/A'}
+                                                    </span>
+                                                </div>
+
+                                                {/* Call information */}
+                                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                                    <div className="bg-slate-50 p-3 rounded-xl">
+                                                        <p className="text-[10px] uppercase font-bold text-slate-400">
+                                                            Customer Number
+                                                        </p>
+                                                        <p className="text-sm font-semibold text-slate-700 mt-1">
+                                                            {item.customer_number || '-'}
+                                                        </p>
+                                                    </div>
+
+                                                    <div className="bg-slate-50 p-3 rounded-xl">
+                                                        <p className="text-[10px] uppercase font-bold text-slate-400">
+                                                            Direction
+                                                        </p>
+                                                        <p className="text-sm font-semibold text-slate-700 mt-1">
+                                                            {item.call_direction || '-'}
+                                                        </p>
+                                                    </div>
+
+                                                    <div className="bg-slate-50 p-3 rounded-xl">
+                                                        <p className="text-[10px] uppercase font-bold text-slate-400">
+                                                            Call Status
+                                                        </p>
+                                                        <p className="text-sm font-semibold text-slate-700 mt-1">
+                                                            {item.call_status || '-'}
+                                                        </p>
+                                                    </div>
+
+                                                    <div className="bg-slate-50 p-3 rounded-xl">
+                                                        <p className="text-[10px] uppercase font-bold text-slate-400">
+                                                            Duration
+                                                        </p>
+                                                        <p className="text-sm font-semibold text-slate-700 mt-1">
+                                                            {item.call_duration != null
+                                                                ? `${item.call_duration} seconds`
+                                                                : '-'}
+                                                        </p>
+                                                    </div>
+
+                                                    <div className="bg-slate-50 p-3 rounded-xl">
+                                                        <p className="text-[10px] uppercase font-bold text-slate-400">
+                                                            Start Time
+                                                        </p>
+                                                        <p className="text-sm font-semibold text-slate-700 mt-1">
+                                                            {item.start_time
+                                                                ? new Date(item.start_time).toLocaleString('en-IN')
+                                                                : '-'}
+                                                        </p>
+                                                    </div>
+
+                                                    <div className="bg-slate-50 p-3 rounded-xl">
+                                                        <p className="text-[10px] uppercase font-bold text-slate-400">
+                                                            End Time
+                                                        </p>
+                                                        <p className="text-sm font-semibold text-slate-700 mt-1">
+                                                            {item.end_time
+                                                                ? new Date(item.end_time).toLocaleString('en-IN')
+                                                                : '-'}
+                                                        </p>
+                                                    </div>
+                                                </div>
+
+                                                {/* Student feedback */}
+                                                <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-4">
+                                                    <p className="text-xs font-bold uppercase tracking-wide text-indigo-700 mb-2">
+                                                        Feedback Details
+                                                    </p>
+
+                                                    <p className="text-sm text-slate-700 whitespace-pre-wrap">
+                                                        {item.feedback || 'No feedback entered'}
+                                                    </p>
+
+                                                    {item.next_followup_date && (
+                                                        <p className="text-xs text-indigo-600 font-semibold mt-3">
+                                                            Next Follow-up: {item.next_followup_date}
+                                                        </p>
+                                                    )}
+                                                </div>
+
+                                                {/* Recording */}
+                                                <div className="border-t border-slate-100 pt-4">
+                                                    <p className="text-xs font-bold text-slate-600 mb-3">
+                                                        Call Recording
+                                                    </p>
+
+                                                    {recording ? (
+                                                        <audio
+                                                            controls
+                                                            preload="none"
+                                                            src={recording}
+                                                            className="w-full"
+                                                        >
+                                                            Your browser does not support audio playback.
+                                                        </audio>
+                                                    ) : (
+                                                        <p className="text-xs text-slate-400">
+                                                            No recording available for this call.
+                                                        </p>
+                                                    )}
+
+                                                    {item.mobile_call_id && (
+                                                        <p className="text-[10px] text-slate-400 mt-2">
+                                                            Call ID: {item.mobile_call_id}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Footer */}
+                        <div className="p-4 border-t border-slate-100 flex justify-end">
+                            <button
+                                onClick={() => setIsFeedbackModalOpen(false)}
+                                className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-sm font-bold"
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+
         </div>
     );
 

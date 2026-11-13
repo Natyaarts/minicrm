@@ -4,8 +4,10 @@ from django.contrib.auth import get_user_model
 from django.apps import apps
 from django.db import transaction as db_transaction
 from django.db.models import Sum, Count
-from .models import Program, SubProgram, Course, Batch, Student, Transaction, Document, SyllabusPart, ClassSession, Attendance, BatchResource, Exam, ExamResult, Question, QuestionOption, StudentSubmission, MonthlyPayment, StudentTeacherHandover, normalize_phone_number
+from .models import Program, SubProgram, Course, Batch, Student, Transaction, Document, SyllabusPart, ClassSession, Attendance, BatchResource, Exam, ExamResult, Question, QuestionOption, StudentSubmission, MonthlyPayment, StudentTeacherHandover, normalize_phone_number, StudentFeedback
 from .validators import validate_student_document_file, validate_batch_resource_file
+from django.utils import timezone
+from datetime import timedelta
 
 User = get_user_model()
 
@@ -277,6 +279,9 @@ class StudentSerializer(serializers.ModelSerializer):
     # Assignment
     assigned_to_name = serializers.SerializerMethodField()
     teacher_name = serializers.SerializerMethodField()
+    mentor_name = serializers.SerializerMethodField()
+    is_new_admission = serializers.SerializerMethodField()
+    status_category = serializers.SerializerMethodField()
     original_campaign_name = serializers.SerializerMethodField()
     original_assigned_bde = serializers.SerializerMethodField()
 
@@ -320,6 +325,13 @@ class StudentSerializer(serializers.ModelSerializer):
     total_due = serializers.SerializerMethodField()
     monthly_payment_months = serializers.SerializerMethodField()
 
+
+    # Follow-up info (annotated in StudentViewSet.get_queryset)
+    last_feedback_date = serializers.DateField(read_only=True)
+    last_feedback_status = serializers.CharField(read_only=True)
+    next_followup_date = serializers.DateField(read_only=True)
+    
+
     # Read-only numeric IDs for frontend sync
     program_type_id = serializers.IntegerField(source='program_type.id', read_only=True)
     sub_program_id = serializers.IntegerField(source='sub_program.id', read_only=True, allow_null=True)
@@ -347,6 +359,21 @@ class StudentSerializer(serializers.ModelSerializer):
         if obj.batch and obj.batch.teacher:
             return f"{obj.batch.teacher.first_name} {obj.batch.teacher.last_name}".strip() or obj.batch.teacher.username
         return "Not Assigned"
+
+
+    def get_mentor_name(self, obj):
+        batch = obj.batch
+        if batch and batch.primary_mentor:
+            m = batch.primary_mentor
+            return f"{m.first_name} {m.last_name}".strip() or m.username
+        return None
+
+    def get_is_new_admission(self, obj):
+        joined = obj.user.date_joined if obj.user_id else None
+        return bool(joined and joined >= timezone.now() - timedelta(days=30))
+
+    def get_status_category(self, obj):
+        return 'NEW_ADMISSION' if self.get_is_new_admission(obj) else None
 
     def _get_original_lead(self, obj):
         if hasattr(obj, '_cached_original_lead'):
@@ -731,3 +758,25 @@ class StudentSerializer(serializers.ModelSerializer):
                     pass
 
         return instance
+
+
+
+class StudentFeedbackSerializer(serializers.ModelSerializer):
+    mentor_name = serializers.SerializerMethodField()
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    type_display = serializers.CharField(source='get_feedback_type_display', read_only=True)
+
+    class Meta:
+        model = StudentFeedback
+        fields = ['id', 'student', 'mentor', 'mentor_name', 'feedback_date', 'feedback_type', 'type_display',
+                  'status', 'status_display', 'feedback', 'next_followup_date',
+                  'customer_number', 'call_direction', 'call_status', 'call_duration',
+                  'start_time', 'end_time', 'audio_recording', 'recording_url',
+                  'mobile_call_id', 'interaction', 'created_at']
+        read_only_fields = ['mentor', 'student', 'interaction']
+
+    def get_mentor_name(self, obj):
+        m = obj.mentor
+        return (f"{m.first_name} {m.last_name}".strip() or m.username) if m else 'System'
+
+    
