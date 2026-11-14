@@ -104,6 +104,33 @@ class CampaignSerializer(serializers.ModelSerializer):
             return request.build_absolute_uri(f'/api/crm/webhooks/campaign/{obj.secret_token}/lead/')
         return f'/api/crm/webhooks/campaign/{obj.secret_token}/lead/'
 
+    def validate(self, attrs):
+        from .services.assignment import filter_eligible_bdes_for_section
+        effective_section = attrs.get('section', getattr(self.instance, 'section', 'BOTH'))
+        if 'auto_assign_to' in attrs and attrs['auto_assign_to'] is not None:
+            attrs['auto_assign_to'] = filter_eligible_bdes_for_section(
+                attrs['auto_assign_to'], effective_section
+            )
+        return attrs
+
+    def update(self, instance, validated_data):
+        from .services.assignment import filter_eligible_bdes_for_section, is_bde_eligible_for_section
+        section_changed = 'section' in validated_data and validated_data['section'] != instance.section
+        auto_assign_provided = 'auto_assign_to' in validated_data
+        campaign = super().update(instance, validated_data)
+        if section_changed and not auto_assign_provided:
+            eligible_reps = filter_eligible_bdes_for_section(
+                campaign.auto_assign_to.all(), campaign.section
+            )
+            campaign.auto_assign_to.set(eligible_reps)
+        if campaign.last_assigned_bde and (
+            not is_bde_eligible_for_section(campaign.last_assigned_bde, campaign.section)
+            or not campaign.auto_assign_to.filter(id=campaign.last_assigned_bde_id).exists()
+        ):
+            campaign.last_assigned_bde = None
+            campaign.save(update_fields=['last_assigned_bde'])
+        return campaign
+
 class TaskSerializer(serializers.ModelSerializer):
     student_name = serializers.SerializerMethodField()
     assigned_to_name = serializers.SerializerMethodField()
@@ -129,6 +156,8 @@ class LeadTaskItemSerializer(serializers.ModelSerializer):
     mobile = serializers.CharField(source='lead.mobile', read_only=True)
     email = serializers.CharField(source='lead.email', read_only=True)
     lead_status = serializers.CharField(source='lead.lead_status', read_only=True)
+    lead_stage_id = serializers.SerializerMethodField()
+    lead_status_display = serializers.SerializerMethodField()
     campaign = serializers.IntegerField(source='lead.campaign_id', read_only=True)
     campaign_name = serializers.SerializerMethodField()
     program_name = serializers.SerializerMethodField()
@@ -143,12 +172,44 @@ class LeadTaskItemSerializer(serializers.ModelSerializer):
         model = LeadTaskItem
         fields = [
             'id', 'task', 'lead', 'lead_name', 'crm_student_id', 'mobile', 'email',
-            'lead_status', 'campaign', 'campaign_name', 'program_name', 'course_name', 'owner_name',
+            'lead_status', 'lead_stage_id', 'lead_status_display',
+            'campaign', 'campaign_name', 'program_name', 'course_name', 'owner_name',
             'assigned_to', 'assigned_to_name',
             'is_completed', 'completed_at', 'completed_by', 'completed_by_name',
             'notes', 'created_at', 'updated_at', 'last_interaction', 'recent_interactions'
         ]
         read_only_fields = ['id', 'task', 'created_at', 'updated_at']
+
+    def _get_status_resolver(self):
+        request = self.context.get('request')
+        if request is not None:
+            if not hasattr(request, '_lead_status_resolver'):
+                from .utils import LeadStatusResolver
+                request._lead_status_resolver = LeadStatusResolver()
+            return request._lead_status_resolver
+        if '_lead_status_resolver' not in self.context:
+            from .utils import LeadStatusResolver
+            self.context['_lead_status_resolver'] = LeadStatusResolver()
+        return self.context['_lead_status_resolver']
+
+    def _resolve_lead_stage(self, obj):
+        if not obj.lead:
+            return None
+        resolver = self._get_status_resolver()
+        return resolver.resolve(getattr(obj.lead, 'lead_status', None))
+
+    def get_lead_stage_id(self, obj):
+        resolved = self._resolve_lead_stage(obj)
+        if resolved and resolved.stage_id is not None:
+            try:
+                return int(resolved.stage_id)
+            except (ValueError, TypeError):
+                return resolved.stage_id
+        return None
+
+    def get_lead_status_display(self, obj):
+        resolved = self._resolve_lead_stage(obj)
+        return resolved.stage_name if resolved else 'New Lead'
 
     def get_lead_name(self, obj):
         if obj.lead:

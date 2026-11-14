@@ -18,7 +18,14 @@ from .utils import (
     normalize_phone_for_matching, match_lead_by_phone, match_agent_by_phone,
     get_converted_stage_values, get_new_stage_values, get_dropped_stage_values,
 )
-from .services.deduplication import lookup_existing_student, record_reengagement_interaction, normalize_lead_phone, normalize_lead_email, create_duplicate_lead
+from .services.deduplication import (
+    acquire_lead_creation_lock,
+    lookup_existing_student,
+    record_reengagement_interaction,
+    normalize_lead_phone,
+    normalize_lead_email,
+    create_duplicate_lead,
+)
 from .services.assignment import get_next_assigned_rep
 
 logger = logging.getLogger(__name__)
@@ -727,10 +734,11 @@ class LeadInteractionViewSet(viewsets.ModelViewSet):
 
         # Optional pipeline update & follow-up task only if student matched
         if student:
-            pipeline_status = request.data.get('pipeline_status')
+            raw_pipeline_status = request.data.get('pipeline_status')
+            pipeline_status = str(raw_pipeline_status).strip() if raw_pipeline_status is not None else ''
             if pipeline_status:
                 student.lead_status = pipeline_status
-                student.save()
+                student.save(update_fields=['lead_status'])
 
             next_followup_date = request.data.get('next_followup_date')
             if next_followup_date:
@@ -797,9 +805,11 @@ class LeadInteractionViewSet(viewsets.ModelViewSet):
 
         if request.data.get('notes'):
             instance.notes = request.data.get('notes')
-        if request.data.get('pipeline_status') and instance.student:
-            instance.student.lead_status = request.data.get('pipeline_status')
-            instance.student.save()
+        raw_pipeline_status = request.data.get('pipeline_status')
+        pipeline_status = str(raw_pipeline_status).strip() if raw_pipeline_status is not None else ''
+        if pipeline_status and instance.student:
+            instance.student.lead_status = pipeline_status
+            instance.student.save(update_fields=['lead_status'])
 
         instance.save()
         serializer = self.get_serializer(instance)
@@ -957,34 +967,36 @@ class CampaignViewSet(viewsets.ModelViewSet):
                         first_name = name_parts[0] if name_parts[0] else 'Unknown'
                         last_name = name_parts[1] if len(name_parts) > 1 else ''
 
-                    # Centralized duplicate check
-                    dup_student, dup_reason = lookup_existing_student(mobile=mobile, email=email)
-                    if dup_student:
-                        new_dup = create_duplicate_lead(
-                            existing_student=dup_student,
-                            first_name=first_name,
-                            last_name=last_name,
-                            mobile=clean_phone or mobile,
-                            email=clean_em or email,
-                            campaign=campaign,
-                            program=default_program,
-                            sales_section=campaign.section if campaign else 'BOTH',
-                            duplicate_reason=dup_reason,
-                            extra_fields={'perm_city': place, 'lms_course_names': tag},
-                            log_reengagement=False
-                        )
-                        leads_created += 1
-                        duplicate_count += 1
-                        results.append({
-                            'status': 'DUPLICATE',
-                            'name': f"{first_name} {last_name}".strip() or 'Lead',
-                            'message': f"Duplicate lead created (Original CRM ID: {dup_student.crm_student_id})",
-                            'crm_id': new_dup.crm_student_id,
-                            'is_duplicate': True
-                        })
-                        continue
-
                     with transaction.atomic():
+                        acquire_lead_creation_lock()
+
+                        # Centralized duplicate check inside the same atomic transaction
+                        dup_student, dup_reason = lookup_existing_student(mobile=mobile, email=email)
+                        if dup_student:
+                            new_dup = create_duplicate_lead(
+                                existing_student=dup_student,
+                                first_name=first_name,
+                                last_name=last_name,
+                                mobile=clean_phone or mobile,
+                                email=clean_em or email,
+                                campaign=campaign,
+                                program=default_program,
+                                sales_section=campaign.section if campaign else 'BOTH',
+                                duplicate_reason=dup_reason,
+                                extra_fields={'perm_city': place, 'lms_course_names': tag},
+                                log_reengagement=False
+                            )
+                            leads_created += 1
+                            duplicate_count += 1
+                            results.append({
+                                'status': 'DUPLICATE',
+                                'name': f"{first_name} {last_name}".strip() or 'Lead',
+                                'message': f"Duplicate lead created (Original CRM ID: {dup_student.crm_student_id})",
+                                'crm_id': new_dup.crm_student_id,
+                                'is_duplicate': True
+                            })
+                            continue
+
                         import uuid
                         base_username = clean_phone if clean_phone else clean_em if clean_em else first_name
                         username = f"{base_username}_{str(uuid.uuid4())[:8]}" if base_username else f"lead_{str(uuid.uuid4())[:8]}"
@@ -1136,80 +1148,82 @@ class CampaignViewSet(viewsets.ModelViewSet):
                 first_name = name_parts[0] if name_parts[0] else 'Unknown'
                 last_name = name_parts[1] if len(name_parts) > 1 else ''
 
-            # Centralized duplicate check
-            dup_student, dup_reason = lookup_existing_student(mobile=mobile, email=email)
-            if dup_student:
-                new_dup = create_duplicate_lead(
-                    existing_student=dup_student,
-                    first_name=first_name,
-                    last_name=last_name,
-                    mobile=clean_phone or mobile,
-                    email=clean_em or email,
-                    campaign=campaign,
-                    program=default_program,
-                    sales_section=campaign.section if campaign else 'BOTH',
-                    duplicate_reason=dup_reason,
-                    extra_fields={'perm_city': place, 'lms_course_names': tag},
-                    log_reengagement=False
-                )
-                results.append({
-                    'status': 'DUPLICATE',
-                    'name': f"{first_name} {last_name}".strip() or 'Lead',
-                    'message': f"Duplicate lead created (Original CRM ID: {dup_student.crm_student_id})",
-                    'crm_id': new_dup.crm_student_id,
-                    'is_duplicate': True
-                })
-                continue
-
             try:
-                    with transaction.atomic():
-                        import uuid
-                        base_username = clean_phone if clean_phone else clean_em if clean_em else first_name
-                        username = f"{base_username}_{str(uuid.uuid4())[:8]}" if base_username else f"lead_{str(uuid.uuid4())[:8]}"
-                        # Sanitize username to prevent invalid character crashes (only letters, numbers, _, @, +, ., -)
-                        import re
-                        username = re.sub(r'[^\w@+\.-]', '_', username)
+                with transaction.atomic():
+                    acquire_lead_creation_lock()
 
-                        User = get_user_model()
-                        user = User.objects.create_user(
-                            username=username,
-                            email=clean_em,
+                    # Centralized duplicate check inside the same atomic transaction
+                    dup_student, dup_reason = lookup_existing_student(mobile=mobile, email=email)
+                    if dup_student:
+                        new_dup = create_duplicate_lead(
+                            existing_student=dup_student,
                             first_name=first_name,
                             last_name=last_name,
-                            role='STUDENT',
-                            password='Password@123'
-                        )
-
-                        crm_id = f"LEAD-{str(uuid.uuid4())[:8].upper()}"
-
-                        # Handle Auto-Assignment Round Robin for batch uploaded non-duplicate leads
-                        assigned_to_user = get_next_assigned_rep(campaign)
-
-                        from .utils import get_canonical_new_lead_stage_id
-                        stage_id = get_canonical_new_lead_stage_id()
-
-                        student = Student.objects.create(
-                            user=user,
-                            crm_student_id=crm_id,
-                            first_name=first_name,
-                            last_name=last_name,
-                            email=clean_em,
-                            mobile=clean_phone,
-                            perm_city=place,
-                            lms_course_names=tag,
+                            mobile=clean_phone or mobile,
+                            email=clean_em or email,
                             campaign=campaign,
-                            sales_section=campaign.section,
-                            program_type=default_program,
-                            assigned_to=assigned_to_user,
-                            lead_status=stage_id
+                            program=default_program,
+                            sales_section=campaign.section if campaign else 'BOTH',
+                            duplicate_reason=dup_reason,
+                            extra_fields={'perm_city': place, 'lms_course_names': tag},
+                            log_reengagement=False
                         )
-
                         results.append({
-                            'status': 'SUCCESS',
-                            'name': f"{first_name} {last_name}",
-                            'message': 'Successfully imported',
-                            'crm_id': student.crm_student_id
+                            'status': 'DUPLICATE',
+                            'name': f"{first_name} {last_name}".strip() or 'Lead',
+                            'message': f"Duplicate lead created (Original CRM ID: {dup_student.crm_student_id})",
+                            'crm_id': new_dup.crm_student_id,
+                            'is_duplicate': True
                         })
+                        continue
+
+                    import uuid
+                    base_username = clean_phone if clean_phone else clean_em if clean_em else first_name
+                    username = f"{base_username}_{str(uuid.uuid4())[:8]}" if base_username else f"lead_{str(uuid.uuid4())[:8]}"
+                    # Sanitize username to prevent invalid character crashes (only letters, numbers, _, @, +, ., -)
+                    import re
+                    username = re.sub(r'[^\w@+\.-]', '_', username)
+
+                    User = get_user_model()
+                    user = User.objects.create_user(
+                        username=username,
+                        email=clean_em,
+                        first_name=first_name,
+                        last_name=last_name,
+                        role='STUDENT',
+                        password='Password@123'
+                    )
+
+                    crm_id = f"LEAD-{str(uuid.uuid4())[:8].upper()}"
+
+                    # Handle Auto-Assignment Round Robin for batch uploaded non-duplicate leads
+                    assigned_to_user = get_next_assigned_rep(campaign)
+
+                    from .utils import get_canonical_new_lead_stage_id
+                    stage_id = get_canonical_new_lead_stage_id()
+
+                    student = Student.objects.create(
+                        user=user,
+                        crm_student_id=crm_id,
+                        first_name=first_name,
+                        last_name=last_name,
+                        email=clean_em,
+                        mobile=clean_phone,
+                        perm_city=place,
+                        lms_course_names=tag,
+                        campaign=campaign,
+                        sales_section=campaign.section,
+                        program_type=default_program,
+                        assigned_to=assigned_to_user,
+                        lead_status=stage_id
+                    )
+
+                    results.append({
+                        'status': 'SUCCESS',
+                        'name': f"{first_name} {last_name}",
+                        'message': 'Successfully imported',
+                        'crm_id': student.crm_student_id
+                    })
 
             except Exception as row_error:
                 results.append({
@@ -1710,6 +1724,8 @@ class WebhookReceiveView(APIView):
                 if campaign_id:
                     campaign = Campaign.objects.filter(id=campaign_id).first()
 
+                acquire_lead_creation_lock()
+
                 # Centralized duplicate check
                 dup_student, dup_reason = lookup_existing_student(mobile=clean_phone, email=clean_em)
                 if dup_student:
@@ -1751,6 +1767,8 @@ class WebhookReceiveView(APIView):
 
                 # Create new User
                 username = clean_em if clean_em else f"lead_{clean_phone}"
+                if User.objects.filter(username=username).exists() and Student.objects.filter(user__username=username).exists():
+                    username = f"{username}_{uuid.uuid4().hex[:6]}"
                 user_email = clean_em if clean_em else f"{username}@webhook.temp"
                 
                 user, created = User.objects.get_or_create(
@@ -1850,6 +1868,8 @@ class CampaignWebhookReceiveView(APIView):
 
                 program_id = payload.get('program_id')
 
+                acquire_lead_creation_lock()
+
                 # Centralized duplicate check
                 dup_student, dup_reason = lookup_existing_student(mobile=clean_phone, email=clean_em)
                 if dup_student:
@@ -1891,6 +1911,8 @@ class CampaignWebhookReceiveView(APIView):
 
                 # Create or get User
                 username = clean_em if clean_em else f"lead_{clean_phone}"
+                if User.objects.filter(username=username).exists() and Student.objects.filter(user__username=username).exists():
+                    username = f"{username}_{uuid.uuid4().hex[:6]}"
                 user_email = clean_em if clean_em else f"{username}@webhook.temp"
                 
                 user, created = User.objects.get_or_create(
@@ -1916,46 +1938,24 @@ class CampaignWebhookReceiveView(APIView):
                     if not program:
                         program = Program.objects.exclude(name="Wise Import").first() or Program.objects.first()
 
-                # Check if Student profile already exists for this User
-                student = Student.objects.filter(user=user).first()
-                if student:
-                    student.first_name = first_name
-                    student.last_name = last_name
-                    if clean_em:
-                        student.email = clean_em
-                    if clean_phone:
-                        student.mobile = clean_phone
-                    if program:
-                        student.program_type = program
-                    student.campaign = campaign
-                    student.sales_section = campaign.section
-                    student.save()
-                    
-                    LeadInteraction.objects.create(
-                        student=student,
-                        author=None,
-                        interaction_type='NOTE',
-                        notes=f"Re-engaged lead from Campaign Webhook: {campaign.name}."
-                    )
-                else:
-                    # Genuinely new lead: determine assignment and create Student Lead
-                    assigned_to_user = get_next_assigned_rep(campaign)
+                # Genuinely new lead: determine assignment and create Student Lead
+                assigned_to_user = get_next_assigned_rep(campaign)
 
-                    from .utils import get_canonical_new_lead_stage_id
-                    student = Student.objects.create(
-                        user=user,
-                        crm_student_id=crm_id,
-                        first_name=first_name,
-                        last_name=last_name,
-                        email=clean_em,
-                        mobile=clean_phone,
-                        program_type=program,
-                        campaign=campaign,
-                        sales_section=campaign.section,
-                        lead_status=get_canonical_new_lead_stage_id(),
-                        assigned_to=assigned_to_user,
-                        is_active=True
-                    )
+                from .utils import get_canonical_new_lead_stage_id
+                student = Student.objects.create(
+                    user=user,
+                    crm_student_id=crm_id,
+                    first_name=first_name,
+                    last_name=last_name,
+                    email=clean_em,
+                    mobile=clean_phone,
+                    program_type=program,
+                    campaign=campaign,
+                    sales_section=campaign.section,
+                    lead_status=get_canonical_new_lead_stage_id(),
+                    assigned_to=assigned_to_user,
+                    is_active=True
+                )
 
                 return Response({
                     "message": "Lead processed successfully.",

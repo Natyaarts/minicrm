@@ -15,14 +15,15 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const { width } = Dimensions.get('window');
 
 const Dialpad = () => {
-  const { leadId, phone } = useLocalSearchParams();
+  const { leadId, phone, leadStatus } = useLocalSearchParams();
   const [phoneNumber, setPhoneNumber] = useState((phone as string) || '');
   const [callStatus, setCallStatus] = useState<'IDLE' | 'CALLING' | 'ACTIVE' | 'POST_CALL'>('IDLE');
   const [activeCallTimer, setActiveCallTimer] = useState(0);
   const [callDuration, setCallDuration] = useState(0);
   const [callStatusState, setCallStatusState] = useState<'CONNECTED' | 'MISSED'>('MISSED');
   const [postCallNotes, setPostCallNotes] = useState('');
-  const [pipelineStatus, setPipelineStatus] = useState('');
+  const [pipelineStatus, setPipelineStatus] = useState((leadStatus as string) || '');
+  const [hasExplicitStageChange, setHasExplicitStageChange] = useState(false);
   const [recordedFilePath, setRecordedFilePath] = useState<string | null>(null);
   const [manualRecordingFile, setManualRecordingFile] = useState<any>(null); // manually picked file
   const [nextFollowupDate, setNextFollowupDate] = useState<Date | null>(null);
@@ -62,11 +63,42 @@ const Dialpad = () => {
   const activeSessionIdRef = useRef<string>('');
   const currentMobileCallIdRef = useRef<string>('');
 
+  const isStageMatching = (stage: any, statusVal: any) => {
+    if (!stage || statusVal === null || statusVal === undefined || String(statusVal).trim() === '') return false;
+    const raw = String(statusVal).trim();
+    if (String(stage.id) === raw) return true;
+    const normVal = raw.toLowerCase().replace(/[\s_-]+/g, '');
+    const normName = String(stage.name || '').trim().toLowerCase().replace(/[\s_-]+/g, '');
+    const normId = String(stage.id || '').trim().toLowerCase().replace(/[\s_-]+/g, '');
+    if (normVal === normName || normVal === normId) return true;
+    const aliases: Record<string, string[]> = {
+      new: ['new', 'newlead'],
+      newlead: ['new', 'newlead'],
+      followup: ['followup', 'followups'],
+      paymentpending: ['paymentpending', 'pendingpayment'],
+      enrolled: ['enrolled', 'converted'],
+      converted: ['converted', 'enrolled'],
+      dropped: ['dropped', 'notinterested', 'rejected', 'lost'],
+    };
+    const group = aliases[normVal] || [];
+    return group.includes(normName) || group.includes(normId);
+  };
+
   // Reset all call-specific state whenever route parameters (leadId or phone) change
   useEffect(() => {
     if (phone && typeof phone === 'string') {
       setPhoneNumber(phone);
       phoneRef.current = phone;
+    }
+    setHasExplicitStageChange(false);
+    setPipelineStatus(leadStatus ? String(leadStatus) : '');
+    if (leadId && String(leadId) !== '0') {
+      client.get(`/students/${leadId}/`).then(res => {
+        const currentStage = res.data?.lead_stage_id ?? res.data?.lead_status;
+        if (currentStage !== undefined && currentStage !== null && String(currentStage).trim() !== '') {
+          setPipelineStatus(prev => (prev ? prev : String(currentStage)));
+        }
+      }).catch(() => {});
     }
     if (callStatusRef.current === 'IDLE' || callStatusRef.current === 'POST_CALL') {
       setCallStatus('IDLE');
@@ -86,7 +118,7 @@ const Dialpad = () => {
       activeSessionIdRef.current = '';
       currentMobileCallIdRef.current = '';
     }
-  }, [leadId, phone]);
+  }, [leadId, phone, leadStatus]);
 
   useEffect(() => {
     phoneRef.current = phoneNumber;
@@ -115,7 +147,6 @@ const Dialpad = () => {
       const data = res.data?.results || res.data || [];
       if (data.length > 0) {
         setPipelineStages(data);
-        setPipelineStatus(data[0]?.id || '');
       }
     } catch (e) {
       console.log('Failed to fetch pipeline stages:', e);
@@ -625,7 +656,9 @@ const Dialpad = () => {
       parameters.student = String(leadId);
     }
     
-    if (pipelineStatus && leadId && String(leadId) !== '0') parameters.pipeline_status = String(pipelineStatus);
+    if (hasExplicitStageChange && pipelineStatus && leadId && String(leadId) !== '0') {
+      parameters.pipeline_status = String(pipelineStatus);
+    }
     if (nextFollowupDate && leadId && String(leadId) !== '0') parameters.next_followup_date = nextFollowupDate.toISOString();
 
     let fileUriToUpload = null;
@@ -725,7 +758,7 @@ const Dialpad = () => {
         call_status: status,
         call_duration: isConnected ? callDuration : 0,
         notes: postCallNotes || (isConnected ? `Outbound call to ${cleanNumber}` : `Outbound call to ${cleanNumber} (Unanswered / Missed)`),
-        pipeline_status: pipelineStatus,
+        pipeline_status: hasExplicitStageChange && pipelineStatus ? String(pipelineStatus) : undefined,
         next_followup_date: nextFollowupDate?.toISOString(),
         recordedFilePath: isConnected ? (recordedFilePath || manualRecordingFile?.uri) : null
       });
@@ -773,20 +806,26 @@ const Dialpad = () => {
           <Text style={{ fontSize: 14, fontWeight: '600', color: '#4A5568', marginBottom: 10 }}>Update Lead Stage</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }}>
             <View style={{ flexDirection: 'row', gap: 10, paddingVertical: 4 }}>
-              {pipelineStages.map(stage => (
-                <TouchableOpacity 
-                  key={stage.id} 
-                  onPress={() => setPipelineStatus(stage.id)}
-                  style={{
-                    paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20,
-                    backgroundColor: pipelineStatus === stage.id ? '#3182CE' : '#EBF8FF',
-                  }}
-                >
-                  <Text style={{ color: pipelineStatus === stage.id ? '#FFF' : '#3182CE', fontWeight: 'bold', fontSize: 12 }}>
-                    {stage.name}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+              {pipelineStages.map(stage => {
+                const isSelected = isStageMatching(stage, pipelineStatus);
+                return (
+                  <TouchableOpacity
+                    key={stage.id}
+                    onPress={() => {
+                      setPipelineStatus(String(stage.id));
+                      setHasExplicitStageChange(true);
+                    }}
+                    style={{
+                      paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20,
+                      backgroundColor: isSelected ? '#3182CE' : '#EBF8FF',
+                    }}
+                  >
+                    <Text style={{ color: isSelected ? '#FFF' : '#3182CE', fontWeight: 'bold', fontSize: 12 }}>
+                      {stage.name}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           </ScrollView>
 
