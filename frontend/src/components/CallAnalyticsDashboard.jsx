@@ -474,11 +474,11 @@ const CallAnalyticsDashboard = () => {
                                         <td className="px-4 py-3">
                                             {call.direction === 'INCOMING' ? (
                                                 <span className="text-blue-600 font-semibold flex items-center gap-1 bg-blue-50 px-2 py-0.5 rounded border border-blue-100 w-fit text-xs">
-                                                    <PhoneIncoming size={13}/> ↙ Incoming
+                                                    <PhoneIncoming size={13}/>Incoming
                                                 </span>
                                             ) : (
                                                 <span className="text-emerald-600 font-semibold flex items-center gap-1 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100 w-fit text-xs">
-                                                    <PhoneOutgoing size={13}/> ↗ Outgoing
+                                                    <PhoneOutgoing size={13}/>Outgoing
                                                 </span>
                                             )}
                                         </td>

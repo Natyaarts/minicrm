@@ -3,7 +3,7 @@ from django.db.models import F
 from django.conf import settings
 from django.db.models.functions import Lower
 import datetime
-from .validators import validate_student_document_file, validate_batch_resource_file
+from .validators import validate_student_document_file, validate_batch_resource_file, validate_audio_recording_file
 
 
 class Program(models.Model):
@@ -298,6 +298,10 @@ class Student(models.Model):
     fee_due_date = models.DateField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
 
+    # Welcome message tracking
+    welcome_sent = models.BooleanField(default=False)
+    welcome_sent_at = models.DateTimeField(null=True, blank=True)
+
     def save(self, *args, **kwargs):
         # Freshly created leads: ensure canonical 'New Lead' stage is assigned
         # if not explicitly set or if assigned legacy 'NEW'/'new'
@@ -521,3 +525,70 @@ class FeeEditLog(models.Model):
     def __str__(self):
         editor = self.edited_by.get_full_name() if self.edited_by else 'System'
         return f"{self.student} | {self.action} by {editor} at {self.created_at}"
+
+
+
+
+class StudentFeedback(models.Model):
+    TYPE_CHOICES = [
+        ('CALL', 'Phone Call'),
+        ('WHATSAPP', 'WhatsApp'),
+        ('MEETING', 'Meeting'),
+        ('NOTE', 'Note'),
+    ]
+    STATUS_CHOICES = [
+        ('CALL_DONE', 'Call Done'),
+        ('NO_ANSWER', 'No Answer'),
+        ('NOT_REACHABLE', 'Not Reachable'),
+        ('CALL_BACK', 'Call Back Later'),
+        ('MESSAGE_SENT', 'Message Sent'),
+        ('OTHER', 'Other'),
+    ]
+    CALL_DIRECTION_CHOICES = [('INCOMING', 'Incoming'), ('OUTGOING', 'Outgoing')]
+    CALL_STATUS_CHOICES = [
+        ('CONNECTED', 'Connected'), ('MISSED', 'Missed'), ('REJECTED', 'Rejected'),
+        ('UNANSWERED', 'Unanswered'), ('BUSY', 'Busy'), ('FAILED', 'Failed'),
+    ]
+
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='feedbacks')
+    mentor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='given_feedbacks')
+    feedback_date = models.DateField(default=datetime.date.today, db_index=True)
+    feedback_type = models.CharField(max_length=20, choices=TYPE_CHOICES, default='CALL')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES)
+    feedback = models.TextField(blank=True, default='')
+    next_followup_date = models.DateField(null=True, blank=True)
+
+    # Call details (same shape as LeadInteraction)
+    mobile_call_id = models.CharField(max_length=150, null=True, blank=True, unique=True, db_index=True)
+    customer_number = models.CharField(max_length=50, null=True, blank=True)
+    call_direction = models.CharField(max_length=20, choices=CALL_DIRECTION_CHOICES, null=True, blank=True)
+    call_status = models.CharField(max_length=30, choices=CALL_STATUS_CHOICES, null=True, blank=True)
+    call_duration = models.IntegerField(default=0, help_text="Duration in seconds")
+    start_time = models.DateTimeField(null=True, blank=True)
+    end_time = models.DateTimeField(null=True, blank=True)
+    audio_recording = models.FileField(upload_to='feedback_recordings/%Y/%m/', null=True, blank=True,
+                                       validators=[validate_audio_recording_file])
+    recording_url = models.CharField(max_length=1000, null=True, blank=True)
+
+    # Optional link to a call already logged by the mobile app
+    interaction = models.ForeignKey('crm.LeadInteraction', on_delete=models.SET_NULL,
+                                    null=True, blank=True, related_name='mentor_feedbacks')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-feedback_date', '-created_at']
+
+    def save(self, *args, **kwargs):
+        # Same rule as LeadInteraction: unconnected calls carry no duration or recording
+        if (self.call_status or '').upper() in ['MISSED', 'REJECTED', 'UNANSWERED', 'FAILED']:
+            self.call_duration = 0
+            self.recording_url = None
+            if self.audio_recording:
+                try:
+                    self.audio_recording.delete(save=False)
+                except Exception:
+                    pass
+                self.audio_recording = None
+        if not self.mobile_call_id:
+            self.mobile_call_id = None   # keep the unique constraint happy for blanks
+        super().save(*args, **kwargs)

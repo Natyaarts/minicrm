@@ -1309,6 +1309,161 @@ const fetchCollectedFees = async () => {
 
     const currentMonthStr = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-01`;
 
+
+    // ---- Mentor + Welcome Message ----
+    const getMentorName = (s) =>
+        s?.mentor_name ||
+        s?.primary_mentor_name ||
+        s?.batch_primary_mentor_name ||
+        s?.batch?.primary_mentor_details?.username ||
+        '-';
+
+    const FEEDBACK_STATUS = {
+        CALL_DONE:     { label: 'Call Done',       cls: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
+        NO_ANSWER:     { label: 'No Answer',       cls: 'bg-amber-50 text-amber-700 border-amber-100' },
+        NOT_REACHABLE: { label: 'Not Reachable',   cls: 'bg-orange-50 text-orange-700 border-orange-100' },
+        CALL_BACK:     { label: 'Call Back Later', cls: 'bg-blue-50 text-blue-700 border-blue-100' },
+        MESSAGE_SENT:  { label: 'Message Sent',    cls: 'bg-indigo-50 text-indigo-700 border-indigo-100' },
+        OTHER:         { label: 'Other',           cls: 'bg-slate-100 text-slate-600 border-slate-200' },
+    };
+
+    const todayStr = () => {
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    };
+
+    const renderFeedbackStatus = (s) => {
+        if (s.last_feedback_date === todayStr() && FEEDBACK_STATUS[s.last_feedback_status]) {
+            const f = FEEDBACK_STATUS[s.last_feedback_status];
+            return <span className={`px-2 py-0.5 border rounded-md text-[10px] font-bold ${f.cls}`}>✓ {f.label}</span>;
+        }
+        return (
+            <div className="flex flex-col items-center gap-0.5">
+                <span className="px-2 py-0.5 bg-red-50 text-red-600 border border-red-100 rounded-md text-[10px] font-bold">✗ Not taken today</span>
+                {s.last_feedback_date && <span className="text-[9px] text-slate-400">Last: {s.last_feedback_date}</span>}
+            </div>
+        );
+    };
+
+    const [studentFilterFeedback, setStudentFilterFeedback] = useState('');
+    const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
+    const [feedbackStudent, setFeedbackStudent] = useState(null);
+    const [feedbackHistory, setFeedbackHistory] = useState([]);
+    const [feedbackLoading, setFeedbackLoading] = useState(false);
+    const [feedbackForm, setFeedbackForm] = useState({ status: 'CALL_DONE', feedback: '', next_followup_date: '' });
+    const [feedbackSummary, setFeedbackSummary] = useState(null);
+
+
+
+    const fetchFeedbackSummary = async () => {
+        try {
+            const res = await api.get(`students/feedback_summary/?lead_status=CONVERTED${selectedTeamMentor ? `&mentor_id=${selectedTeamMentor}` : ''}`);
+            setFeedbackSummary(res.data);
+        } catch (err) { console.error('Failed to fetch feedback summary', err); }
+    };
+
+    const openFeedbackModal = async (student) => {
+        setFeedbackStudent(student);
+        setFeedbackForm({ status: 'CALL_DONE', feedback: '', next_followup_date: '' });
+        setIsFeedbackModalOpen(true);
+        setFeedbackLoading(true);
+        try {
+            const res = await api.get(`students/${student.id}/feedbacks/`);
+            setFeedbackHistory(res.data || []);
+        } catch (err) { setFeedbackHistory([]); }
+        finally { setFeedbackLoading(false); }
+    };
+
+    const handleSubmitFeedback = async (e) => {
+        e.preventDefault();
+        setFeedbackLoading(true);
+        try {
+            const res = await api.post(`students/${feedbackStudent.id}/add_feedback/`, feedbackForm);
+            setFeedbackHistory(prev => [res.data, ...prev]);
+            setAllStudents(prev => prev.map(s => s.id === feedbackStudent.id
+                ? { ...s, last_feedback_status: res.data.status, last_feedback_date: res.data.feedback_date } : s));
+            setFeedbackForm({ status: 'CALL_DONE', feedback: '', next_followup_date: '' });
+            fetchFeedbackSummary();
+        } catch (err) {
+            alert(err.response?.data?.error || 'Failed to save feedback');
+        } finally { setFeedbackLoading(false); }
+    };
+
+    const isSuperAdmin = authUser?.role === 'SUPER_ADMIN';
+
+    const renderWelcomeStatus = (s) => s.welcome_sent ? (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-md text-[10px] font-bold">
+            Welcome sent{s.welcome_sent_at ? ` • ${new Date(s.welcome_sent_at).toLocaleDateString('en-IN')}` : ''}
+        </span>
+    ) : (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-50 text-red-600 border border-red-100 rounded-md text-[10px] font-bold">
+            Welcome not sent
+        </span>
+    );
+
+    const isNewAdmission = (s) => s?.is_new_admission === true && !s?.welcome_sent;
+
+    const [isWelcomeModalOpen, setIsWelcomeModalOpen] = useState(false);
+    const [welcomeStudent, setWelcomeStudent] = useState(null);
+    const [welcomeMessage, setWelcomeMessage] = useState('');
+    const [welcomeSending, setWelcomeSending] = useState(false);
+
+    const buildDefaultWelcomeMessage = (s) => [
+        `Hi ${s.first_name || ''},`,
+        '',
+        `Welcome to ${s.course_name || s.program_name || 'our program'}! 🎉`,
+        s.batch_name
+            ? `You have been added to the batch "${s.batch_name}".`
+            : 'Your batch will be assigned shortly.',
+        `Your mentor is ${getMentorName(s)}${s.teacher_name ? ` and your teacher is ${s.teacher_name}` : ''}.`,
+        '',
+        'If you have any questions, feel free to reply to this message.',
+        '',
+        'Best wishes!'
+    ].join('\n');
+
+    const openWelcomeModal = (student) => {
+        setWelcomeStudent(student);
+        setWelcomeMessage(buildDefaultWelcomeMessage(student)); // editable default
+        setIsWelcomeModalOpen(true);
+    };
+
+    const handleSendWelcome = async (e) => {
+        e.preventDefault();
+        if (!welcomeStudent || !welcomeMessage.trim()) return;
+        setWelcomeSending(true);
+        try {
+            // Needs a backend endpoint that stores/sends the message to the student
+            await api.post(`students/${welcomeStudent.id}/send_message/`, {
+                message: welcomeMessage,
+                message_type: 'WELCOME'
+            });
+            alert('Message sent to student successfully!');
+            setIsWelcomeModalOpen(false);
+            fetchStudentsWithPagination();
+        } catch (err) {
+            alert(err.response?.data?.error || 'Failed to send message');
+        } finally {
+            setWelcomeSending(false);
+        }
+    };
+
+    const handleWelcomeWhatsApp = async () => {
+        if (!welcomeStudent?.mobile) return alert('Student has no mobile number');
+        const num = String(welcomeStudent.mobile).replace(/\D/g, '');
+        window.open(`https://wa.me/${num.length === 10 ? '91' + num : num}?text=${encodeURIComponent(welcomeMessage)}`, '_blank');
+        try {
+            await api.post(`students/${welcomeStudent.id}/mark_welcome_sent/`);
+            setAllStudents(prev => prev.map(s =>
+                s.id === welcomeStudent.id ? { ...s, welcome_sent: true } : s
+            ));
+            setIsWelcomeModalOpen(false);
+        } catch (err) {
+            console.error('Failed to mark welcome as sent', err);
+        }
+    };
+
+
     return (
         <div className="min-h-screen w-full bg-slate-50 font-sans text-slate-900 pb-10">
             {/* Top Minimal Navigation */}
@@ -1906,155 +2061,200 @@ const fetchCollectedFees = async () => {
 
                         {/* Full Student List - Desktop Table View */}
                         <div className="hidden md:block overflow-x-auto custom-scrollbar">
-                            <table className="min-w-[1100px] w-full border-separate border-spacing-y-3">
+                            <table className="min-w-[1250px] w-full table-fixed border-separate border-spacing-y-3">
+                                <colgroup>
+                                    <col style={{ width: '220px' }} />  {/* Student */}
+                                    <col style={{ width: '110px' }} />  {/* Program */}
+                                    <col style={{ width: '150px' }} />  {/* Course & Batch */}
+                                    <col style={{ width: '120px' }} />  {/* Mentor */}
+                                    <col style={{ width: '90px' }} />   {/* Total Fee */}
+                                    <col style={{ width: '90px' }} />   {/* Paid Fee */}
+                                    <col style={{ width: '100px' }} />  {/* Due Date */}
+                                    <col style={{ width: '140px' }} />  {/* Monthly Status */}
+                                    <col style={{ width: '300px' }} />  {/* Actions */}
+                                </colgroup>
                                 <thead>
-                                    <tr className="text-left">
-                                        <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Student</th>
-                                        <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-center">Program</th>
-                                        <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-center">Course & Batch</th>
-                                        <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-center">Total Fee</th>
-                                        <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-center">Paid Fee</th>
-                                        <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-center">Due Date</th>
-                                        <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-center">Monthly Status</th>
-                                        <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-right">Actions</th>
+                                    <tr>
+                                        <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest text-center whitespace-nowrap align-middle">Student</th>
+                                        <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest text-center whitespace-nowrap align-middle">Program</th>
+                                        <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest text-center whitespace-nowrap align-middle">Course & Batch</th>
+                                        <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest text-center whitespace-nowrap align-middle">Mentor</th>
+                                        <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest text-center whitespace-nowrap align-middle">Total Fee</th>
+                                        <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest text-center whitespace-nowrap align-middle">Paid Fee</th>
+                                        <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest text-center whitespace-nowrap align-middle">Due Date</th>
+                                        <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest text-center whitespace-nowrap align-middle">Monthly Status</th>
+                                        <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest text-center whitespace-nowrap align-middle">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {allStudents.map((student) => (
-                                        <tr key={student.id} className="group hover:bg-slate-50/50 transition-colors">
-                                            <td className="px-6 py-5 bg-white border-y border-l border-slate-100 rounded-l-2xl first:border-l">
+                                        <tr key={student.id} className="group">
+                                            {/* Student */}
+                                            <td className="px-4 py-4 bg-white border-y border-l border-slate-100 rounded-l-2xl align-middle">
                                                 <div className="flex items-center gap-3">
                                                     <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600 font-bold text-sm shrink-0">
                                                         {student.first_name?.[0]}{student.last_name?.[0] || ''}
                                                     </div>
-                                                    <div>
-                                                        <div className="font-bold text-slate-800 flex items-center gap-2">
-                                                            {student.first_name} {student.last_name}
+                                                    <div className="min-w-0">
+                                                        <div className="font-bold text-slate-800 leading-tight flex flex-wrap items-center gap-x-2 gap-y-1">
+                                                            <span className="break-words">{student.first_name} {student.last_name}</span>
                                                             {student.academic_status === 'ON_BREAK' && (
-                                                                <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-[9px] font-black uppercase rounded-md tracking-widest">On Break</span>
+                                                                <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-[9px] font-black uppercase rounded-md tracking-widest whitespace-nowrap">On Break</span>
                                                             )}
                                                         </div>
-                                                        <div className="text-xs text-slate-400">{student.crm_student_id}</div>
+                                                        <div className="text-xs text-slate-400 mt-0.5 truncate">{student.crm_student_id}</div>
+                                                        {isSuperAdmin && <div className="mt-1.5 [&>span]:whitespace-nowrap">{renderWelcomeStatus(student)}</div>}
                                                     </div>
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-5 bg-white border-y border-slate-100 text-center">
-                                                <span className="px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-[10px] font-black uppercase">
+
+                                            {/* Program */}
+                                            <td className="px-4 py-4 bg-white border-y border-slate-100 text-center align-middle">
+                                                <span className="inline-block max-w-full truncate px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-[10px] font-black uppercase">
                                                     {student.program_name}
                                                 </span>
                                             </td>
-                                            <td className="px-6 py-5 bg-white border-y border-slate-100 text-center text-sm font-medium">
+
+                                            {/* Course & Batch */}
+                                            <td className="px-4 py-4 bg-white border-y border-slate-100 text-center align-middle">
                                                 <div className="flex flex-col items-center gap-0.5">
-                                                    <span className="text-slate-800 font-bold">{student.course_name || student.lms_course_names || <span className="text-slate-300 italic text-xs font-normal">No Course</span>}</span>
-                                                    <span className="text-xs text-slate-500">{student.batch_name || 'Unassigned Batch'}</span>
+                                                    <span className="text-slate-800 font-bold text-sm leading-tight break-words">
+                                                        {student.course_name || student.lms_course_names || <span className="text-slate-300 italic text-xs font-normal">No Course</span>}
+                                                    </span>
+                                                    <span className="text-xs text-slate-500 leading-tight break-words">{student.batch_name || 'Unassigned Batch'}</span>
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-5 bg-white border-y border-slate-100 text-center font-bold text-slate-700">
+
+                                            {/* Mentor */}
+                                            <td className="px-4 py-4 bg-white border-y border-slate-100 text-center align-middle">
+                                                <span className="text-sm font-semibold text-indigo-600 leading-tight break-words">{getMentorName(student)}</span>
+                                            </td>
+
+                                            {/* Total Fee */}
+                                            <td className="px-4 py-4 bg-white border-y border-slate-100 text-center align-middle whitespace-nowrap font-bold text-slate-700">
                                                 ₹{student.total_fee || 0}
                                             </td>
-                                            <td className="px-6 py-5 bg-white border-y border-slate-100 text-center font-bold text-emerald-600">
+
+                                            {/* Paid Fee */}
+                                            <td className="px-4 py-4 bg-white border-y border-slate-100 text-center align-middle whitespace-nowrap font-bold text-emerald-600">
                                                 ₹{student.paid_fee || 0}
                                             </td>
-                                            <td className="px-6 py-5 bg-white border-y border-slate-100 text-center text-sm text-slate-500">
+
+                                            {/* Due Date */}
+                                            <td className="px-4 py-4 bg-white border-y border-slate-100 text-center align-middle whitespace-nowrap text-sm text-slate-500">
                                                 {student.fee_due_date || '-'}
                                             </td>
-                                            <td className="px-6 py-5 bg-white border-y border-slate-100 text-center text-sm">
+
+                                            {/* Monthly Status */}
+                                            <td className="px-4 py-4 bg-white border-y border-slate-100 text-center align-middle text-sm">
                                                 <div className="flex flex-col items-center gap-1">
                                                     {student.monthly_payment_months?.includes(currentMonthStr) ? (
-                                                        <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-xs font-bold rounded border border-emerald-100">
-                                                            Paid
-                                                        </span>
+                                                        <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-xs font-bold rounded border border-emerald-100">Paid</span>
                                                     ) : (
-                                                        <span className="px-2 py-0.5 bg-slate-100 text-slate-500 text-xs font-bold rounded border border-slate-200">
-                                                            Unpaid
-                                                        </span>
+                                                        <span className="px-2 py-0.5 bg-slate-100 text-slate-500 text-xs font-bold rounded border border-slate-200">Unpaid</span>
                                                     )}
-                                                    <div className="flex items-center gap-2">
+                                                    <div className="flex flex-col items-center justify-center gap-1 whitespace-nowrap">
                                                         {student.monthly_payment_months?.includes(currentMonthStr) ? (
                                                             <button
                                                                 onClick={() => handleUnmarkPaid(student)}
-                                                                className="text-[10px] font-bold text-red-500 hover:text-red-700 transition-colors uppercase tracking-wider"
+                                                                className="text-[10px] font-bold text-red-500 hover:text-red-700 transition-colors uppercase tracking-wider whitespace-nowrap"
                                                             >
                                                                 Unmark
                                                             </button>
                                                         ) : (
                                                             <button
                                                                 onClick={() => openMarkPaidModal(student)}
-                                                                className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 transition-colors uppercase tracking-wider"
+                                                                className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 transition-colors uppercase tracking-wider whitespace-nowrap"
                                                             >
                                                                 Mark Paid
                                                             </button>
                                                         )}
                                                         <button
                                                             onClick={() => openHistoryModal(student)}
-                                                            className="text-[10px] font-bold text-slate-400 hover:text-slate-600 transition-colors uppercase tracking-wider flex items-center gap-0.5"
+                                                            className="text-[10px] font-bold text-slate-400 hover:text-slate-600 transition-colors uppercase tracking-wider flex items-center gap-0.5 whitespace-nowrap"
                                                         >
                                                             <History size={10} /> History
                                                         </button>
                                                     </div>
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-5 bg-white border-y border-r border-slate-100 rounded-r-2xl text-right">
-                                                <div className="flex justify-end gap-2 flex-wrap">
-                                                    {/* Manage Fee Button */}
+
+                                            {/* Actions: neat 2-column grid, all buttons same size */}
+                                            <td className="px-4 py-4 bg-white border-y border-r border-slate-100 rounded-r-2xl align-middle">
+                                                <div className="grid grid-cols-2 gap-2 ml-auto w-full max-w-[272px] [&>button]:w-full [&>button]:whitespace-nowrap [&>button]:justify-center [&>button]:flex [&>button]:items-center [&>button]:gap-1 [&>button]:px-2 [&>button]:py-2 [&>button]:rounded-xl [&>button]:text-xs [&>button]:font-bold [&>button]:transition-all">
+
+                                                    {isNewAdmission(student) && (
+                                                        <button
+                                                            onClick={() => openWelcomeModal(student)}
+                                                            className="bg-blue-50 text-blue-700 border border-blue-100 hover:bg-blue-100"
+                                                            title="Send welcome message"
+                                                        >
+                                                            Send Welcome
+                                                        </button>
+                                                    )}
+
+                                                    <button
+                                                        onClick={() => openFeedbackModal(student)}
+                                                        className="bg-blue-50 text-blue-700 border border-blue-100 hover:bg-blue-100"
+                                                        title="View call records and student feedback"
+                                                    >
+                                                        <History size={12} /> Call & Feedback
+                                                    </button>
+
                                                     <button
                                                         onClick={() => handleOpenFeeModal(student)}
-                                                        className="px-3 py-2 rounded-xl text-xs font-bold transition-all bg-emerald-50 text-emerald-700 border border-emerald-100 hover:bg-emerald-100 flex items-center gap-1"
+                                                        className="bg-emerald-50 text-emerald-700 border border-emerald-100 hover:bg-emerald-100"
                                                         title="Manage Fee"
                                                     >
                                                         <IndianRupee size={12} /> Fee
                                                     </button>
-                                                    {/* Handover Button */}
+
                                                     <button
                                                         onClick={() => handleOpenHandoverModal(student)}
-                                                        className="px-3 py-2 rounded-xl text-xs font-bold transition-all bg-purple-50 text-purple-700 border border-purple-100 hover:bg-purple-100 flex items-center gap-1"
+                                                        className="bg-purple-50 text-purple-700 border border-purple-100 hover:bg-purple-100"
                                                         title="Teacher Handover"
                                                     >
                                                         <UserMinus size={12} /> Handover
                                                     </button>
+
                                                     {student.academic_status === 'ON_BREAK' ? (
                                                         <button
-                                                            onClick={() => {
-                                                                setRejoinStudentId(student.id);
-                                                                setIsRejoinModalOpen(true);
-                                                            }}
-                                                            className="px-3 py-2 rounded-xl text-xs font-bold transition-all bg-emerald-50 text-emerald-600 border border-emerald-100 hover:bg-emerald-100"
+                                                            onClick={() => { setRejoinStudentId(student.id); setIsRejoinModalOpen(true); }}
+                                                            className="bg-emerald-50 text-emerald-600 border border-emerald-100 hover:bg-emerald-100"
                                                         >
                                                             Rejoin
                                                         </button>
                                                     ) : (
                                                         <>
                                                             <button
-                                                                onClick={() => {
-                                                                    setBreakStudentId(student.id);
-                                                                    setIsBreakModalOpen(true);
-                                                                }}
-                                                                className="px-3 py-2 rounded-xl text-xs font-bold transition-all bg-orange-50 text-orange-600 border border-orange-100 hover:bg-orange-100"
+                                                                onClick={() => { setBreakStudentId(student.id); setIsBreakModalOpen(true); }}
+                                                                className="bg-orange-50 text-orange-600 border border-orange-100 hover:bg-orange-100"
                                                             >
                                                                 Take Break
                                                             </button>
                                                             {student.academic_status !== 'DISCONTINUED' && (
                                                                 <button
-                                                                    onClick={() => {
-                                                                        setDiscontinueStudentId(student.id);
-                                                                        setIsDiscontinueModalOpen(true);
-                                                                    }}
-                                                                    className="px-3 py-2 rounded-xl text-xs font-bold transition-all bg-red-50 text-red-600 border border-red-100 hover:bg-red-100"
+                                                                    onClick={() => { setDiscontinueStudentId(student.id); setIsDiscontinueModalOpen(true); }}
+                                                                    className="bg-red-50 text-red-600 border border-red-100 hover:bg-red-100"
                                                                 >
                                                                     Discontinue
                                                                 </button>
                                                             )}
                                                         </>
                                                     )}
+
                                                     <button
                                                         onClick={() => handleWiseLinkClick(student)}
-                                                        className={`px-3 py-2 rounded-xl text-xs font-bold transition-all ${student.lms_student_id ? 'bg-indigo-50 text-indigo-600 border border-indigo-100' : 'bg-slate-100 text-slate-600'}`}
+                                                        className={student.lms_student_id
+                                                            ? 'bg-indigo-50 text-indigo-600 border border-indigo-100 hover:bg-indigo-100'
+                                                            : 'bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200'}
                                                     >
                                                         {student.lms_student_id ? 'Linked' : 'Link Wise'}
                                                     </button>
+
                                                     <button
                                                         onClick={() => setSelectedStudentProfile(student)}
-                                                        className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-indigo-600 transition-all shadow-sm"
+                                                        className="bg-slate-900 text-white border border-slate-900 hover:bg-indigo-600 hover:border-indigo-600 shadow-sm"
                                                     >
                                                         View Profile
                                                     </button>
@@ -2064,7 +2264,7 @@ const fetchCollectedFees = async () => {
                                     ))}
                                     {allStudents.length === 0 && (
                                         <tr>
-                                            <td colSpan="8" className="text-center py-10 text-slate-400">
+                                            <td colSpan="9" className="text-center py-10 text-slate-400">
                                                 No students found matching your search.
                                             </td>
                                         </tr>
@@ -2161,6 +2361,14 @@ const fetchCollectedFees = async () => {
                                     </div>
 
                                     <div className="grid grid-cols-2 gap-2 pt-3 border-t border-slate-100">
+                                        <button
+                                            onClick={() => openFeedbackModal(student)}
+                                            className="w-full py-2.5 bg-blue-50 text-blue-700 border border-blue-100 rounded-xl text-xs font-bold flex items-center justify-center gap-2"
+                                        >
+                                            <History size={13} />
+                                            Call & Feedback
+                                        </button>
+
                                         <button
                                             onClick={() => handleWiseLinkClick(student)}
                                             className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all text-center border ${student.lms_student_id ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-slate-100 text-slate-600 border-slate-200'}`}
@@ -3472,7 +3680,7 @@ const fetchCollectedFees = async () => {
                             Manually enter the Wise User UUID for <b>{wiseLinkStudent?.first_name}</b>.
                             <br />
                             <span className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded mt-1 inline-block">
-                                ⚠️ Only use this if Auto-Link fails.
+                                Only use this if Auto-Link fails.
                             </span>
                         </p>
 
@@ -4753,6 +4961,253 @@ const fetchCollectedFees = async () => {
                     </div>
                 </div>
             )}
+
+
+            {isWelcomeModalOpen && welcomeStudent && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-[95]">
+                    <div className="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl animate-fadeIn">
+                        <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-blue-50/50">
+                            <div>
+                                <h2 className="text-lg font-bold text-slate-800">Send Welcome Message</h2>
+                                <p className="text-xs text-slate-500 mt-1">
+                                    To: {welcomeStudent.first_name} {welcomeStudent.last_name} • Mentor: {getMentorName(welcomeStudent)}
+                                </p>
+                            </div>
+                            <button onClick={() => setIsWelcomeModalOpen(false)} className="text-slate-400 hover:text-slate-600 bg-white hover:bg-slate-100 p-2 rounded-full border border-slate-200">
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <form onSubmit={handleSendWelcome} className="p-6 space-y-4">
+                            <div>
+                                <div className="flex justify-between items-center mb-2">
+                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest">Message</label>
+                                    <button
+                                        type="button"
+                                        onClick={() => setWelcomeMessage(buildDefaultWelcomeMessage(welcomeStudent))}
+                                        className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase"
+                                    >
+                                        Reset to default
+                                    </button>
+                                </div>
+                                <textarea
+                                    value={welcomeMessage}
+                                    onChange={(e) => setWelcomeMessage(e.target.value)}
+                                    className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 resize-none h-56 text-sm"
+                                    required
+                                />
+                            </div>
+                            <div className="flex flex-wrap gap-3 justify-end">
+                                <button type="button" onClick={() => setIsWelcomeModalOpen(false)} className="px-5 py-2.5 text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl">Cancel</button>
+                                <button type="button" onClick={handleWelcomeWhatsApp} className="px-5 py-2.5 text-sm font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-100 rounded-xl">
+                                    Open WhatsApp
+                                </button>
+                                {/* <button type="submit" disabled={welcomeSending} className="px-5 py-2.5 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md disabled:opacity-50">
+                                    {welcomeSending ? 'Sending...' : 'Send Message'}
+                                </button> */}
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+        
+            {isFeedbackModalOpen && feedbackStudent && (
+                <div className="fixed inset-0 z-[110] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-white w-full max-w-4xl max-h-[90vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col">
+
+                        {/* Header */}
+                        <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-blue-50/50">
+                            <div>
+                                <h2 className="text-lg font-bold text-slate-800">
+                                    Call Records & Student Feedback
+                                </h2>
+                                <p className="text-sm text-slate-500 mt-1">
+                                    {feedbackStudent.first_name} {feedbackStudent.last_name}
+                                    {' '}• {feedbackStudent.crm_student_id}
+                                </p>
+                            </div>
+
+                            <button
+                                onClick={() => setIsFeedbackModalOpen(false)}
+                                className="p-2 rounded-full bg-white border border-slate-200 text-slate-500 hover:bg-slate-100"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        {/* Content */}
+                        <div className="p-6 overflow-y-auto flex-1">
+
+                            {feedbackLoading ? (
+                                <div className="py-12 text-center text-slate-500">
+                                    Loading call records...
+                                </div>
+                            ) : feedbackHistory.length === 0 ? (
+                                <div className="py-12 text-center">
+                                    <History size={35} className="mx-auto text-slate-300 mb-3" />
+                                    <p className="font-semibold text-slate-600">
+                                        No call records or feedback found
+                                    </p>
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    {feedbackHistory.map((item, index) => {
+                                        const recording =
+                                            item.recording_url || item.audio_recording;
+
+                                        return (
+                                            <div
+                                                key={item.id || index}
+                                                className="border border-slate-200 rounded-2xl p-5 space-y-4"
+                                            >
+                                                {/* Feedback heading */}
+                                                <div className="flex flex-wrap justify-between gap-3">
+                                                    <div>
+                                                        <h3 className="font-bold text-slate-800">
+                                                            {item.type_display || item.feedback_type || 'Student Feedback'}
+                                                        </h3>
+
+                                                        <p className="text-xs text-slate-400 mt-1">
+                                                            {item.feedback_date
+                                                                ? new Date(item.feedback_date).toLocaleDateString('en-IN')
+                                                                : '-'}
+                                                            {' '}• Connected by: {item.mentor_name || 'System'}
+                                                        </p>
+                                                    </div>
+
+                                                    <span className="px-3 py-1 rounded-lg bg-blue-50 text-blue-700 border border-blue-100 text-xs font-bold h-fit">
+                                                        {item.status_display || item.status || 'N/A'}
+                                                    </span>
+                                                </div>
+
+                                                {/* Call information */}
+                                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                                    <div className="bg-slate-50 p-3 rounded-xl">
+                                                        <p className="text-[10px] uppercase font-bold text-slate-400">
+                                                            Customer Number
+                                                        </p>
+                                                        <p className="text-sm font-semibold text-slate-700 mt-1">
+                                                            {item.customer_number || '-'}
+                                                        </p>
+                                                    </div>
+
+                                                    <div className="bg-slate-50 p-3 rounded-xl">
+                                                        <p className="text-[10px] uppercase font-bold text-slate-400">
+                                                            Direction
+                                                        </p>
+                                                        <p className="text-sm font-semibold text-slate-700 mt-1">
+                                                            {item.call_direction || '-'}
+                                                        </p>
+                                                    </div>
+
+                                                    <div className="bg-slate-50 p-3 rounded-xl">
+                                                        <p className="text-[10px] uppercase font-bold text-slate-400">
+                                                            Call Status
+                                                        </p>
+                                                        <p className="text-sm font-semibold text-slate-700 mt-1">
+                                                            {item.call_status || '-'}
+                                                        </p>
+                                                    </div>
+
+                                                    <div className="bg-slate-50 p-3 rounded-xl">
+                                                        <p className="text-[10px] uppercase font-bold text-slate-400">
+                                                            Duration
+                                                        </p>
+                                                        <p className="text-sm font-semibold text-slate-700 mt-1">
+                                                            {item.call_duration != null
+                                                                ? `${item.call_duration} seconds`
+                                                                : '-'}
+                                                        </p>
+                                                    </div>
+
+                                                    <div className="bg-slate-50 p-3 rounded-xl">
+                                                        <p className="text-[10px] uppercase font-bold text-slate-400">
+                                                            Start Time
+                                                        </p>
+                                                        <p className="text-sm font-semibold text-slate-700 mt-1">
+                                                            {item.start_time
+                                                                ? new Date(item.start_time).toLocaleString('en-IN')
+                                                                : '-'}
+                                                        </p>
+                                                    </div>
+
+                                                    <div className="bg-slate-50 p-3 rounded-xl">
+                                                        <p className="text-[10px] uppercase font-bold text-slate-400">
+                                                            End Time
+                                                        </p>
+                                                        <p className="text-sm font-semibold text-slate-700 mt-1">
+                                                            {item.end_time
+                                                                ? new Date(item.end_time).toLocaleString('en-IN')
+                                                                : '-'}
+                                                        </p>
+                                                    </div>
+                                                </div>
+
+                                                {/* Student feedback */}
+                                                <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-4">
+                                                    <p className="text-xs font-bold uppercase tracking-wide text-indigo-700 mb-2">
+                                                        Feedback Details
+                                                    </p>
+
+                                                    <p className="text-sm text-slate-700 whitespace-pre-wrap">
+                                                        {item.feedback || 'No feedback entered'}
+                                                    </p>
+
+                                                    {item.next_followup_date && (
+                                                        <p className="text-xs text-indigo-600 font-semibold mt-3">
+                                                            Next Follow-up: {item.next_followup_date}
+                                                        </p>
+                                                    )}
+                                                </div>
+
+                                                {/* Recording */}
+                                                <div className="border-t border-slate-100 pt-4">
+                                                    <p className="text-xs font-bold text-slate-600 mb-3">
+                                                        Call Recording
+                                                    </p>
+
+                                                    {recording ? (
+                                                        <audio
+                                                            controls
+                                                            preload="none"
+                                                            src={recording}
+                                                            className="w-full"
+                                                        >
+                                                            Your browser does not support audio playback.
+                                                        </audio>
+                                                    ) : (
+                                                        <p className="text-xs text-slate-400">
+                                                            No recording available for this call.
+                                                        </p>
+                                                    )}
+
+                                                    {item.mobile_call_id && (
+                                                        <p className="text-[10px] text-slate-400 mt-2">
+                                                            Call ID: {item.mobile_call_id}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Footer */}
+                        <div className="p-4 border-t border-slate-100 flex justify-end">
+                            <button
+                                onClick={() => setIsFeedbackModalOpen(false)}
+                                className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-sm font-bold"
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+
         </div>
     );
 

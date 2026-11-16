@@ -169,7 +169,7 @@ const KanbanBoard = ({ program, subProgram, course, searchTerm, hideConverted, s
                 <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between text-amber-800 text-xs shadow-sm">
                     <div className="flex items-center gap-2">
                         <span className="font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300">
-                            ⚠️ {unresolvedLeads.length} Unresolved Lead{unresolvedLeads.length > 1 ? 's' : ''}
+                            {unresolvedLeads.length} Unresolved Lead{unresolvedLeads.length > 1 ? 's' : ''}
                         </span>
                         <span>
                             These leads have unmapped stage IDs or legacy enum values that do not match the current pipeline stages. Drag them to any valid column below to reclassify them.
@@ -230,7 +230,7 @@ const KanbanBoard = ({ program, subProgram, course, searchTerm, hideConverted, s
                                         {lead.campaign_name && (
                                             <div className="mb-1.5">
                                                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-purple-50 text-purple-700 rounded text-[10px] font-semibold border border-purple-200 max-w-full truncate">
-                                                    📢 {lead.campaign_name}
+                                                    {lead.campaign_name}
                                                 </span>
                                             </div>
                                         )}
