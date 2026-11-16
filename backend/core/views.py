@@ -15,6 +15,9 @@ import uuid
 from django.utils import timezone
 from datetime import timedelta
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from django.utils.dateparse import parse_datetime
+from django.core.exceptions import ValidationError as DjangoValidationError
+from .validators import validate_audio_recording_file
 
 
 from .models import Program, SubProgram, Course, Batch, Student, Transaction, Document, SyllabusPart, ClassSession, Attendance, BatchResource, Exam, ExamResult, Question, QuestionOption, StudentSubmission, MonthlyPayment, StudentTeacherHandover, StudentFeedback
@@ -27,7 +30,9 @@ from .serializers import (
 from rest_framework.views import APIView
 from .permissions import DynamicRolePermission, IsMentorOwner
 
-MENTOR_ROLES = ['MENTOR', 'TEACHER', 'HEAD - MENTOR', 'ACADEMIC MENTOR']
+MENTOR_ROLES = ['MENTOR', 'TEACHER', 'HEAD - MENTOR', 'ACADEMIC MENTOR', 'ACADEMIC', 'ACADEMIC_COORDINATOR', 'ADMIN', 'SUPER_ADMIN' ]
+
+UNCONNECTED = ('MISSED', 'REJECTED', 'UNANSWERED', 'FAILED', 'BUSY')
 
 class IsAdminOrReadOnly(permissions.BasePermission):
     def has_permission(self, request, view):
@@ -2111,12 +2116,7 @@ class StudentViewSet(viewsets.ModelViewSet):
 
 
 
-    from django.db.models import Q, Count, Sum, F
-    from django.utils.dateparse import parse_datetime
-    from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
-    from django.core.exceptions import ValidationError as DjangoValidationError
 
-    UNCONNECTED = ('MISSED', 'REJECTED', 'UNANSWERED', 'FAILED', 'BUSY')
 
     @action(detail=True, methods=['post'])
     def add_feedback(self, request, pk=None):

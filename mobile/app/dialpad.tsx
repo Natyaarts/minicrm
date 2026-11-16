@@ -81,6 +81,8 @@ const Dialpad = () => {
   const [feedbackStatus, setFeedbackStatus] = useState('CALL_DONE');
   const callWindowRef = useRef({ start: 0, end: 0 });
 
+  const sawOffhookRef = useRef(false);
+
   const isStageMatching = (stage: any, statusVal: any) => {
     if (!stage || statusVal === null || statusVal === undefined || String(statusVal).trim() === '') return false;
     const raw = String(statusVal).trim();
@@ -281,6 +283,22 @@ const Dialpad = () => {
     };
   }, [callStatus]);
 
+
+  const waitForCallLogDuration = async (phone: string, startTime: number) => {
+    for (let i = 0; i < 8; i++) {
+      try {
+        const d = await getLatestCallLogDuration(phone, startTime - 10000, 'OUTGOING');
+        console.log(`[dialpad] CallLog try ${i}:`, d);
+        if (typeof d === 'number' && d > 0) return d;
+      } catch (e) {
+        console.warn('[dialpad] CallLog error', e);
+      }
+      await new Promise(r => setTimeout(r, 750));
+    }
+    return 0;
+  };
+
+
   const finalizeCallSession = async () => {
     if (isFinalizingRef.current) return;
     isFinalizingRef.current = true;
@@ -307,20 +325,9 @@ const Dialpad = () => {
 
     // 1. Android CallLog is the single authority for call connection status and duration
     if (Platform.OS === 'android' && targetPhone) {
-      try {
-        const logDuration = await getLatestCallLogDuration(targetPhone, startTime, 'OUTGOING');
-        if (typeof logDuration === 'number' && logDuration > 0) {
-          authoritativeDuration = logDuration;
-          isConnected = true;
-        } else {
-          authoritativeDuration = 0;
-          isConnected = false;
-        }
-      } catch (err) {
-        console.warn('[dialpad] Failed to query CallLog duration:', err);
-        authoritativeDuration = 0;
-        isConnected = false;
-      }
+      const logDuration = await waitForCallLogDuration(targetPhone, startTime);
+      authoritativeDuration = logDuration;
+      isConnected = logDuration > 0;
     }
 
     // Abort if a newer call session was started while awaiting CallLog
@@ -404,7 +411,9 @@ const Dialpad = () => {
       if (nextAppState === 'active') {
         syncPendingRecordings().catch(() => {});
         const currentStatus = callStatusRef.current;
-        if ((currentStatus === 'CALLING' || currentStatus === 'ACTIVE') && lastBackgroundTimeRef.current > 0) {
+        if ((currentStatus === 'CALLING' || currentStatus === 'ACTIVE')
+    && sawOffhookRef.current
+    && lastBackgroundTimeRef.current > 0) {
           const timeInBackground = Date.now() - lastBackgroundTimeRef.current;
           
           if (timeInBackground > 2000) {
@@ -483,31 +492,24 @@ const Dialpad = () => {
     });
 
     // 2. Listen for phone state changes from native BroadcastReceiver
-    let callStarted = false;
     const unsubscribeState = listenToCallState(async (event) => {
-      console.log("Call State Event received in JS:", event);
       const { state } = event;
-
-      // Only process OFFHOOK if we explicitly initiated this call via the dialpad
       if (state === 'OFFHOOK') {
         if (callStatusRef.current === 'CALLING' || callStatusRef.current === 'ACTIVE') {
-          callStarted = true;
-          if (callStartTimeRef.current === 0) {
-            callStartTimeRef.current = Date.now();
-          }
+          sawOffhookRef.current = true;
+          if (callStartTimeRef.current === 0) callStartTimeRef.current = Date.now();
           setCallStatus('ACTIVE');
           startTimer();
-          // Automatically start recording when call is active
-          const filePath = await startNativeRecording(phoneRef.current);
-          console.log("Call auto-started recording. Fallback path:", filePath);
+          await startNativeRecording(phoneRef.current);
         }
       } else if (state === 'IDLE') {
-        if (callStarted || callStatusRef.current === 'CALLING' || callStatusRef.current === 'ACTIVE') {
-          callStarted = false;
+        if (sawOffhookRef.current) {
+          sawOffhookRef.current = false;
           await finalizeCallSession();
         }
       }
     });
+    
 
     return () => {
       stopTimer();
@@ -575,6 +577,7 @@ const Dialpad = () => {
     setNextFollowupDate(null);
     callStartTimeRef.current = Date.now();
     isFinalizingRef.current = false;
+    sawOffhookRef.current = false;
 
     // Launch native system dialer
     try {
@@ -809,10 +812,10 @@ const Dialpad = () => {
       return;
     }
     const isConnected = callDuration > 0 && callStatusState === 'CONNECTED';
-    if (!isConnected && feedbackStatus === 'CALL_DONE') {
-      Alert.alert('Call not connected', 'The phone logged this call as not connected. Choose No Answer or Call Back.');
-      return;
-    }
+    // if (!isConnected && feedbackStatus === 'CALL_DONE') {
+    //   Alert.alert('Call not connected', 'The phone logged this call as not connected. Choose No Answer or Call Back.');
+    //   return;
+    // }
 
     setIsSubmitting(true);
     const cleanNumber = (phoneNumber || '').replace(/[\s\-().]/g, '');
@@ -824,7 +827,7 @@ const Dialpad = () => {
       mobile_call_id: mobileCallId,
       customer_number: cleanNumber,
       call_direction: 'OUTGOING',
-      call_status: isConnected ? 'CONNECTED' : 'MISSED',
+      call_status: isConnected ? 'CONNECTED' : (feedbackStatus === 'CALL_DONE' ? undefined : 'MISSED'),
       call_duration: isConnected ? callDuration : 0,
     };
     const { start, end } = callWindowRef.current;
@@ -906,7 +909,7 @@ const Dialpad = () => {
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
                 {FEEDBACK_STATUSES.map(s => {
                   const active = feedbackStatus === s.value;
-                  const disabled = s.value === 'CALL_DONE' && callStatusState !== 'CONNECTED';
+                  const disabled = false;
                   return (
                     <TouchableOpacity
                       key={s.value}
