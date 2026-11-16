@@ -11,11 +11,26 @@ import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/d
 import { Audio } from 'expo-av';
 import client from '../src/api/client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { addStudentFeedback, uploadFeedbackRecording } from '../src/api/mentors';
+
+
+const FEEDBACK_STATUSES = [
+  { value: 'CALL_DONE', label: 'Call Done' },
+  { value: 'NO_ANSWER', label: 'No Answer' },
+  { value: 'NOT_REACHABLE', label: 'Not Reachable' },
+  { value: 'CALL_BACK', label: 'Call Back Later' },
+  { value: 'MESSAGE_SENT', label: 'Message Sent' },
+  { value: 'OTHER', label: 'Other' },
+];
+const toYMD = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
 
 const { width } = Dimensions.get('window');
 
 const Dialpad = () => {
-  const { leadId, phone } = useLocalSearchParams();
+  const { leadId, phone, mode } = useLocalSearchParams();
+  const isMentorMode = mode === 'mentor';
   const [phoneNumber, setPhoneNumber] = useState((phone as string) || '');
   const [callStatus, setCallStatus] = useState<'IDLE' | 'CALLING' | 'ACTIVE' | 'POST_CALL'>('IDLE');
   const [activeCallTimer, setActiveCallTimer] = useState(0);
@@ -62,6 +77,9 @@ const Dialpad = () => {
   const activeSessionIdRef = useRef<string>('');
   const currentMobileCallIdRef = useRef<string>('');
 
+  const [feedbackStatus, setFeedbackStatus] = useState('CALL_DONE');
+  const callWindowRef = useRef({ start: 0, end: 0 });
+
   // Reset all call-specific state whenever route parameters (leadId or phone) change
   useEffect(() => {
     if (phone && typeof phone === 'string') {
@@ -86,7 +104,7 @@ const Dialpad = () => {
       activeSessionIdRef.current = '';
       currentMobileCallIdRef.current = '';
     }
-  }, [leadId, phone]);
+  }, [leadId, phone, mode]);
 
   useEffect(() => {
     phoneRef.current = phoneNumber;
@@ -106,7 +124,7 @@ const Dialpad = () => {
 
   useEffect(() => {
     loadUser();
-    fetchPipelineStages();
+    if (!isMentorMode) fetchPipelineStages();
   }, []);
 
   const fetchPipelineStages = async () => {
@@ -187,7 +205,11 @@ const Dialpad = () => {
     }
   }, [activeTab]);
 
-  const hasDialerAccess = ['SALES', 'TEAM_LEAD', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD', 'ADMIN', 'SUPER_ADMIN', 'MENTOR', 'HEAD - MENTOR', 'ACADEMIC MENTOR'].includes(user?.role) || Boolean(user?.is_manager);
+  const SALES_ROLES = ['SALES','TEAM_LEAD','SALES_HEAD','SALES_MANAGER','MANAGER','SALES_LEAD','ADMIN','SUPER_ADMIN'];
+  const MENTOR_ROLES = ['MENTOR', 'TEACHER', 'HEAD - MENTOR', 'ACADEMIC MENTOR', 'ACADEMIC', 'ACADEMIC_COORDINATOR', 'ADMIN', 'SUPER_ADMIN'];
+  const hasDialerAccess = isMentorMode
+    ? MENTOR_ROLES.includes(user?.role)
+    : SALES_ROLES.includes(user?.role) || Boolean(user?.is_manager);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -328,6 +350,8 @@ const Dialpad = () => {
     setCallDuration(finalDuration);
     callDurationRef.current = finalDuration;
     setCallStatusState(finalStatus);
+    callWindowRef.current = { start: startTime, end: Date.now() };
+    setFeedbackStatus(finalStatus === 'CONNECTED' ? 'CALL_DONE' : 'NO_ANSWER');
     callStatusStateRef.current = finalStatus;
     setIsProcessingRecording(false);
     isFinalizingRef.current = false;
@@ -745,6 +769,79 @@ const Dialpad = () => {
     }
   };
 
+  const handleMentorFeedbackSubmit = async () => {
+    if (isSubmitting) return;
+    if (!leadId || String(leadId) === '0') {
+      Alert.alert('No student', 'Open the dialpad from a student to save feedback.');
+      return;
+    }
+    const isConnected = callDuration > 0 && callStatusState === 'CONNECTED';
+    if (!isConnected && feedbackStatus === 'CALL_DONE') {
+      Alert.alert('Call not connected', 'The phone logged this call as not connected. Choose No Answer or Call Back.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    const cleanNumber = (phoneNumber || '').replace(/[\s\-().]/g, '');
+    const mobileCallId = currentMobileCallIdRef.current || generateMobileCallId(cleanNumber, 'OUTGOING');
+
+    const payload: any = {
+      status: feedbackStatus,
+      feedback: postCallNotes.trim(),
+      mobile_call_id: mobileCallId,
+      customer_number: cleanNumber,
+      call_direction: 'OUTGOING',
+      call_status: isConnected ? 'CONNECTED' : 'MISSED',
+      call_duration: isConnected ? callDuration : 0,
+    };
+    const { start, end } = callWindowRef.current;
+    if (start) payload.start_time = new Date(start).toISOString();
+    if (end) payload.end_time = new Date(end).toISOString();
+    if (nextFollowupDate) payload.next_followup_date = toYMD(nextFollowupDate); // DateField, not datetime
+
+    try {
+      await addStudentFeedback(leadId, payload); // idempotent on mobile_call_id, safe to retry
+    } catch (e: any) {
+      setIsSubmitting(false);
+      Alert.alert('Could not save', e?.response?.data?.error || e?.response?.data?.detail || 'Check your connection and tap Save again.');
+      return; // stay on this screen so nothing is lost
+    }
+
+    // Recording (only for connected calls)
+    const fileUri = isConnected ? (recordedFilePath || manualRecordingFile?.uri) : null;
+    let recordingFailed = false;
+    if (fileUri) {
+      const uri = fileUri.startsWith('/') ? `file://${fileUri}` : fileUri;
+      const ext = (uri.match(/\.([a-zA-Z0-9]+)$/)?.[1] || 'm4a').toLowerCase();
+      const types: any = { mp3: 'audio/mpeg', wav: 'audio/wav', amr: 'audio/amr', aac: 'audio/aac', m4a: 'audio/m4a' };
+      try {
+        setRecordingUploadStatus('Uploading recording...');
+        await uploadFeedbackRecording(leadId, {
+          mobileCallId, uri, name: `recording_${Date.now()}.${ext}`, type: types[ext] || 'audio/m4a',
+        });
+        if (recordedFilePath) await markRecordingConsumed(recordedFilePath); // verify signature in SyncManager
+      } catch (e) {
+        recordingFailed = true;
+      } finally {
+        setRecordingUploadStatus(null);
+      }
+    }
+
+  setIsSubmitting(false);
+  currentMobileCallIdRef.current = '';
+  activeSessionIdRef.current = '';
+  Alert.alert(
+    recordingFailed ? 'Saved, recording failed' : '✅ Saved',
+    recordingFailed
+      ? 'Feedback saved, but the recording upload failed. You can attach it later from the student.'
+      : 'Call feedback saved.',
+    [{ text: 'OK', onPress: () => router.back() }]
+  );
+  setCallStatus('IDLE'); callStatusRef.current = 'IDLE';
+  setPostCallNotes(''); setRecordedFilePath(null); setManualRecordingFile(null); setNextFollowupDate(null);
+};
+
+
   const formatDuration = (seconds: number) => {
     const m = Math.floor(seconds / 60).toString().padStart(2, '0');
     const s = (seconds % 60).toString().padStart(2, '0');
@@ -770,25 +867,49 @@ const Dialpad = () => {
             Duration: <Text style={{ fontWeight: 'bold', color: '#1A202C' }}>{formatDuration(callDuration)}</Text>
           </Text>
 
-          <Text style={{ fontSize: 14, fontWeight: '600', color: '#4A5568', marginBottom: 10 }}>Update Lead Stage</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }}>
-            <View style={{ flexDirection: 'row', gap: 10, paddingVertical: 4 }}>
-              {pipelineStages.map(stage => (
-                <TouchableOpacity 
-                  key={stage.id} 
-                  onPress={() => setPipelineStatus(stage.id)}
-                  style={{
-                    paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20,
-                    backgroundColor: pipelineStatus === stage.id ? '#3182CE' : '#EBF8FF',
-                  }}
-                >
-                  <Text style={{ color: pipelineStatus === stage.id ? '#FFF' : '#3182CE', fontWeight: 'bold', fontSize: 12 }}>
-                    {stage.name}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </ScrollView>
+          {isMentorMode ? (
+            <>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: '#4A5568', marginBottom: 10 }}>Outcome</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
+                {FEEDBACK_STATUSES.map(s => {
+                  const active = feedbackStatus === s.value;
+                  const disabled = s.value === 'CALL_DONE' && callStatusState !== 'CONNECTED';
+                  return (
+                    <TouchableOpacity
+                      key={s.value}
+                      disabled={disabled}
+                      onPress={() => setFeedbackStatus(s.value)}
+                      style={{ paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, opacity: disabled ? 0.35 : 1,
+                              backgroundColor: active ? '#D97706' : '#FEF3C7' }}>
+                      <Text style={{ color: active ? '#FFF' : '#92400E', fontWeight: 'bold', fontSize: 12 }}>{s.label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </>
+          ) : (
+            <>
+            <Text style={{ fontSize: 14, fontWeight: '600', color: '#4A5568', marginBottom: 10 }}>Update Lead Stage</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }}>
+              <View style={{ flexDirection: 'row', gap: 10, paddingVertical: 4 }}>
+                {pipelineStages.map(stage => (
+                  <TouchableOpacity 
+                    key={stage.id} 
+                    onPress={() => setPipelineStatus(stage.id)}
+                    style={{
+                      paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20,
+                      backgroundColor: pipelineStatus === stage.id ? '#3182CE' : '#EBF8FF',
+                    }}
+                  >
+                    <Text style={{ color: pipelineStatus === stage.id ? '#FFF' : '#3182CE', fontWeight: 'bold', fontSize: 12 }}>
+                      {stage.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+            </>
+          )}
 
           <Text style={{ fontSize: 14, fontWeight: '600', color: '#4A5568', marginBottom: 10 }}>Call Notes</Text>
           <TextInput
@@ -903,7 +1024,7 @@ const Dialpad = () => {
 
           <TouchableOpacity 
             style={{ backgroundColor: (isProcessingRecording || isSubmitting) ? '#A0AEC0' : '#10B981', padding: 16, borderRadius: 8, alignItems: 'center', marginTop: 30 }}
-            onPress={handlePostCallSubmit}
+            onPress={isMentorMode ? handleMentorFeedbackSubmit : handlePostCallSubmit}
             disabled={isProcessingRecording || isSubmitting}
           >
             {(isProcessingRecording || isSubmitting) ? (
@@ -914,7 +1035,7 @@ const Dialpad = () => {
                 </Text>
               </View>
             ) : (
-              <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 16 }}>Save & Upload Log</Text>
+              <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 16 }}>{isMentorMode ? 'Save Feedback' : 'Save & Upload Log'}</Text>
             )}
           </TouchableOpacity>
 
@@ -1178,6 +1299,7 @@ const Dialpad = () => {
       </View>
 
       {/* Segmented Tab View Selector */}
+      {!isMentorMode && (
       <View style={styles.tabContainer}>
         <TouchableOpacity 
           style={[styles.tabButton, activeTab === 'dialer' && styles.activeTabButton]}
@@ -1194,6 +1316,7 @@ const Dialpad = () => {
           <Text style={[styles.tabText, activeTab === 'history' && styles.activeTabText]}>Recent Calls</Text>
         </TouchableOpacity>
       </View>
+      )}
 
       {/* Recording Upload Status Banner */}
       {recordingUploadStatus && (

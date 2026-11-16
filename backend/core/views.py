@@ -27,6 +27,8 @@ from .serializers import (
 from rest_framework.views import APIView
 from .permissions import DynamicRolePermission, IsMentorOwner
 
+MENTOR_ROLES = ['MENTOR', 'TEACHER', 'HEAD - MENTOR', 'ACADEMIC MENTOR']
+
 class IsAdminOrReadOnly(permissions.BasePermission):
     def has_permission(self, request, view):
         if request.method in permissions.SAFE_METHODS:
@@ -488,14 +490,14 @@ class StudentViewSet(viewsets.ModelViewSet):
                 'edit_payment', 'delete_payment'
             ]:
                 if user_role in [
-                    'STUDENT', 'MENTOR', 'TEACHER', 'ACADEMIC',
-                    'ACADEMIC_COORDINATOR', 'ADMIN', 'SUPER_ADMIN'
+                    'STUDENT', 'ACADEMIC', 'ACADEMIC_COORDINATOR',
+                    'ADMIN', 'SUPER_ADMIN', *MENTOR_ROLES
                 ]:
                     return [permissions.IsAuthenticated()]
 
 
-            elif self.action in ['add_feedback', 'feedbacks', 'recent_feedbacks', 'feedback_summary']:
-                if user_role in ['MENTOR', 'TEACHER', 'ACADEMIC', 'ACADEMIC_COORDINATOR', 'ADMIN', 'SUPER_ADMIN']:
+            elif self.action in ['add_feedback', 'feedback_recording', 'feedbacks', 'recent_feedbacks', 'feedback_summary']:
+                if user_role in ['ACADEMIC', 'ACADEMIC_COORDINATOR', 'ADMIN', 'SUPER_ADMIN', *MENTOR_ROLES]:
                     return [permissions.IsAuthenticated()]
 
         return super().get_permissions()
@@ -643,7 +645,7 @@ class StudentViewSet(viewsets.ModelViewSet):
                 if subordinates:
                     team_user_ids = [user.id] + [s.id for s in subordinates]
                     qs = qs.filter(assigned_to_id__in=team_user_ids)
-        elif user.role in ['MENTOR', 'TEACHER']:
+        elif user.role in MENTOR_ROLES:
             # Mobile app sends own_only=true: only this mentor's own batches, no subordinates
             own_only = self.request.query_params.get('own_only') == 'true'
             subordinates = [] if own_only else list(user.get_all_subordinates())
@@ -2109,22 +2111,90 @@ class StudentViewSet(viewsets.ModelViewSet):
 
 
 
+    from django.db.models import Q, Count, Sum, F
+    from django.utils.dateparse import parse_datetime
+    from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+    from django.core.exceptions import ValidationError as DjangoValidationError
+
+    UNCONNECTED = ('MISSED', 'REJECTED', 'UNANSWERED', 'FAILED', 'BUSY')
 
     @action(detail=True, methods=['post'])
     def add_feedback(self, request, pk=None):
-        student = self.get_object()   # already scoped to the mentor's own students
-        status_val = request.data.get('status')
+        student = self.get_object()
+        d = request.data
+
+        status_val = d.get('status')
         if status_val not in dict(StudentFeedback.STATUS_CHOICES):
             return Response({'error': 'Valid status is required'}, status=400)
+
+        # Idempotent retry
+        mcid = d.get('mobile_call_id') or None
+        if mcid:
+            existing = StudentFeedback.objects.filter(mobile_call_id=mcid).first()
+            if existing:
+                return Response(StudentFeedbackSerializer(existing).data, status=200)
+
+        call_status = (d.get('call_status') or '').upper() or None
+        if call_status and call_status not in dict(StudentFeedback.CALL_STATUS_CHOICES):
+            call_status = None
+        call_direction = (d.get('call_direction') or '').upper() or None
+        if call_direction not in dict(StudentFeedback.CALL_DIRECTION_CHOICES):
+            call_direction = None
+        try:
+            duration = max(0, int(d.get('call_duration') or 0))
+        except (TypeError, ValueError):
+            duration = 0
+
+        if call_status in UNCONNECTED and status_val == 'CALL_DONE':
+            return Response(
+                {'error': 'The phone logged this call as not connected. Choose No Answer or Call Back.'},
+                status=400)
+
+        has_call = bool(mcid or call_status)
         fb = StudentFeedback.objects.create(
             student=student,
             mentor=request.user,
-            feedback_date=request.data.get('feedback_date') or timezone.localdate(),
+            feedback_date=d.get('feedback_date') or timezone.localdate(),
+            feedback_type='CALL' if has_call else (d.get('feedback_type') or 'CALL'),
             status=status_val,
-            feedback=(request.data.get('feedback') or '').strip(),
-            next_followup_date=request.data.get('next_followup_date') or None,
+            feedback=(d.get('feedback') or '').strip(),
+            next_followup_date=d.get('next_followup_date') or None,
+            mobile_call_id=mcid,
+            customer_number=d.get('customer_number') or None,
+            call_direction=call_direction,
+            call_status=call_status,
+            call_duration=duration,
+            start_time=parse_datetime(d.get('start_time') or '') if d.get('start_time') else None,
+            end_time=parse_datetime(d.get('end_time') or '') if d.get('end_time') else None,
         )
         return Response(StudentFeedbackSerializer(fb).data, status=201)
+
+    @action(detail=True, methods=['post'], url_path='feedback-recording',
+            parser_classes=[MultiPartParser, FormParser, JSONParser])
+    def feedback_recording(self, request, pk=None):
+        student = self.get_object()
+        fb = None
+        if request.data.get('feedback_id'):
+            fb = StudentFeedback.objects.filter(student=student, pk=request.data['feedback_id']).first()
+        if not fb and request.data.get('mobile_call_id'):
+            fb = StudentFeedback.objects.filter(student=student,
+                                                mobile_call_id=request.data['mobile_call_id']).first()
+        if not fb:
+            return Response({'error': 'Feedback not found'}, status=404)
+        if (fb.call_status or '').upper() in UNCONNECTED:
+            return Response({'error': 'Recordings cannot be attached to unconnected calls'}, status=400)
+
+        f = request.FILES.get('audio_recording')
+        if not f:
+            return Response({'error': 'audio_recording file is required'}, status=400)
+        try:
+            validate_audio_recording_file(f)      # FileField validators don't run on .save()
+        except DjangoValidationError as e:
+            return Response({'error': '; '.join(e.messages)}, status=400)
+
+        fb.audio_recording = f
+        fb.save()
+        return Response(StudentFeedbackSerializer(fb).data)
 
     @action(detail=True, methods=['get'])
     def feedbacks(self, request, pk=None):
@@ -2181,7 +2251,7 @@ class StudentViewSet(viewsets.ModelViewSet):
             pass
 
         # Mentors and teachers see batches assigned to them.
-        elif role in ['MENTOR', 'TEACHER']:
+        elif role in MENTOR_ROLES:
             qs = qs.filter(
                 Q(primary_mentor=user) |
                 Q(secondary_mentors=user) |

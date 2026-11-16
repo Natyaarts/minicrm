@@ -32,6 +32,20 @@ export const addStudentFeedback = async (studentId, payload) => {
   return response.data;
 };
 
+
+export const uploadFeedbackRecording = async (studentId, p) => {
+  // p = { mobileCallId, uri, name, type }
+  const form = new FormData();
+  form.append('mobile_call_id', p.mobileCallId);
+  form.append('audio_recording', { uri: p.uri, name: p.name, type: p.type });
+  const response = await client.post(`/students/${studentId}/feedback-recording/`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120000,
+  });
+  return response.data;
+};
+
+
 // Same numbers as the web Mentor dashboard (students_all = total, students = active)
 export const getMentorDashboardStats = async (params = {}) => {
   const response = await client.get('/dashboard-stats/', { params: { own_only: 'true', ...params } });

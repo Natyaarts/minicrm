@@ -160,7 +160,7 @@ export default function MentorsScreen() {
     useState<{ folderName: string; audioRecordingsCount: number } | null>(null);
 
   // Which student we dialled, so we can prompt for feedback on return
-  const pendingCallRef = useRef<any>(null);
+  // const pendingCallRef = useRef<any>(null);
 
   // ── Recording folder ──────────────────────────────────────────────────────
   const loadMappedFolder = async () => {
@@ -446,22 +446,16 @@ export default function MentorsScreen() {
       Alert.alert('No Phone', 'This student has no phone number.');
       return;
     }
-    pendingCallRef.current = student;
-    router.push({ pathname: '/dialpad', params: { leadId: student.id, phone } } as any);
+    router.push({ pathname: '/dialpad', params: { leadId: student.id, phone, mode: 'mentor' } } as any);
   };
 
   // When the dialpad closes and we are focused again, prompt for call feedback
   useFocusEffect(
     useCallback(() => {
-      const s = pendingCallRef.current;
-      if (s) {
-        pendingCallRef.current = null;
-        openFeedbackForm(s);
-        loadHistory(s.id);
-      }
+      if (inStudents) loadStudents({ silent: true });
       if (viewMode === 'CALLS') fetchRecentCalls(1, false);
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [viewMode])
+    }, [viewMode, inStudents])
   );
 
   // ── Stats ─────────────────────────────────────────────────────────────────

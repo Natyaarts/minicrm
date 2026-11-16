@@ -120,13 +120,6 @@ export default function TabLayout() {
           href: hasDialerAccess ? '/two' : null,
         }}
       />
-      <Tabs.Screen
-        name="three"
-        options={{
-          title: 'Menu',
-          tabBarIcon: ({ color }) => <TabBarIcon name="th" color={color} />,
-        }}
-      />
 
       <Tabs.Screen
         name="four"
@@ -136,6 +129,15 @@ export default function TabLayout() {
           href: hasMentorAccess ? '/four' : null,
         }}
       />
+
+      <Tabs.Screen
+        name="three"
+        options={{
+          title: 'Menu',
+          tabBarIcon: ({ color }) => <TabBarIcon name="th" color={color} />,
+        }}
+      />
+      
     </Tabs>
   );
 }
