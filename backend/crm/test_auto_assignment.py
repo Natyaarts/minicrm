@@ -282,6 +282,14 @@ class AutoAssignmentTestSuite(TestCase):
 
     def test_meta_webhook_round_robin(self):
         """9. Test Meta Webhook assigns successive leads across active BDEs using centralized service."""
+        import hashlib
+        import hmac
+        import json
+        from django.test import override_settings
+
+        self.campaign.meta_page_id = "page_id_123"
+        self.campaign.save()
+
         webhook_url = "/api/crm/meta/webhook/"
 
         def mock_meta_graph(url, *args, **kwargs):
@@ -301,7 +309,8 @@ class AutoAssignmentTestSuite(TestCase):
             mock_res.json.return_value = {"field_data": []}
             return mock_res
 
-        with patch('crm.views_meta.requests.get', side_effect=mock_meta_graph):
+        app_secret = "test_meta_rr_secret"
+        with override_settings(META_APP_SECRET=app_secret), patch('crm.views_meta.requests.get', side_effect=mock_meta_graph):
             for i in range(1, 4):
                 payload = {
                     "object": "page",
@@ -310,6 +319,7 @@ class AutoAssignmentTestSuite(TestCase):
                         "changes": [{
                             "field": "leadgen",
                             "value": {
+                                "page_id": "page_id_123",
                                 "form_id": self.campaign.meta_form_id,
                                 "leadgen_id": f"lead_meta_{i}",
                                 "created_time": 1700000000
@@ -317,7 +327,15 @@ class AutoAssignmentTestSuite(TestCase):
                         }]
                     }]
                 }
-                response = self.client.post(webhook_url, payload, format="json")
+                raw_body = json.dumps(payload).encode("utf-8")
+                sig = "sha256=" + hmac.new(app_secret.encode(), raw_body, hashlib.sha256).hexdigest()
+                response = self.client.generic(
+                    "POST",
+                    webhook_url,
+                    raw_body,
+                    content_type="application/json",
+                    HTTP_X_HUB_SIGNATURE_256=sig,
+                )
                 self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         m1 = Student.objects.get(email='meta1@gmail.com')
@@ -430,6 +448,257 @@ class AutoAssignmentTestSuite(TestCase):
         with patch('crm.models.Campaign.objects.select_for_update', side_effect=RuntimeError("DB Lock Failure")):
             with self.assertRaises(RuntimeError):
                 get_next_assigned_rep(self.campaign)
+
+    def test_career_academy_bde_never_receives_regular_campaign_leads(self):
+        """15. Test that a Career Academy BDE (e.g. Ifthisha) never receives leads from a Regular campaign."""
+        ifthisha = User.objects.create_user(
+            username='ifthisha_ca',
+            password='Password@123',
+            email='ifthisha@natya.com',
+            role='SALES',
+            first_name='Ifthisha',
+            sales_section='CAREER_ACADEMY',
+            is_active=True
+        )
+        regular_bde1 = User.objects.create_user(
+            username='reg_bde1',
+            password='Password@123',
+            email='reg1@natya.com',
+            role='SALES',
+            first_name='RegularOne',
+            sales_section='REGULAR',
+            is_active=True
+        )
+        regular_bde2 = User.objects.create_user(
+            username='reg_bde2',
+            password='Password@123',
+            email='reg2@natya.com',
+            role='SALES',
+            first_name='RegularTwo',
+            sales_section='REGULAR',
+            is_active=True
+        )
+
+        reg_campaign = Campaign.objects.create(
+            name='ABROAD (Regular)',
+            section='REGULAR',
+            secret_token=uuid.uuid4()
+        )
+        # Even if Ifthisha (CAREER_ACADEMY) was historically in auto_assign_to on a REGULAR campaign:
+        reg_campaign.auto_assign_to.add(ifthisha, regular_bde1, regular_bde2)
+
+        reps = [get_next_assigned_rep(reg_campaign) for _ in range(4)]
+        self.assertEqual(
+            [r.id for r in reps],
+            [regular_bde1.id, regular_bde2.id, regular_bde1.id, regular_bde2.id],
+            "Career Academy BDE Ifthisha must never be assigned leads from a REGULAR campaign",
+        )
+
+    def test_regular_bde_never_receives_career_academy_campaign_leads(self):
+        """16. Test that a Regular BDE never receives leads from a Career Academy campaign."""
+        regular_bde = User.objects.create_user(
+            username='reg_only_bde',
+            password='Password@123',
+            role='SALES',
+            sales_section='REGULAR',
+            is_active=True
+        )
+        ca_bde = User.objects.create_user(
+            username='ca_only_bde',
+            password='Password@123',
+            role='SALES',
+            sales_section='CAREER_ACADEMY',
+            is_active=True
+        )
+
+        ca_campaign = Campaign.objects.create(
+            name='ABROAD (Diploma)',
+            section='CAREER_ACADEMY',
+            secret_token=uuid.uuid4()
+        )
+        ca_campaign.auto_assign_to.add(regular_bde, ca_bde)
+
+        for _ in range(3):
+            rep = get_next_assigned_rep(ca_campaign)
+            self.assertEqual(rep.id, ca_bde.id)
+
+    def test_campaign_serializer_enforces_bde_section_eligibility_on_create_and_update(self):
+        """17. Test that CampaignSerializer filters out ineligible BDEs on campaign create and section update."""
+        ifthisha = User.objects.create_user(
+            username='ifthisha_ser',
+            password='Password@123',
+            role='SALES',
+            sales_section='CAREER_ACADEMY',
+            is_active=True
+        )
+        reg_bde = User.objects.create_user(
+            username='reg_bde_ser',
+            password='Password@123',
+            role='SALES',
+            sales_section='REGULAR',
+            is_active=True
+        )
+
+        # 1. Create a REGULAR campaign while passing both Ifthisha (CAREER_ACADEMY) and reg_bde (REGULAR)
+        res_create = self.client.post(
+            '/api/crm/campaigns/',
+            {
+                'name': 'Regular Create Test',
+                'platform': 'OTHER',
+                'status': 'ACTIVE',
+                'section': 'REGULAR',
+                'auto_assign_to': [ifthisha.id, reg_bde.id],
+            },
+            format='json',
+        )
+        self.assertEqual(res_create.status_code, status.HTTP_201_CREATED)
+        camp_id = res_create.data['id']
+        created_camp = Campaign.objects.get(id=camp_id)
+        assigned_ids = list(created_camp.auto_assign_to.values_list('id', flat=True))
+        self.assertEqual(assigned_ids, [reg_bde.id])
+        self.assertNotIn(ifthisha.id, assigned_ids)
+
+        # 2. Create a BOTH campaign with both BDEs, then update section to REGULAR
+        res_both = self.client.post(
+            '/api/crm/campaigns/',
+            {
+                'name': 'Both To Regular Test',
+                'platform': 'OTHER',
+                'status': 'ACTIVE',
+                'section': 'BOTH',
+                'auto_assign_to': [ifthisha.id, reg_bde.id],
+            },
+            format='json',
+        )
+        self.assertEqual(res_both.status_code, status.HTTP_201_CREATED)
+        both_id = res_both.data['id']
+        both_camp = Campaign.objects.get(id=both_id)
+        both_camp.last_assigned_bde = ifthisha
+        both_camp.save(update_fields=['last_assigned_bde'])
+
+        # PATCH only section='REGULAR' -> must strip ifthisha from auto_assign_to and reset last_assigned_bde
+        res_patch = self.client.patch(
+            f'/api/crm/campaigns/{both_id}/',
+            {'section': 'REGULAR'},
+            format='json',
+        )
+        self.assertEqual(res_patch.status_code, status.HTTP_200_OK)
+        both_camp.refresh_from_db()
+        self.assertEqual(list(both_camp.auto_assign_to.values_list('id', flat=True)), [reg_bde.id])
+        self.assertIsNone(both_camp.last_assigned_bde)
+
+    def test_actual_career_academy_and_regular_campaign_end_to_end_scenarios(self):
+        """
+        18. End-to-end verification of actual Career Academy ('ABROAD (Diploma)') and
+        Regular ('ABROAD (Regular)') campaign configurations across webhooks, Google Sheets sync,
+        and bulk uploads, including duplicate submission across both campaigns.
+        """
+        prog_natya = Program.objects.create(name='Natya')
+        ifthisha = User.objects.create_user(
+            username='ifthisha_prod_sim',
+            password='Password@123',
+            first_name='Ifthisha',
+            role='SALES',
+            sales_section='CAREER_ACADEMY',
+            is_active=True,
+        )
+        ca_bde2 = User.objects.create_user(
+            username='ca_bde2_prod_sim',
+            password='Password@123',
+            first_name='CareerRep2',
+            role='SALES',
+            sales_section='CAREER_ACADEMY',
+            is_active=True,
+        )
+        reg_bde1 = User.objects.create_user(
+            username='reg_bde1_prod_sim',
+            password='Password@123',
+            first_name='RegularRep1',
+            role='SALES',
+            sales_section='REGULAR',
+            is_active=True,
+        )
+        reg_bde2 = User.objects.create_user(
+            username='reg_bde2_prod_sim',
+            password='Password@123',
+            first_name='RegularRep2',
+            role='SALES',
+            sales_section='REGULAR',
+            is_active=True,
+        )
+
+        abroad_diploma = Campaign.objects.create(
+            name='ABROAD (Diploma)',
+            section='CAREER_ACADEMY',
+            status='ACTIVE',
+            secret_token=uuid.uuid4(),
+        )
+        abroad_diploma.auto_assign_to.add(ifthisha, ca_bde2)
+
+        abroad_regular = Campaign.objects.create(
+            name='ABROAD (Regular)',
+            section='REGULAR',
+            status='ACTIVE',
+            secret_token=uuid.uuid4(),
+        )
+        # Simulate Ifthisha having been accidentally left in auto_assign_to alongside Regular BDEs
+        abroad_regular.auto_assign_to.add(ifthisha, reg_bde1, reg_bde2)
+
+        # A. Lead 1 arrives on ABROAD (Diploma) -> assigned to Ifthisha (CAREER_ACADEMY)
+        r1 = self.client.post(
+            f"/api/crm/webhooks/campaign/{abroad_diploma.secret_token}/lead/",
+            {
+                "name": "Geekgeeanath Aswathy Gopinathan Pillai",
+                "phone": "+919895277332",
+                "email": "gikginath@yahoo.com",
+            },
+            format="json",
+        )
+        self.assertEqual(r1.status_code, status.HTTP_201_CREATED)
+        s1 = Student.objects.get(id=r1.data["student_id"])
+        self.assertEqual(s1.assigned_to, ifthisha)
+        self.assertEqual(s1.campaign, abroad_diploma)
+        self.assertNotEqual(s1.lead_status, "DUPLICATE")
+
+        # B. Same person arrives on ABROAD (Regular) -> marked DUPLICATE, unassigned, pointer on ABROAD (Regular) untouched
+        r2 = self.client.post(
+            f"/api/crm/webhooks/campaign/{abroad_regular.secret_token}/lead/",
+            {
+                "name": "Geekgeeanath Aswathy Gopinathan Pillai",
+                "phone": "+919895277332",
+                "email": "gikginath@yahoo.com",
+            },
+            format="json",
+        )
+        self.assertEqual(r2.status_code, status.HTTP_200_OK)
+        self.assertTrue(r2.data["is_duplicate"])
+        s2 = Student.objects.get(id=r2.data["student_id"])
+        self.assertEqual(s2.lead_status, "DUPLICATE")
+        self.assertEqual(s2.duplicate_of, s1)
+        self.assertIsNone(s2.assigned_to)
+        self.assertEqual(s2.campaign, abroad_regular)
+
+        # C. 4 fresh Regular leads arrive on ABROAD (Regular) -> assigned strictly to reg_bde1, reg_bde2, reg_bde1, reg_bde2 (NEVER Ifthisha)
+        reg_assignees = []
+        for idx in range(1, 5):
+            resp = self.client.post(
+                f"/api/crm/webhooks/campaign/{abroad_regular.secret_token}/lead/",
+                {
+                    "name": f"Regular Applicant {idx}",
+                    "phone": f"+91984700010{idx}",
+                    "email": f"reg_applicant_{idx}@yahoo.com",
+                },
+                format="json",
+            )
+            self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+            lead_obj = Student.objects.get(id=resp.data["student_id"])
+            reg_assignees.append(lead_obj.assigned_to_id)
+
+        self.assertEqual(
+            reg_assignees,
+            [reg_bde1.id, reg_bde2.id, reg_bde1.id, reg_bde2.id],
+        )
+        self.assertNotIn(ifthisha.id, reg_assignees)
 
 
 class AutoAssignmentConcurrencyTestSuite(TransactionTestCase):
@@ -574,4 +843,72 @@ class AutoAssignmentConcurrencyTestSuite(TransactionTestCase):
         self.assertEqual(counts[self.bde1.id], 2)
         self.assertEqual(counts[self.bde2.id], 2)
         self.assertEqual(counts[self.bde3.id], 2)
+
+    def test_concurrent_duplicate_lead_creation_on_supported_backends(self):
+        """
+        Executes a multi-threaded concurrent webhook test for the same person across two campaigns
+        on PostgreSQL/MySQL, verifying that acquire_lead_creation_lock() serializes check-then-create
+        so exactly 1 NEW lead and 1 DUPLICATE lead (assigned_to=None) are created.
+        """
+        from django.db import connection
+        if connection.vendor == 'sqlite':
+            self.skipTest(
+                "SQLite uses file-level locking rather than row-level `SELECT ... FOR UPDATE`. "
+                "Multi-threaded duplicate serialization is executed on PostgreSQL."
+            )
+
+        Program.objects.get_or_create(name='Natya Career Academy')
+        Program.objects.get_or_create(name='Natya')
+        PipelineStage.objects.get_or_create(name='New', defaults={'order': 1})
+
+        camp_reg = Campaign.objects.create(
+            name='Concurrent ABROAD Regular',
+            section='REGULAR',
+            secret_token=uuid.uuid4(),
+            status='ACTIVE',
+        )
+        camp_reg.auto_assign_to.add(self.bde1)
+
+        tokens = [self.campaign.secret_token, camp_reg.secret_token]
+        barrier = threading.Barrier(2)
+        responses = []
+        errors = []
+        lock = threading.Lock()
+
+        def post_webhook(token):
+            client = APIClient()
+            try:
+                barrier.wait()
+                res = client.post(
+                    f"/api/crm/webhooks/campaign/{token}/lead/",
+                    {
+                        "name": "Geekgeeanath Aswathy Gopinathan Pillai",
+                        "phone": "+919895277332",
+                        "email": "gikginath@yahoo.com",
+                    },
+                    format="json",
+                )
+                with lock:
+                    responses.append(res.status_code)
+            except Exception as exc:
+                with lock:
+                    errors.append(exc)
+            finally:
+                connections.close_all()
+
+        threads = [threading.Thread(target=post_webhook, args=(tok,)) for tok in tokens]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        self.assertEqual(len(errors), 0, f"Concurrent webhook errors: {errors}")
+        leads = list(Student.objects.filter(mobile="+919895277332").order_by("id"))
+        self.assertEqual(len(leads), 2)
+        non_dup = [l for l in leads if l.lead_status != "DUPLICATE"]
+        dup = [l for l in leads if l.lead_status == "DUPLICATE"]
+        self.assertEqual(len(non_dup), 1)
+        self.assertEqual(len(dup), 1)
+        self.assertEqual(dup[0].duplicate_of_id, non_dup[0].id)
+        self.assertIsNone(dup[0].assigned_to)
 

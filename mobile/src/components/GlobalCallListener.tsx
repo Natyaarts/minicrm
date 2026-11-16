@@ -27,6 +27,7 @@ export default function GlobalCallListener() {
   
   const [pipelineStages, setPipelineStages] = useState<any[]>([]);
   const [pipelineStatus, setPipelineStatus] = useState('');
+  const [hasExplicitStageChange, setHasExplicitStageChange] = useState(false);
   const [postCallNotes, setPostCallNotes] = useState('');
   const [nextFollowupDate, setNextFollowupDate] = useState<Date | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -247,13 +248,33 @@ export default function GlobalCallListener() {
     };
   }, []);
 
+  const isStageMatching = (stage: any, statusVal: any) => {
+    if (!stage || statusVal === null || statusVal === undefined || String(statusVal).trim() === '') return false;
+    const raw = String(statusVal).trim();
+    if (String(stage.id) === raw) return true;
+    const normVal = raw.toLowerCase().replace(/[\s_-]+/g, '');
+    const normName = String(stage.name || '').trim().toLowerCase().replace(/[\s_-]+/g, '');
+    const normId = String(stage.id || '').trim().toLowerCase().replace(/[\s_-]+/g, '');
+    if (normVal === normName || normVal === normId) return true;
+    const aliases: Record<string, string[]> = {
+      new: ['new', 'newlead'],
+      newlead: ['new', 'newlead'],
+      followup: ['followup', 'followups'],
+      paymentpending: ['paymentpending', 'pendingpayment'],
+      enrolled: ['enrolled', 'converted'],
+      converted: ['converted', 'enrolled'],
+      dropped: ['dropped', 'notinterested', 'rejected', 'lost'],
+    };
+    const group = aliases[normVal] || [];
+    return group.includes(normName) || group.includes(normId);
+  };
+
   const fetchPipelineStages = async () => {
     try {
       const res = await client.get('/crm/stages/');
       const data = res.data?.results || res.data || [];
       if (data.length > 0) {
         setPipelineStages(data);
-        setPipelineStatus(data[0]?.id || '');
       }
     } catch (e) {
       console.log('Failed to fetch pipeline stages:', e);
@@ -262,6 +283,7 @@ export default function GlobalCallListener() {
 
   const fetchLeadInfo = async (phone: string) => {
     setLoadingLead(true);
+    setHasExplicitStageChange(false);
     try {
       // Clean phone to search
       const cleanPhone = phone.replace(/\D/g, '').slice(-10); // get last 10 digits
@@ -270,12 +292,16 @@ export default function GlobalCallListener() {
       
       if (data.length > 0) {
         setLeadInfo(data[0]); // match found!
+        const currentStage = data[0]?.lead_stage_id ?? data[0]?.lead_status;
+        setPipelineStatus(currentStage !== undefined && currentStage !== null ? String(currentStage) : '');
       } else {
         setLeadInfo(null); // Unknown caller
+        setPipelineStatus('');
       }
     } catch (err) {
       console.log('Failed to find lead globally:', err);
       setLeadInfo(null);
+      setPipelineStatus('');
     } finally {
       setLoadingLead(false);
     }
@@ -327,7 +353,9 @@ export default function GlobalCallListener() {
       notes: notesContent,
     };
     if (leadInfo?.id) parameters.student = leadInfo.id.toString();
-    if (pipelineStatus && leadInfo?.id) parameters.pipeline_status = pipelineStatus;
+    if (hasExplicitStageChange && pipelineStatus && leadInfo?.id) {
+      parameters.pipeline_status = String(pipelineStatus);
+    }
     if (nextFollowupDate && leadInfo?.id) {
       parameters.next_followup_date = nextFollowupDate.toISOString();
     }
@@ -413,7 +441,7 @@ export default function GlobalCallListener() {
         notes: postCallNotes 
           ? `Incoming Call - Duration: ${formatDuration(callDuration)}\nNotes: ${postCallNotes}` 
           : (isConnected ? `Incoming Call from ${displayPhone} (CONNECTED, ${formatDuration(callDuration)})` : `Missed Incoming Call from ${displayPhone}`),
-        pipeline_status: pipelineStatus,
+        pipeline_status: hasExplicitStageChange && pipelineStatus ? String(pipelineStatus) : undefined,
         next_followup_date: nextFollowupDate?.toISOString(),
         recordedFilePath: isConnected ? recordedFilePath : null
       });
@@ -428,6 +456,8 @@ export default function GlobalCallListener() {
     stopTimer();
     setIsModalVisible(false);
     setPostCallNotes('');
+    setPipelineStatus('');
+    setHasExplicitStageChange(false);
     setRecordedFilePath(null);
     setManualRecordingFile(null);
     setNextFollowupDate(null);
@@ -542,17 +572,23 @@ export default function GlobalCallListener() {
             <Text style={styles.label}>Update Lead Stage</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.stageScroll}>
               <View style={styles.stageContainer}>
-                {pipelineStages.map(stage => (
-                  <TouchableOpacity 
-                    key={stage.id} 
-                    onPress={() => setPipelineStatus(stage.id)}
-                    style={[styles.stageBadge, pipelineStatus === stage.id && styles.stageBadgeActive]}
-                  >
-                    <Text style={[styles.stageText, pipelineStatus === stage.id && styles.stageTextActive]}>
-                      {stage.name}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                {pipelineStages.map(stage => {
+                  const isSelected = isStageMatching(stage, pipelineStatus);
+                  return (
+                    <TouchableOpacity
+                      key={stage.id}
+                      onPress={() => {
+                        setPipelineStatus(String(stage.id));
+                        setHasExplicitStageChange(true);
+                      }}
+                      style={[styles.stageBadge, isSelected && styles.stageBadgeActive]}
+                    >
+                      <Text style={[styles.stageText, isSelected && styles.stageTextActive]}>
+                        {stage.name}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             </ScrollView>
 

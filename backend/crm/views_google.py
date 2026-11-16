@@ -264,47 +264,56 @@ class GoogleSheetSyncView(APIView):
                 first_name = "Sheet Lead"
                 
             # Sanitize phone and email
-            from crm.services.deduplication import lookup_existing_student, normalize_lead_phone, normalize_lead_email, create_duplicate_lead
+            from crm.services.deduplication import (
+                acquire_lead_creation_lock,
+                lookup_existing_student,
+                normalize_lead_phone,
+                normalize_lead_email,
+                create_duplicate_lead,
+            )
             cleaned_phone = normalize_lead_phone(mobile)
             clean_em = normalize_lead_email(email)
                 
             if not cleaned_phone and not clean_em:
                 skipped_count += 1
                 continue
-                
-            # Centralized duplicate check
-            dup_student, dup_reason = lookup_existing_student(mobile=cleaned_phone, email=clean_em)
-            if dup_student:
-                create_duplicate_lead(
-                    existing_student=dup_student,
-                    first_name=first_name,
-                    last_name=last_name,
-                    mobile=cleaned_phone,
-                    email=clean_em or email,
-                    campaign=campaign,
-                    source_name=f"Google Sheet '{campaign.google_sheet_name or campaign.name}'",
-                    duplicate_reason=dup_reason,
-                    log_reengagement=False
-                )
-                imported_count += 1
-                continue
 
-                
-            # Generate temporary username and CRM ID
-            from django.contrib.auth import get_user_model
-            temp_username = f"st_{cleaned_phone}"
-            
-            # Generate CRM Student ID matching system count format
-            crm_id = Student.generate_next_crm_id()
-            
             try:
                 with django_transaction():
+                    acquire_lead_creation_lock()
+
+                    # Centralized duplicate check inside the same atomic transaction
+                    dup_student, dup_reason = lookup_existing_student(mobile=cleaned_phone, email=clean_em)
+                    if dup_student:
+                        create_duplicate_lead(
+                            existing_student=dup_student,
+                            first_name=first_name,
+                            last_name=last_name,
+                            mobile=cleaned_phone,
+                            email=clean_em or email,
+                            campaign=campaign,
+                            source_name=f"Google Sheet '{campaign.google_sheet_name or campaign.name}'",
+                            duplicate_reason=dup_reason,
+                            log_reengagement=False
+                        )
+                        imported_count += 1
+                        continue
+
+                    from django.contrib.auth import get_user_model
+                    import uuid
+                    temp_username = f"st_{cleaned_phone or clean_em}"
+                    if User.objects.filter(username=temp_username).exists() and Student.objects.filter(user__username=temp_username).exists():
+                        temp_username = f"{temp_username}_{uuid.uuid4().hex[:6]}"
+
+                    # Generate CRM Student ID matching system count format
+                    crm_id = Student.generate_next_crm_id()
+
                     user, created = User.objects.get_or_create(
                         username=temp_username,
                         defaults={
                             'first_name': first_name,
                             'last_name': last_name,
-                            'email': email or f"{temp_username}@gmail.com",
+                            'email': clean_em or email or f"{temp_username}@gmail.com",
                             'role': 'STUDENT'
                         }
                     )
@@ -327,7 +336,7 @@ class GoogleSheetSyncView(APIView):
                         program_type=program,
                         first_name=first_name,
                         last_name=last_name,
-                        email=email,
+                        email=clean_em or email,
                         mobile=cleaned_phone,
                         campaign=campaign,
                         lead_status=new_stage_id,

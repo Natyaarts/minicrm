@@ -774,7 +774,7 @@ export default function LeadTasksManagement({ onLeadClick }) {
                                                                     {item.crm_student_id}
                                                                 </span>
                                                                 <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700">
-                                                                    {item.lead_status || 'NEW'}
+                                                                    {item.lead_status_display || item.lead_status || 'NEW'}
                                                                 </span>
                                                                 {item.assigned_to_name && (
                                                                     <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 flex items-center gap-1">
@@ -874,6 +874,15 @@ export default function LeadTasksManagement({ onLeadClick }) {
                                                                     onLeadClick({
                                                                         id: item.lead,
                                                                         crm_student_id: item.crm_student_id,
+                                                                        first_name: item.lead_name,
+                                                                        mobile: item.mobile,
+                                                                        email: item.email,
+                                                                        lead_status: item.lead_status,
+                                                                        lead_stage_id: item.lead_stage_id,
+                                                                        lead_status_display: item.lead_status_display,
+                                                                        program_name: item.program_name,
+                                                                        course_name: item.course_name,
+                                                                        campaign_name: item.campaign_name,
                                                                         returnToTask: true,
                                                                     });
                                                                 }}

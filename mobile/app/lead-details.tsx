@@ -141,11 +141,33 @@ export default function LeadDetailsScreen() {
     }
   };
 
+  const isStageMatching = (stage: any, statusVal: any) => {
+    if (!stage || statusVal === null || statusVal === undefined || String(statusVal).trim() === '') return false;
+    const raw = String(statusVal).trim();
+    if (String(stage.id) === raw) return true;
+    const normVal = raw.toLowerCase().replace(/[\s_-]+/g, '');
+    const normName = String(stage.name || '').trim().toLowerCase().replace(/[\s_-]+/g, '');
+    const normId = String(stage.id || '').trim().toLowerCase().replace(/[\s_-]+/g, '');
+    if (normVal === normName || normVal === normId) return true;
+    const aliases: Record<string, string[]> = {
+      new: ['new', 'newlead'],
+      newlead: ['new', 'newlead'],
+      followup: ['followup', 'followups'],
+      paymentpending: ['paymentpending', 'pendingpayment'],
+      enrolled: ['enrolled', 'converted'],
+      converted: ['converted', 'enrolled'],
+      dropped: ['dropped', 'notinterested', 'rejected', 'lost'],
+    };
+    const group = aliases[normVal] || [];
+    return group.includes(normName) || group.includes(normId);
+  };
+
   const getStageName = (statusKey: string) => {
+    if (student?.lead_status_display && (!statusKey || statusKey === student?.lead_status)) {
+      return student.lead_status_display;
+    }
     if (!statusKey) return 'New Lead';
-    const matchedStage = pipelineStages.find(
-      (s) => s.id?.toString() === statusKey?.toString() || s.name?.toUpperCase() === statusKey?.toUpperCase()
-    );
+    const matchedStage = pipelineStages.find((s) => isStageMatching(s, statusKey));
     if (matchedStage) return matchedStage.name;
 
     const standardMapping: { [key: string]: string } = {
@@ -153,6 +175,7 @@ export default function LeadDetailsScreen() {
       'FOLLOW_UP': 'Follow-up',
       'PAYMENT_PENDING': 'Payment Pending',
       'ENROLLED': 'Enrolled',
+      'CONVERTED': 'Converted',
       'DROPPED': 'Dropped'
     };
     return standardMapping[statusKey.toUpperCase()] || statusKey;
@@ -246,8 +269,9 @@ export default function LeadDetailsScreen() {
     try {
       const res = await client.get(`/students/${leadId}/`);
       setStudent(res.data);
-      if (res.data?.lead_status) {
-        setSelectedStageId(res.data.lead_status.toString());
+      const stageIdOrStatus = res.data?.lead_stage_id ?? res.data?.lead_status;
+      if (stageIdOrStatus !== undefined && stageIdOrStatus !== null && String(stageIdOrStatus).trim() !== '') {
+        setSelectedStageId(String(stageIdOrStatus));
       }
     } catch (err) {
       console.log('Failed to fetch student details:', err);
@@ -446,7 +470,7 @@ export default function LeadDetailsScreen() {
         </TouchableOpacity>
         <Text style={styles.headerTitle}>LEAD DETAILS</Text>
         <TouchableOpacity 
-          onPress={() => phoneNum && router.push({ pathname: '/dialpad', params: { leadId: student.id, phone: phoneNum } } as any)}
+          onPress={() => phoneNum && router.push({ pathname: '/dialpad', params: { leadId: student.id, phone: phoneNum, leadStatus: String(student?.lead_stage_id ?? student?.lead_status ?? '') } } as any)}
           style={[styles.callButtonHeader, { opacity: phoneNum ? 1 : 0.5 }]}
           disabled={!phoneNum}
         >
@@ -783,7 +807,7 @@ export default function LeadDetailsScreen() {
                     return !name.includes('ENROL') && !name.includes('CONVERT') && id !== 'ENROLLED' && id !== 'CONVERTED';
                   })
                   .map((stage) => {
-                    const isSelected = selectedStageId?.toString() === stage.id?.toString();
+                    const isSelected = isStageMatching(stage, selectedStageId);
                     return (
                       <TouchableOpacity
                         key={stage.id}
@@ -934,8 +958,7 @@ export default function LeadDetailsScreen() {
 
             <ScrollView contentContainerStyle={styles.modalList} showsVerticalScrollIndicator={false}>
               {pipelineStages.map((stage) => {
-                const isSelected = student?.lead_status?.toString() === stage.id?.toString() || 
-                                   (student?.lead_status?.toString()?.toUpperCase() === stage.name?.toUpperCase());
+                const isSelected = isStageMatching(stage, student?.lead_stage_id ?? student?.lead_status);
                 return (
                   <TouchableOpacity
                     key={stage.id}
@@ -944,7 +967,7 @@ export default function LeadDetailsScreen() {
                       isDark && styles.darkStageItem,
                       isSelected && styles.stageItemActive
                     ]}
-                    onPress={() => handleChangeStage(stage.id)}
+                    onPress={() => handleChangeStage(String(stage.id))}
                   >
                     <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                       <View style={[styles.stageColorDot, { backgroundColor: stage.color || '#FBBF24' }]} />

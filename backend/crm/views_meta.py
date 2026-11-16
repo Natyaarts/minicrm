@@ -14,6 +14,7 @@ from rest_framework.response import Response
 from rest_framework import status, permissions
 from core.models import Student, Program
 from crm.services import (
+    acquire_lead_creation_lock,
     lookup_existing_student,
     record_reengagement_interaction,
     normalize_lead_phone,
@@ -241,38 +242,39 @@ class MetaLeadWebhookView(APIView):
                         from django.contrib.auth import get_user_model
                         User = get_user_model()
 
-                        # Centralized duplicate check
-                        dup_student, dup_reason = lookup_existing_student(mobile=clean_phone, email=clean_em)
-                        if dup_student:
-                            record_reengagement_interaction(
-                                student=dup_student,
-                                source_name="Meta Lead Ad",
-                                campaign_name=campaign.name if campaign else None,
-                                event_id=str(lead_id),
-                                extra_notes=f"Name: {name}, Phone: {phone}"
-                            )
-                            logger.info(f"Meta lead {lead_id} matched existing student {dup_student.crm_student_id}. Logged re-engagement note.")
-
-                            new_dup = create_duplicate_lead(
-                                existing_student=dup_student,
-                                first_name=first_name,
-                                last_name=last_name,
-                                mobile=clean_phone,
-                                email=clean_em,
-                                campaign=campaign,
-                                sales_section=campaign.section if campaign else "BOTH",
-                                meta_lead_id=str(lead_id),
-                                duplicate_reason=dup_reason,
-                                log_reengagement=False
-                            )
-                            leads_created += 1
-                            logger.info(f"Created duplicate Meta lead: {new_dup.crm_student_id} - {name} ({clean_phone})")
-                            continue
-
-
-                        username = f"meta_{lead_id}"[:150]
-
                         with transaction.atomic():
+                            acquire_lead_creation_lock()
+
+                            # Centralized duplicate check inside the same atomic transaction
+                            dup_student, dup_reason = lookup_existing_student(mobile=clean_phone, email=clean_em)
+                            if dup_student:
+                                record_reengagement_interaction(
+                                    student=dup_student,
+                                    source_name="Meta Lead Ad",
+                                    campaign_name=campaign.name if campaign else None,
+                                    event_id=str(lead_id),
+                                    extra_notes=f"Name: {name}, Phone: {phone}"
+                                )
+                                logger.info(f"Meta lead {lead_id} matched existing student {dup_student.crm_student_id}. Logged re-engagement note.")
+
+                                new_dup = create_duplicate_lead(
+                                    existing_student=dup_student,
+                                    first_name=first_name,
+                                    last_name=last_name,
+                                    mobile=clean_phone,
+                                    email=clean_em,
+                                    campaign=campaign,
+                                    sales_section=campaign.section if campaign else "BOTH",
+                                    meta_lead_id=str(lead_id),
+                                    duplicate_reason=dup_reason,
+                                    log_reengagement=False
+                                )
+                                leads_created += 1
+                                logger.info(f"Created duplicate Meta lead: {new_dup.crm_student_id} - {name} ({clean_phone})")
+                                continue
+
+                            username = f"meta_{lead_id}"[:150]
+
                             user = User.objects.create_user(
                                 username=username,
                                 first_name=first_name,

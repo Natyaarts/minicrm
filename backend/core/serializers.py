@@ -344,7 +344,8 @@ class StudentSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ('user', 'crm_student_id')
         extra_kwargs = {
-            'is_active': {'default': True}
+            'is_active': {'default': True},
+            'lead_status': {'allow_blank': True, 'required': False},
         }
 
     def get_total_paid(self, obj):
@@ -534,6 +535,14 @@ class StudentSerializer(serializers.ModelSerializer):
                     pass
 
         with db_transaction.atomic():
+            from crm.services.deduplication import (
+                acquire_lead_creation_lock,
+                lookup_existing_student,
+                normalize_lead_phone,
+                normalize_lead_email,
+            )
+            acquire_lead_creation_lock()
+
             # 1. Normalize and check duplicates
             email = validated_data.get('email')
             mobile = validated_data.get('mobile')
@@ -546,7 +555,6 @@ class StudentSerializer(serializers.ModelSerializer):
                 )
             )
             
-            from crm.services.deduplication import lookup_existing_student, normalize_lead_phone, normalize_lead_email
             clean_phone = normalize_lead_phone(mobile)
             clean_em = normalize_lead_email(email)
             if clean_phone:
@@ -688,6 +696,15 @@ class StudentSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         dynamic_values = validated_data.pop('dynamic_values', None)
+
+        # Preserve existing lead_status if an update payload omits or sends a blank/null lead_status
+        if 'lead_status' in validated_data:
+            raw_lead_status = validated_data.get('lead_status')
+            cleaned_lead_status = str(raw_lead_status).strip() if raw_lead_status is not None else ''
+            if not cleaned_lead_status:
+                validated_data.pop('lead_status', None)
+            else:
+                validated_data['lead_status'] = cleaned_lead_status
         
         # Update core student fields
         for attr, value in validated_data.items():

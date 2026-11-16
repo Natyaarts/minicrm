@@ -90,7 +90,12 @@ class BulkUploadView(views.APIView):
                         first_name = parts[0] if parts[0] else 'Unknown'
                         last_name = parts[1] if len(parts) > 1 else raw_last
 
-                    from crm.services.deduplication import lookup_existing_student, normalize_lead_phone, normalize_lead_email
+                    from crm.services.deduplication import (
+                        acquire_lead_creation_lock,
+                        lookup_existing_student,
+                        normalize_lead_phone,
+                        normalize_lead_email,
+                    )
                     clean_phone = normalize_lead_phone(mobile)
                     clean_em = normalize_lead_email(email)
 
@@ -101,6 +106,8 @@ class BulkUploadView(views.APIView):
                     gender_val = _get_val(row, 'gender', default='Female') or 'Female'
                     perm_address_val = _get_val(row, 'perm_address', 'address', default='')
                     perm_city_val = _get_val(row, 'perm_city', 'place', 'city', default='')
+
+                    acquire_lead_creation_lock()
 
                     # Check duplicates using centralized deduplication
                     dup_student, dup_reason = lookup_existing_student(mobile=clean_phone or mobile, email=clean_em or email)
@@ -208,6 +215,8 @@ class BulkUploadView(views.APIView):
                     lms_student_id = lms_id if lms_id else None
 
                     from crm.utils import get_canonical_new_lead_stage_id
+                    from crm.services.assignment import get_next_assigned_rep
+                    assigned_to_user = get_next_assigned_rep(campaign_obj) if campaign_obj else None
                     Student.objects.create(
                         user=user,
                         crm_student_id=crm_id,
@@ -225,6 +234,7 @@ class BulkUploadView(views.APIView):
                         lms_student_id=lms_student_id,
                         campaign=campaign_obj,
                         sales_section=campaign_obj.section if campaign_obj else 'BOTH',
+                        assigned_to=assigned_to_user,
                         lead_status=get_canonical_new_lead_stage_id(),
                         is_active=True
                     )

@@ -192,8 +192,8 @@ class LeadDeduplicationTestSuite(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         results = response.data.get('results', [])
         self.assertEqual(len(results), 2)
-        # Both rows succeed in creating Student records
-        self.assertEqual(results[0]['status'], 'SUCCESS')
+        # First row is marked DUPLICATE, second row is SUCCESS
+        self.assertEqual(results[0]['status'], 'DUPLICATE')
         self.assertEqual(results[1]['status'], 'SUCCESS')
 
         # Total created = 2 (1 duplicate lead, 1 normal lead)
@@ -305,6 +305,12 @@ class LeadDeduplicationTestSuite(TestCase):
 
     # 10. Meta Facebook Lead Ads Webhook duplicate re-engagement and DUPLICATE lead creation
     def test_meta_webhook_duplicate(self):
+        import hashlib
+        import hmac
+        import json
+        from django.test import override_settings
+
+        self.campaign.meta_page_id = 'page_123'
         self.campaign.meta_form_id = 'form_123'
         self.campaign.meta_auto_import = True
         self.campaign.meta_access_token = 'EAAB_test_access_token'
@@ -320,6 +326,7 @@ class LeadDeduplicationTestSuite(TestCase):
                 'changes': [{
                     'field': 'leadgen',
                     'value': {
+                        'page_id': 'page_123',
                         'leadgen_id': 'meta_lead_998877',
                         'ad_id': 'ad_123',
                         'form_id': 'form_123'
@@ -339,12 +346,22 @@ class LeadDeduplicationTestSuite(TestCase):
             ]
         }
 
-        with patch('requests.get') as mock_get:
+        app_secret = 'test_meta_secret'
+        raw_body = json.dumps(payload).encode('utf-8')
+        sig = 'sha256=' + hmac.new(app_secret.encode(), raw_body, hashlib.sha256).hexdigest()
+
+        with override_settings(META_APP_SECRET=app_secret), patch('requests.get') as mock_get:
             mock_get.return_value.status_code = 200
             mock_get.return_value.json.return_value = mock_graph_response
 
             url = "/api/crm/meta/webhook/"
-            response = self.client.post(url, payload, format='json')
+            response = self.client.generic(
+                'POST',
+                url,
+                raw_body,
+                content_type='application/json',
+                HTTP_X_HUB_SIGNATURE_256=sig,
+            )
 
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             # 1 new duplicate Student created
@@ -725,3 +742,140 @@ class LeadDeduplicationTestSuite(TestCase):
         # Verify database record was not modified
         dup_student.refresh_from_db()
         self.assertIsNone(dup_student.assigned_to)
+
+    # 21. Cross-campaign and cross-program duplicate detection (ABROAD Regular vs ABROAD Diploma)
+    def test_cross_campaign_and_cross_program_duplicate_detection(self):
+        prog_regular = Program.objects.create(name='Natya')
+        prog_diploma = Program.objects.create(name='Natya Diploma')
+
+        bde_reg = User.objects.create_user(
+            username='bde_abroad_reg',
+            password='Password@123',
+            role='SALES',
+            sales_section='REGULAR',
+            is_active=True
+        )
+        bde_dip = User.objects.create_user(
+            username='bde_abroad_dip',
+            password='Password@123',
+            role='SALES',
+            sales_section='CAREER_ACADEMY',
+            is_active=True
+        )
+
+        camp_diploma = Campaign.objects.create(
+            name='ABROAD (Diploma)',
+            section='CAREER_ACADEMY',
+            secret_token=uuid.uuid4()
+        )
+        camp_diploma.auto_assign_to.add(bde_dip)
+
+        camp_regular = Campaign.objects.create(
+            name='ABROAD (Regular)',
+            section='REGULAR',
+            secret_token=uuid.uuid4()
+        )
+        camp_regular.auto_assign_to.add(bde_reg)
+
+        # 1st lead arrives on ABROAD (Diploma)
+        res1 = self.client.post(
+            f"/api/crm/webhooks/campaign/{camp_diploma.secret_token}/lead/",
+            {
+                "name": "Geekgeeanath Aswathy Gopinathan Pillai",
+                "phone": "+919895277332",
+                "email": "gikginath@yahoo.com",
+                "program_id": prog_diploma.id,
+            },
+            format="json",
+        )
+        self.assertEqual(res1.status_code, status.HTTP_201_CREATED)
+        lead1 = Student.objects.get(id=res1.data["student_id"])
+        self.assertNotEqual(lead1.lead_status, "DUPLICATE")
+        self.assertEqual(lead1.assigned_to, bde_dip)
+        self.assertEqual(lead1.campaign, camp_diploma)
+
+        # 2nd lead with identical phone + email arrives on ABROAD (Regular) with different program
+        res2 = self.client.post(
+            f"/api/crm/webhooks/campaign/{camp_regular.secret_token}/lead/",
+            {
+                "name": "Geekgeeanath Aswathy Gopinathan Pillai",
+                "phone": "+919895277332",
+                "email": "gikginath@yahoo.com",
+                "program_id": prog_regular.id,
+            },
+            format="json",
+        )
+        self.assertEqual(res2.status_code, status.HTTP_200_OK)
+        self.assertTrue(res2.data.get("is_duplicate"))
+        lead2 = Student.objects.get(id=res2.data["student_id"])
+        self.assertEqual(lead2.lead_status, "DUPLICATE")
+        self.assertEqual(lead2.duplicate_of, lead1)
+        self.assertIsNone(lead2.assigned_to)
+        self.assertEqual(lead2.campaign, camp_regular)
+
+    # 22. Same phone + different email AND same email + different phone
+    def test_partial_contact_match_phone_only_and_email_only(self):
+        # Same phone (+917356679007), different email
+        dup_by_phone, reason_p = lookup_existing_student(
+            mobile="00917356679007", email="completely_different@yahoo.com"
+        )
+        self.assertIsNotNone(dup_by_phone)
+        self.assertEqual(dup_by_phone.id, self.seeded_student.id)
+
+        # Same email (akshaya.akku@gmail.com), different phone
+        dup_by_email, reason_e = lookup_existing_student(
+            mobile="+919447009988", email="  AKSHAYA.AKKU@GMAIL.COM "
+        )
+        self.assertIsNotNone(dup_by_email)
+        self.assertEqual(dup_by_email.id, self.seeded_student.id)
+
+    # 23. International vs Indian phone normalization avoids false duplicate matches
+    def test_international_phone_does_not_falsely_match_indian_suffix(self):
+        # Seeded student has +917356679007 (last 10 digits: 7356679007)
+        # A non-Indian number sharing the last 10 digits (e.g. +971356679007) must NOT match +917356679007
+        match, _ = lookup_existing_student(mobile="+9717356679007", email="uae_lead@gmail.com")
+        self.assertIsNone(match)
+
+        # Extended Indian prefixes (0091, 091, +910) must normalize to +917356679007
+        for raw in ("00917356679007", "0917356679007", "+9107356679007"):
+            self.assertEqual(normalize_lead_phone(raw), "+917356679007")
+
+    # 24. Shared atomic lock invoked across lead creation channels
+    def test_shared_lock_invoked_during_lead_creation(self):
+        from unittest.mock import patch
+        from core.models import CRMIDCounter
+
+        with patch.object(
+            CRMIDCounter.objects, "select_for_update", wraps=CRMIDCounter.objects.select_for_update
+        ) as spy_lock:
+            url = f"/api/crm/webhooks/campaign/{self.campaign.secret_token}/lead/"
+            res = self.client.post(
+                url,
+                {"name": "Lock Test Lead", "phone": "9895001122", "email": "locktest@gmail.com"},
+                format="json",
+            )
+            self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+            self.assertTrue(spy_lock.called)
+
+    # 25. NSDC intentional application behavior preserved
+    def test_nsdc_application_by_existing_student_is_allowed(self):
+        nsdc_prog = Program.objects.create(name="NSDC Certification", slug="nsdc")
+        serializer = StudentSerializer(
+            data={
+                "first_name": "Akshaya",
+                "last_name": "Akku",
+                "mobile": "7356679007",
+                "email": "akshaya.akku@gmail.com",
+                "program_type": nsdc_prog.id,
+            }
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        nsdc_student = serializer.save()
+        self.assertIsNotNone(nsdc_student.id)
+        self.assertNotEqual(nsdc_student.id, self.seeded_student.id)
+        self.assertTrue(
+            LeadInteraction.objects.filter(
+                student=self.seeded_student,
+                notes__contains=nsdc_student.crm_student_id,
+            ).exists()
+        )

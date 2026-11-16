@@ -21,6 +21,22 @@ IGNORE_EMAIL_DOMAINS = (
 )
 
 
+def acquire_lead_creation_lock() -> None:
+    """
+    Acquires a shared database-level row lock on the singleton CRMIDCounter('student')
+    record inside an active transaction.atomic() block.
+
+    All lead creation paths invoke this before lookup_existing_student() and Student creation
+    so concurrent requests for the same person are serialized at the database level
+    and cannot both bypass duplicate detection simultaneously.
+    """
+    from core.models import CRMIDCounter
+    counter = CRMIDCounter.objects.select_for_update().filter(pk="student").first()
+    if counter is None:
+        CRMIDCounter.objects.get_or_create(pk="student", defaults={"value": 0})
+        CRMIDCounter.objects.select_for_update().filter(pk="student").first()
+
+
 def normalize_lead_phone(raw_phone: Optional[str]) -> str:
     """
     Standardize and clean phone numbers for lead ingestion and duplicate detection.
@@ -60,6 +76,14 @@ def normalize_lead_phone(raw_phone: Optional[str]) -> str:
     # Check if placeholder
     if val_clean.upper() in INVALID_PLACEHOLDERS:
         return ''
+
+    # Normalize common Indian dialing prefixes (0091XXXXXXXXXX, 091XXXXXXXXXX, +910XXXXXXXXXX)
+    if len(raw_digits) == 14 and raw_digits.startswith('0091'):
+        val_clean = raw_digits[4:]
+    elif len(raw_digits) == 13 and raw_digits.startswith(('091', '910')):
+        val_clean = raw_digits[3:]
+    elif len(raw_digits) > 11 and raw_digits.startswith('00') and not val_clean.startswith('+'):
+        val_clean = f"+{raw_digits[2:]}"
     
     # Run through the standard CRM normalize_phone_number logic
     normalized = normalize_phone_number(val_clean)
@@ -90,7 +114,12 @@ def normalize_lead_email(raw_email: Optional[str]) -> str:
             return ''
             
     # Basic email format check
-    if '@' not in val or '.' not in val:
+    if '@' not in val or ' ' in val:
+        return ''
+    local_part, _, domain_part = val.partition('@')
+    if not local_part or not domain_part or '.' not in domain_part:
+        return ''
+    if local_part.upper() in {'NA', 'N/A', 'NIL', 'NONE', 'NULL', 'UNDEFINED', 'UNKNOWN', '0', '-'}:
         return ''
         
     return val
@@ -101,9 +130,22 @@ def _get_phone_variants(clean_mobile: Optional[str]) -> list:
         return []
     variants = [clean_mobile]
     digits = re.sub(r'\D', '', clean_mobile)
-    if len(digits) >= 10:
+    if not digits:
+        return variants
+    is_indian = (
+        len(digits) == 10
+        or (len(digits) == 11 and digits.startswith('0'))
+        or (len(digits) == 12 and digits.startswith('91'))
+        or (len(digits) == 13 and digits.startswith(('091', '910')))
+        or (len(digits) == 14 and digits.startswith('0091'))
+    )
+    if is_indian:
         d10 = digits[-10:]
         for v in (f"+91{d10}", d10, f"91{d10}", f"0{d10}"):
+            if v not in variants:
+                variants.append(v)
+    else:
+        for v in (f"+{digits}", digits, f"00{digits}"):
             if v not in variants:
                 variants.append(v)
     return variants
