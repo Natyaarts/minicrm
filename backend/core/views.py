@@ -2379,8 +2379,10 @@ class StudentViewSet(viewsets.ModelViewSet):
         user = request.user
         qs = StudentFeedback.objects.select_related('student', 'mentor').order_by('-feedback_date', '-id')
 
-        # Admins see everything; mentors see their own and their batches' students
-        if getattr(user, 'role', None) not in ('ADMIN', 'SUPER_ADMIN'):
+        # Admins see everything; mentors see their own and their batches' students.
+        # Role normalised like get_permissions; is_superuser counts as SUPER_ADMIN.
+        role = str(getattr(user, 'role', '') or '').upper().strip()
+        if not (user.is_superuser or role in ('ADMIN', 'SUPER_ADMIN')):
             qs = qs.filter(
                 Q(mentor=user) |
                 Q(student__batch__primary_mentor=user) |

@@ -349,7 +349,7 @@ export default function MentorsScreen() {
 
   useEffect(() => {
     AsyncStorage.getItem('userInfo')
-      .then(v => setRole(String(JSON.parse(v || 'null')?.role || '').toUpperCase()))
+      .then(v => setRole(String(JSON.parse(v || 'null')?.role || '').toUpperCase().trim()))
       .catch(() => {});
   }, []);
 

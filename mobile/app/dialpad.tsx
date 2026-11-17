@@ -243,7 +243,7 @@ const Dialpad = () => {
   const SALES_ROLES = ['SALES','TEAM_LEAD','SALES_HEAD','SALES_MANAGER','MANAGER','SALES_LEAD','ADMIN','SUPER_ADMIN'];
   const MENTOR_ROLES = ['MENTOR', 'TEACHER', 'HEAD - MENTOR', 'ACADEMIC MENTOR', 'ACADEMIC', 'ACADEMIC_COORDINATOR', 'ADMIN', 'SUPER_ADMIN'];
   const hasDialerAccess = isMentorMode
-    ? MENTOR_ROLES.includes(user?.role)
+    ? MENTOR_ROLES.includes(String(user?.role || '').toUpperCase().trim()) // same normalisation as the backend
     : SALES_ROLES.includes(user?.role) || Boolean(user?.is_manager);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);

@@ -61,7 +61,7 @@ export default function TabLayout() {
   const hasDialerAccess = ['SALES', 'TEAM_LEAD', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD', 'ADMIN', 'SUPER_ADMIN'].includes(user?.role) || Boolean(user?.is_manager);
   const MENTOR_ROLES = ['MENTOR', 'ADMIN', 'SUPER_ADMIN', 'MANAGER', 'HEAD - MENTOR', 'ACADEMIC MENTOR'];
   const hasMentorAccess =
-    MENTOR_ROLES.includes(String(user?.role || '').toUpperCase()) || Boolean(user?.is_manager);
+    MENTOR_ROLES.includes(String(user?.role || '').toUpperCase().trim()) || Boolean(user?.is_manager);
   
   // Register for push notifications when tabs load
   usePushNotifications();
