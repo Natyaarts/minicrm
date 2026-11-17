@@ -75,11 +75,16 @@ class FeedbackRecordingTests(TestCase):
 
     # ── add_feedback ─────────────────────────────────────────────────────────
     def test_connected_call_payload_creates_feedback(self):
-        res = self._add_feedback(self._payload('mob_1763359000000_OUT_543210_ab12cd'))
+        # Exact payload from the failing report: empty notes, 22s, no follow-up date
+        payload = self._payload('mob_1763359000000_OUT_543210_ab12cd', feedback='', call_duration=22,
+                                end_time='2026-11-17T06:40:34.100Z')
+        payload.pop('next_followup_date')
+        res = self._add_feedback(payload)
         self.assertEqual(res.status_code, 201, res.data)
         fb = StudentFeedback.objects.get(mobile_call_id='mob_1763359000000_OUT_543210_ab12cd')
+        self.assertEqual(fb.status, 'CALL_DONE')
         self.assertEqual(fb.call_status, 'CONNECTED')
-        self.assertEqual(fb.call_duration, 24)
+        self.assertEqual(fb.call_duration, 22)
         self.assertIsNotNone(fb.start_time)
         self.assertIsNone(res.data['recording_url'])
         self.assertIsNone(res.data['audio_recording'])
