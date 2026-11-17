@@ -796,4 +796,27 @@ class StudentFeedbackSerializer(serializers.ModelSerializer):
         m = obj.mentor
         return (f"{m.first_name} {m.last_name}".strip() or m.username) if m else 'System'
 
+    def to_representation(self, obj):
+        data = super().to_representation(obj)
+        # Absolute URLs (null when empty), same approach as the Sales LeadInteraction serializer
+        audio_url = recording_absolute_url(self.context.get('request'), obj)
+        data['audio_recording'] = audio_url if obj.audio_recording else None
+        data['recording_url'] = audio_url
+        return data
+
+
+def recording_absolute_url(request, feedback):
+    """Absolute URL of a StudentFeedback recording (uploaded file first, then external URL), or None."""
+    url = None
+    if feedback.audio_recording:
+        try:
+            url = feedback.audio_recording.url
+        except Exception:
+            url = None
+    if not url:
+        url = feedback.recording_url or None
+    if url and request is not None and not url.lower().startswith(('http://', 'https://')):
+        url = request.build_absolute_uri(url)
+    return url
+
     

@@ -15,9 +15,14 @@ import uuid
 from django.utils import timezone
 from datetime import timedelta
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
-from django.utils.dateparse import parse_datetime
+from django.utils.dateparse import parse_datetime, parse_date
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import IntegrityError, transaction
+import logging
 from .validators import validate_audio_recording_file
+from .serializers import recording_absolute_url
+
+logger = logging.getLogger(__name__)
 
 
 from .models import Program, SubProgram, Course, Batch, Student, Transaction, Document, SyllabusPart, ClassSession, Attendance, BatchResource, Exam, ExamResult, Question, QuestionOption, StudentSubmission, MonthlyPayment, StudentTeacherHandover, StudentFeedback
@@ -2120,19 +2125,43 @@ class StudentViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def add_feedback(self, request, pk=None):
+        try:
+            return self._add_feedback(request)
+        except Exception:
+            logger.exception("add_feedback failed for student %s (user %s)", pk, getattr(request.user, 'id', None))
+            raise
+
+    def _add_feedback(self, request):
         student = self.get_object()
         d = request.data
+        ctx = {'request': request}
 
         status_val = d.get('status')
         if status_val not in dict(StudentFeedback.STATUS_CHOICES):
             return Response({'error': 'Valid status is required'}, status=400)
 
+        # Dates/times: a value that is sent but cannot be parsed is a 400, never a 500 or a silent null
+        parsed = {}
+        for key, parser in (('start_time', parse_datetime), ('end_time', parse_datetime),
+                            ('feedback_date', parse_date), ('next_followup_date', parse_date)):
+            raw = d.get(key)
+            if raw in (None, ''):
+                parsed[key] = None
+                continue
+            try:
+                value = parser(str(raw))
+            except (TypeError, ValueError):
+                value = None
+            if value is None:
+                return Response({'error': f'Invalid {key}: {raw}'}, status=400)
+            parsed[key] = value
+
         # Idempotent retry
-        mcid = d.get('mobile_call_id') or None
+        mcid = str(d.get('mobile_call_id') or '').strip() or None
         if mcid:
             existing = StudentFeedback.objects.filter(mobile_call_id=mcid).first()
             if existing:
-                return Response(StudentFeedbackSerializer(existing).data, status=200)
+                return Response(StudentFeedbackSerializer(existing, context=ctx).data, status=200)
 
         call_status = (d.get('call_status') or '').upper() or None
         if call_status and call_status not in dict(StudentFeedback.CALL_STATUS_CHOICES):
@@ -2151,27 +2180,43 @@ class StudentViewSet(viewsets.ModelViewSet):
                 status=400)
 
         has_call = bool(mcid or call_status)
-        fb = StudentFeedback.objects.create(
-            student=student,
-            mentor=request.user,
-            feedback_date=d.get('feedback_date') or timezone.localdate(),
-            feedback_type='CALL' if has_call else (d.get('feedback_type') or 'CALL'),
-            status=status_val,
-            feedback=(d.get('feedback') or '').strip(),
-            next_followup_date=d.get('next_followup_date') or None,
-            mobile_call_id=mcid,
-            customer_number=d.get('customer_number') or None,
-            call_direction=call_direction,
-            call_status=call_status,
-            call_duration=duration,
-            start_time=parse_datetime(d.get('start_time') or '') if d.get('start_time') else None,
-            end_time=parse_datetime(d.get('end_time') or '') if d.get('end_time') else None,
-        )
-        return Response(StudentFeedbackSerializer(fb).data, status=201)
+        try:
+            # Savepoint so a unique-constraint race (double tap) doesn't break the outer transaction
+            with transaction.atomic():
+                fb = StudentFeedback.objects.create(
+                    student=student,
+                    mentor=request.user,
+                    feedback_date=parsed['feedback_date'] or timezone.localdate(),
+                    feedback_type='CALL' if has_call else (d.get('feedback_type') or 'CALL'),
+                    status=status_val,
+                    feedback=(d.get('feedback') or '').strip(),
+                    next_followup_date=parsed['next_followup_date'],
+                    mobile_call_id=mcid,
+                    customer_number=d.get('customer_number') or None,
+                    call_direction=call_direction,
+                    call_status=call_status,
+                    call_duration=duration,
+                    start_time=parsed['start_time'],
+                    end_time=parsed['end_time'],
+                )
+        except IntegrityError:
+            # Same mobile_call_id inserted concurrently by a retry: return the row that won
+            existing = StudentFeedback.objects.filter(mobile_call_id=mcid).first() if mcid else None
+            if existing:
+                return Response(StudentFeedbackSerializer(existing, context=ctx).data, status=200)
+            raise
+        return Response(StudentFeedbackSerializer(fb, context=ctx).data, status=201)
 
     @action(detail=True, methods=['post'], url_path='feedback-recording',
             parser_classes=[MultiPartParser, FormParser, JSONParser])
     def feedback_recording(self, request, pk=None):
+        try:
+            return self._feedback_recording(request)
+        except Exception:
+            logger.exception("feedback_recording failed for student %s (user %s)", pk, getattr(request.user, 'id', None))
+            raise
+
+    def _feedback_recording(self, request):
         student = self.get_object()
         fb = None
         if request.data.get('feedback_id'):
@@ -2194,13 +2239,13 @@ class StudentViewSet(viewsets.ModelViewSet):
 
         fb.audio_recording = f
         fb.save()
-        return Response(StudentFeedbackSerializer(fb).data)
+        return Response(StudentFeedbackSerializer(fb, context={'request': request}).data)
 
     @action(detail=True, methods=['get'])
     def feedbacks(self, request, pk=None):
         student = self.get_object()
         qs = student.feedbacks.select_related('mentor')[:100]
-        return Response(StudentFeedbackSerializer(qs, many=True).data)
+        return Response(StudentFeedbackSerializer(qs, many=True, context={'request': request}).data)
 
     @action(detail=False, methods=['get'])
     def feedback_summary(self, request):
@@ -2359,7 +2404,7 @@ class StudentViewSet(viewsets.ModelViewSet):
             'call_direction': getattr(f, 'call_direction', ''),
             'call_status': getattr(f, 'call_status', ''),
             'customer_number': getattr(f, 'customer_number', ''),
-            'recording_url': f.recording_url or (f.audio_recording.url if f.audio_recording else None),
+            'recording_url': recording_absolute_url(request, f),
         } for f in page]
         return self.get_paginated_response(rows)
 
