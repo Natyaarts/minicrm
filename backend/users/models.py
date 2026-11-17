@@ -37,11 +37,23 @@ class User(AbstractUser):
         return f"{self.username} ({self.role})"
         
     def get_all_subordinates(self):
-        """Recursively get all users who report to this user."""
-        subordinates = list(self.subordinates.all())
-        all_subs = list(subordinates)
-        for sub in subordinates:
-            all_subs.extend(sub.get_all_subordinates())
+        """All users who report to this user, directly or indirectly (list of User).
+
+        Cycle-safe: a reports_to loop (A -> B -> A, or a user reporting to themselves) used to
+        recurse until RecursionError. Each user is visited once and the user themself is excluded.
+        """
+        seen = {self.pk}
+        all_subs = []
+        level = [self]
+        while level:
+            next_level = []
+            for sub in User.objects.filter(reports_to__in=level).exclude(pk__in=seen):
+                if sub.pk in seen:
+                    continue
+                seen.add(sub.pk)
+                all_subs.append(sub)
+                next_level.append(sub)
+            level = next_level
         return all_subs
 
 class RolePermission(models.Model):

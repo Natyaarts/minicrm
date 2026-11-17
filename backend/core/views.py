@@ -5,7 +5,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db.models import Q, Sum, Count, F, Count
 from rest_framework.permissions import IsAuthenticated
-from django.http import HttpResponse
+from django.http import HttpResponse, Http404
+from rest_framework.exceptions import APIException
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from decimal import Decimal, InvalidOperation
@@ -659,12 +660,19 @@ class StudentViewSet(viewsets.ModelViewSet):
             # Admins are in MENTOR_ROLES for mentor-endpoint access, but must keep the unrestricted student/lead view.
             # Mobile app sends own_only=true: only this mentor's own batches, no subordinates
             own_only = self.request.query_params.get('own_only') == 'true'
-            subordinates = [] if own_only else list(user.get_all_subordinates())
-            users_to_check = [user] + subordinates
+            subordinate_ids = []
+            if not own_only and hasattr(user, 'get_all_subordinates'):
+                try:
+                    user_model = get_user_model()
+                    subordinate_ids = [s.pk for s in user.get_all_subordinates() if isinstance(s, user_model)]
+                except Exception:
+                    # Bad hierarchy data must not 500 every mentor detail action; fall back to own batches
+                    logger.exception("get_all_subordinates failed for user %s; using own batches only", user.pk)
+            mentor_ids = [user.pk] + subordinate_ids
             qs = qs.filter(
-                Q(batch__primary_mentor__in=users_to_check) |
-                Q(batch__secondary_mentors__in=users_to_check) |
-                Q(batch__teacher__in=users_to_check)
+                Q(batch__primary_mentor_id__in=mentor_ids) |
+                Q(batch__secondary_mentors__id__in=mentor_ids) |
+                Q(batch__teacher_id__in=mentor_ids)
             ).filter(lead_status__in=converted_stage_ids).distinct()
         elif user.role in ['ACADEMIC', 'ACADEMIC_COORDINATOR'] or self.request.query_params.get('group', '').upper() == 'ACADEMIC':
             qs = qs.filter(lead_status__in=converted_stage_ids)
@@ -2128,6 +2136,8 @@ class StudentViewSet(viewsets.ModelViewSet):
     def add_feedback(self, request, pk=None):
         try:
             return self._add_feedback(request)
+        except (Http404, APIException):
+            raise  # expected 4xx (not found, permission, validation): not a server error
         except Exception:
             logger.exception("add_feedback failed for student %s (user %s)", pk, getattr(request.user, 'id', None))
             raise
@@ -2213,6 +2223,8 @@ class StudentViewSet(viewsets.ModelViewSet):
     def feedback_recording(self, request, pk=None):
         try:
             return self._feedback_recording(request)
+        except (Http404, APIException):
+            raise  # expected 4xx (not found, permission, validation): not a server error
         except Exception:
             logger.exception("feedback_recording failed for student %s (user %s)", pk, getattr(request.user, 'id', None))
             raise

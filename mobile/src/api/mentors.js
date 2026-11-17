@@ -22,13 +22,17 @@ export const getBatchStudents = async (batchId) => {
   return getMentorStudents({ batch: batchId });
 };
 
+// own_only matches getMentorStudents: the student is looked up in the mentor's own batches only,
+// so the backend never walks the reporting hierarchy for these per-student calls.
 export const getStudentFeedbacks = async (studentId) => {
-  const response = await client.get(`/students/${studentId}/feedbacks/`);
+  const response = await client.get(`/students/${studentId}/feedbacks/`, { params: { own_only: 'true' } });
   return toList(response.data);
 };
 
 export const addStudentFeedback = async (studentId, payload) => {
-  const response = await client.post(`/students/${studentId}/add_feedback/`, payload);
+  const response = await client.post(`/students/${studentId}/add_feedback/`, payload, {
+    params: { own_only: 'true' },
+  });
   return response.data;
 };
 
@@ -39,7 +43,9 @@ export const uploadFeedbackRecording = async (studentId, p) => {
   form.append('mobile_call_id', p.mobileCallId);
   form.append('audio_recording', { uri: p.uri, name: p.name, type: p.type });
   const response = await client.post(`/students/${studentId}/feedback-recording/`, form, {
+    params: { own_only: 'true' },
     headers: { 'Content-Type': 'multipart/form-data' },
+    transformRequest: (d) => d, // hand FormData to the RN networking layer untouched
     timeout: 120000,
   });
   return response.data;

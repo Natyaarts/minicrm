@@ -871,9 +871,10 @@ const Dialpad = () => {
     if (fileUri) {
       const uri = fileUri.startsWith('/') ? `file://${fileUri}` : fileUri;
       const ext = (uri.match(/\.([a-zA-Z0-9]+)$/)?.[1] || 'm4a').toLowerCase();
-      const types: any = { mp3: 'audio/mpeg', wav: 'audio/wav', amr: 'audio/amr', aac: 'audio/aac', m4a: 'audio/m4a' };
+      // audio/mp4 is the registered MIME type for .m4a ('audio/m4a' is non-standard)
+      const types: any = { mp3: 'audio/mpeg', wav: 'audio/wav', amr: 'audio/amr', aac: 'audio/aac', m4a: 'audio/mp4', mp4: 'audio/mp4' };
       const name = `recording_${Date.now()}.${ext}`;
-      const type = types[ext] || 'audio/m4a';
+      const type = types[ext] || 'audio/mp4';
       try {
         setRecordingUploadStatus('Uploading recording...');
         await uploadFeedbackRecording(leadId, { mobileCallId, uri, name, type });

@@ -110,10 +110,8 @@ def custom_exception_handler(exc, context):
 
     # Unhandled Exception (response is None)
     # Log the full traceback securely on the server
-    logger.error(
-        f"Unhandled Exception at {method} {path} in {view_name}: {exc}",
-        exc_info=True
-    )
+    # Full traceback goes to the console handler -> journalctl -u minicrm-backend
+    logger.exception(f"Unhandled Exception at {method} {path} in {view_name}: {exc}", exc_info=exc)
 
     # Handle Django model ValidationError
     if isinstance(exc, DjangoValidationError):
