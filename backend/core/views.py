@@ -655,7 +655,8 @@ class StudentViewSet(viewsets.ModelViewSet):
                 if subordinates:
                     team_user_ids = [user.id] + [s.id for s in subordinates]
                     qs = qs.filter(assigned_to_id__in=team_user_ids)
-        elif user.role in MENTOR_ROLES:
+        elif user.role in MENTOR_ROLES and user.role not in ('ADMIN', 'SUPER_ADMIN'):
+            # Admins are in MENTOR_ROLES for mentor-endpoint access, but must keep the unrestricted student/lead view.
             # Mobile app sends own_only=true: only this mentor's own batches, no subordinates
             own_only = self.request.query_params.get('own_only') == 'true'
             subordinates = [] if own_only else list(user.get_all_subordinates())
