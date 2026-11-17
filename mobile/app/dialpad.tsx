@@ -77,6 +77,8 @@ const Dialpad = () => {
   const isFinalizingRef = useRef(false);
   const activeSessionIdRef = useRef<string>('');
   const currentMobileCallIdRef = useRef<string>('');
+  // Recording path emitted by native while finalizeCallSession() is still running (state not yet CONNECTED)
+  const bufferedRecordingPathRef = useRef<string | null>(null);
 
   const [feedbackStatus, setFeedbackStatus] = useState('CALL_DONE');
   const callWindowRef = useRef({ start: 0, end: 0 });
@@ -302,6 +304,7 @@ const Dialpad = () => {
   const finalizeCallSession = async () => {
     if (isFinalizingRef.current) return;
     isFinalizingRef.current = true;
+    bufferedRecordingPathRef.current = null;
 
     const sessionId = activeSessionIdRef.current;
     stopTimer();
@@ -353,9 +356,20 @@ const Dialpad = () => {
             filePath = null;
           }
 
+          // Path emitted by onRecordingStopped while this function was running (the listener buffers it)
+          const buffered = bufferedRecordingPathRef.current;
+          if (!filePath && buffered && !isRecordingConsumed(buffered, consumedSet)) {
+            filePath = buffered;
+          }
+
           // Fast fallback check in mapped SAF folder for the current session window if native module returned null
           if (!filePath && targetPhone) {
-            filePath = await findRecentRecordingInMappedFolder(targetPhone, startTime, Date.now(), consumedSet);
+            // stopNativeRecording() just moved lastCallSessionEndTimeMs to "now", which rejects a recording saved
+            // at hang-up. Mentor mode passes this session's own lower bound (startTime already includes the
+            // previous session's end). Sales keeps its existing behaviour and is covered by syncMissingRecordings.
+            filePath = await findRecentRecordingInMappedFolder(
+              targetPhone, startTime, Date.now(), consumedSet, isMentorMode ? startTime : undefined
+            );
           }
 
           if (sessionId && activeSessionIdRef.current !== sessionId) {
@@ -474,6 +488,11 @@ const Dialpad = () => {
     // 1. Listen for events from our Kotlin MediaStore sync (which runs after stopRecording)
     const unsubscribeEvents = listenToCallEvents(async (path) => {
       console.log("Recording saved at:", path);
+      // finalizeCallSession() is still deciding CONNECTED/MISSED: buffer the path, it is applied there
+      if (path && isFinalizingRef.current) {
+        bufferedRecordingPathRef.current = path;
+        return;
+      }
       // Audio recording must ONLY be accepted if the call was already confirmed CONNECTED with duration > 0 and not already consumed
       if (path && callStatusRef.current === 'POST_CALL' && callDurationRef.current > 0 && callStatusStateRef.current === 'CONNECTED') {
         const consumed = await getConsumedRecordings();
@@ -838,44 +857,79 @@ const Dialpad = () => {
     try {
       await addStudentFeedback(leadId, payload); // idempotent on mobile_call_id, safe to retry
     } catch (e: any) {
+      console.warn('[dialpad] add_feedback failed', {
+        status: e?.response?.status, data: e?.response?.data, message: e?.message, mobileCallId,
+      });
       setIsSubmitting(false);
-      Alert.alert('Could not save', e?.response?.data?.error || e?.response?.data?.detail || 'Check your connection and tap Save again.');
+      Alert.alert('Could not save', describeApiError(e));
       return; // stay on this screen so nothing is lost
     }
 
     // Recording (only for connected calls)
     const fileUri = isConnected ? (recordedFilePath || manualRecordingFile?.uri) : null;
-    let recordingFailed = false;
+    let recordingError: string | null = null;
     if (fileUri) {
       const uri = fileUri.startsWith('/') ? `file://${fileUri}` : fileUri;
       const ext = (uri.match(/\.([a-zA-Z0-9]+)$/)?.[1] || 'm4a').toLowerCase();
       const types: any = { mp3: 'audio/mpeg', wav: 'audio/wav', amr: 'audio/amr', aac: 'audio/aac', m4a: 'audio/m4a' };
+      const name = `recording_${Date.now()}.${ext}`;
+      const type = types[ext] || 'audio/m4a';
       try {
         setRecordingUploadStatus('Uploading recording...');
-        await uploadFeedbackRecording(leadId, {
-          mobileCallId, uri, name: `recording_${Date.now()}.${ext}`, type: types[ext] || 'audio/m4a',
-        });
+        await uploadFeedbackRecording(leadId, { mobileCallId, uri, name, type });
         if (recordedFilePath) await markRecordingConsumed(recordedFilePath); // verify signature in SyncManager
-      } catch (e) {
-        recordingFailed = true;
+      } catch (e: any) {
+        recordingError = `${describeApiError(e)}\n\nFile: ${uri}`;
+        console.warn('[dialpad] feedback-recording upload failed', {
+          status: e?.response?.status, data: e?.response?.data, message: e?.message, uri, name, type, mobileCallId,
+        });
       } finally {
         setRecordingUploadStatus(null);
       }
     }
 
-  setIsSubmitting(false);
-  currentMobileCallIdRef.current = '';
-  activeSessionIdRef.current = '';
-  Alert.alert(
-    recordingFailed ? 'Saved, recording failed' : '✅ Saved',
-    recordingFailed
-      ? 'Feedback saved, but the recording upload failed. You can attach it later from the student.'
-      : 'Call feedback saved.',
-    [{ text: 'OK', onPress: () => router.back() }]
-  );
-  setCallStatus('IDLE'); callStatusRef.current = 'IDLE';
-  setPostCallNotes(''); setRecordedFilePath(null); setManualRecordingFile(null); setNextFollowupDate(null);
-};
+    setIsSubmitting(false);
+
+    if (recordingError) {
+      // Feedback is saved; keep this screen (and mobileCallId) so the same recording can be retried.
+      // add_feedback is idempotent on mobile_call_id and feedback-recording replaces the file, so retry is safe.
+      Alert.alert(
+        'Saved, recording failed',
+        `Feedback saved, but the recording upload failed:\n${recordingError}`,
+        [
+          { text: 'Close without recording', style: 'destructive', onPress: () => { resetPostCallState(); router.back(); } },
+          { text: 'Retry upload', onPress: () => { handleMentorFeedbackSubmit(); } },
+        ]
+      );
+      return;
+    }
+
+    Alert.alert('✅ Saved', 'Call feedback saved.', [{ text: 'OK', onPress: () => router.back() }]);
+    resetPostCallState();
+  };
+
+  const describeApiError = (e: any): string => {
+    const status = e?.response?.status;
+    const data = e?.response?.data;
+    if (!status) return e?.message || 'Network error. Check your connection and tap Save again.';
+    const detail = data?.error || data?.detail || (typeof data === 'string' ? data.slice(0, 200) : JSON.stringify(data));
+    return `HTTP ${status}: ${detail}`;
+  };
+
+  // Full reset of the post-call session (used by mentor save and by "Discard & Close")
+  const resetPostCallState = () => {
+    currentMobileCallIdRef.current = '';
+    activeSessionIdRef.current = '';
+    bufferedRecordingPathRef.current = null;
+    callStartTimeRef.current = 0;
+    setCallStatus('IDLE'); callStatusRef.current = 'IDLE';
+    setCallDuration(0); callDurationRef.current = 0;
+    setCallStatusState('MISSED'); callStatusStateRef.current = 'MISSED';
+    setPostCallNotes('');
+    setRecordedFilePath(null);
+    setManualRecordingFile(null);
+    setNextFollowupDate(null);
+  };
 
 
   const formatDuration = (seconds: number) => {
@@ -1092,11 +1146,7 @@ const Dialpad = () => {
                   { 
                     text: 'Yes, Discard', 
                     style: 'destructive',
-                    onPress: () => {
-                      setCallStatus('IDLE');
-                      setPostCallNotes('');
-                      setRecordedFilePath(null);
-                    }
+                    onPress: resetPostCallState
                   }
                 ]
               );

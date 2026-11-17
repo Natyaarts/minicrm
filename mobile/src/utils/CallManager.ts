@@ -503,7 +503,10 @@ export const findRecentRecordingInMappedFolder = async (
     phoneNumber: string,
     callStartTimeMs: number,
     callEndTimeMs: number = Date.now(),
-    consumedSet?: Set<string>
+    consumedSet?: Set<string>,
+    // Previous-session boundary to use instead of lastCallSessionEndTimeMs. Pass it when calling this after
+    // stopNativeRecording(), which has already moved lastCallSessionEndTimeMs to the end of the current call.
+    sessionFloorMs?: number
 ): Promise<string | null> => {
     try {
         const cleanTarget = (phoneNumber || '').replace(/\D/g, '').slice(-10);
@@ -511,7 +514,7 @@ export const findRecentRecordingInMappedFolder = async (
 
         const minValidTime = Math.max(
             callStartTimeMs > 0 ? callStartTimeMs - 2000 : callEndTimeMs - 30000,
-            lastCallSessionEndTimeMs
+            typeof sessionFloorMs === 'number' ? sessionFloorMs : lastCallSessionEndTimeMs
         );
         const maxValidTime = callEndTimeMs + 15000;
 
