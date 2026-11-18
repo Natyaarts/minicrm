@@ -12,6 +12,20 @@ import { Audio } from 'expo-av';
 import client from '../../src/api/client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+const formatLeadDateTime = (value?: string | null): string => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (isNaN(date.getTime())) return '';
+  return date.toLocaleString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
+};
+
 export default function SalesScreen() {
   const params = useLocalSearchParams<{ mode?: string }>();
   const colorScheme = useColorScheme();
@@ -565,6 +579,7 @@ export default function SalesScreen() {
     const phone = item.phone || item.mobile || '';
     const campaignLabel = item.campaign_name || '';
     const initials = ((item.first_name?.[0] || '') + (item.last_name?.[0] || '')).toUpperCase() || '?';
+    const leadDateTime = formatLeadDateTime(item.created_at);
 
     return (
       <TouchableOpacity
@@ -625,6 +640,14 @@ export default function SalesScreen() {
               </Text>
             ) : null}
           </View>
+          {leadDateTime ? (
+            <View style={styles.leadDateRow}>
+              <FontAwesome5 name="clock" size={9} color={isDark ? '#64748B' : '#94A3B8'} />
+              <Text style={[styles.leadDateTxt, isDark && { color: '#64748B' }]} numberOfLines={1}>
+                {leadDateTime}
+              </Text>
+            </View>
+          ) : null}
         </View>
 
         {/* Call button */}
@@ -1286,6 +1309,8 @@ const styles = StyleSheet.create({
   campaignTxt: { fontSize: 10, fontWeight: '700', color: '#4F46E5', flexShrink: 1 },
   program: { fontSize: 10, color: '#F59E0B', fontWeight: '700', flexShrink: 1 },
   phoneRow: { fontSize: 11, color: '#94A3B8', marginTop: 3, fontWeight: '500' },
+  leadDateRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 },
+  leadDateTxt: { fontSize: 10, color: '#94A3B8', fontWeight: '500' },
 
   // BDE Executive Filter
   bdeFilterRow: {
