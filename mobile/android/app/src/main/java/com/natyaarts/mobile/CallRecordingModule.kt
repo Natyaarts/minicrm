@@ -35,6 +35,24 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
 
     private var recorder: MediaRecorder? = null
     private var fallbackFilePath: String? = null
+
+    // Peak MediaRecorder amplitude (0..32767) of the fallback recording, so JS can reject silent files.
+    @Volatile private var peakAmplitude: Int = 0
+    @Volatile private var lastFallbackPeak: Int = -1
+    @Volatile private var lastFallbackPath: String? = null
+    private val amplitudeHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val amplitudeSampler = object : Runnable {
+        override fun run() {
+            val active = recorder ?: return
+            try {
+                val amp = active.maxAmplitude // max since the previous call
+                if (amp > peakAmplitude) peakAmplitude = amp
+            } catch (e: Exception) {
+                // recorder stopped/released on another thread
+            }
+            amplitudeHandler.postDelayed(this, 500)
+        }
+    }
     private var callStartTime: Long = 0
     private var targetPhoneNumber: String = ""
 
@@ -132,6 +150,17 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
                 stopRecordingInternal(true)
             }
 
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                // Android 10+ silences MIC capture for third-party apps while a call is active, so the
+                // fallback file would be digital silence. Only the session (phone + start time) is kept,
+                // so stopRecording() can still find the phone's own call recording.
+                fallbackFilePath = null
+                lastFallbackPath = null
+                lastFallbackPeak = -1
+                promise.resolve(null)
+                return
+            }
+
             // Start MediaRecorder as fallback with sanitized phone number in prefix to maintain recording identity
             val cleanPhone = (phoneNumber ?: "").replace(Regex("[^0-9]"), "").takeLast(10)
             val prefix = if (cleanPhone.isNotEmpty()) "fallback_recording_${cleanPhone}_" else "fallback_recording_"
@@ -157,11 +186,31 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
             activeRecorder.start()
 
             recorder = activeRecorder
+            peakAmplitude = 0
+            lastFallbackPath = filePath
+            lastFallbackPeak = -1
+            amplitudeHandler.removeCallbacks(amplitudeSampler)
+            amplitudeHandler.postDelayed(amplitudeSampler, 500)
 
             sendEvent("onRecordingStarted", filePath)
             promise.resolve(filePath)
         } catch (e: Exception) {
             promise.reject("START_RECORDING_FAILED", e.message, e)
+        }
+    }
+
+    /**
+     * Peak amplitude (0..32767) of the last fallback recording if [filePath] is that file, else -1 (unknown).
+     * 0 means digital silence.
+     */
+    @ReactMethod
+    fun getFallbackPeakAmplitude(filePath: String?, promise: Promise) {
+        val last = lastFallbackPath
+        if (filePath != null && last != null &&
+            (filePath == last || filePath.removePrefix("file://") == last || filePath.endsWith(File(last).name))) {
+            promise.resolve(lastFallbackPeak.toDouble())
+        } else {
+            promise.resolve(-1.0)
         }
     }
 
@@ -240,6 +289,15 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
         val path = fallbackFilePath
         val activeRecorder = recorder
         if (activeRecorder != null) {
+            amplitudeHandler.removeCallbacks(amplitudeSampler)
+            try {
+                val amp = activeRecorder.maxAmplitude
+                if (amp > peakAmplitude) peakAmplitude = amp
+            } catch (e: Exception) {
+                // ignore
+            }
+            lastFallbackPeak = peakAmplitude
+            lastFallbackPath = path
             try {
                 activeRecorder.stop()
             } catch (stopEx: Exception) {

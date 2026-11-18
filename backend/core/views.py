@@ -22,6 +22,7 @@ from django.db import IntegrityError, transaction
 import logging
 from .validators import validate_audio_recording_file
 from .serializers import recording_absolute_url
+from .audio_checks import is_silent_recording
 
 logger = logging.getLogger(__name__)
 
@@ -2249,6 +2250,12 @@ class StudentViewSet(viewsets.ModelViewSet):
             validate_audio_recording_file(f)      # FileField validators don't run on .save()
         except DjangoValidationError as e:
             return Response({'error': '; '.join(e.messages)}, status=400)
+
+        # Android 10+ mutes the MIC for third-party apps during calls, so an app-made recording can be pure
+        # silence. Skipped (allowed) when ffmpeg is unavailable or the file can't be measured.
+        if is_silent_recording(f):
+            return Response({'error': 'Recording is silent. Attach the phone\'s own call recording instead.'},
+                            status=400)
 
         fb.audio_recording = f
         fb.save()

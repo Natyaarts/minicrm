@@ -424,6 +424,29 @@ export const startNativeRecording = async (phoneNumber?: string) => {
     }
 };
 
+// ── App (MIC) fallback recordings ──────────────────────────────────────────
+// Android 10+ silences MIC capture for third-party apps during a call, so the app's own
+// "fallback_recording_*.m4a" is digital silence there. Only the phone's built-in call recorder
+// (mapped folder / MediaStore copy) has real call audio.
+const FALLBACK_SILENCE_PEAK = 100; // MediaRecorder.getMaxAmplitude() is 0..32767; 0 = digital silence
+
+export const isAppFallbackRecording = (pathOrUri?: string | null): boolean =>
+    !!pathOrUri && decodeURIComponent(String(pathOrUri)).split('/').pop()!.startsWith('fallback_recording_');
+
+/** true when the file is the app's own fallback recording and has no usable audio (or can't be verified on Android 10+). */
+export const isSilentAppRecording = async (pathOrUri?: string | null): Promise<boolean> => {
+    if (!isAppFallbackRecording(pathOrUri)) return false;
+    let peak = -1;
+    try {
+        if (CallRecordingModule && typeof CallRecordingModule.getFallbackPeakAmplitude === 'function') {
+            peak = Number(await CallRecordingModule.getFallbackPeakAmplitude(String(pathOrUri)));
+        }
+    } catch (_) {}
+    if (peak >= 0) return peak < FALLBACK_SILENCE_PEAK;
+    // Peak unknown: on Android 10+ the MIC is silenced during calls, so treat it as silent
+    return Platform.OS === 'android' && Number(Platform.Version) >= 29;
+};
+
 export const cancelNativeRecording = async () => {
     markCallSessionEnded(Date.now());
     if (!CallRecordingModule) return null;

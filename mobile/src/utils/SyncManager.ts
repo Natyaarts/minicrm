@@ -1,6 +1,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import { File as ExpoFile } from 'expo-file-system';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 import client from '../api/client';
 
 const PENDING_CALLS_STORAGE_KEY = '@pending_call_queue';
@@ -545,6 +546,9 @@ export const syncMissingRecordings = async () => {
         (rawUri.startsWith('content://') && isAudioExt) ||
         isAudioExt;
       if (!isRecFile) return;
+      // The app's own MIC fallback recording is digital silence on Android 10+ (MIC is muted for
+      // third-party apps during calls), so never backfill it onto a call
+      if (rawName.startsWith('fallback_recording') && Platform.OS === 'android' && Number(Platform.Version) >= 29) return;
 
       const cleanDigits = rawName.replace(/\D/g, '');
       const otherNumberMatch = rawName.match(/(?:\+?91|0)?([6-9]\d{9})/);

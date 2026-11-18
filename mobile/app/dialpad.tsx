@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Dimensions, Pla
 import { Ionicons } from '@expo/vector-icons';
 import * as Notifications from 'expo-notifications';
 import { useLocalSearchParams, router } from 'expo-router';
-import { startNativeRecording, stopNativeRecording, cancelNativeRecording, findRecentRecordingInMappedFolder, markCallSessionEnded, getLastCallSessionEndTimeMs, listenToCallEvents, requestCallPermissions, listenToCallState, makeDirectCall, getLatestCallLogDuration } from '../src/utils/CallManager';
+import { startNativeRecording, stopNativeRecording, cancelNativeRecording, findRecentRecordingInMappedFolder, markCallSessionEnded, getLastCallSessionEndTimeMs, listenToCallEvents, requestCallPermissions, listenToCallState, makeDirectCall, getLatestCallLogDuration, isAppFallbackRecording, isSilentAppRecording, getMappedRecordingFolder, pickAndMapRecordingFolder } from '../src/utils/CallManager';
 import { generateMobileCallId, queueOfflineCall, markRecordingConsumed, getConsumedRecordings, isRecordingConsumed, uploadCallRecordingAsync, syncPendingRecordings } from '../src/utils/SyncManager';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -46,6 +46,11 @@ const Dialpad = () => {
   const [isProcessingRecording, setIsProcessingRecording] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [recordingUploadStatus, setRecordingUploadStatus] = useState<string | null>(null);
+  // Where the attached auto-recording came from: the phone's call recorder or the app's MIC fallback
+  const [recordingSource, setRecordingSource] = useState<'phone' | 'app' | null>(null);
+  // Connected call but no usable call audio was found (fallback was silent / nothing in the mapped folder)
+  const [noCallAudio, setNoCallAudio] = useState(false);
+  const [recordingFolderMapped, setRecordingFolderMapped] = useState<boolean | null>(null);
 
   // Dynamic pipeline stages from web backend
   const [pipelineStages, setPipelineStages] = useState<any[]>([
@@ -79,6 +84,8 @@ const Dialpad = () => {
   const currentMobileCallIdRef = useRef<string>('');
   // Recording path emitted by native while finalizeCallSession() is still running (state not yet CONNECTED)
   const bufferedRecordingPathRef = useRef<string | null>(null);
+  // Set once the user deletes the auto recording or picks a file: later native events must not override that
+  const userOverrodeRecordingRef = useRef(false);
 
   const [feedbackStatus, setFeedbackStatus] = useState('CALL_DONE');
   const callWindowRef = useRef({ start: 0, end: 0 });
@@ -321,6 +328,10 @@ const Dialpad = () => {
     callStatusStateRef.current = 'MISSED';
     setRecordedFilePath(null);
     setManualRecordingFile(null);
+    setRecordingSource(null);
+    setNoCallAudio(false);
+    userOverrodeRecordingRef.current = false;
+    getMappedRecordingFolder().then(uri => setRecordingFolderMapped(!!uri)).catch(() => setRecordingFolderMapped(null));
     setIsProcessingRecording(true);
 
     let authoritativeDuration = 0;
@@ -349,27 +360,48 @@ const Dialpad = () => {
           setRecordedFilePath(null);
         } else {
           const consumedSet = await getConsumedRecordings();
-          let filePath = await stopNativeRecording();
+          const usable = (p?: string | null) => !!p && !isRecordingConsumed(p, consumedSet);
 
-          // Reject if already consumed by a previous call
-          if (filePath && isRecordingConsumed(filePath, consumedSet)) {
-            filePath = null;
+          // Stops the app recorder. Returns the phone's own call recording when native finds one
+          // (copied to cache), otherwise the app's MIC fallback file (silent on Android 10+), or null.
+          const nativePath = await stopNativeRecording();
+
+          // 1. Phone call recording found by native
+          let filePath: string | null = null;
+          let source: 'phone' | 'app' | null = null;
+          if (usable(nativePath) && !isAppFallbackRecording(nativePath)) {
+            filePath = nativePath;
+            source = 'phone';
           }
 
-          // Path emitted by onRecordingStopped while this function was running (the listener buffers it)
-          const buffered = bufferedRecordingPathRef.current;
-          if (!filePath && buffered && !isRecordingConsumed(buffered, consumedSet)) {
-            filePath = buffered;
-          }
-
-          // Fast fallback check in mapped SAF folder for the current session window if native module returned null
+          // 2. Mapped folder (phone's call recorder), retried while it finishes writing the file.
+          //    stopNativeRecording() just moved lastCallSessionEndTimeMs to "now", which would reject a
+          //    recording saved at hang-up, so pass this session's own lower bound (startTime already
+          //    includes the previous session's end).
           if (!filePath && targetPhone) {
-            // stopNativeRecording() just moved lastCallSessionEndTimeMs to "now", which rejects a recording saved
-            // at hang-up. Mentor mode passes this session's own lower bound (startTime already includes the
-            // previous session's end). Sales keeps its existing behaviour and is covered by syncMissingRecordings.
-            filePath = await findRecentRecordingInMappedFolder(
-              targetPhone, startTime, Date.now(), consumedSet, isMentorMode ? startTime : undefined
-            );
+            const deadline = Date.now() + 10000;
+            while (!filePath) {
+              const found = await findRecentRecordingInMappedFolder(targetPhone, startTime, Date.now(), consumedSet, startTime);
+              if (usable(found) && !isAppFallbackRecording(found)) {
+                filePath = found;
+                source = 'phone';
+                break;
+              }
+              if (Date.now() >= deadline || (sessionId && activeSessionIdRef.current !== sessionId)) break;
+              await new Promise(r => setTimeout(r, 1500));
+            }
+          }
+
+          // 3. App fallback recording (native result or a path buffered from onRecordingStopped),
+          //    only if it actually contains audio
+          if (!filePath) {
+            for (const candidate of [nativePath, bufferedRecordingPathRef.current]) {
+              if (usable(candidate) && !(await isSilentAppRecording(candidate))) {
+                filePath = candidate!;
+                source = isAppFallbackRecording(candidate) ? 'app' : 'phone';
+                break;
+              }
+            }
           }
 
           if (sessionId && activeSessionIdRef.current !== sessionId) {
@@ -377,8 +409,10 @@ const Dialpad = () => {
             return;
           }
 
-          if (filePath && !isRecordingConsumed(filePath, consumedSet)) {
+          if (filePath) {
             setRecordedFilePath(filePath);
+            setRecordingSource(source);
+            setNoCallAudio(false);
             // Recording duration may synchronize displayed duration ONLY after call is proven CONNECTED
             const exactDuration = await extractDurationFromAudio(filePath);
             if (exactDuration && exactDuration > 0) {
@@ -386,6 +420,8 @@ const Dialpad = () => {
             }
           } else {
             setRecordedFilePath(null);
+            setRecordingSource(null);
+            setNoCallAudio(true);
           }
         }
       } catch (recErr) {
@@ -495,11 +531,17 @@ const Dialpad = () => {
       }
       // Audio recording must ONLY be accepted if the call was already confirmed CONNECTED with duration > 0 and not already consumed
       if (path && callStatusRef.current === 'POST_CALL' && callDurationRef.current > 0 && callStatusStateRef.current === 'CONNECTED') {
+        // The user deleted the auto recording or picked a file for this session: don't override that
+        if (userOverrodeRecordingRef.current) return;
         const consumed = await getConsumedRecordings();
         if (isRecordingConsumed(path, consumed)) {
           return;
         }
+        if (await isSilentAppRecording(path)) return; // never attach a silent app (MIC) recording
+        if (userOverrodeRecordingRef.current) return;  // re-check after the awaits
         setRecordedFilePath(path);
+        setRecordingSource(isAppFallbackRecording(path) ? 'app' : 'phone');
+        setNoCallAudio(false);
         try {
           const exactDuration = await extractDurationFromAudio(path);
           if (exactDuration && exactDuration > 0) {
@@ -653,6 +695,7 @@ const Dialpad = () => {
       });
       if (!result.canceled && result.assets && result.assets[0]) {
         const asset = result.assets[0];
+        userOverrodeRecordingRef.current = true; // later native events must not replace the user's choice
         setManualRecordingFile(asset);
         if (asset.uri) {
           const exactDuration = await extractDurationFromAudio(asset.uri);
@@ -711,8 +754,13 @@ const Dialpad = () => {
     let mimeType = 'audio/m4a';
     let fileName = `recording_${Date.now()}.m4a`;
 
-    // Only attach recording if call is confirmed CONNECTED with duration > 0
-    if (isConnected && recordedFilePath) {
+    // Only attach recording if call is confirmed CONNECTED with duration > 0.
+    // A manually picked file always wins over the auto recording.
+    if (isConnected && manualRecordingFile) {
+      fileUriToUpload = manualRecordingFile.uri;
+      mimeType = manualRecordingFile.mimeType || 'audio/mpeg';
+      fileName = manualRecordingFile.name || `recording_${Date.now()}.mp3`;
+    } else if (isConnected && recordedFilePath) {
       fileUriToUpload = recordedFilePath;
       if (!fileUriToUpload.startsWith('file://') && !fileUriToUpload.startsWith('content://')) {
         fileUriToUpload = `file://${fileUriToUpload}`;
@@ -725,10 +773,6 @@ const Dialpad = () => {
       else if (ext === 'wav') mimeType = 'audio/wav';
       else if (ext === 'amr') mimeType = 'audio/amr';
       else if (ext === 'aac') mimeType = 'audio/aac';
-    } else if (isConnected && manualRecordingFile) {
-      fileUriToUpload = manualRecordingFile.uri;
-      mimeType = manualRecordingFile.mimeType || 'audio/mpeg';
-      fileName = manualRecordingFile.name || `recording_${Date.now()}.mp3`;
     }
 
     try {
@@ -806,7 +850,7 @@ const Dialpad = () => {
         notes: postCallNotes || (isConnected ? `Outbound call to ${cleanNumber}` : `Outbound call to ${cleanNumber} (Unanswered / Missed)`),
         pipeline_status: hasExplicitStageChange && pipelineStatus ? String(pipelineStatus) : undefined,
         next_followup_date: nextFollowupDate?.toISOString(),
-        recordedFilePath: isConnected ? (recordedFilePath || manualRecordingFile?.uri) : null
+        recordedFilePath: isConnected ? (manualRecordingFile?.uri || recordedFilePath) : null
       });
       Alert.alert('Saved Offline', 'Call logged locally and will sync automatically.');
       setCallStatus('IDLE');
@@ -866,7 +910,9 @@ const Dialpad = () => {
     }
 
     // Recording (only for connected calls)
-    const fileUri = isConnected ? (recordedFilePath || manualRecordingFile?.uri) : null;
+    // A manually picked file always wins over the auto recording
+    const usingAutoRecording = isConnected && !manualRecordingFile?.uri && !!recordedFilePath;
+    const fileUri = isConnected ? (manualRecordingFile?.uri || recordedFilePath) : null;
     let recordingError: string | null = null;
     if (fileUri) {
       const uri = fileUri.startsWith('/') ? `file://${fileUri}` : fileUri;
@@ -878,7 +924,7 @@ const Dialpad = () => {
       try {
         setRecordingUploadStatus('Uploading recording...');
         await uploadFeedbackRecording(leadId, { mobileCallId, uri, name, type });
-        if (recordedFilePath) await markRecordingConsumed(recordedFilePath); // verify signature in SyncManager
+        if (usingAutoRecording && recordedFilePath) await markRecordingConsumed(recordedFilePath);
       } catch (e: any) {
         recordingError = `${describeApiError(e)}\n\nFile: ${uri}`;
         console.warn('[dialpad] feedback-recording upload failed', {
@@ -929,7 +975,24 @@ const Dialpad = () => {
     setPostCallNotes('');
     setRecordedFilePath(null);
     setManualRecordingFile(null);
+    setRecordingSource(null);
+    setNoCallAudio(false);
+    userOverrodeRecordingRef.current = false;
     setNextFollowupDate(null);
+  };
+
+  const handleMapRecordingFolder = async () => {
+    try {
+      const result: any = await pickAndMapRecordingFolder();
+      if (result?.uri) {
+        setRecordingFolderMapped(true);
+        Alert.alert('Folder mapped', `Call recordings will be read from ${result.folderInfo?.folderName || 'the selected folder'}. You can attach this call's recording with "Upload Call Recording".`);
+      } else if (result?.errorMessage) {
+        Alert.alert('Folder not mapped', result.errorMessage);
+      }
+    } catch (err: any) {
+      Alert.alert('Folder not mapped', err?.message || 'Could not open the folder picker.');
+    }
   };
 
 
@@ -1093,13 +1156,43 @@ const Dialpad = () => {
             </Text>
           </View>
 
+          {callStatusState === 'CONNECTED' && !isProcessingRecording && recordingFolderMapped === false && (
+            <View style={{ backgroundColor: '#FFFBEB', borderWidth: 1, borderColor: '#FCD34D', borderRadius: 8, padding: 10, marginBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Ionicons name="folder-open-outline" size={16} color="#B45309" />
+              <Text style={{ color: '#92400E', fontSize: 12, flex: 1 }}>
+                No call-recording folder mapped. Map your phone's call recorder folder so recordings attach automatically.
+              </Text>
+              <TouchableOpacity onPress={handleMapRecordingFolder}>
+                <Text style={{ color: '#B45309', fontWeight: '700', fontSize: 12 }}>Map Folder</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {noCallAudio && !recordedFilePath && !manualRecordingFile && (
+            <View style={{ backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FCA5A5', borderRadius: 8, padding: 10, marginBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Ionicons name="mic-off-outline" size={16} color="#B91C1C" />
+              <Text style={{ color: '#991B1B', fontSize: 12, flex: 1 }}>
+                No call audio captured. Turn on your phone's call recording and map its folder.
+              </Text>
+            </View>
+          )}
+
           {(recordedFilePath || manualRecordingFile) ? (
             <View style={{ backgroundColor: '#F0FFF4', borderWidth: 1, borderColor: '#9AE6B4', borderRadius: 8, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
               <Ionicons name="checkmark-circle" size={20} color="#38A169" />
               <Text style={{ color: '#276749', fontSize: 13, flex: 1 }} numberOfLines={1}>
-                {recordedFilePath ? `Auto-recorded: ${recordedFilePath.split('/').pop() || recordedFilePath} ✅` : manualRecordingFile?.name}
+                {manualRecordingFile
+                  ? `Selected file: ${manualRecordingFile.name}`
+                  : recordingSource === 'app'
+                    ? `App recording (may be silent): ${decodeURIComponent(recordedFilePath!).split('/').pop()?.split(':').pop()}`
+                    : `Phone call recording: ${decodeURIComponent(recordedFilePath!).split('/').pop()?.split(':').pop()}`}
               </Text>
-              <TouchableOpacity onPress={() => { setRecordedFilePath(null); setManualRecordingFile(null); }}>
+              <TouchableOpacity onPress={() => {
+                userOverrodeRecordingRef.current = true; // later native events must not bring it back
+                setRecordedFilePath(null);
+                setManualRecordingFile(null);
+                setRecordingSource(null);
+              }}>
                 <Ionicons name="trash-outline" size={18} color="#EF4444" />
               </TouchableOpacity>
             </View>

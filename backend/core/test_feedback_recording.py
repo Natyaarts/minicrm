@@ -167,3 +167,51 @@ class FeedbackRecordingTests(TestCase):
     def test_wrong_mobile_call_id_returns_404(self):
         self._add_feedback(self._payload('mob_real'))
         self.assertEqual(self._upload('mob_does_not_exist').status_code, 404)
+
+
+@override_settings(MEDIA_ROOT=TEMP_MEDIA)
+class FeedbackRecordingSilenceTests(TestCase):
+    """feedback-recording rejects digitally silent files (ffmpeg volumedetect), skipping the check
+    when ffmpeg isn't available or can't measure the file."""
+
+    # Same fixtures/helpers as FeedbackRecordingTests without re-running its tests
+    setUp = FeedbackRecordingTests.setUp
+    _payload = FeedbackRecordingTests._payload
+    _add_feedback = FeedbackRecordingTests._add_feedback
+    _upload = FeedbackRecordingTests._upload
+
+    def _ffmpeg_reports(self, stderr):
+        completed = mock.Mock(returncode=0, stderr=stderr)
+        return (mock.patch('core.audio_checks.shutil.which', return_value='/usr/bin/ffmpeg'),
+                mock.patch('core.audio_checks.subprocess.run', return_value=completed))
+
+    def _upload_with(self, mcid, stderr):
+        self.assertEqual(self._add_feedback(self._payload(mcid)).status_code, 201)
+        which_patch, run_patch = self._ffmpeg_reports(stderr)
+        with which_patch, run_patch as run:
+            res = self._upload(mcid)
+        return res, run
+
+    def test_silent_recording_rejected(self):
+        res, run = self._upload_with('mob_silent', '[Parsed_volumedetect_0] mean_volume: -91.0 dB\n'
+                                                   '[Parsed_volumedetect_0] max_volume: -91.0 dB\n')
+        self.assertEqual(res.status_code, 400)
+        self.assertIn('silent', res.data['error'].lower())
+        self.assertIn('volumedetect', run.call_args.args[0])
+        self.assertFalse(StudentFeedback.objects.get(mobile_call_id='mob_silent').audio_recording)
+
+    def test_minus_inf_is_silent(self):
+        res, _ = self._upload_with('mob_inf', '[Parsed_volumedetect_0] max_volume: -inf dB\n')
+        self.assertEqual(res.status_code, 400)
+
+    def test_audible_recording_saved(self):
+        res, _ = self._upload_with('mob_loud', '[Parsed_volumedetect_0] max_volume: -12.4 dB\n')
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertTrue(StudentFeedback.objects.get(mobile_call_id='mob_loud').audio_recording)
+
+    def test_unmeasurable_or_no_ffmpeg_is_allowed(self):
+        res, _ = self._upload_with('mob_unknown', 'Invalid data found when processing input\n')
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertEqual(self._add_feedback(self._payload('mob_noff')).status_code, 201)
+        with mock.patch('core.audio_checks.shutil.which', return_value=None):
+            self.assertEqual(self._upload('mob_noff').status_code, 200)
