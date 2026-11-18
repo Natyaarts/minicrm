@@ -215,6 +215,109 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
     }
 
     /**
+     * Decodes up to the first [maxSeconds] of an audio file (file path, file:// or content:// URI) and
+     * resolves its peak level in dBFS: 0 = full scale, -200 = digital silence, null = could not decode.
+     */
+    @ReactMethod
+    fun getAudioPeakDbfs(uriOrPath: String?, maxSeconds: Double, promise: Promise) {
+        if (uriOrPath.isNullOrEmpty()) {
+            promise.resolve(null)
+            return
+        }
+        Thread {
+            var extractor: android.media.MediaExtractor? = null
+            var codec: android.media.MediaCodec? = null
+            try {
+                val ex = android.media.MediaExtractor()
+                extractor = ex
+                if (uriOrPath.startsWith("content://")) {
+                    ex.setDataSource(reactApplicationContext, Uri.parse(uriOrPath), null)
+                } else {
+                    ex.setDataSource(uriOrPath.removePrefix("file://"))
+                }
+
+                var trackIndex = -1
+                var format: android.media.MediaFormat? = null
+                for (i in 0 until ex.trackCount) {
+                    val f = ex.getTrackFormat(i)
+                    if (f.getString(android.media.MediaFormat.KEY_MIME)?.startsWith("audio/") == true) {
+                        trackIndex = i
+                        format = f
+                        break
+                    }
+                }
+                if (trackIndex < 0 || format == null) {
+                    promise.resolve(null)
+                    return@Thread
+                }
+                ex.selectTrack(trackIndex)
+                val mime = format.getString(android.media.MediaFormat.KEY_MIME)!!
+                val dec = android.media.MediaCodec.createDecoderByType(mime)
+                codec = dec
+                dec.configure(format, null, null, 0)
+                dec.start()
+
+                val limitUs = (maxSeconds.coerceIn(1.0, 30.0) * 1_000_000).toLong()
+                val info = android.media.MediaCodec.BufferInfo()
+                val deadline = System.currentTimeMillis() + 5_000L
+                var inputDone = false
+                var outputDone = false
+                var peak = 0
+                var decodedAny = false
+
+                while (!outputDone && System.currentTimeMillis() < deadline) {
+                    if (!inputDone) {
+                        val inIdx = dec.dequeueInputBuffer(10_000)
+                        if (inIdx >= 0) {
+                            val inBuf = dec.getInputBuffer(inIdx)
+                            val size = if (inBuf != null) ex.readSampleData(inBuf, 0) else -1
+                            if (size < 0 || ex.sampleTime > limitUs) {
+                                dec.queueInputBuffer(inIdx, 0, 0, 0, android.media.MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                                inputDone = true
+                            } else {
+                                dec.queueInputBuffer(inIdx, 0, size, ex.sampleTime, 0)
+                                ex.advance()
+                            }
+                        }
+                    }
+                    val outIdx = dec.dequeueOutputBuffer(info, 10_000)
+                    if (outIdx >= 0) {
+                        val outBuf = dec.getOutputBuffer(outIdx)
+                        if (outBuf != null && info.size > 0) {
+                            decodedAny = true
+                            outBuf.position(info.offset)
+                            outBuf.limit(info.offset + info.size)
+                            // Decoders output 16-bit PCM by default
+                            val samples = outBuf.order(java.nio.ByteOrder.LITTLE_ENDIAN).asShortBuffer()
+                            while (samples.hasRemaining()) {
+                                val v = Math.abs(samples.get().toInt())
+                                if (v > peak) peak = v
+                            }
+                        }
+                        dec.releaseOutputBuffer(outIdx, false)
+                        if ((info.flags and android.media.MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
+                            outputDone = true
+                        }
+                    }
+                }
+
+                when {
+                    !decodedAny -> promise.resolve(null)
+                    peak == 0 -> promise.resolve(-200.0)
+                    else -> promise.resolve(20.0 * Math.log10(peak / 32768.0))
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                promise.resolve(null)
+            } finally {
+                try { codec?.stop() } catch (ignored: Exception) {}
+                try { codec?.release() } catch (ignored: Exception) {}
+                try { extractor?.release() } catch (ignored: Exception) {}
+            }
+        }.start()
+    }
+
+    /**
      * Immediately stops and discards any fallback recording without polling MediaStore/SAF.
      * Used when a call is unanswered, rejected, failed, or cancelled so the Call Log Save Portal
      * opens instantaneously (< 5ms) and never inherits a previous call's recording.

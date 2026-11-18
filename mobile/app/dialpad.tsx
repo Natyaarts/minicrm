@@ -3,8 +3,8 @@ import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Dimensions, Pla
 import { Ionicons } from '@expo/vector-icons';
 import * as Notifications from 'expo-notifications';
 import { useLocalSearchParams, router } from 'expo-router';
-import { startNativeRecording, stopNativeRecording, cancelNativeRecording, findRecentRecordingInMappedFolder, markCallSessionEnded, getLastCallSessionEndTimeMs, listenToCallEvents, requestCallPermissions, listenToCallState, makeDirectCall, getLatestCallLogDuration, isAppFallbackRecording, isSilentAppRecording, getMappedRecordingFolder, pickAndMapRecordingFolder } from '../src/utils/CallManager';
-import { generateMobileCallId, queueOfflineCall, markRecordingConsumed, getConsumedRecordings, isRecordingConsumed, uploadCallRecordingAsync, syncPendingRecordings } from '../src/utils/SyncManager';
+import { startNativeRecording, stopNativeRecording, cancelNativeRecording, findRecentRecordingInMappedFolder, markCallSessionEnded, getLastCallSessionEndTimeMs, listenToCallEvents, requestCallPermissions, listenToCallState, makeDirectCall, getLatestCallLogDuration, isAppFallbackRecording, isSilentAppRecording, deleteAppFallbackRecording, getMappedRecordingFolder, pickAndMapRecordingFolder } from '../src/utils/CallManager';
+import { generateMobileCallId, queueOfflineCall, markRecordingConsumed, getConsumedRecordings, isRecordingConsumed, uploadCallRecordingAsync, syncPendingRecordings, queuePendingMentorRecording } from '../src/utils/SyncManager';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
@@ -86,6 +86,8 @@ const Dialpad = () => {
   const bufferedRecordingPathRef = useRef<string | null>(null);
   // Set once the user deletes the auto recording or picks a file: later native events must not override that
   const userOverrodeRecordingRef = useRef(false);
+  // Recording-match window of the last connected call (used to queue a late phone recording)
+  const recordingWindowRef = useRef<{ start: number; end: number; prevEnd: number; seconds: number } | null>(null);
 
   const [feedbackStatus, setFeedbackStatus] = useState('CALL_DONE');
   const callWindowRef = useRef({ start: 0, end: 0 });
@@ -316,7 +318,9 @@ const Dialpad = () => {
     const sessionId = activeSessionIdRef.current;
     stopTimer();
     const rawStart = callStartTimeRef.current > 0 ? callStartTimeRef.current : (Date.now() - 5000);
-    const startTime = Math.max(rawStart, getLastCallSessionEndTimeMs());
+    const prevSessionEndMs = getLastCallSessionEndTimeMs(); // before stopNativeRecording() moves it
+    const startTime = Math.max(rawStart, prevSessionEndMs);
+    const callEndMs = Date.now(); // fixed call end for the recording window (not moved by retries)
     const targetPhone = phoneRef.current;
 
     // Immediately enter POST_CALL review with initial safe defaults (0 duration, MISSED, no recording)
@@ -366,30 +370,34 @@ const Dialpad = () => {
           // (copied to cache), otherwise the app's MIC fallback file (silent on Android 10+), or null.
           const nativePath = await stopNativeRecording();
 
-          // 1. Phone call recording found by native
           let filePath: string | null = null;
           let source: 'phone' | 'app' | null = null;
-          if (usable(nativePath) && !isAppFallbackRecording(nativePath)) {
-            filePath = nativePath;
-            source = 'phone';
-          }
+          const nativePhoneRecording = usable(nativePath) && !isAppFallbackRecording(nativePath) ? nativePath : null;
 
-          // 2. Mapped folder (phone's call recorder), retried while it finishes writing the file.
-          //    stopNativeRecording() just moved lastCallSessionEndTimeMs to "now", which would reject a
-          //    recording saved at hang-up, so pass this session's own lower bound (startTime already
-          //    includes the previous session's end).
-          if (!filePath && targetPhone) {
-            const deadline = Date.now() + 10000;
-            while (!filePath) {
-              const found = await findRecentRecordingInMappedFolder(targetPhone, startTime, Date.now(), consumedSet, startTime);
+          // 1. Mapped folder (the phone's call recorder) first, retried while the dialer finishes
+          //    writing the file after hang-up. stopNativeRecording() just moved lastCallSessionEndTimeMs
+          //    to "now", so pass the previous session's real end as the floor.
+          recordingWindowRef.current = { start: startTime, end: callEndMs, prevEnd: prevSessionEndMs, seconds: authoritativeDuration };
+          if (targetPhone) {
+            const deadline = Date.now() + 12000;
+            for (let attempt = 0; !filePath; attempt++) {
+              const found = await findRecentRecordingInMappedFolder(
+                targetPhone, startTime, callEndMs, consumedSet, prevSessionEndMs, authoritativeDuration
+              );
               if (usable(found) && !isAppFallbackRecording(found)) {
                 filePath = found;
                 source = 'phone';
                 break;
               }
+              // 2. Native already copied the phone's own recording: no need to keep waiting
+              if (attempt === 0 && nativePhoneRecording) break;
               if (Date.now() >= deadline || (sessionId && activeSessionIdRef.current !== sessionId)) break;
               await new Promise(r => setTimeout(r, 1500));
             }
+          }
+          if (!filePath && nativePhoneRecording) {
+            filePath = nativePhoneRecording;
+            source = 'phone';
           }
 
           // 3. App fallback recording (native result or a path buffered from onRecordingStopped),
@@ -401,6 +409,13 @@ const Dialpad = () => {
                 source = isAppFallbackRecording(candidate) ? 'app' : 'phone';
                 break;
               }
+            }
+          }
+
+          // The app's own fallback file is never kept unless it is the attached recording
+          for (const leftover of [nativePath, bufferedRecordingPathRef.current]) {
+            if (leftover && leftover !== filePath && isAppFallbackRecording(leftover)) {
+              deleteAppFallbackRecording(leftover);
             }
           }
 
@@ -438,7 +453,7 @@ const Dialpad = () => {
     setCallDuration(finalDuration);
     callDurationRef.current = finalDuration;
     setCallStatusState(finalStatus);
-    callWindowRef.current = { start: startTime, end: Date.now() };
+    callWindowRef.current = { start: startTime, end: callEndMs };
     setFeedbackStatus(finalStatus === 'CONNECTED' ? 'CALL_DONE' : 'NO_ANSWER');
     callStatusStateRef.current = finalStatus;
     setIsProcessingRecording(false);
@@ -951,6 +966,20 @@ const Dialpad = () => {
       return;
     }
 
+    // Connected call, no file yet, and the user didn't remove it on purpose: the phone's recorder may still
+    // be writing it. Queue the call; SyncManager attaches the phone recording when it appears (up to 24h).
+    const win = recordingWindowRef.current;
+    if (isConnected && !fileUri && !userOverrodeRecordingRef.current && Platform.OS === 'android' && win) {
+      await queuePendingMentorRecording({
+        mobileCallId, studentId: String(leadId), phone: cleanNumber,
+        callStartMs: win.start, callEndMs: win.end, prevSessionEndMs: win.prevEnd, connectedSeconds: win.seconds,
+      });
+      Alert.alert('✅ Saved', "Call feedback saved. The phone's call recording will upload automatically when it's available.",
+        [{ text: 'OK', onPress: () => router.back() }]);
+      resetPostCallState();
+      return;
+    }
+
     Alert.alert('✅ Saved', 'Call feedback saved.', [{ text: 'OK', onPress: () => router.back() }]);
     resetPostCallState();
   };
@@ -1160,7 +1189,7 @@ const Dialpad = () => {
             <View style={{ backgroundColor: '#FFFBEB', borderWidth: 1, borderColor: '#FCD34D', borderRadius: 8, padding: 10, marginBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <Ionicons name="folder-open-outline" size={16} color="#B45309" />
               <Text style={{ color: '#92400E', fontSize: 12, flex: 1 }}>
-                No call-recording folder mapped. Map your phone's call recorder folder so recordings attach automatically.
+                Map your call-recording folder once to attach recordings automatically.
               </Text>
               <TouchableOpacity onPress={handleMapRecordingFolder}>
                 <Text style={{ color: '#B45309', fontWeight: '700', fontSize: 12 }}>Map Folder</Text>
@@ -1168,11 +1197,11 @@ const Dialpad = () => {
             </View>
           )}
 
-          {noCallAudio && !recordedFilePath && !manualRecordingFile && (
+          {noCallAudio && !recordedFilePath && !manualRecordingFile && recordingFolderMapped !== false && (
             <View style={{ backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FCA5A5', borderRadius: 8, padding: 10, marginBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <Ionicons name="mic-off-outline" size={16} color="#B91C1C" />
               <Text style={{ color: '#991B1B', fontSize: 12, flex: 1 }}>
-                No call audio captured. Turn on your phone's call recording and map its folder.
+                ⚠️ No call audio found yet. Will upload automatically when the phone saves it.
               </Text>
             </View>
           )}
@@ -1184,8 +1213,8 @@ const Dialpad = () => {
                 {manualRecordingFile
                   ? `Selected file: ${manualRecordingFile.name}`
                   : recordingSource === 'app'
-                    ? `App recording (may be silent): ${decodeURIComponent(recordedFilePath!).split('/').pop()?.split(':').pop()}`
-                    : `Phone call recording: ${decodeURIComponent(recordedFilePath!).split('/').pop()?.split(':').pop()}`}
+                    ? `🎙 App recording: ${decodeURIComponent(recordedFilePath!).split('/').pop()?.split(':').pop()}`
+                    : `📞 Phone recording: ${decodeURIComponent(recordedFilePath!).split('/').pop()?.split(':').pop()} (auto)`}
               </Text>
               <TouchableOpacity onPress={() => {
                 userOverrodeRecordingRef.current = true; // later native events must not bring it back

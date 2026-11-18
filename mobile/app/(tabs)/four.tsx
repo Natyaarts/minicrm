@@ -454,6 +454,10 @@ export default function MentorsScreen() {
     useCallback(() => {
       if (inStudents) loadStudents({ silent: true });
       if (viewMode === 'CALLS') fetchRecentCalls(1, false);
+      // Attach phone recordings that were written after feedback was saved
+      import('../../src/utils/SyncManager')
+        .then(({ syncPendingMentorRecordings }) => syncPendingMentorRecordings())
+        .catch(() => {});
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [viewMode, inStudents])
   );

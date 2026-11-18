@@ -2254,8 +2254,7 @@ class StudentViewSet(viewsets.ModelViewSet):
         # Android 10+ mutes the MIC for third-party apps during calls, so an app-made recording can be pure
         # silence. Skipped (allowed) when ffmpeg is unavailable or the file can't be measured.
         if is_silent_recording(f):
-            return Response({'error': 'Recording is silent. Attach the phone\'s own call recording instead.'},
-                            status=400)
+            return Response({'error': 'Recording is silent'}, status=400)
 
         fb.audio_recording = f
         fb.save()

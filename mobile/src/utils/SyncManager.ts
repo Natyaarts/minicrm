@@ -234,6 +234,114 @@ export const syncPendingRecordings = async () => {
     console.error('[SyncManager] Error syncing pending recordings:', err);
   } finally {
     isSyncingPendingRecordingsInProgress = false;
+    // Mentor calls whose phone recording hadn't been written yet when feedback was saved
+    syncPendingMentorRecordings().catch(() => {});
+  }
+};
+
+// ── Late-arriving mentor call recordings ─────────────────────────────────────
+// The phone's dialer can finish writing its recording after the mentor saved feedback. Those calls are
+// queued and matched against the mapped folder later (app foreground, Mentors tab focus) for up to 24h.
+const PENDING_MENTOR_RECORDINGS_KEY = '@pending_mentor_recordings';
+const PENDING_MENTOR_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+export interface PendingMentorRecording {
+  mobileCallId: string;
+  studentId: string | number;
+  phone: string;
+  callStartMs: number;
+  callEndMs: number;
+  prevSessionEndMs?: number;
+  connectedSeconds?: number;
+  queuedAt: number;
+}
+
+export const getPendingMentorRecordings = async (): Promise<PendingMentorRecording[]> => {
+  try {
+    const raw = await AsyncStorage.getItem(PENDING_MENTOR_RECORDINGS_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list) ? list : [];
+  } catch (_) {
+    return [];
+  }
+};
+
+const savePendingMentorRecordings = async (list: PendingMentorRecording[]) => {
+  try {
+    await AsyncStorage.setItem(PENDING_MENTOR_RECORDINGS_KEY, JSON.stringify(list));
+  } catch (_) {}
+};
+
+export const queuePendingMentorRecording = async (item: Omit<PendingMentorRecording, 'queuedAt'>) => {
+  const list = (await getPendingMentorRecordings()).filter(i => i.mobileCallId !== item.mobileCallId);
+  list.push({ ...item, queuedAt: Date.now() });
+  await savePendingMentorRecordings(list);
+};
+
+const AUDIO_MIME_BY_EXT: Record<string, string> = {
+  m4a: 'audio/mp4', mp4: 'audio/mp4', mp3: 'audio/mpeg', wav: 'audio/wav', amr: 'audio/amr',
+  aac: 'audio/aac', ogg: 'audio/ogg', opus: 'audio/ogg', '3gp': 'audio/3gpp',
+};
+
+let isSyncingMentorRecordings = false;
+
+export const syncPendingMentorRecordings = async () => {
+  if (isSyncingMentorRecordings) return;
+  isSyncingMentorRecordings = true;
+  try {
+    const list = await getPendingMentorRecordings();
+    if (list.length === 0) return;
+
+    const { findRecentRecordingInMappedFolder } = await import('./CallManager');
+    const { uploadFeedbackRecording } = await import('../api/mentors');
+    const remaining: PendingMentorRecording[] = [];
+
+    for (const item of list) {
+      if (Date.now() - item.queuedAt > PENDING_MENTOR_MAX_AGE_MS) {
+        console.log(`[SyncManager] Dropping mentor recording for ${item.mobileCallId}: not found within 24h`);
+        continue;
+      }
+      const consumed = await getConsumedRecordings();
+      const uri = await findRecentRecordingInMappedFolder(
+        item.phone, item.callStartMs, item.callEndMs, consumed,
+        item.prevSessionEndMs ?? 0, item.connectedSeconds
+      );
+      if (!uri) {
+        remaining.push(item);
+        continue;
+      }
+      let decoded = uri;
+      try { decoded = decodeURIComponent(uri); } catch (_) {}
+      const ext = (decoded.match(/\.([a-zA-Z0-9]+)$/)?.[1] || 'm4a').toLowerCase();
+      try {
+        await uploadFeedbackRecording(item.studentId, {
+          mobileCallId: item.mobileCallId,
+          uri,
+          name: `recording_${Date.now()}.${ext}`,
+          type: AUDIO_MIME_BY_EXT[ext] || 'audio/mp4',
+        });
+        await markRecordingConsumed(uri);
+        console.log(`[SyncManager] Uploaded late mentor recording for ${item.mobileCallId}`);
+      } catch (err: any) {
+        const status = err?.response?.status;
+        if (status === 400 || status === 404) {
+          // Permanent: unconnected/silent call or feedback missing. Don't retry, and don't reuse the file.
+          console.warn(`[SyncManager] Mentor recording for ${item.mobileCallId} rejected (${status})`, err?.response?.data);
+          if (status === 400) await markRecordingConsumed(uri);
+        } else {
+          remaining.push(item); // network / server error: retry later
+        }
+      }
+    }
+
+    // Keep entries queued by a concurrent save while this pass was running
+    const latest = await getPendingMentorRecordings();
+    const handledIds = new Set(list.map(i => i.mobileCallId));
+    await savePendingMentorRecordings([...remaining, ...latest.filter(i => !handledIds.has(i.mobileCallId))]);
+  } catch (err) {
+    console.warn('[SyncManager] syncPendingMentorRecordings error:', err);
+  } finally {
+    isSyncingMentorRecordings = false;
   }
 };
 

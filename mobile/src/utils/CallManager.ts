@@ -2,6 +2,10 @@ import { Platform, Alert, NativeModules, NativeEventEmitter, PermissionsAndroid,
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Directory, File as ExpoFile } from 'expo-file-system';
+import {
+    pickBestRecording, phoneNumbersInName, last10Digits, WINDOW_BEFORE_MS, WINDOW_AFTER_MS,
+    type RecordingCandidate, type MatchContext,
+} from './recordingMatch';
 
 const { CallRecordingModule } = NativeModules;
 export const MAPPED_RECORDING_FOLDER_KEY = '@mapped_recording_folder_uri';
@@ -433,9 +437,34 @@ const FALLBACK_SILENCE_PEAK = 100; // MediaRecorder.getMaxAmplitude() is 0..3276
 export const isAppFallbackRecording = (pathOrUri?: string | null): boolean =>
     !!pathOrUri && decodeURIComponent(String(pathOrUri)).split('/').pop()!.startsWith('fallback_recording_');
 
+// Decoded peak below this is treated as silence (digital silence measures about -91 dB)
+export const SILENCE_PEAK_DBFS = -60;
+
+/** Peak level of the first seconds of an audio file in dBFS (-200 = digital silence), or null if unknown. */
+export const getAudioPeakDbfs = async (pathOrUri: string, seconds = 5): Promise<number | null> => {
+    try {
+        if (Platform.OS === 'android' && CallRecordingModule && typeof CallRecordingModule.getAudioPeakDbfs === 'function') {
+            const v = await CallRecordingModule.getAudioPeakDbfs(String(pathOrUri), seconds);
+            return typeof v === 'number' && Number.isFinite(v) ? v : null;
+        }
+    } catch (_) {}
+    return null;
+};
+
+/** Deletes the app's own fallback recording (never touches the phone's recordings). */
+export const deleteAppFallbackRecording = async (pathOrUri?: string | null) => {
+    if (!pathOrUri || !isAppFallbackRecording(pathOrUri)) return;
+    const uri = String(pathOrUri).startsWith('file://') ? String(pathOrUri) : `file://${pathOrUri}`;
+    try { await FileSystem.deleteAsync(uri, { idempotent: true }); } catch (_) {}
+};
+
 /** true when the file is the app's own fallback recording and has no usable audio (or can't be verified on Android 10+). */
 export const isSilentAppRecording = async (pathOrUri?: string | null): Promise<boolean> => {
     if (!isAppFallbackRecording(pathOrUri)) return false;
+    // 1. Decode the start of the file and measure it
+    const dbfs = await getAudioPeakDbfs(String(pathOrUri));
+    if (dbfs !== null) return dbfs < SILENCE_PEAK_DBFS;
+    // 2. Peak amplitude tracked by the recorder while it ran
     let peak = -1;
     try {
         if (CallRecordingModule && typeof CallRecordingModule.getFallbackPeakAmplitude === 'function') {
@@ -517,10 +546,35 @@ export const getLatestCallLogDuration = async (
     }
 };
 
+/** Modified time (ms) and size of a file:// or content:// URI; nulls when unknown. */
+const statRecording = async (uri: string): Promise<{ timeMs: number | null; sizeBytes: number | null }> => {
+    let timeMs: number | null = null;
+    let sizeBytes: number | null = null;
+    try {
+        const info: any = await FileSystem.getInfoAsync(uri);
+        if (info && info.exists) {
+            if (info.modificationTime) timeMs = info.modificationTime > 1e12 ? info.modificationTime : info.modificationTime * 1000;
+            if (typeof info.size === 'number') sizeBytes = info.size;
+        }
+    } catch (_) {}
+    if ((timeMs === null || sizeBytes === null) && uri.startsWith('content://') && typeof ExpoFile !== 'undefined') {
+        try {
+            const ef: any = new ExpoFile(uri);
+            if (timeMs === null && ef.modificationTime) timeMs = ef.modificationTime > 1e12 ? ef.modificationTime : ef.modificationTime * 1000;
+            if (sizeBytes === null && typeof ef.size === 'number') sizeBytes = ef.size;
+        } catch (_) {}
+    }
+    return { timeMs, sizeBytes };
+};
+
+// Upper bound on files whose metadata is read per lookup (SAF stat is a native round trip)
+const MAX_STAT_CANDIDATES = 60;
+
 /**
- * Fast, non-blocking lookup in the mapped SAF folder for a recording belonging strictly
- * to the current connected call session [max(callStartTimeMs - 2000, prevCallEnd), callEndTimeMs + 15000].
- * Pre-filters filenames in JS memory before querying native file metadata on 1-2 matches.
+ * Finds the phone's own call recording for a call in the mapped SAF folder.
+ * Rules live in recordingMatch.pickBestRecording: [callStart - 10s, callEnd + 60s], not before the
+ * previous session ended, not consumed, dialled number preferred (a different number rejected),
+ * timestamp/contact-name files allowed, near-empty files rejected, closest in time wins.
  */
 export const findRecentRecordingInMappedFolder = async (
     phoneNumber: string,
@@ -529,76 +583,55 @@ export const findRecentRecordingInMappedFolder = async (
     consumedSet?: Set<string>,
     // Previous-session boundary to use instead of lastCallSessionEndTimeMs. Pass it when calling this after
     // stopNativeRecording(), which has already moved lastCallSessionEndTimeMs to the end of the current call.
-    sessionFloorMs?: number
+    sessionFloorMs?: number,
+    connectedSeconds?: number
 ): Promise<string | null> => {
     try {
-        const cleanTarget = (phoneNumber || '').replace(/\D/g, '').slice(-10);
-        if (!cleanTarget || cleanTarget.length < 6) return null;
+        const target = last10Digits(phoneNumber);
+        if (!target || target.length < 6) return null;
 
-        const minValidTime = Math.max(
-            callStartTimeMs > 0 ? callStartTimeMs - 2000 : callEndTimeMs - 30000,
-            typeof sessionFloorMs === 'number' ? sessionFloorMs : lastCallSessionEndTimeMs
-        );
-        const maxValidTime = callEndTimeMs + 15000;
+        const callStart = callStartTimeMs > 0 ? callStartTimeMs : callEndTimeMs - 30000;
+        const ctx: MatchContext = {
+            phone: phoneNumber,
+            callStartMs: callStart,
+            callEndMs: callEndTimeMs,
+            prevSessionEndMs: typeof sessionFloorMs === 'number' ? sessionFloorMs : lastCallSessionEndTimeMs,
+            consumed: consumedSet,
+            connectedSeconds,
+        };
+        const windowStart = Math.max(callStart - WINDOW_BEFORE_MS, ctx.prevSessionEndMs || 0);
+        const windowEnd = callEndTimeMs + WINDOW_AFTER_MS;
 
         const folderInfo = await scanRecordingFolder(undefined, true);
         if (!folderInfo || !folderInfo.accessible || folderInfo.recordingFiles.length === 0) {
             return null;
         }
 
-        // Pre-filter in JS memory first (O(N) string check, 0 native bridge calls)
-        const matchingCandidates: { uri: string; fileName: string; nameTs: number | null }[] = [];
+        // Cheap in-memory pre-filter on names (no native calls)
+        const byNumber: { uri: string; name: string; nameTs: number | null }[] = [];
+        const others: { uri: string; name: string; nameTs: number | null }[] = [];
         for (const fileUri of folderInfo.recordingFiles) {
-            const decoded = decodeURIComponent(fileUri);
-            const fileName = decoded.split('/').pop()?.split(':').pop() || fileUri;
-            if (consumedSet && (consumedSet.has(fileUri) || consumedSet.has(fileName))) continue;
-
-            // Reject if filename contains a different 10-digit phone number
-            const otherMatch = fileName.match(/(?:\+?91|0)?([6-9]\d{9})/);
-            if (otherMatch && otherMatch[1] !== cleanTarget) continue;
-
-            const cleanDigits = fileName.replace(/\D/g, '');
-            const isPhoneMatch = cleanDigits.includes(cleanTarget) || fileName.includes(cleanTarget);
-            if (!isPhoneMatch) continue;
-
-            const nameTs = extractTimestampFromFileName(fileName);
-            if (nameTs && (nameTs < minValidTime || nameTs > maxValidTime)) {
-                continue;
-            }
-            matchingCandidates.push({ uri: fileUri, fileName, nameTs });
+            let decoded = fileUri;
+            try { decoded = decodeURIComponent(fileUri); } catch (_) {}
+            const name = decoded.split('/').pop()?.split(':').pop() || fileUri;
+            if (consumedSet && (consumedSet.has(fileUri) || consumedSet.has(name))) continue;
+            const numbers = phoneNumbersInName(name);
+            if (numbers.length > 0 && !numbers.includes(target)) continue; // another call's recording
+            const nameTs = extractTimestampFromFileName(name);
+            if (nameTs && (nameTs < windowStart || nameTs > windowEnd)) continue;
+            (numbers.length > 0 ? byNumber : others).push({ uri: fileUri, name, nameTs });
         }
 
-        if (matchingCandidates.length === 0) return null;
-
-        let bestUri: string | null = null;
-        let bestTime = minValidTime;
-
-        for (const cand of matchingCandidates) {
-            let fileTime = cand.nameTs || 0;
-            if (!fileTime) {
-                try {
-                    const info = await FileSystem.getInfoAsync(cand.uri);
-                    if (info && info.exists && info.modificationTime) {
-                        fileTime = info.modificationTime > 1e12 ? info.modificationTime : info.modificationTime * 1000;
-                    }
-                } catch (_) {}
-            }
-            if (!fileTime && cand.uri.startsWith('content://') && typeof ExpoFile !== 'undefined') {
-                try {
-                    const ef = new ExpoFile(cand.uri);
-                    if (ef.modificationTime) {
-                        fileTime = ef.modificationTime > 1e12 ? ef.modificationTime : ef.modificationTime * 1000;
-                    }
-                } catch (_) {}
-            }
-
-            if (fileTime >= minValidTime && fileTime <= maxValidTime && fileTime >= bestTime) {
-                bestTime = fileTime;
-                bestUri = cand.uri;
-            }
+        // Read time/size: number matches first, then the rest, bounded for big folders
+        const candidates: RecordingCandidate[] = [];
+        for (const c of [...byNumber, ...others].slice(0, MAX_STAT_CANDIDATES)) {
+            const stat = await statRecording(c.uri);
+            // A timestamp in the file name is the recording's own time; the modified time is the fallback
+            candidates.push({ uri: c.uri, name: c.name, timeMs: c.nameTs ?? stat.timeMs, sizeBytes: stat.sizeBytes });
         }
 
-        return bestUri;
+        const best = pickBestRecording(candidates, ctx);
+        return best ? best.uri : null;
     } catch (err) {
         console.warn('[CallManager] findRecentRecordingInMappedFolder error:', err);
         return null;
