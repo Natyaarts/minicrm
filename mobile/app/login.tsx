@@ -17,8 +17,8 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { loginUser } from '../src/api/auth';
-import client from '../src/api/client';
 import { FontAwesome5 } from '@expo/vector-icons';
+import { enterApp } from '../src/utils/appEntry';
 
 const { height, width } = Dimensions.get('window');
 
@@ -34,27 +34,11 @@ export default function LoginScreen() {
       try {
         const token = await AsyncStorage.getItem('userToken');
         const userInfo = await AsyncStorage.getItem('userInfo');
-        if (token && userInfo) {
-          // Verify session validity with backend before transitioning into tabs
-          try {
-            const res = await client.get('/auth/me/');
-            if (res.data && res.data.role && isMounted) {
-              await AsyncStorage.setItem('userInfo', JSON.stringify(res.data));
-              router.replace('/(tabs)');
-              return;
-            }
-          } catch (apiErr: any) {
-            if (apiErr.response?.status === 401) {
-              // Token is revoked/expired on server: clean up and remain on login
-              await AsyncStorage.multiRemove(['userToken', 'userInfo']);
-              return;
-            }
-            // Offline / network failure: allow access with cached session
-            if (isMounted) {
-              router.replace('/(tabs)');
-              return;
-            }
-          }
+        if (token && token.trim() && userInfo) {
+          // Already signed in: go straight into the app. (tabs)/_layout.tsx verifies the token with
+          // /auth/me/, and a 401 there brings the user back here through client.js.
+          if (isMounted) await enterApp();
+          return;
         } else {
           // No valid token: clean up any orphaned userInfo and remain on login
           await AsyncStorage.multiRemove(['userToken', 'userInfo']);
@@ -81,7 +65,7 @@ export default function LoginScreen() {
     setLoading(false);
 
     if (result.success) {
-      router.replace('/(tabs)');
+      await enterApp();
     } else {
       Alert.alert('Authentication Failed', result.error);
     }

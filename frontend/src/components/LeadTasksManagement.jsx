@@ -44,6 +44,11 @@ export default function LeadTasksManagement({ onLeadClick }) {
     const [reassigningLead, setReassigningLead] = useState(false);
     const [reassignLeadError, setReassignLeadError] = useState('');
 
+    // Delete Task Modal State
+    const [deleteModalTask, setDeleteModalTask] = useState(null);
+    const [deletingTask, setDeletingTask] = useState(false);
+    const [deleteError, setDeleteError] = useState('');
+
     // Add New Task Modal State
     const [isAddTaskModalOpen, setIsAddTaskModalOpen] = useState(false);
     const [newTaskTitle, setNewTaskTitle] = useState('');
@@ -224,6 +229,33 @@ export default function LeadTasksManagement({ onLeadClick }) {
             setReassignLeadError(err.response?.data?.error || 'Failed to reassign lead');
         } finally {
             setReassigningLead(false);
+        }
+    };
+
+    // Task Deletion
+    const handleOpenDeleteModal = (task, e) => {
+        if (e) e.stopPropagation();
+        setDeleteModalTask(task);
+        setDeleteError('');
+    };
+
+    const handleExecuteDelete = async () => {
+        const id = deleteModalTask.id;
+        setDeletingTask(true);
+        setDeleteError('');
+        try {
+            await api.delete(`/crm/lead-tasks/${id}/`);
+            setTasks(prev => prev.filter(t => t.id !== id));
+            if (selectedTask?.id === id) {
+                setSelectedTask(null);
+            }
+            setDeleteModalTask(null);
+            showToast('Task deleted');
+        } catch (err) {
+            console.error('Error deleting task:', err);
+            setDeleteError(err.response?.data?.error || err.response?.data?.detail || 'Failed to delete task');
+        } finally {
+            setDeletingTask(false);
         }
     };
 
@@ -617,6 +649,15 @@ export default function LeadTasksManagement({ onLeadClick }) {
                                                         Reassign
                                                     </button>
                                                 )}
+                                                {canManageTasks && (
+                                                    <button
+                                                        onClick={(e) => handleOpenDeleteModal(task, e)}
+                                                        className="px-2.5 py-1 text-rose-600 hover:bg-rose-50 rounded-lg font-semibold text-[11px] transition-colors"
+                                                        title="Delete task"
+                                                    >
+                                                        Delete
+                                                    </button>
+                                                )}
                                             </td>
                                         </tr>
                                     );
@@ -664,6 +705,15 @@ export default function LeadTasksManagement({ onLeadClick }) {
                                     >
                                         <ArrowLeftRight size={13} />
                                         Reassign Task
+                                    </button>
+                                )}
+                                {canManageTasks && (
+                                    <button
+                                        onClick={() => handleOpenDeleteModal(selectedTask)}
+                                        className="px-3 py-1.5 bg-white border border-rose-200 hover:bg-rose-50 text-rose-600 rounded-lg text-xs font-semibold shadow-sm flex items-center gap-1.5 transition-colors"
+                                    >
+                                        <Trash2 size={13} />
+                                        Delete Task
                                     </button>
                                 )}
                                 <button
@@ -1572,6 +1622,66 @@ export default function LeadTasksManagement({ onLeadClick }) {
                                         }`}
                                 >
                                     {reassigningLead ? 'Reassigning...' : 'Confirm Reassign'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* DELETE TASK CONFIRMATION MODAL (after the details modal so it renders on top) */}
+            {deleteModalTask && (
+                <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                        <div className="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+                            <h3 className="font-bold text-slate-800 flex items-center gap-2 text-sm">
+                                <Trash2 className="text-rose-600" size={16} />
+                                Delete Task
+                            </h3>
+                            <button
+                                onClick={() => setDeleteModalTask(null)}
+                                className="text-slate-400 hover:text-slate-600"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div>
+                                <p className="text-xs text-slate-500">Task:</p>
+                                <p className="text-sm font-semibold text-slate-800">{deleteModalTask.title}</p>
+                                <p className="text-xs text-slate-500 mt-1">
+                                    Total Leads: <strong className="text-slate-700">{deleteModalTask.total_leads || 0}</strong>
+                                </p>
+                            </div>
+
+                            <p className="text-xs text-rose-700">
+                                This will permanently delete the task, its lead assignments and assignment history. The CRM leads themselves are not affected.
+                            </p>
+
+                            {deleteError && (
+                                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center gap-2">
+                                    <AlertCircle size={14} />
+                                    {deleteError}
+                                </div>
+                            )}
+
+                            <div className="flex justify-end gap-3 pt-2">
+                                <button
+                                    onClick={() => setDeleteModalTask(null)}
+                                    disabled={deletingTask}
+                                    className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleExecuteDelete}
+                                    disabled={deletingTask}
+                                    className={`px-4 py-2 text-xs font-semibold text-white rounded-lg transition-colors ${!deletingTask
+                                        ? 'bg-rose-600 hover:bg-rose-700 shadow-sm'
+                                        : 'bg-rose-300 cursor-not-allowed'
+                                        }`}
+                                >
+                                    {deletingTask ? 'Deleting...' : 'Delete Task'}
                                 </button>
                             </div>
                         </div>

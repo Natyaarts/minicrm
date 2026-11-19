@@ -1,6 +1,8 @@
 import client from './client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
+import { clearActiveCall } from '../utils/ActiveCallSession';
+import { clearLastRoute } from '../utils/lastRoute';
 export { handleSessionExpired } from './session';
 
 export const loginUser = async (username, password) => {
@@ -30,4 +32,7 @@ export const logoutUser = async () => {
     await client.post('/auth/logout/').catch(() => {});
   } catch (_) {}
   await AsyncStorage.multiRemove(['userToken', 'userInfo']);
+  // An explicit logout abandons any unsaved call (a session-expiry re-login keeps it)
+  await clearActiveCall();
+  await clearLastRoute();
 };

@@ -12,6 +12,7 @@ import { Audio } from 'expo-av';
 import client from '../src/api/client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { addStudentFeedback, uploadFeedbackRecording } from '../src/api/mentors';
+import { saveActiveCall, getActiveCall, updateActiveCall, clearActiveCall, getCurrentUserKey, isSessionForUser } from '../src/utils/ActiveCallSession';
 
 
 const FEEDBACK_STATUSES = [
@@ -167,6 +168,19 @@ const Dialpad = () => {
     callStatusStateRef.current = callStatusState;
   }, [callStatusState]);
 
+  // Keep typed notes in the saved session (debounced) so they survive an app restart
+  useEffect(() => {
+    if (callStatus !== 'POST_CALL') return;
+    const sessionId = activeSessionIdRef.current;
+    if (!sessionId) return;
+    const t = setTimeout(() => {
+      if (activeSessionIdRef.current === sessionId) {
+        updateActiveCall({ notes: postCallNotes }, sessionId);
+      }
+    }, 600);
+    return () => clearTimeout(t);
+  }, [postCallNotes, callStatus]);
+
   useEffect(() => {
     loadUser();
     if (!isMentorMode) fetchPipelineStages();
@@ -313,9 +327,11 @@ const Dialpad = () => {
   const finalizeCallSession = async () => {
     if (isFinalizingRef.current) return;
     isFinalizingRef.current = true;
+    sawOffhookRef.current = false; // this call is being concluded; a later IDLE/foreground must not re-run it
     bufferedRecordingPathRef.current = null;
 
     const sessionId = activeSessionIdRef.current;
+    if (sessionId) updateActiveCall({ status: 'POST_CALL' }, sessionId);
     stopTimer();
     const rawStart = callStartTimeRef.current > 0 ? callStartTimeRef.current : (Date.now() - 5000);
     const prevSessionEndMs = getLastCallSessionEndTimeMs(); // before stopNativeRecording() moves it
@@ -482,8 +498,15 @@ const Dialpad = () => {
           const timeInBackground = Date.now() - lastBackgroundTimeRef.current;
           
           if (timeInBackground > 2000) {
-            lastBackgroundTimeRef.current = 0;
-            await finalizeCallSession();
+            // Only conclude if CallLog already has the finished call. If the user just switched back
+            // mid-call there is no row yet: do nothing (the IDLE event or the end button finishes it).
+            const startMs = callStartTimeRef.current > 0 ? callStartTimeRef.current : Date.now();
+            const logDuration = await getLatestCallLogDuration(phoneRef.current, startMs - 10000, 'OUTGOING');
+            const stillSameCall = (callStatusRef.current === 'CALLING' || callStatusRef.current === 'ACTIVE') && sawOffhookRef.current;
+            if (typeof logDuration === 'number' && logDuration > 0 && stillSameCall) {
+              lastBackgroundTimeRef.current = 0;
+              await finalizeCallSession();
+            }
           }
         }
       }
@@ -574,6 +597,9 @@ const Dialpad = () => {
         if (callStatusRef.current === 'CALLING' || callStatusRef.current === 'ACTIVE') {
           sawOffhookRef.current = true;
           if (callStartTimeRef.current === 0) callStartTimeRef.current = Date.now();
+          if (activeSessionIdRef.current) {
+            updateActiveCall({ status: 'ACTIVE', startTime: callStartTimeRef.current }, activeSessionIdRef.current);
+          }
           setCallStatus('ACTIVE');
           startTimer();
           await startNativeRecording(phoneRef.current);
@@ -592,6 +618,53 @@ const Dialpad = () => {
       unsubscribeEvents();
       unsubscribeState();
     };
+  }, [authLoading, hasDialerAccess]);
+
+  // Resume a call that was in progress when Android killed the app (saved by handleCall).
+  // Runs once, after auth has loaded; must stay above the early returns below.
+  const resumeCheckedRef = useRef(false);
+  useEffect(() => {
+    if (authLoading || !hasDialerAccess || resumeCheckedRef.current) return;
+    resumeCheckedRef.current = true;
+    (async () => {
+      const saved = await getActiveCall();
+      if (!saved) return;
+      // Only the user who placed the call may resume it
+      if (!isSessionForUser(saved, await getCurrentUserKey())) return;
+      if (callStatusRef.current !== 'IDLE') return;
+      const paramPhone = String(phone || '').replace(/[\s\-().]/g, '');
+      if (!paramPhone || paramPhone !== saved.phone) return;
+
+      console.log('[dialpad] Resuming saved call session', saved.sessionId, saved.status);
+      activeSessionIdRef.current = saved.sessionId;
+      currentMobileCallIdRef.current = saved.mobileCallId;
+      phoneRef.current = saved.phone;
+      setPhoneNumber(saved.phone);
+      callStartTimeRef.current = saved.startTime;
+      if (saved.notes) setPostCallNotes(saved.notes);
+      // The in-memory previous-call boundary was lost with the old process
+      markCallSessionEnded(saved.prevSessionEndMs);
+
+      let logDuration = 0;
+      if (saved.status !== 'POST_CALL') {
+        const d = await getLatestCallLogDuration(saved.phone, saved.startTime - 10000, 'OUTGOING');
+        logDuration = typeof d === 'number' ? d : 0;
+      }
+
+      // The user started or cancelled something while CallLog was being read
+      if (activeSessionIdRef.current !== saved.sessionId || callStatusRef.current !== 'IDLE') return;
+
+      if (saved.status === 'POST_CALL' || logDuration > 0) {
+        // Call already ended: go straight to Call Review
+        await finalizeCallSession();
+      } else {
+        // No finished call in CallLog yet: treat it as still going. The IDLE event or
+        // "Tap to end & log call" finishes it.
+        sawOffhookRef.current = true;
+        callStatusRef.current = 'ACTIVE';
+        setCallStatus('ACTIVE');
+      }
+    })();
   }, [authLoading, hasDialerAccess]);
 
   if (authLoading) {
@@ -655,6 +728,21 @@ const Dialpad = () => {
     isFinalizingRef.current = false;
     sawOffhookRef.current = false;
 
+    // Persist the call so it can still be logged if Android kills the app during the call
+    await saveActiveCall({
+      sessionId: newSessionId,
+      userId: await getCurrentUserKey(),
+      mobileCallId: newSessionId,
+      phone: cleanNumber,
+      leadId: leadId ? String(leadId) : null,
+      leadStatus: leadStatus ? String(leadStatus) : null,
+      mode: mode ? String(mode) : null,
+      startTime: callStartTimeRef.current,
+      prevSessionEndMs: getLastCallSessionEndTimeMs(),
+      status: 'CALLING',
+      notes: '',
+    });
+
     // Launch native system dialer
     try {
       if (Platform.OS === 'android' && NativeModules.CallRecordingModule) {
@@ -671,10 +759,30 @@ const Dialpad = () => {
   };
 
   const handleEndCall = async () => {
-    await finalizeCallSession();
+    // CallLog is Android-only; elsewhere keep the old behaviour
+    if (Platform.OS !== 'android') {
+      await finalizeCallSession();
+      return;
+    }
+    const startMs = callStartTimeRef.current > 0 ? callStartTimeRef.current : Date.now();
+    const logDuration = await getLatestCallLogDuration(phoneRef.current, startMs - 10000, 'OUTGOING');
+    if (typeof logDuration === 'number' && logDuration > 0) {
+      await finalizeCallSession();
+      return;
+    }
+    // No finished call in CallLog yet: the call may still be going (or it was never answered)
+    Alert.alert(
+      'Call still in progress',
+      "The phone hasn't logged this call as finished yet. If the call is still going, keep waiting; it will be logged when you hang up.",
+      [
+        { text: 'Keep waiting', style: 'cancel' },
+        { text: 'Log as missed', style: 'destructive', onPress: () => { finalizeCallSession(); } },
+      ]
+    );
   };
 
   const handleCancelCall = async () => {
+    clearActiveCall();
     stopTimer();
     activeSessionIdRef.current = '';
     currentMobileCallIdRef.current = '';
@@ -851,6 +959,7 @@ const Dialpad = () => {
       setRecordedFilePath(null);
       setManualRecordingFile(null);
       setNextFollowupDate(null);
+      clearActiveCall();
       if (activeTab === 'history') fetchRecentCalls();
     } catch (error: any) {
       console.warn('Failed to upload post-call log online, queueing offline:', error?.response?.data || error);
@@ -867,6 +976,7 @@ const Dialpad = () => {
         next_followup_date: nextFollowupDate?.toISOString(),
         recordedFilePath: isConnected ? (manualRecordingFile?.uri || recordedFilePath) : null
       });
+      clearActiveCall();
       Alert.alert('Saved Offline', 'Call logged locally and will sync automatically.');
       setCallStatus('IDLE');
       callStatusRef.current = 'IDLE';
@@ -994,6 +1104,7 @@ const Dialpad = () => {
 
   // Full reset of the post-call session (used by mentor save and by "Discard & Close")
   const resetPostCallState = () => {
+    clearActiveCall();
     currentMobileCallIdRef.current = '';
     activeSessionIdRef.current = '';
     bufferedRecordingPathRef.current = null;
