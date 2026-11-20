@@ -226,6 +226,9 @@ const KanbanBoard = ({ program, subProgram, course, searchTerm, hideConverted, s
                                         <div className="text-xs text-slate-500 mb-2 truncate">
                                             {lead.program_name} {lead.course_name ? `- ${lead.course_name}` : ''}
                                         </div>
+                                        <div className="text-[10px] text-slate-500 mb-1.5 truncate">
+                                            Available time: {lead.preferred_contact_time || '—'}
+                                        </div>
 
                                         {lead.campaign_name && (
                                             <div className="mb-1.5">
@@ -303,6 +306,9 @@ const KanbanBoard = ({ program, subProgram, course, searchTerm, hideConverted, s
                                     </div>
                                     <div className="text-xs text-slate-500 mb-2 truncate">
                                         {lead.program_name} {lead.course_name ? `- ${lead.course_name}` : ''}
+                                    </div>
+                                    <div className="text-[10px] text-slate-500 mb-1.5 truncate">
+                                        Available time: {lead.preferred_contact_time || '—'}
                                     </div>
 
                                     {lead.assigned_to_name && (

@@ -193,6 +193,8 @@ class Student(models.Model):
     ]
     lead_quality = models.CharField(max_length=20, choices=LEAD_QUALITY_CHOICES, default='UNKNOWN', help_text='Sales rep feedback sent back to Meta for ad optimization')
     cre_update = models.TextField(blank=True, null=True, default='', help_text='Optional update or notes from Customer Relationship Executive (CRE)')
+    preferred_contact_time = models.CharField(max_length=100, blank=True, default="",
+        help_text="Lead's answer to 'When are you available to speak?' from the source sheet")
 
     @classmethod
     def generate_next_crm_id(cls):

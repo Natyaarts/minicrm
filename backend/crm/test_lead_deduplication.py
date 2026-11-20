@@ -879,3 +879,146 @@ class LeadDeduplicationTestSuite(TestCase):
                 notes__contains=nsdc_student.crm_student_id,
             ).exists()
         )
+
+
+class GoogleSheetPreferredContactTimeTests(TestCase):
+    """
+    "When are you available to speak?" sheet column is stored AS-IS on
+    Student.preferred_contact_time by both Google Sheet import paths.
+    """
+
+    EVENING = 'Evening (4:00 PM – 8:00 PM)'  # en dash, as in the form options
+
+    def setUp(self):
+        # Reuse the dedup suite fixtures (admin, rep, campaign, seeded student
+        # with mobile +917356679007 used for DUPLICATE checks).
+        LeadDeduplicationTestSuite.setUp(self)
+        self.campaign.status = 'ACTIVE'
+        self.campaign.google_spreadsheet_id = 'test_sheet_pct'
+        self.campaign.google_sheet_name = 'Leads'
+        self.campaign.google_auto_sync = True
+        self.campaign.google_last_synced_row = 1
+        self.campaign.save()
+
+    def _mock_res(self, rows):
+        from unittest.mock import MagicMock
+        mock_res = MagicMock()
+        mock_res.status_code = 200
+        mock_res.json.return_value = {'values': rows}
+        return mock_res
+
+    def _run_api_sync(self, rows):
+        from unittest.mock import patch
+        with patch('crm.views_google.get_refreshed_access_token', return_value='mock_google_token'), \
+             patch('crm.views_google.requests.get', return_value=self._mock_res(rows)):
+            response = self.client.post('/api/crm/google/sync/', {'campaign_id': self.campaign.id}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        return response
+
+    def _run_cli_sync(self, rows):
+        from unittest.mock import patch
+        from django.core.management import call_command
+        with patch('crm.management.commands.run_google_sync.get_refreshed_access_token', return_value='mock_google_token'), \
+             patch('crm.management.commands.run_google_sync.requests.get', return_value=self._mock_res(rows)):
+            call_command('run_google_sync', stdout=io.StringIO())
+
+    def _rows_with_header(self, header):
+        return [
+            ['First Name', 'Last Name', 'Mobile', 'Email', header],
+            # Duplicate of the seeded student
+            ['Akshaya', 'Akku', '+917356679007', 'akshaya.akku@gmail.com', self.EVENING],
+            # Brand-new lead
+            ['Gopika', 'Menon', '9447123456', 'gopika@gmail.com', self.EVENING],
+        ]
+
+    def _assert_saved_on_new_and_duplicate(self, expected):
+        new_lead = Student.objects.get(mobile='+919447123456')
+        self.assertEqual(new_lead.preferred_contact_time, expected)
+        dup = Student.objects.get(mobile='+917356679007', lead_status='DUPLICATE')
+        self.assertEqual(dup.preferred_contact_time, expected)
+        # Original record is untouched
+        self.seeded_student.refresh_from_db()
+        self.assertEqual(self.seeded_student.preferred_contact_time, '')
+
+    def test_api_sync_saves_exact_value_on_new_and_duplicate(self):
+        response = self._run_api_sync(self._rows_with_header('When are you available to speak?'))
+        self.assertEqual(response.data.get('imported'), 2)
+        self.assertEqual(response.data.get('skipped'), 0)
+        self._assert_saved_on_new_and_duplicate(self.EVENING)
+        # En dash and bracketed text preserved unchanged
+        value = Student.objects.get(mobile='+919447123456').preferred_contact_time
+        self.assertIn('–', value)
+        self.assertIn('(4:00 PM – 8:00 PM)', value)
+
+    def test_cli_sync_saves_exact_value_on_new_and_duplicate(self):
+        self._run_cli_sync(self._rows_with_header('When are you available to speak?'))
+        self._assert_saved_on_new_and_duplicate(self.EVENING)
+
+    def test_header_variant_underscores_and_question_mark(self):
+        self._run_api_sync(self._rows_with_header('when_are_you_available_to_speak?'))
+        self._assert_saved_on_new_and_duplicate(self.EVENING)
+
+    def test_header_variant_without_question_mark(self):
+        self._run_cli_sync(self._rows_with_header('When are you available to speak'))
+        self._assert_saved_on_new_and_duplicate(self.EVENING)
+
+    def test_sheet_without_column_imports_with_empty_value(self):
+        rows = [
+            ['First Name', 'Last Name', 'Mobile', 'Email'],
+            ['Akshaya', 'Akku', '+917356679007', 'akshaya.akku@gmail.com'],
+            ['Gopika', 'Menon', '9447123456', 'gopika@gmail.com'],
+        ]
+        response = self._run_api_sync(rows)
+        self.assertEqual(response.data.get('imported'), 2)
+        self._assert_saved_on_new_and_duplicate('')
+
+    def test_short_row_and_blank_cell_give_empty_value(self):
+        rows = [
+            ['First Name', 'Last Name', 'Mobile', 'Email', 'When are you available to speak?'],
+            ['Gopika', 'Menon', '9447123456', 'gopika@gmail.com'],          # short row
+            ['Haritha', 'Nair', '9447987654', 'haritha@gmail.com', '   '],  # blank cell
+        ]
+        self._run_cli_sync(rows)
+        self.assertEqual(Student.objects.get(mobile='+919447123456').preferred_contact_time, '')
+        self.assertEqual(Student.objects.get(mobile='+919447987654').preferred_contact_time, '')
+
+    def test_students_api_returns_field_in_list_and_detail(self):
+        self._run_api_sync(self._rows_with_header('When are you available to speak?'))
+        lead = Student.objects.get(mobile='+919447123456')
+
+        detail = self.client.get(f'/api/students/{lead.id}/')
+        self.assertEqual(detail.status_code, status.HTTP_200_OK)
+        self.assertEqual(detail.data.get('preferred_contact_time'), self.EVENING)
+
+        listing = self.client.get('/api/students/', {'search': '9447123456'})
+        self.assertEqual(listing.status_code, status.HTTP_200_OK)
+        results = listing.data.get('results', listing.data)
+        match = [r for r in results if r['id'] == lead.id]
+        self.assertEqual(len(match), 1)
+        self.assertEqual(match[0].get('preferred_contact_time'), self.EVENING)
+
+
+class SheetColumnHelperTests(TestCase):
+    def test_normalize_header(self):
+        from crm.services.sheet_columns import normalize_sheet_header
+        self.assertEqual(normalize_sheet_header('  When_are  you available:  to speak?? '),
+                         'when are you available to speak')
+
+    def test_exact_match_preferred_over_fallback(self):
+        from crm.services.sheet_columns import find_preferred_contact_time_index
+        headers = ['Name', 'Availability notes from rep', 'Best Time to Call', 'Mobile']
+        self.assertEqual(find_preferred_contact_time_index(headers), 2)
+
+    def test_fallback_contains_available_skips_mapped_columns(self):
+        from crm.services.sheet_columns import find_preferred_contact_time_index
+        headers = ['Name (available on WhatsApp)', 'Mobile', 'Days you are available']
+        self.assertEqual(find_preferred_contact_time_index(headers, exclude_indices=(0, -1, 1, -1)), 2)
+        self.assertEqual(find_preferred_contact_time_index(['Name', 'Mobile']), -1)
+
+    def test_get_value_never_raises_and_truncates(self):
+        from crm.services.sheet_columns import get_preferred_contact_time
+        self.assertEqual(get_preferred_contact_time([], 3), '')
+        self.assertEqual(get_preferred_contact_time(['a'], -1), '')
+        self.assertEqual(get_preferred_contact_time(['a', None], 1), '')
+        self.assertEqual(get_preferred_contact_time(['  Any time  '], 0), 'Any time')
+        self.assertEqual(len(get_preferred_contact_time(['x' * 250], 0)), 100)

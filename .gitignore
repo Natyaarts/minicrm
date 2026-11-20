@@ -59,3 +59,6 @@ jisma_logs.txt
 postman_dump.html
 probe_output.txt
 backend/scratch/
+
+backend/db.sqlite3-journal
+backend/db.sqlite3

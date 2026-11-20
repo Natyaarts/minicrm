@@ -1810,6 +1810,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                         <th className="px-6 py-4 font-semibold">Contact Info</th>
                                         <th className="px-6 py-4 font-semibold">Assigned To</th>
                                         <th className="px-6 py-4 font-semibold">Status</th>
+                                        <th className="px-6 py-4 font-semibold">Available time</th>
                                         <th className="px-6 py-4 font-semibold cursor-pointer group" onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}>
                                             <div className="flex items-center gap-1.5">
                                                 Date Created
@@ -1892,11 +1893,14 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                                             : 'bg-slate-100 text-slate-600';
 
                                                         return (
-                                                            <span className={`px-2.5 py-1 text-[10px] font-bold rounded-md uppercase tracking-wide ${badgeClass}`}>
+                                                            <span className={`px-2.5 py-1 text-[10px] font-bold rounded-md whitespace-nowrap uppercase tracking-wide ${badgeClass}`}>
                                                                 {displayStatus}
                                                             </span>
                                                         );
                                                     })()}
+                                                </td>
+                                                <td className={`px-6 py-4 text-sm ${isDuplicate ? 'text-red-800' : 'text-slate-500'}`}>
+                                                    {lead.preferred_contact_time || '—'}
                                                 </td>
                                                 <td className={`px-6 py-4 text-sm ${isDuplicate ? 'text-red-800' : 'text-slate-500'}`}>
                                                     {lead.created_at ? new Date(lead.created_at).toLocaleDateString() : '—'}
@@ -1923,7 +1927,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                         );
                                     })}
                                     {sortedLeads.length === 0 && (
-                                        <tr><td colSpan="6" className="px-6 py-8 text-center text-slate-500">No leads found</td></tr>
+                                        <tr><td colSpan="7" className="px-6 py-8 text-center text-slate-500">No leads found</td></tr>
                                     )}
                                 </tbody>
                             </table>
@@ -3012,6 +3016,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                                 <th className="px-5 py-3.5">Contact Info</th>
                                                 <th className="px-5 py-3.5">Assigned To</th>
                                                 <th className="px-5 py-3.5">Status</th>
+                                                <th className="px-5 py-3.5">Available time</th>
                                                 <th className="px-5 py-3.5">Date Created</th>
                                                 <th className="px-5 py-3.5 text-right">Actions</th>
                                             </tr>
@@ -3040,6 +3045,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                                                 {lead.lead_status_display || (lead.lead_stage_id != null ? pipelineStages[lead.lead_stage_id] : null) || pipelineStages[lead.lead_status] || lead.lead_status || 'NEW'}
                                                             </span>
                                                         </td>
+                                                        <td className="px-5 py-3 text-slate-500 font-medium">{lead.preferred_contact_time || '—'}</td>
                                                         <td className="px-5 py-3 text-slate-500 font-medium">{createdDate}</td>
                                                         <td className="px-5 py-3 text-right">
                                                             <button 

@@ -6,6 +6,7 @@ from django.utils import timezone
 from crm.models import Campaign, PipelineStage
 from crm.views_google import get_refreshed_access_token
 from crm.services import get_next_assigned_rep
+from crm.services.sheet_columns import find_preferred_contact_time_index, get_preferred_contact_time
 from core.models import Student, normalize_phone_number
 from django.contrib.auth import get_user_model
 from django.db import transaction as django_db_transaction
@@ -68,6 +69,10 @@ class Command(BaseCommand):
                 if mobile_idx == -1 and first_name_idx == -1:
                     self.stdout.write(self.style.ERROR(f'Could not identify Name or Mobile columns in campaign {campaign.id} headers.'))
                     continue
+
+                contact_time_idx = find_preferred_contact_time_index(
+                    rows[0], exclude_indices=(first_name_idx, last_name_idx, mobile_idx, email_idx)
+                )
                     
                 from crm.utils import get_canonical_new_lead_stage_id
                 new_stage_id = get_canonical_new_lead_stage_id()
@@ -88,6 +93,7 @@ class Command(BaseCommand):
                     last_name = get_cell(last_name_idx) if last_name_idx != -1 else ''
                     mobile = get_cell(mobile_idx)
                     email = get_cell(email_idx)
+                    preferred_contact_time = get_preferred_contact_time(row, contact_time_idx)
                     
                     if not mobile and not full_name:
                         continue
@@ -129,7 +135,8 @@ class Command(BaseCommand):
                                     email=clean_em or email,
                                     campaign=campaign,
                                     duplicate_reason=dup_reason,
-                                    log_reengagement=False
+                                    log_reengagement=False,
+                                    extra_fields={'preferred_contact_time': preferred_contact_time},
                                 )
                                 imported_count += 1
                                 continue
@@ -173,7 +180,8 @@ class Command(BaseCommand):
                                 campaign=campaign,
                                 lead_status=new_stage_id,
                                 sales_section=campaign.section,
-                                assigned_to=assigned_to_user
+                                assigned_to=assigned_to_user,
+                                preferred_contact_time=preferred_contact_time,
                             )
                                 
                         imported_count += 1

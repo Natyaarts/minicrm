@@ -648,6 +648,14 @@ export default function SalesScreen() {
               </Text>
             </View>
           ) : null}
+          {item.preferred_contact_time ? (
+            <View style={styles.leadDateRow}>
+              <FontAwesome5 name="phone-volume" size={9} color={isDark ? '#64748B' : '#94A3B8'} />
+              <Text style={[styles.leadDateTxt, isDark && { color: '#64748B' }]} numberOfLines={1}>
+                Available: {item.preferred_contact_time}
+              </Text>
+            </View>
+          ) : null}
         </View>
 
         {/* Call button */}

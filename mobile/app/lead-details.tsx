@@ -564,6 +564,15 @@ export default function LeadDetailsScreen() {
             </View>
           </View>
 
+          <View style={[styles.infoRow, { marginTop: 10 }]}>
+            <View style={styles.infoCol}>
+              <Text style={styles.infoLabel}>AVAILABLE TIME</Text>
+              <Text style={[styles.infoValue, isDark && styles.darkText]} numberOfLines={2}>
+                {student?.preferred_contact_time || '—'}
+              </Text>
+            </View>
+          </View>
+
           {/* Contact Details */}
           <View style={[styles.contactBox, isDark && styles.darkContactBox]}>
             <TouchableOpacity 

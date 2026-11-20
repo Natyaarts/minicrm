@@ -16,6 +16,44 @@ import LeadTasksManagement from '../components/LeadTasksManagement';
 import CRMCampaigns from '../components/CRMCampaigns';
 import StatLeadsModal from '../components/StatLeadsModal';
 
+
+// UI Components
+    const InputField = ({ label, name, type = "text", required = false, value, onChange, className }) => (
+        <div className={`flex flex-col ${className}`}>
+            <label className="text-xs font-semibold text-slate-600 mb-1.5">{label} {required && <span className="text-red-500">*</span>}</label>
+            <input
+                type={type}
+                name={name}
+                value={value}
+                onChange={onChange}
+                required={required}
+                className="w-full px-3 py-1.5 rounded-lg bg-white border border-slate-200 focus:border-indigo-500 outline-none text-xs text-slate-700 shadow-sm placeholder:text-slate-400"
+            />
+        </div>
+    );
+
+    const SelectField = ({ label, value, onChange, options, required = false, defaultText = "-- Select --" }) => (
+        <div className="flex flex-col">
+            <label className="text-xs font-semibold text-slate-600 mb-1.5">{label} {required && <span className="text-red-500">*</span>}</label>
+            <div className="relative">
+                <select
+                    value={value}
+                    onChange={onChange}
+                    required={required}
+                    className="w-full px-3 py-1.5 rounded-lg bg-white border border-slate-200 focus:border-indigo-500 outline-none text-xs text-slate-700 shadow-sm appearance-none"
+                >
+                    <option value="">{defaultText}</option>
+                    {options.map(opt => (
+                        <option key={opt.id || opt} value={opt.id || opt}>{opt.name || opt}</option>
+                    ))}
+                </select>
+                <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-slate-400">
+                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                </div>
+            </div>
+        </div>
+    );
+    
 const SalesModule = () => {
     const { user: authUser } = useAuth();
     const canAssignTasks = ['SUPER_ADMIN', 'ADMIN', 'TEAM_LEAD', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD'].includes(authUser?.role) || authUser?.is_manager;
@@ -1262,42 +1300,7 @@ const SalesModule = () => {
     // Filtered Students
     const filteredStudents = studentList;
 
-    // UI Components
-    const InputField = ({ label, name, type = "text", required = false, value, onChange, className }) => (
-        <div className={`flex flex-col ${className}`}>
-            <label className="text-xs font-semibold text-slate-600 mb-1.5">{label} {required && <span className="text-red-500">*</span>}</label>
-            <input
-                type={type}
-                name={name}
-                value={value}
-                onChange={onChange}
-                required={required}
-                className="w-full px-3 py-1.5 rounded-lg bg-white border border-slate-200 focus:border-indigo-500 outline-none text-xs text-slate-700 shadow-sm placeholder:text-slate-400"
-            />
-        </div>
-    );
-
-    const SelectField = ({ label, value, onChange, options, required = false, defaultText = "-- Select --" }) => (
-        <div className="flex flex-col">
-            <label className="text-xs font-semibold text-slate-600 mb-1.5">{label} {required && <span className="text-red-500">*</span>}</label>
-            <div className="relative">
-                <select
-                    value={value}
-                    onChange={onChange}
-                    required={required}
-                    className="w-full px-3 py-1.5 rounded-lg bg-white border border-slate-200 focus:border-indigo-500 outline-none text-xs text-slate-700 shadow-sm appearance-none"
-                >
-                    <option value="">{defaultText}</option>
-                    {options.map(opt => (
-                        <option key={opt.id || opt} value={opt.id || opt}>{opt.name || opt}</option>
-                    ))}
-                </select>
-                <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-slate-400">
-                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
-                </div>
-            </div>
-        </div>
-    );
+    
 
     return (
         <div className="min-h-screen w-full bg-slate-50 py-6 px-4 sm:px-6 lg:px-8 font-sans">
@@ -1911,6 +1914,7 @@ const SalesModule = () => {
                                                         <td className="px-6 py-3.5">
                                                             <div className="text-slate-700 font-medium">{student.mobile}</div>
                                                             <div className="text-[10px] text-slate-400">{student.email}</div>
+                                                            <div className="text-[10px] text-slate-500">Available time: {student.preferred_contact_time || '—'}</div>
                                                         </td>
                                                         <td className="px-6 py-3.5">
                                                             <div className="font-semibold text-slate-800">{student.program_name}</div>
@@ -2052,6 +2056,7 @@ const SalesModule = () => {
                                                                 {student.first_name} {student.last_name}
                                                             </div>
                                                             <div className="text-[10px] text-slate-400 font-medium">ID: {student.crm_student_id || student.id}</div>
+                                                            <div className="text-[10px] text-slate-500">Available time: {student.preferred_contact_time || '—'}</div>
                                                             {student.campaign_name && (
                                                                 <div className="mt-1">
                                                                     <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200 text-[10px] font-semibold">
@@ -2739,6 +2744,10 @@ const SalesModule = () => {
                                         <div>
                                             <p className="text-[10px] text-slate-500 mb-0.5">Email</p>
                                             <p className="font-semibold text-xs text-slate-800">{selectedStudentProfile.email || '-'}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-[10px] text-slate-500 mb-0.5">Available time</p>
+                                            <p className="font-semibold text-xs text-slate-800">{selectedStudentProfile.preferred_contact_time || '—'}</p>
                                         </div>
                                     </div>
                                 </div>

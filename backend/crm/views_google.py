@@ -12,6 +12,7 @@ from django.utils.dateparse import parse_datetime
 from .models import Campaign, PipelineStage
 from core.models import Student, normalize_phone_number
 from .services import get_next_assigned_rep
+from .services.sheet_columns import find_preferred_contact_time_index, get_preferred_contact_time
 
 User = get_user_model()
 
@@ -223,6 +224,10 @@ class GoogleSheetSyncView(APIView):
         
         if mobile_idx == -1 and first_name_idx == -1:
             return Response({'error': 'Could not identify Name or Mobile columns in header row'}, status=status.HTTP_400_BAD_REQUEST)
+
+        contact_time_idx = find_preferred_contact_time_index(
+            rows[0], exclude_indices=(first_name_idx, last_name_idx, mobile_idx, email_idx)
+        )
             
         imported_count = 0
         skipped_count = 0
@@ -248,7 +253,8 @@ class GoogleSheetSyncView(APIView):
             last_name = get_cell(last_name_idx) if last_name_idx != -1 else ''
             mobile = get_cell(mobile_idx)
             email = get_cell(email_idx)
-            
+            preferred_contact_time = get_preferred_contact_time(row, contact_time_idx)
+
             if not mobile and not full_name:
                 continue
                 
@@ -294,7 +300,8 @@ class GoogleSheetSyncView(APIView):
                             campaign=campaign,
                             source_name=f"Google Sheet '{campaign.google_sheet_name or campaign.name}'",
                             duplicate_reason=dup_reason,
-                            log_reengagement=False
+                            log_reengagement=False,
+                            extra_fields={'preferred_contact_time': preferred_contact_time},
                         )
                         imported_count += 1
                         continue
@@ -341,7 +348,8 @@ class GoogleSheetSyncView(APIView):
                         campaign=campaign,
                         lead_status=new_stage_id,
                         sales_section=campaign.section,
-                        assigned_to=assigned_to_user
+                        assigned_to=assigned_to_user,
+                        preferred_contact_time=preferred_contact_time,
                     )
                         
                 imported_count += 1
