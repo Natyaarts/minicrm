@@ -60,6 +60,9 @@ class BulkUploadView(views.APIView):
         duplicate_count = 0
         errors = []
 
+        from crm.services.sheet_columns import find_preferred_contact_time_key, clean_preferred_contact_time
+        preferred_contact_time_col = find_preferred_contact_time_key(list(df.columns))
+
         def _get_val(row_obj, *keys, default=''):
             for k in keys:
                 actual_col = col_map.get(k)
@@ -106,6 +109,10 @@ class BulkUploadView(views.APIView):
                     gender_val = _get_val(row, 'gender', default='Female') or 'Female'
                     perm_address_val = _get_val(row, 'perm_address', 'address', default='')
                     perm_city_val = _get_val(row, 'perm_city', 'place', 'city', default='')
+                    preferred_contact_time = (
+                        clean_preferred_contact_time(row[preferred_contact_time_col])
+                        if preferred_contact_time_col is not None else ''
+                    )
 
                     acquire_lead_creation_lock()
 
@@ -159,6 +166,7 @@ class BulkUploadView(views.APIView):
                                     'gender': gender_val,
                                     'perm_address': perm_address_val,
                                     'perm_city': perm_city_val,
+                                    'preferred_contact_time': preferred_contact_time,
                                 },
                                 log_reengagement=False
                             )
@@ -231,6 +239,7 @@ class BulkUploadView(views.APIView):
                         gender=gender_val,
                         perm_address=perm_address_val,
                         perm_city=perm_city_val,
+                        preferred_contact_time=preferred_contact_time,
                         lms_student_id=lms_student_id,
                         campaign=campaign_obj,
                         sales_section=campaign_obj.section if campaign_obj else 'BOTH',

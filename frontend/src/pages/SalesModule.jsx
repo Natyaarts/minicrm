@@ -3,7 +3,7 @@ import { useSearchParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Copy, Check, Search, FileText, User, Trash2, Edit2, RotateCcw, Trash, X, UserCircle, Download, CheckSquare, AlertCircle } from 'lucide-react';
+import { Copy, Check, Search, FileText, User, Trash2, Edit2, RotateCcw, Trash, X, UserCircle, Download, CheckSquare, AlertCircle, Plus, Upload, SlidersHorizontal } from 'lucide-react';
 import { copyToClipboard } from '../utils/clipboard';
 import { compressImage } from '../utils/fileCompressor';
 import KanbanBoard from '../components/KanbanBoard';
@@ -54,6 +54,11 @@ import StatLeadsModal from '../components/StatLeadsModal';
         </div>
     );
     
+const TB_BTN = "inline-flex items-center justify-center gap-1.5 h-9 px-3.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors";
+const TB_SELECT = "h-9 w-full sm:w-[150px] min-w-0 truncate bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 pl-3 pr-8 outline-none hover:border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 cursor-pointer transition-colors";
+const TB_SELECT_ACTIVE = "!border-indigo-300 !bg-indigo-50 !text-indigo-700";
+const TB_CHIP = "inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border text-xs font-medium whitespace-nowrap transition-colors";
+
 const SalesModule = () => {
     const { user: authUser } = useAuth();
     const canAssignTasks = ['SUPER_ADMIN', 'ADMIN', 'TEAM_LEAD', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD'].includes(authUser?.role) || authUser?.is_manager;
@@ -1529,73 +1534,98 @@ const SalesModule = () => {
 
                 <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-slate-200">
                     {(activeTab === 'list' || activeTab === 'kanban') && isAuthenticated && (
-                        <div className="p-4 sm:p-6 pb-4 flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-4 border-b border-slate-200">
-                            <div className="flex items-center gap-4">
-                                <h3 className="text-lg font-semibold text-slate-900">
-                                    {isTrashView ? 'Trash Section' : activeTab === 'kanban' ? 'Sales Pipeline' : 'Submitted Applications'}
-                                </h3>
-                                <div className="hidden lg:flex items-center gap-2">
+                        <div className="p-4 sm:p-5 border-b border-slate-200 space-y-4">
+                            {/* Row 1: Title + Primary Actions */}
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                <div className="flex items-center gap-2 min-w-0">
+                                    <h3 className="text-base sm:text-lg font-semibold text-slate-900 truncate">
+                                        {isTrashView ? 'Trash Section' : activeTab === 'kanban' ? 'Sales Pipeline' : 'Submitted Applications'}
+                                    </h3>
+                                    {activeTab === 'list' && (
+                                        <span className="shrink-0 text-[11px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full">
+                                            {studentPagination.count}
+                                        </span>
+                                    )}
+                                </div>
+
+                                <div className="flex items-center gap-2">
                                     <button
                                         onClick={handleOpenCreateModal}
-                                        className="px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-semibold hover:bg-indigo-100 transition-colors"
+                                        className={`${TB_BTN} flex-1 sm:flex-none bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm`}
                                     >
-                                        + New Lead
+                                        <Plus size={14} /> New Lead
                                     </button>
                                     {(authUser?.role === 'SUPER_ADMIN' || authUser?.permissions?.SALES?.add) && (
                                         <button
                                             onClick={() => setActiveTab('bulk')}
-                                            className="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold hover:bg-slate-200 transition-colors"
+                                            className={`${TB_BTN} flex-1 sm:flex-none bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm`}
                                         >
-                                            Bulk Upload
+                                            <Upload size={14} /> Bulk Upload
                                         </button>
                                     )}
                                     {activeTab === 'list' && (
                                         <button
                                             onClick={handleExportLeads}
-                                            className="px-3 py-1.5 bg-white border border-slate-200 text-slate-700 rounded-lg text-xs font-semibold hover:bg-slate-50 transition-colors flex items-center gap-1.5 shadow-sm"
+                                            className={`${TB_BTN} flex-1 sm:flex-none bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm`}
                                         >
                                             <Download size={14} /> Export CSV
                                         </button>
                                     )}
                                 </div>
                             </div>
-                            <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3">
-                                {/* Program Logic Filters */}
-                                <div className="flex flex-col sm:flex-row sm:items-center gap-2 bg-slate-50 p-2 sm:p-1.5 rounded-xl border border-slate-200 w-full sm:w-auto">
-                                    <select
-                                        value={selectedProgram}
-                                        onChange={handleProgramChange}
-                                        className="bg-transparent text-xs font-semibold text-slate-700 px-2 py-1 sm:py-0.5 outline-none min-w-[120px] cursor-pointer w-full sm:w-auto"
-                                    >
-                                        <option value="">All Brands/Programs</option>
+
+                            {/* Row 2: Filters (left) | View toggles (right) */}
+                            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2">
+                                {/* Filters */}
+                                <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 min-w-0">
+                                    <select value={selectedProgram} onChange={handleProgramChange} className={`${TB_SELECT} ${selectedProgram ? TB_SELECT_ACTIVE : ''}`}>
+                                        <option value="">All Programs</option>
                                         {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                                     </select>
 
                                     {selectedProgram && (
-                                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 border-t sm:border-t-0 sm:border-l border-slate-200 pt-2 sm:pt-0 sm:pl-2 w-full sm:w-auto">
-                                            <select
-                                                value={selectedSubProgram}
-                                                onChange={handleSubProgramChange}
-                                                className="bg-transparent text-xs font-semibold text-indigo-600 px-2 py-1 sm:py-0.5 outline-none min-w-[120px] cursor-pointer w-full sm:w-auto"
-                                            >
-                                                <option value="">All Categories</option>
-                                                {subPrograms.map(sp => <option key={sp.id} value={sp.id}>{sp.name}</option>)}
-                                            </select>
-
-                                            {selectedSubProgram && (
-                                                <select
-                                                    value={selectedCourse}
-                                                    onChange={handleCourseChange}
-                                                    className="bg-transparent text-xs font-semibold text-emerald-600 px-2 py-1 sm:py-0.5 outline-none min-w-[120px] border-t sm:border-t-0 sm:border-l border-slate-200 pt-2 sm:pt-0 sm:pl-2 cursor-pointer w-full sm:w-auto"
-                                                >
-                                                    <option value="">All Courses</option>
-                                                    {courses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                                                </select>
-                                            )}
-                                        </div>
+                                        <select value={selectedSubProgram} onChange={handleSubProgramChange} className={`${TB_SELECT} ${selectedSubProgram ? TB_SELECT_ACTIVE : ''}`}>
+                                            <option value="">All Categories</option>
+                                            {subPrograms.map(sp => <option key={sp.id} value={sp.id}>{sp.name}</option>)}
+                                        </select>
                                     )}
 
-                                    {(selectedProgram || selectedSubProgram || selectedCourse) && (
+                                    {selectedSubProgram && (
+                                        <select value={selectedCourse} onChange={handleCourseChange} className={`${TB_SELECT} ${selectedCourse ? TB_SELECT_ACTIVE : ''}`}>
+                                            <option value="">All Courses</option>
+                                            {courses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                        </select>
+                                    )}
+
+                                    <select
+                                        value={selectedStageFilter === 'DUPLICATE' ? '' : selectedStageFilter}
+                                        onChange={(e) => setSelectedStageFilter(e.target.value)}
+                                        disabled={selectedStageFilter === 'DUPLICATE'}
+                                        className={`${TB_SELECT} ${selectedStageFilter && selectedStageFilter !== 'DUPLICATE' ? TB_SELECT_ACTIVE : ''} disabled:opacity-50 disabled:cursor-not-allowed`}
+                                    >
+                                        <option value="">All Stages</option>
+                                        {pipelineStages.map(stage => (
+                                            <option key={stage.id} value={stage.id || stage.name}>{stage.name}</option>
+                                        ))}
+                                    </select>
+
+                                    <select value={selectedAssigneeFilter} onChange={(e) => setSelectedAssigneeFilter(e.target.value)} className={`${TB_SELECT} ${selectedAssigneeFilter ? TB_SELECT_ACTIVE : ''}`}>
+                                        <option value="">All Sales Reps</option>
+                                        <option value="unassigned">Unassigned</option>
+                                        {salesUsers.map(u => (
+                                            <option key={u.id} value={u.id}>
+                                                {u.name || (u.first_name ? `${u.first_name} ${u.last_name || ''}`.trim() : u.username || `User #${u.id}`)}
+                                            </option>
+                                        ))}
+                                    </select>
+
+                                    <select value={salesSectionFilter} onChange={(e) => setSalesSectionFilter(e.target.value)} className={`${TB_SELECT} ${salesSectionFilter && salesSectionFilter !== 'ALL' ? TB_SELECT_ACTIVE : ''}`}>
+                                        <option value="ALL">All Sections</option>
+                                        <option value="CAREER_ACADEMY">Career Academy</option>
+                                        <option value="REGULAR">Regular</option>
+                                    </select>
+
+                                    {(selectedProgram || selectedStageFilter || selectedAssigneeFilter || selectedContactedFilter || (salesSectionFilter && salesSectionFilter !== 'ALL')) && (
                                         <button
                                             onClick={() => {
                                                 setSelectedProgram('');
@@ -1603,169 +1633,111 @@ const SalesModule = () => {
                                                 setSelectedCourse('');
                                                 setSubPrograms([]);
                                                 setCourses([]);
+                                                setSelectedStageFilter('');
+                                                setSelectedAssigneeFilter('');
+                                                setSelectedContactedFilter('');
+                                                setSalesSectionFilter('');
                                             }}
-                                            className="p-1 text-slate-400 hover:text-rose-500 transition-colors self-end sm:self-center"
-                                            title="Clear Filters"
+                                            className="col-span-2 sm:col-span-1 inline-flex items-center justify-center gap-1 h-9 px-2 text-xs font-semibold text-slate-500 hover:text-rose-600 whitespace-nowrap"
                                         >
-                                            <X size={12} />
+                                            <X size={13} /> Clear
+                                            {selectedContactedFilter && <span className="ml-1 text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full">Contacted</span>}
                                         </button>
                                     )}
                                 </div>
 
-                                {/* Pipeline & Assignee Filters */}
-                                <div className="flex flex-col sm:flex-row sm:items-center gap-2 bg-indigo-50/50 p-2 sm:p-1.5 rounded-xl border border-indigo-100 w-full sm:w-auto">
-                                    <select
-                                        value={selectedStageFilter}
-                                        onChange={(e) => setSelectedStageFilter(e.target.value)}
-                                        className="bg-transparent text-xs font-semibold text-indigo-700 px-2 py-1 sm:py-0.5 outline-none min-w-[120px] cursor-pointer w-full sm:w-auto"
-                                    >
-                                        <option value="">All Pipeline Stages</option>
-                                        {pipelineStages.map(stage => (
-                                            <option key={stage.id} value={stage.id || stage.name}>
-                                                {stage.name}
-                                            </option>
-                                        ))}
-                                    </select>
-
-                                    <div className="hidden sm:block w-px h-4 bg-indigo-200"></div>
-
-                                    <select
-                                        value={selectedAssigneeFilter}
-                                        onChange={(e) => setSelectedAssigneeFilter(e.target.value)}
-                                        className="bg-transparent text-xs font-semibold text-indigo-700 px-2 py-1 sm:py-0.5 outline-none min-w-[120px] cursor-pointer w-full sm:w-auto"
-                                    >
-                                        <option value="" className="text-slate-900 bg-white">All Sales Reps</option>
-                                        <option value="unassigned" className="text-slate-900 bg-white">Unassigned Leads</option>
-                                        {salesUsers.map(u => (
-                                            <option key={u.id} value={u.id} className="text-slate-900 bg-white">
-                                                {u.name || (u.first_name ? `${u.first_name} ${u.last_name || ''}`.trim() : u.username || `User #${u.id}`)}
-                                            </option>
-                                        ))}
-                                    </select>
-
-                                    {(selectedStageFilter || selectedAssigneeFilter || selectedContactedFilter) && (
-                                        <div className="flex items-center gap-2">
-                                            {selectedContactedFilter && <span className="text-[10px] font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full uppercase">Contacted Only</span>}
-                                            <button
-                                                onClick={() => {
-                                                    setSelectedStageFilter('');
-                                                    setSelectedAssigneeFilter('');
-                                                    setSelectedContactedFilter('');
-                                                }}
-                                                className="p-1 text-indigo-400 hover:text-rose-500 transition-colors self-end sm:self-center"
-                                                title="Clear Pipeline Filters"
-                                            >
-                                                <X size={12} />
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
-
-                                <div className="flex items-center gap-3 w-full sm:w-auto">
+                                {/* View toggles */}
+                                <div className="flex items-center gap-2 shrink-0 overflow-x-auto">
                                     <button
                                         onClick={() => setHideConverted(!hideConverted)}
-                                        className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex-1 sm:flex-initial ${hideConverted ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-50 border border-slate-200 text-slate-600 hover:bg-slate-100'}`}
+                                        className={`${TB_CHIP} ${hideConverted ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
                                     >
-                                        {hideConverted ? 'Enrolled Hidden' : 'Hide Enrolled'}
+                                        {hideConverted && <Check size={13} />} Hide enrolled
                                     </button>
+
                                     {(authUser?.role === 'SUPER_ADMIN' || authUser?.role === 'ADMIN' || authUser?.is_superuser || ['SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD', 'SALES'].includes(authUser?.role)) && (
-                                        <select
-                                            value={selectedStageFilter}
-                                            onChange={(e) => {
-                                                if (e.target.value === 'DUPLICATE') {
-                                                    setHideConverted(false);
-                                                }
-                                                setSelectedStageFilter(e.target.value);
-                                            }}
-                                            className="bg-rose-50 border border-rose-200 rounded-lg text-xs font-bold text-rose-700 px-3 py-1.5 outline-none flex-1 sm:flex-initial shadow-sm"
-                                        >
-                                            <option value="">Normal Pipeline View</option>
-                                            <option value="DUPLICATE">View Duplicate Leads</option>
-                                        </select>
-                                    )}
-                                    {selectedStageFilter === 'DUPLICATE' && (
-                                        <div className="flex items-center gap-1.5 bg-rose-50/50 border border-rose-100 rounded-lg p-1">
-                                            <input
-                                                type="date"
-                                                title="Filter From Date"
-                                                className="bg-transparent text-[10px] text-rose-700 font-semibold outline-none"
-                                                value={searchParams.get('start_date') || ''}
-                                                onChange={(e) => {
-                                                    const newParams = new URLSearchParams(searchParams);
-                                                    if (e.target.value) newParams.set('start_date', e.target.value);
-                                                    else newParams.delete('start_date');
-                                                    setSearchParams(newParams);
-                                                    setStudentPage(1);
-                                                    setTimeout(() => fetchStudents(), 50);
-                                                }}
-                                            />
-                                            <span className="text-[10px] text-rose-400 font-bold">to</span>
-                                            <input
-                                                type="date"
-                                                title="Filter To Date"
-                                                className="bg-transparent text-[10px] text-rose-700 font-semibold outline-none"
-                                                value={searchParams.get('end_date') || ''}
-                                                onChange={(e) => {
-                                                    const newParams = new URLSearchParams(searchParams);
-                                                    if (e.target.value) newParams.set('end_date', e.target.value);
-                                                    else newParams.delete('end_date');
-                                                    setSearchParams(newParams);
-                                                    setStudentPage(1);
-                                                    setTimeout(() => fetchStudents(), 50);
-                                                }}
-                                            />
-                                            {(searchParams.get('start_date') || searchParams.get('end_date')) && (
-                                                <button
-                                                    onClick={() => {
-                                                        const newParams = new URLSearchParams(searchParams);
-                                                        newParams.delete('start_date');
-                                                        newParams.delete('end_date');
-                                                        setSearchParams(newParams);
-                                                        setStudentPage(1);
-                                                        setTimeout(() => fetchStudents(), 50);
-                                                    }}
-                                                    className="text-rose-400 hover:text-rose-600 p-0.5"
-                                                >
-                                                    <X size={10} />
-                                                </button>
-                                            )}
-                                        </div>
-                                    )}
-                                    <select
-                                        value={salesSectionFilter}
-                                        onChange={(e) => setSalesSectionFilter(e.target.value)}
-                                        className="bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 px-3 py-1.5 outline-none flex-1 sm:flex-initial shadow-sm"
-                                    >
-                                        <option value="ALL">All Sections</option>
-                                        <option value="CAREER_ACADEMY">Career Academy</option>
-                                        <option value="REGULAR">Regular</option>
-                                    </select>
-                                    <button
-                                        onClick={() => setIsTrashView(!isTrashView)}
-                                        className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex-1 sm:flex-initial ${isTrashView ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-50 border border-slate-200 text-slate-600 hover:bg-slate-100'}`}
-                                    >
-                                        <Trash2 size={14} />
-                                        {isTrashView ? 'View Active' : 'View Trash'}
-                                    </button>
-                                    {activeTab === 'list' && (
                                         <button
-                                            onClick={handleExportLeads}
-                                            className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 transition-all flex-1 sm:flex-initial shadow-sm"
+                                            onClick={() => {
+                                                if (selectedStageFilter === 'DUPLICATE') {
+                                                    setSelectedStageFilter('');
+                                                } else {
+                                                    setHideConverted(false);
+                                                    setSelectedStageFilter('DUPLICATE');
+                                                }
+                                            }}
+                                            className={`${TB_CHIP} ${selectedStageFilter === 'DUPLICATE' ? 'bg-rose-50 border-rose-200 text-rose-700' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
                                         >
-                                            <Download size={14} /> Export CSV
+                                            <Copy size={13} /> Duplicates
                                         </button>
                                     )}
-                                    <div className="relative flex-1 sm:flex-initial">
-                                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                                        <input
-                                            type="text"
-                                            placeholder="Search students..."
-                                            value={searchTerm}
-                                            onChange={(e) => setSearchTerm(e.target.value)}
-                                            className="pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 focus:border-indigo-500 outline-none text-xs w-full sm:w-48 md:w-56"
-                                        />
-                                    </div>
+
+                                    <button
+                                        onClick={() => setIsTrashView(!isTrashView)}
+                                        className={`${TB_CHIP} ${isTrashView ? 'bg-rose-50 border-rose-200 text-rose-700' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                                    >
+                                        <Trash2 size={13} /> {isTrashView ? 'Exit trash' : 'Trash'}
+                                    </button>
                                 </div>
+                            </div>
+
+                            {/* Duplicate date range (only in Duplicates view) */}
+                            {selectedStageFilter === 'DUPLICATE' && (
+                                <div className="flex flex-wrap items-center gap-2 text-xs">
+                                    <span className="font-semibold text-rose-700">Duplicate date range:</span>
+                                    {['start_date', 'end_date'].map((key, idx) => (
+                                        <React.Fragment key={key}>
+                                            {idx === 1 && <span className="text-slate-400">to</span>}
+                                            <input
+                                                type="date"
+                                                title={idx === 0 ? 'From date' : 'To date'}
+                                                className="h-8 px-2 rounded-lg border border-rose-200 bg-rose-50/50 text-rose-700 font-medium outline-none focus:border-rose-400"
+                                                value={searchParams.get(key) || ''}
+                                                onChange={(e) => {
+                                                    const newParams = new URLSearchParams(searchParams);
+                                                    if (e.target.value) newParams.set(key, e.target.value);
+                                                    else newParams.delete(key);
+                                                    setSearchParams(newParams);
+                                                    setStudentPage(1);
+                                                }}
+                                            />
+                                        </React.Fragment>
+                                    ))}
+                                    {(searchParams.get('start_date') || searchParams.get('end_date')) && (
+                                        <button
+                                            onClick={() => {
+                                                const newParams = new URLSearchParams(searchParams);
+                                                newParams.delete('start_date');
+                                                newParams.delete('end_date');
+                                                setSearchParams(newParams);
+                                                setStudentPage(1);
+                                            }}
+                                            className="inline-flex items-center gap-1 text-slate-500 hover:text-rose-600 font-semibold"
+                                        >
+                                            <X size={12} /> Reset dates
+                                        </button>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Row 3: Full-width search */}
+                            <div className="relative w-full">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
+                                <input
+                                    type="text"
+                                    placeholder="Search by name, mobile, email or student ID..."
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="h-10 w-full pl-9 pr-9 rounded-lg bg-white border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none text-sm shadow-sm"
+                                />
+                                {searchTerm && (
+                                    <button
+                                        onClick={() => setSearchTerm('')}
+                                        className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600"
+                                        title="Clear search"
+                                    >
+                                        <X size={14} />
+                                    </button>
+                                )}
                             </div>
                         </div>
                     )}

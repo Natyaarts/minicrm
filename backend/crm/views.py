@@ -27,6 +27,7 @@ from .services.deduplication import (
     create_duplicate_lead,
 )
 from .services.assignment import get_next_assigned_rep
+from .services.sheet_columns import find_preferred_contact_time_key, get_preferred_contact_time_from_dict
 
 logger = logging.getLogger(__name__)
 
@@ -959,6 +960,9 @@ class CampaignViewSet(viewsets.ModelViewSet):
                 
                 place = (clean_row.get('place') or clean_row.get('city') or clean_row.get('location') or '').strip()
                 tag = (clean_row.get('tag') or clean_row.get('course') or clean_row.get('course_name') or '').strip()
+                preferred_contact_time = get_preferred_contact_time_from_dict(
+                    clean_row, find_preferred_contact_time_key(clean_row.keys())
+                )
                 
                 if raw_name or clean_phone or clean_em:
                     if last_name_col:
@@ -985,7 +989,7 @@ class CampaignViewSet(viewsets.ModelViewSet):
                                 program=default_program,
                                 sales_section=campaign.section if campaign else 'BOTH',
                                 duplicate_reason=dup_reason,
-                                extra_fields={'perm_city': place, 'lms_course_names': tag},
+                                extra_fields={'perm_city': place, 'lms_course_names': tag, 'preferred_contact_time': preferred_contact_time},
                                 log_reengagement=False
                             )
                             leads_created += 1
@@ -1033,6 +1037,7 @@ class CampaignViewSet(viewsets.ModelViewSet):
                             mobile=clean_phone,
                             perm_city=place,
                             lms_course_names=tag,
+                            preferred_contact_time=preferred_contact_time,
                             campaign=campaign,
                             sales_section=campaign.section,
                             program_type=default_program,
@@ -1133,6 +1138,9 @@ class CampaignViewSet(viewsets.ModelViewSet):
 
             place = (clean_row.get('place') or clean_row.get('city') or clean_row.get('location') or '').strip()
             tag = (clean_row.get('tag') or clean_row.get('course') or clean_row.get('course_name') or '').strip()
+            preferred_contact_time = get_preferred_contact_time_from_dict(
+                clean_row, find_preferred_contact_time_key(clean_row.keys())
+            )
 
             if not raw_name and not clean_phone and not clean_em:
                 results.append({
@@ -1167,7 +1175,7 @@ class CampaignViewSet(viewsets.ModelViewSet):
                             program=default_program,
                             sales_section=campaign.section if campaign else 'BOTH',
                             duplicate_reason=dup_reason,
-                            extra_fields={'perm_city': place, 'lms_course_names': tag},
+                            extra_fields={'perm_city': place, 'lms_course_names': tag, 'preferred_contact_time': preferred_contact_time},
                             log_reengagement=False
                         )
                         results.append({
@@ -1213,6 +1221,7 @@ class CampaignViewSet(viewsets.ModelViewSet):
                         mobile=clean_phone,
                         perm_city=place,
                         lms_course_names=tag,
+                        preferred_contact_time=preferred_contact_time,
                         campaign=campaign,
                         sales_section=campaign.section,
                         program_type=default_program,

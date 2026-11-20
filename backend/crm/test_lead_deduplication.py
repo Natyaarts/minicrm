@@ -1022,3 +1022,121 @@ class SheetColumnHelperTests(TestCase):
         self.assertEqual(get_preferred_contact_time(['a', None], 1), '')
         self.assertEqual(get_preferred_contact_time(['  Any time  '], 0), 'Any time')
         self.assertEqual(len(get_preferred_contact_time(['x' * 250], 0)), 100)
+
+    def test_meta_header_with_trailing_underscore_matches(self):
+        from crm.services.sheet_columns import (
+            normalize_sheet_header, find_preferred_contact_time_index, find_preferred_contact_time_key,
+        )
+        header = 'when_are_you_available_to_speak?_'
+        self.assertEqual(normalize_sheet_header(header), 'when are you available to speak')
+        self.assertEqual(normalize_sheet_header('Available time!'), 'available time')
+        meta_headers = ['id', 'created_time', 'full_name', 'phone_number', 'email',
+                        'whatsapp_number', header, 'lead_status']
+        self.assertEqual(find_preferred_contact_time_index(meta_headers), 6)
+        self.assertEqual(find_preferred_contact_time_key(meta_headers), header)
+
+    def test_cleaner_converts_meta_codes_to_labels(self):
+        from crm.services.sheet_columns import clean_preferred_contact_time as clean
+        self.assertEqual(clean('morning_(9:00_am_–_12:00_pm)'), 'Morning (9:00 AM – 12:00 PM)')
+        self.assertEqual(clean('afternoon_(12:00_pm_–_4:00_pm)'), 'Afternoon (12:00 PM – 4:00 PM)')
+        self.assertEqual(clean('evening_(4:00_pm_–_8:00_pm)'), 'Evening (4:00 PM – 8:00 PM)')
+        self.assertEqual(clean('any_time'), 'Any time')
+
+    def test_cleaner_keeps_labels_and_handles_blanks_and_test_rows(self):
+        from crm.services.sheet_columns import clean_preferred_contact_time as clean
+        for label in ('Morning (9:00 AM – 12:00 PM)', 'Afternoon (12:00 PM – 4:00 PM)',
+                      'Evening (4:00 PM – 8:00 PM)', 'Any time'):
+            self.assertEqual(clean(label), label)
+        self.assertEqual(clean(''), '')
+        self.assertEqual(clean('   '), '')
+        self.assertEqual(clean(None), '')
+        self.assertEqual(clean(float('nan')), '')
+        test_value = '<test lead: dummy data for when_are_you_available_to_speak?_>'
+        self.assertEqual(clean(test_value), test_value)
+
+
+class BulkUploadPreferredContactTimeTests(TestCase):
+    """Meta leads export (.xlsx / CSV) uploads save the cleaned availability value."""
+
+    HEADER = 'when_are_you_available_to_speak?_'
+    EVENING = 'Evening (4:00 PM – 8:00 PM)'
+    MORNING = 'Morning (9:00 AM – 12:00 PM)'
+    TEST_VALUE = '<test lead: dummy data for when_are_you_available_to_speak?_>'
+
+    def setUp(self):
+        LeadDeduplicationTestSuite.setUp(self)
+
+    def _meta_rows(self):
+        return [
+            ['id', 'created_time', 'full_name', 'phone_number', 'email', 'whatsapp_number', self.HEADER, 'lead_status'],
+            # New lead, Meta code form
+            ['l:1', '2026-11-20T10:00:00+05:30', 'Gopika Menon', 'p:+919447810200', 'gopika@gmail.com',
+             'p:+919447810200', 'evening_(4:00_pm_–_8:00_pm)', 'CREATED'],
+            # Duplicate of the seeded student, already in label form
+            ['l:2', '2026-11-20T10:05:00+05:30', 'Akshaya Akku', 'p:+917356679007', 'akshaya.akku@gmail.com',
+             'p:+917356679007', self.MORNING, 'CREATED'],
+            # Meta test row
+            ['l:3', '2026-11-20T10:10:00+05:30', 'Test Lead', 'p:+919895001122', 'metatest@gmail.com',
+             'p:+919895001122', self.TEST_VALUE, 'CREATED'],
+        ]
+
+    def _xlsx_file(self, name='meta_leads.xlsx'):
+        import openpyxl
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = 'Leads'
+        for r in self._meta_rows():
+            ws.append(r)
+        wb.create_sheet('Summary').append(['note', 'second tab is ignored'])
+        buf = io.BytesIO()
+        wb.save(buf)
+        return SimpleUploadedFile(
+            name, buf.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+
+    def _assert_saved(self):
+        self.assertEqual(Student.objects.get(mobile='+919447810200').preferred_contact_time, self.EVENING)
+        dup = Student.objects.get(mobile='+917356679007', lead_status='DUPLICATE')
+        self.assertEqual(dup.preferred_contact_time, self.MORNING)
+        self.assertEqual(Student.objects.get(mobile='+919895001122').preferred_contact_time, self.TEST_VALUE)
+        # Existing lead is not updated
+        self.seeded_student.refresh_from_db()
+        self.assertEqual(self.seeded_student.preferred_contact_time, '')
+
+    def test_campaign_xlsx_upload_saves_cleaned_value(self):
+        url = f'/api/crm/campaigns/{self.campaign.id}/bulk_upload/'
+        response = self.client.post(url, {'file': self._xlsx_file()}, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data.get('added_count'), 2)
+        self.assertEqual(response.data.get('duplicate_count'), 1)
+        self._assert_saved()
+
+    def test_campaign_csv_batch_upload_saves_cleaned_value(self):
+        header, *data = self._meta_rows()
+        rows = [dict(zip(header, r)) for r in data]
+        url = f'/api/crm/campaigns/{self.campaign.id}/bulk_upload_batch/'
+        response = self.client.post(url, {'rows': rows}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self._assert_saved()
+
+    def test_core_bulk_xlsx_upload_saves_cleaned_value(self):
+        response = self.client.post(
+            '/api/bulk/upload-students/',
+            {'file': self._xlsx_file(), 'campaign_id': self.campaign.id},
+            format='multipart',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data.get('errors'), [])
+        self._assert_saved()
+
+    def test_upload_without_availability_column_saves_empty(self):
+        csv_content = (
+            "Full Name,Contact,Email\n"
+            "Rahul Varma,9876543210,rahul.varma@gmail.com\n"
+        )
+        csv_file = SimpleUploadedFile("leads.csv", csv_content.encode('utf-8'), content_type="text/csv")
+        url = f'/api/crm/campaigns/{self.campaign.id}/bulk_upload/'
+        response = self.client.post(url, {'file': csv_file}, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(Student.objects.get(mobile='+919876543210').preferred_contact_time, '')
