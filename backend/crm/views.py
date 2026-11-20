@@ -1671,6 +1671,12 @@ class TaskViewSet(viewsets.ModelViewSet):
                             Q(assigned_to_id__in=team_user_ids) |
                             Q(student__assigned_to_id__in=team_user_ids)
                         )
+        else:
+            # Non-sales roles (mentors, teachers, academic staff, ...) only see their own tasks.
+            # ADMIN / SUPER_ADMIN / superusers and managers (check_is_sales_manager) keep the full list.
+            from .utils import check_is_sales_manager
+            if not check_is_sales_manager(self.request.user):
+                queryset = queryset.filter(Q(assigned_to=self.request.user) | Q(student__assigned_to=self.request.user))
         student_id = self.request.query_params.get('student_id', None)
         status_param = self.request.query_params.get('status', None)
         assigned_to_me = self.request.query_params.get('assigned_to_me', None)
