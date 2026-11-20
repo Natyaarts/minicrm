@@ -14,6 +14,29 @@ import { syncMissingRecordings } from '../../src/utils/SyncManager';
 
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useCallback } from 'react';
+import { MENTOR_ROLES } from './_layout';
+
+// Same list as the SALES CRM HUB gate below (keep in sync). Those users already get a follow-ups card.
+const SALES_HUB_ROLES = ['SALES', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SALES_LEAD', 'SUPER_ADMIN', 'ADMIN'];
+
+/** Mentor follow-ups card: mentor roles that don't already see the Sales CRM Hub card. */
+const showsMentorFollowups = (role?: string) =>
+  MENTOR_ROLES.includes(String(role || '').toUpperCase().trim()) && !SALES_HUB_ROLES.includes(role || '');
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** 'YYYY-MM-DD' follow-up date -> "Today" / "Tomorrow" / "Overdue · 18 Nov" / "22 Nov" (today = server's India date). */
+const followupDateLabel = (dateStr: string, today: string) => {
+  const [y, m, d] = String(dateStr).split('-').map(Number);
+  const [ty, tm, td] = String(today).split('-').map(Number);
+  if (!y || !m || !d) return String(dateStr || '');
+  const diffDays = Math.round((Date.UTC(y, m - 1, d) - Date.UTC(ty, tm - 1, td)) / 86400000);
+  const short = `${d} ${MONTHS[m - 1]}`;
+  if (diffDays < 0) return `Overdue · ${short}`;
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return 'Tomorrow';
+  return short;
+};
 
 export default function AttendanceScreen() {
   const router = useRouter();
@@ -30,6 +53,8 @@ export default function AttendanceScreen() {
   const [festiveGreeting, setFestiveGreeting] = useState<any>(null);
   const [mobileWishInput, setMobileWishInput] = useState('');
   const [showWishesModal, setShowWishesModal] = useState(false);
+  const [mentorFollowups, setMentorFollowups] = useState<any[]>([]);
+  const [mentorFollowupsToday, setMentorFollowupsToday] = useState('');
 
   const [showCamera, setShowCamera] = useState(false);
   const [facing, setFacing] = useState<CameraType>('front');
@@ -47,10 +72,34 @@ export default function AttendanceScreen() {
       loadUser();
       fetchStatus();
       fetchStats();
+      fetchMentorFollowups();
       requestLocationPermission();
       syncMissingRecordings();
     }, [])
   );
+
+  // Mentor follow-ups (StudentFeedback next follow-up dates). Separate from fetchStats so a failure here
+  // can never hide the sales data; skipped for roles that don't get the card.
+  const fetchMentorFollowups = async () => {
+    try {
+      const token = await AsyncStorage.getItem('userToken');
+      if (!token) return;
+      const cached = JSON.parse((await AsyncStorage.getItem('userInfo')) || 'null');
+      if (!showsMentorFollowups(cached?.role)) return;
+      const res = await client.get('/students/my_followups/', { params: { days: 7 } });
+      setMentorFollowups((res.data?.results || []).slice(0, 10));
+      setMentorFollowupsToday(res.data?.today || '');
+    } catch (e) {
+      console.log('Failed to fetch mentor follow-ups', e);
+    }
+  };
+
+  const openMentorStudent = (row: any) => {
+    router.push({
+      pathname: '/(tabs)/four',
+      params: { studentId: String(row.student_id), name: row.student_name || '', phone: row.phone || '', t: String(Date.now()) },
+    } as any);
+  };
 
   const loadUser = async () => {
     try {
@@ -747,6 +796,47 @@ const welcomeName = user ? `${user.first_name || user.username}` : 'Member';
         </View>
       )}
 
+      {/* Mentor follow-ups (StudentFeedback next follow-up dates); not shown to Sales CRM Hub users */}
+      {showsMentorFollowups(user?.role) && (
+        <View style={[styles.section]}>
+          <Text style={[styles.sectionTitle, { color: '#4B5563' }]}>MY UPCOMING FOLLOW-UPS</Text>
+          <View style={[styles.tasksCard, { backgroundColor: '#FFFFFF', borderColor: '#E5E7EB' }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <FontAwesome5 name="user-graduate" size={14} color="#FFB800" style={{ marginRight: 8 }} />
+                <Text style={[styles.tasksHeader, { color: '#374151', marginBottom: 0 }]}>Student Follow-ups</Text>
+              </View>
+              <TouchableOpacity onPress={() => router.push('/(tabs)/four' as any)}>
+                <Text style={{ color: '#F59E0B', fontSize: 11, fontWeight: '800' }}>VIEW ALL &gt;</Text>
+              </TouchableOpacity>
+            </View>
+            {mentorFollowups.length > 0 ? mentorFollowups.map(row => (
+              <TouchableOpacity
+                key={row.student_id}
+                style={[styles.taskItem, { borderTopColor: '#F3F4F6' }]}
+                onPress={() => openMentorStudent(row)}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.taskTitle, { color: '#111827' }]} numberOfLines={1}>{row.student_name || 'Student'}</Text>
+                  {row.last_feedback_notes ? (
+                    <Text style={{ fontSize: 11, color: '#6B7280', marginTop: 2 }} numberOfLines={1}>{row.last_feedback_notes}</Text>
+                  ) : null}
+                  <Text style={[styles.taskDate, row.is_overdue && { color: '#DC2626', fontWeight: '700' }]}>
+                    <FontAwesome5 name="clock" size={10} color={row.is_overdue ? '#DC2626' : '#F59E0B'} />{' '}
+                    {followupDateLabel(row.next_followup_date, mentorFollowupsToday)}
+                  </Text>
+                </View>
+                <FontAwesome5 name="chevron-right" size={14} color="#9CA3AF" style={{ marginLeft: 10 }} />
+              </TouchableOpacity>
+            )) : (
+              <View style={{ alignItems: 'center', paddingVertical: 16 }}>
+                <FontAwesome5 name="check-circle" size={24} color="#10B981" style={{ marginBottom: 8, opacity: 0.8 }} />
+                <Text style={[styles.emptyTaskText, { color: '#6B7280' }]}>No upcoming follow-ups</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      )}
 
       {/* Geofence Alert Info */}
       <View style={[styles.infoCard, { backgroundColor: '#FEF3C7', borderColor: '#FDE68A' }]}>

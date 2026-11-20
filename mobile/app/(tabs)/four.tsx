@@ -5,7 +5,7 @@ import {
   KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
-import { router, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Audio } from 'expo-av';
@@ -411,6 +411,22 @@ export default function MentorsScreen() {
     setSheetVisible(true);
     loadHistory(student.id);
   };
+
+  // Opened from the dashboard's "My Upcoming Follow-ups": /four?studentId=..&name=..&phone=..&t=<nonce>
+  const routeParams = useLocalSearchParams<{ studentId?: string; name?: string; phone?: string; t?: string }>();
+  const openedFromRoute = useRef('');
+  useEffect(() => {
+    const id = routeParams.studentId;
+    const key = `${id}:${routeParams.t || ''}`;
+    if (!id || openedFromRoute.current === key) return;
+    openedFromRoute.current = key;
+    client
+      .get(`/students/${id}/`)
+      .then(res => openStudent(res.data))
+      // Not in this mentor's batches (or offline): the passed name/phone are enough for history + feedback
+      .catch(() => openStudent({ id: Number(id), first_name: routeParams.name || '', mobile: routeParams.phone || '' }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeParams.studentId, routeParams.t]);
 
   const openFeedbackForm = (student?: any) => {
     if (student) setSelectedStudent(student);
