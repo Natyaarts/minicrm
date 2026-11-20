@@ -232,9 +232,26 @@ class Task(models.Model):
     due_date = models.DateTimeField(null=True, blank=True)
     notes = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    # Set when the "Follow-up due" push is sent (send_task_reminders); reset when due_date changes.
+    # editable=False keeps it out of TaskSerializer (fields='__all__') and admin forms: API output unchanged.
+    reminder_sent_at = models.DateTimeField(null=True, blank=True, db_index=True, editable=False)
+    SOURCE_AUTO_FOLLOWUP = 'AUTO_FOLLOWUP'
+    SOURCE_ASSIGNED = 'ASSIGNED'
+    SOURCE_CHOICES = (
+        (SOURCE_AUTO_FOLLOWUP, 'Auto follow-up from a call'),
+        (SOURCE_ASSIGNED, 'Created / assigned manually'),
+    )
+    # null (rows created by other paths) is treated as ASSIGNED
+    source = models.CharField(max_length=20, choices=SOURCE_CHOICES, null=True, blank=True, editable=False)
+    # Who created the task (web reminders; auto follow-ups = the caller). null on rows created before this field
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+                                   editable=False, related_name='created_crm_tasks')
 
     class Meta:
         ordering = ['due_date']
+        indexes = [
+            models.Index(fields=['status', 'reminder_sent_at', 'due_date'], name='crm_task_reminder_idx'),
+        ]
 
     def __str__(self):
         return f"{self.title} - {self.status}"

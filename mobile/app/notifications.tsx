@@ -98,6 +98,8 @@ export default function NotificationsScreen() {
       } else if (url.startsWith('/students/')) {
         const id = url.split('/')[2];
         router.push({ pathname: '/lead-details', params: { leadId: id } } as any);
+      } else if (url === '/crm/reminders') {
+        router.push('/all-tasks' as any); // web Reminders page (task-due notifications without a lead)
       } else if (url === '/sales') {
         router.push('/(tabs)/two' as any);
       } else if (url === '/mentor') {

@@ -26,7 +26,33 @@ export const loginUser = async (username, password) => {
   }
 };
 
+// Stop "Follow-up due" pushes to this phone (see src/hooks/useFollowupPush.ts). Best effort, never throws.
+// Uses fetch instead of `client` so a 401 here can't trigger the session-expired alert mid-logout.
+const unregisterFollowupPush = async () => {
+  try {
+    const [pushToken, authToken] = await Promise.all([
+      AsyncStorage.getItem('followupPushToken'),
+      AsyncStorage.getItem('userToken'),
+    ]);
+    if (pushToken && authToken && authToken.trim()) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 5000);
+      try {
+        await fetch(`${client.defaults.baseURL}auth/devices/${encodeURIComponent(pushToken)}/`, {
+          method: 'DELETE',
+          headers: { Authorization: `Token ${authToken.trim()}` },
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+  } catch (_) {}
+  try { await AsyncStorage.removeItem('followupPushToken'); } catch (_) {}
+};
+
 export const logoutUser = async () => {
+  await unregisterFollowupPush();
   try {
     // Attempt graceful server-side token revocation
     await client.post('/auth/logout/').catch(() => {});

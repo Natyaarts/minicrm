@@ -743,6 +743,8 @@ class LeadInteractionViewSet(viewsets.ModelViewSet):
             next_followup_date = request.data.get('next_followup_date')
             if next_followup_date:
                 Task.objects.create(
+                    source=Task.SOURCE_AUTO_FOLLOWUP,
+                    created_by=request.user if request.user.is_authenticated else None,
                     title=f"Follow-up: {student.first_name} {student.last_name}",
                     student=student,
                     assigned_to=request.user if request.user.is_authenticated else None,
@@ -1637,6 +1639,11 @@ class TaskViewSet(viewsets.ModelViewSet):
     queryset = Task.objects.all()
     serializer_class = TaskSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def perform_create(self, serializer):
+        # Records the creator for "Task due: <title> (from <name>)". source stays null (= ASSIGNED)
+        user = self.request.user
+        serializer.save(created_by=user if user.is_authenticated else None)
 
     def get_queryset(self):
         from django.db.models import Q

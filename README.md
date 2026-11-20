@@ -743,3 +743,53 @@ Run these commands inside the `backend/` directory to seed mock data:
 - **Initialize Leave Entitlements**: `python populate_balances.py`
 - **Register Kerala Public Holidays**: `python populate_leaves.py`
 - **Seed Expense Categories**: `python populate_finance.py`
+
+## Follow-up Due Notifications (server scheduler)
+When a PENDING CRM task reaches its due time, `python manage.py send_task_reminders` sends a phone push
+(Expo Push Service) to the assignee's registered devices and adds an entry to the web bell / in-app list:
+- call follow-ups (auto-created from a call's next follow-up date): **"Follow-up due"**, tap opens the lead
+- reminders created on the web: **"Task due: <title> (from <creator>)"**, tap opens the lead or the task list
+
+Each task is sent once per due time (re-armed when the due date changes). Tasks due more than 2 hours ago are skipped.
+The command is run every minute by a systemd timer. Unit files: `deploy/systemd/`.
+
+### Server steps (run as the deploy user, in `/home/ubuntu/minicrm-release/backend`)
+1. **Migrate** (adds `DeviceToken`, `Task.reminder_sent_at`, `Task.source`, `Task.created_by`; marks already-overdue tasks as reminded):
+   ```bash
+   cd /home/ubuntu/minicrm-release/backend
+   venv/bin/python manage.py migrate
+   ```
+2. **Dry run** (lists what would be sent; changes nothing):
+   ```bash
+   venv/bin/python manage.py send_task_reminders --dry-run
+   ```
+3. **Fill in the TODOs** in `deploy/systemd/minicrm-task-reminders.service` (User, EnvironmentFile, venv python)
+   from the existing backend unit:
+   ```bash
+   systemctl cat minicrm-backend
+   ```
+4. **Install the units:**
+   ```bash
+   sudo cp deploy/systemd/minicrm-task-reminders.service deploy/systemd/minicrm-task-reminders.timer /etc/systemd/system/
+   sudo systemctl daemon-reload
+   sudo systemctl start minicrm-task-reminders.service      # one manual run first
+   sudo systemctl status minicrm-task-reminders.service --no-pager
+   ```
+5. **Enable the timer:**
+   ```bash
+   sudo systemctl enable --now minicrm-task-reminders.timer
+   systemctl list-timers minicrm-task-reminders.timer
+   ```
+6. **Check logs** (each run prints `due=… claimed=… pushed=… push_errors=… deactivated_tokens=…`):
+   ```bash
+   journalctl -u minicrm-task-reminders.service --since "15 min ago" --no-pager
+   journalctl -u minicrm-task-reminders.service -f
+   ```
+7. **Disable** (stops all reminder pushes; nothing else is affected):
+   ```bash
+   sudo systemctl disable --now minicrm-task-reminders.timer
+   ```
+
+Optional: `EXPO_ACCESS_TOKEN` in the environment file, only if "enhanced push security" is turned on for the Expo project.
+Read-only check for web reminders saved before the timezone fix:
+`venv/bin/python manage.py list_suspect_task_times --before "YYYY-MM-DD HH:MM"` (IST).

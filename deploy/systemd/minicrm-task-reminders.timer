@@ -1,0 +1,15 @@
+# Runs minicrm-task-reminders.service once a minute.
+# Persistent=true: after a reboot or downtime, one catch-up run starts right away
+# (send_task_reminders only sends tasks due within the last 2 hours).
+
+[Unit]
+Description=MiniCRM - run task reminders every minute
+
+[Timer]
+OnCalendar=minutely
+Persistent=true
+AccuracySec=1s
+Unit=minicrm-task-reminders.service
+
+[Install]
+WantedBy=timers.target

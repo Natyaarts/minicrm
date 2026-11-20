@@ -1,0 +1,31 @@
+# Sends "Follow-up due" / "Task due" push notifications for CRM tasks (crm send_task_reminders).
+# Started every minute by minicrm-task-reminders.timer. Does not touch minicrm-backend.service.
+#
+# Copy the TODO values from the existing backend unit:   systemctl cat minicrm-backend
+# Install steps: see README.md, "Follow-up Due Notifications (server scheduler)".
+
+[Unit]
+Description=MiniCRM - send due CRM task reminders (push notifications)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+
+# TODO: same User= (and Group=, if any) as minicrm-backend.service
+User=ubuntu
+
+WorkingDirectory=/home/ubuntu/minicrm-release/backend
+
+# TODO: same EnvironmentFile= as minicrm-backend.service (DB settings, USE_POSTGRES, EXPO_ACCESS_TOKEN, ...).
+# Delete this line if minicrm-backend.service has no EnvironmentFile. The leading '-' means "ignore if missing".
+EnvironmentFile=-/home/ubuntu/minicrm-release/backend/.env
+
+# TODO: replace /home/ubuntu/minicrm-release/backend/venv/bin/python with the venv python that
+# minicrm-backend.service uses (its ExecStart points at gunicorn in that venv's bin/ folder).
+# flock -n: if the previous run is still going, this run exits immediately instead of overlapping.
+ExecStart=/usr/bin/flock -n /tmp/minicrm-task-reminders.lock /home/ubuntu/minicrm-release/backend/venv/bin/python manage.py send_task_reminders
+
+# A stuck run must not block the next minutes forever
+TimeoutStartSec=120
+Nice=5

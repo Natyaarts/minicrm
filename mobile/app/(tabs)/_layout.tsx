@@ -7,6 +7,7 @@ import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import { useClientOnlyValue } from '@/components/useClientOnlyValue';
 import { usePushNotifications } from '../../src/hooks/usePushNotifications';
+import { useFollowupPush } from '../../src/hooks/useFollowupPush';
 import NotificationBell from '../../components/NotificationBell';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import client from '../../src/api/client';
@@ -65,6 +66,7 @@ export default function TabLayout() {
   
   // Register for push notifications when tabs load
   usePushNotifications();
+  useFollowupPush(); // follow-up / task due pushes: device registration + tap routing
 
   return (
     <Tabs

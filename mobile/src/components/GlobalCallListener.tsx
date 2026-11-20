@@ -5,8 +5,7 @@ import { listenToCallState, listenToMissedCalls, startNativeRecording, stopNativ
 import { generateMobileCallId, queueOfflineCall, markRecordingConsumed, getConsumedRecordings, isRecordingConsumed, uploadCallRecordingAsync } from '../utils/SyncManager';
 import client from '../api/client';
 import * as DocumentPicker from 'expo-document-picker';
-import DateTimePicker from '@react-native-community/datetimepicker';
-import * as Notifications from 'expo-notifications';
+import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 
 export default function GlobalCallListener() {
   const [isModalVisible, setIsModalVisible] = useState(false);
@@ -407,25 +406,7 @@ export default function GlobalCallListener() {
         Alert.alert('✅ Saved', 'Call logged to CRM successfully.');
       }
 
-      if (nextFollowupDate && leadInfo?.id) {
-        const msUntilFollowup = nextFollowupDate.getTime() - Date.now();
-        if (msUntilFollowup > 0) {
-          const leadName = `${leadInfo.first_name || ''} ${leadInfo.last_name || ''}`.trim() || displayPhone;
-          try {
-            await Notifications.scheduleNotificationAsync({
-              content: {
-                title: 'Follow-up Reminder',
-                body: `Follow up with ${leadName}`,
-                sound: true,
-              },
-              trigger: {
-                type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-                seconds: Math.max(1, Math.floor(msUntilFollowup / 1000)),
-              },
-            });
-          } catch (_) {}
-        }
-      }
+      // The follow-up reminder is now a server push ("Follow-up due", crm send_task_reminders)
 
       resetModal();
     } catch (error: any) {
@@ -450,6 +431,33 @@ export default function GlobalCallListener() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  // Android has no combined date+time picker (mode="datetime" silently shows date only and keeps the
+  // time of day the picker was opened), so ask for the date, then the time, like dialpad.tsx does
+  const openFollowupPicker = () => {
+    if (Platform.OS !== 'android') {
+      setShowDatePicker(true);
+      return;
+    }
+    DateTimePickerAndroid.open({
+      value: nextFollowupDate || new Date(),
+      mode: 'date',
+      minimumDate: new Date(),
+      onChange: (event, selectedDate) => {
+        if (event.type !== 'set' || !selectedDate) return;
+        // Small delay to prevent dialog swallow on Android
+        setTimeout(() => {
+          DateTimePickerAndroid.open({
+            value: selectedDate,
+            mode: 'time',
+            onChange: (timeEvent, selectedTime) => {
+              if (timeEvent.type === 'set' && selectedTime) setNextFollowupDate(selectedTime);
+            },
+          });
+        }, 100);
+      },
+    });
   };
 
   const resetModal = () => {
@@ -603,7 +611,7 @@ export default function GlobalCallListener() {
             />
 
             <Text style={styles.label}>Next Follow-up Date</Text>
-            <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.datePickerBtn}>
+            <TouchableOpacity onPress={openFollowupPicker} style={styles.datePickerBtn}>
               <Ionicons name="calendar-outline" size={18} color="#3182CE" />
               <Text style={{ color: nextFollowupDate ? '#1A202C' : '#A0AEC0', fontSize: 14 }}>
                 {nextFollowupDate ? nextFollowupDate.toLocaleString([], { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Tap to set follow-up'}
@@ -615,7 +623,7 @@ export default function GlobalCallListener() {
               )}
             </TouchableOpacity>
 
-            {showDatePicker && (
+            {showDatePicker && Platform.OS === 'ios' && (
               <DateTimePicker
                 value={nextFollowupDate || new Date()}
                 mode="datetime"

@@ -44,6 +44,8 @@ const CRMTasks = () => {
         try {
             await api.post('/crm/tasks/', {
                 ...newTask,
+                // datetime-local has no timezone; send the browser's local time as a UTC instant
+                due_date: newTask.due_date ? new Date(newTask.due_date).toISOString() : '',
                 assigned_to: newTask.assigned_to || null,
                 student: newTask.student || null
             });

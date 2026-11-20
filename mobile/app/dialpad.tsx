@@ -903,22 +903,7 @@ const Dialpad = () => {
       const res = await client.post('/crm/interactions/', parameters);
       const serverInteractionId = res.data?.id;
 
-      // 2. Schedule follow-up notification if specified
-      if (nextFollowupDate) {
-        const trigger = nextFollowupDate.getTime() - Date.now();
-        if (trigger > 0) {
-          try {
-            await Notifications.scheduleNotificationAsync({
-              content: {
-                title: 'Follow-up Reminder',
-                body: `It's time to follow up with ${phoneNumber}!`,
-                sound: true,
-              },
-              trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: nextFollowupDate, channelId: 'default' },
-            });
-          } catch (_) {}
-        }
-      }
+      // 2. The follow-up reminder is now a server push ("Follow-up due", crm send_task_reminders)
 
       // 3. If there is a recording, kick off asynchronous background upload
       if (fileUriToUpload && serverInteractionId) {
