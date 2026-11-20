@@ -153,6 +153,31 @@ class Command(BaseCommand):
                             help='Ignore tasks due longer ago than this (default 120).')
         parser.add_argument('--limit', type=int, default=DEFAULT_LIMIT,
                             help='Maximum tasks per run (default 500).')
+        parser.add_argument('--skip-mentor-digest', action='store_true',
+                            help='Do not send the mentor morning "Student follow-ups" push.')
+        parser.add_argument('--mentor-digest-hour', type=int, default=9,
+                            help='India hour (0-23) from which the mentor digest is sent (default 9).')
+
+    def run_mentor_digest(self, now, options, dry_run):
+        """Mentor morning push (core/mentor_digest.py). Never lets an error affect task reminders."""
+        if options.get('skip_mentor_digest'):
+            return
+        from core.mentor_digest import send_mentor_followup_digests
+        try:
+            result = send_mentor_followup_digests(
+                now=now, dry_run=dry_run, hour=options.get('mentor_digest_hour', 9), write=self.stdout.write,
+            )
+        except Exception:
+            logger.exception('send_task_reminders: mentor digest failed')
+            return
+        if dry_run:
+            self.stdout.write(f"[dry-run] mentor digest: {result['mentors']} mentor(s) would be notified.")
+        elif result['mentors'] or options.get('verbosity', 1) >= 2:
+            line = (f"mentor_digest mentors={result['mentors']} claimed={result['claimed']} "
+                    f"no_device={result['no_device']} pushed={result['pushed']} push_errors={result['push_errors']}")
+            if result['claimed']:
+                logger.info('send_task_reminders: %s', line)
+            self.stdout.write(line)
 
     def handle(self, *args, **options):
         dry_run = options['dry_run']
@@ -199,6 +224,7 @@ class Command(BaseCommand):
 
         if dry_run:
             self.stdout.write(f"[dry-run] {len(tasks)} task(s) due; nothing was sent or changed.")
+            self.run_mentor_digest(now, options, dry_run=True)
             return
 
         summary = send_expo_batch(messages) if messages else {'sent': 0, 'errors': 0, 'skipped': 0, 'deactivated': 0}
@@ -212,3 +238,5 @@ class Command(BaseCommand):
             if tasks:
                 logger.info('send_task_reminders: %s', line)
             self.stdout.write(line)
+
+        self.run_mentor_digest(now, options, dry_run=False)

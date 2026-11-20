@@ -51,3 +51,21 @@ class DeviceToken(models.Model):
     def __str__(self):
         state = 'active' if self.is_active else 'inactive'
         return f"{self.user.username} - {self.platform or 'device'} ({state})"
+
+
+class MentorFollowupDigest(models.Model):
+    """
+    One row per mentor per India date: the morning "Student follow-ups" push was sent
+    (crm send_task_reminders). The unique (user, date) row is created BEFORE sending,
+    so a mentor gets at most one digest a day even if runs overlap.
+    """
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='mentor_followup_digests')
+    date = models.DateField()
+    count = models.PositiveIntegerField(default=0)
+    sent_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['user', 'date'], name='uniq_mentor_followup_digest_per_day')]
+
+    def __str__(self):
+        return f"{self.user.username} - {self.date} ({self.count})"
