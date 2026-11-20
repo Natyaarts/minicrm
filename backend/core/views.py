@@ -489,6 +489,10 @@ class StudentViewSet(viewsets.ModelViewSet):
         if self.action == 'partial_update':
             return [permissions.IsAuthenticated()]
 
+        if self.action == 'my_followups':
+            # Read-only and scoped to the caller's own follow-ups (non-mentors get an empty list)
+            return [permissions.IsAuthenticated()]
+
         if self.request.user.is_authenticated:
             user_role = str(self.request.user.role).upper().strip()
 
@@ -2429,8 +2433,46 @@ class StudentViewSet(viewsets.ModelViewSet):
         } for f in page]
         return self.get_paginated_response(rows)
 
+    @action(detail=False, methods=['get'])
+    def my_followups(self, request):
+        """
+        GET /students/my_followups/?days=7 (max 30)
+        Students whose LATEST feedback was given by me and has a next follow-up date that is
+        overdue or due within `days` days (India date). Overdue first, then soonest.
+        """
+        from .followups import MENTOR_FOLLOWUP_NOTE_CHARS, clamp_days, followups_for_mentor, ist_today
 
-    
+        user = request.user
+        today = ist_today()
+        days = clamp_days(request.query_params.get('days'))
+        role = str(getattr(user, 'role', '') or '').upper().strip()
+        if not (user.is_superuser or role in MENTOR_ROLES):
+            return Response({'today': today, 'days': days, 'count': 0, 'results': []})
+
+        students = list(followups_for_mentor(user, today=today, days=days))
+        feedbacks = StudentFeedback.objects.in_bulk([s.fu_id for s in students])  # one query
+        results = []
+        for s in students:
+            fb = feedbacks.get(s.fu_id)
+            note = (fb.feedback or '').strip() if fb else ''
+            if len(note) > MENTOR_FOLLOWUP_NOTE_CHARS:
+                note = note[:MENTOR_FOLLOWUP_NOTE_CHARS - 1].rstrip() + '…'
+            results.append({
+                'student_id': s.id,
+                'student_name': f"{s.first_name or ''} {s.last_name or ''}".strip(),
+                'phone': s.mobile,
+                'next_followup_date': s.fu_date,
+                'is_overdue': s.fu_date < today,
+                'last_feedback_status': fb.status if fb else None,
+                'last_feedback_status_display': fb.get_status_display() if fb else None,
+                'last_feedback_notes': note,
+                'last_feedback_date': fb.feedback_date if fb else None,
+                'last_feedback_at': fb.created_at if fb else None,
+            })
+        return Response({'today': today, 'days': days, 'count': len(results), 'results': results})
+
+
+
 
 class TransactionViewSet(viewsets.ModelViewSet):
     queryset = Transaction.objects.all()
