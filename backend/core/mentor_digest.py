@@ -1,7 +1,8 @@
 """
 Mentor morning push: one "Student follow-ups" notification per mentor per India date, from
 09:00 IST, listing that day's and overdue follow-ups (latest StudentFeedback.next_followup_date,
-same rule as GET /students/my_followups/). Called by crm send_task_reminders every minute.
+same rule as GET /students/my_followups/: the feedback's author and the batch's primary mentor).
+Called by crm send_task_reminders every minute.
 
 Sent at most once per mentor per day: a MentorFollowupDigest (user, date) row is claimed before
 anything is sent. If the server is down at 09:00, the digest goes out on the first run after that.
@@ -16,7 +17,7 @@ from django.utils import timezone
 from notifications.models import MentorFollowupDigest, Notification
 from notifications.push import send_expo_batch
 
-from .followups import IST, students_with_followups
+from .followups import IST, followup_recipient_ids, students_with_followups
 
 DIGEST_HOUR = 9
 DIGEST_TITLE = 'Student follow-ups'
@@ -52,18 +53,20 @@ def pending_digests(today):
     """{mentor_id: {'due_today': n, 'overdue': n, 'names': [...]}} for follow-ups due today or earlier."""
     rows = (
         students_with_followups()
-        .filter(fu_date__lte=today, fu_mentor_id__isnull=False)
+        .filter(fu_date__lte=today)
         .order_by('fu_date', 'id')
-        .values_list('fu_mentor_id', 'fu_date', 'first_name', 'last_name')
+        .values_list('fu_mentor_id', 'fu_batch_mentor_id', 'fu_date', 'first_name', 'last_name')
     )
     digests = OrderedDict()
-    for mentor_id, fu_date, first, last in rows:
-        d = digests.setdefault(mentor_id, {'due_today': 0, 'overdue': 0, 'names': []})
-        if fu_date < today:
-            d['overdue'] += 1
-        else:
-            d['due_today'] += 1
-        d['names'].append((first or last or 'Student').strip())
+    for mentor_id, batch_mentor_id, fu_date, first, last in rows:
+        # Feedback author + assigned mentor; a set, so the same person is never counted twice
+        for recipient_id in followup_recipient_ids(mentor_id, batch_mentor_id):
+            d = digests.setdefault(recipient_id, {'due_today': 0, 'overdue': 0, 'names': []})
+            if fu_date < today:
+                d['overdue'] += 1
+            else:
+                d['due_today'] += 1
+            d['names'].append((first or last or 'Student').strip())
     return digests
 
 

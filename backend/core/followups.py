@@ -3,13 +3,15 @@ Mentor follow-ups: the next_followup_date on each student's LATEST StudentFeedba
 
 Only the latest feedback counts (same ordering as the student list annotation in
 core/views.py StudentViewSet.get_queryset), so logging a newer feedback - by anyone - replaces
-the old follow-up. Used by GET /students/my_followups/ and crm send_task_reminders
-(mentor morning push).
+the old follow-up. Each follow-up belongs to:
+  - the person who gave that latest feedback, and
+  - the student's assigned mentor (student.batch.primary_mentor), if that is someone else.
+Used by GET /students/my_followups/ and crm send_task_reminders (mentor morning push).
 """
 from datetime import timedelta
 from zoneinfo import ZoneInfo
 
-from django.db.models import OuterRef, Subquery
+from django.db.models import F, OuterRef, Q, Subquery
 from django.utils import timezone
 
 from .models import Student, StudentFeedback
@@ -27,9 +29,9 @@ def ist_today():
 
 def students_with_followups():
     """
-    Students annotated with their latest feedback: fu_id, fu_mentor_id, fu_date
-    (fu_date = that feedback's next_followup_date). Only students whose latest feedback has one.
-    Single query (correlated subqueries), no N+1.
+    Students annotated with their latest feedback: fu_id, fu_mentor_id (who gave it), fu_date
+    (its next_followup_date), plus fu_batch_mentor_id (the batch's primary mentor).
+    Only students whose latest feedback has a follow-up date. Single query, no N+1.
     """
     latest = StudentFeedback.objects.filter(student=OuterRef('pk')).order_by('-feedback_date', '-id')
     return (
@@ -38,9 +40,15 @@ def students_with_followups():
             fu_id=Subquery(latest.values('id')[:1]),
             fu_mentor_id=Subquery(latest.values('mentor_id')[:1]),
             fu_date=Subquery(latest.values('next_followup_date')[:1]),
+            fu_batch_mentor_id=F('batch__primary_mentor_id'),
         )
         .filter(fu_date__isnull=False)
     )
+
+
+def followup_recipient_ids(fu_mentor_id, fu_batch_mentor_id):
+    """Who a follow-up belongs to: the latest feedback's author and the assigned mentor (no duplicates)."""
+    return {uid for uid in (fu_mentor_id, fu_batch_mentor_id) if uid is not None}
 
 
 def followups_for_mentor(user, today=None, days=DEFAULT_DAYS):
@@ -48,7 +56,7 @@ def followups_for_mentor(user, today=None, days=DEFAULT_DAYS):
     today = today or ist_today()
     return (
         students_with_followups()
-        .filter(fu_mentor_id=user.pk, fu_date__lte=today + timedelta(days=days))
+        .filter(Q(fu_mentor_id=user.pk) | Q(fu_batch_mentor_id=user.pk), fu_date__lte=today + timedelta(days=days))
         .order_by('fu_date', 'id')
     )
 

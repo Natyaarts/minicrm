@@ -139,3 +139,67 @@ class MyFollowupsTests(TestCase):
         with self.assertNumQueries(2):  # students+subqueries, then feedback in_bulk
             list(followups.followups_for_mentor(self.mentor))
             StudentFeedback.objects.in_bulk([1, 2, 3])
+
+
+class AssignedMentorFollowupsTests(MyFollowupsTests):
+    """The batch's primary mentor also sees follow-ups that someone else (e.g. an admin) logged last."""
+
+    def setUp(self):
+        super().setUp()
+        from core.models import Batch, Course, SubProgram
+        sub = SubProgram.objects.create(program=self.program, name='Kathak')
+        course = Course.objects.create(sub_program=sub, name='Beginner')
+        self.batch = Batch.objects.create(name='B1', course=course, start_date='2026-01-01', primary_mentor=self.mentor)
+        self.admin = User.objects.create_user(username='adm', password='x', role='ADMIN', first_name='Ann', last_name='Admin')
+        self.admin_api = APIClient()
+        self.admin_api.force_authenticate(self.admin)
+
+    def batch_student(self, first='Asha'):
+        s = self.student(first, 'K')
+        s.batch = self.batch
+        s.save()
+        return s
+
+    def test_admin_feedback_keeps_it_on_assigned_mentor_list(self):
+        s = self.batch_student()
+        self.feedback(s, self.mentor, 3, given_days_ago=5)
+        self.feedback(s, self.admin, 1, given_days_ago=0, note='Admin spoke to parent')  # latest
+        mine = self.get()['results']
+        self.assertEqual([r['student_id'] for r in mine], [s.id])
+        self.assertEqual(mine[0]['next_followup_date'], str(self.today + timedelta(days=1)))  # admin's date wins
+        self.assertEqual(mine[0]['last_feedback_by'], 'Ann Admin')
+        self.assertFalse(mine[0]['last_feedback_by_me'])
+        admins = self.admin_api.get(URL).json()['results']
+        self.assertEqual([r['student_id'] for r in admins], [s.id])  # the author still sees it
+        self.assertTrue(admins[0]['last_feedback_by_me'])
+
+    def test_author_who_is_also_assigned_mentor_gets_one_row(self):
+        s = self.batch_student()
+        self.feedback(s, self.mentor, 1)
+        data = self.get()
+        self.assertEqual(data['count'], 1)
+        self.assertTrue(data['results'][0]['last_feedback_by_me'])
+
+    def test_latest_feedback_without_followup_clears_it_for_both(self):
+        s = self.batch_student()
+        self.feedback(s, self.mentor, 2, given_days_ago=3)
+        self.feedback(s, self.admin, None, given_days_ago=0)
+        self.assertEqual(self.get()['count'], 0)
+        self.assertEqual(self.admin_api.get(URL).json()['count'], 0)
+
+    def test_previous_author_who_is_not_assigned_loses_it(self):
+        s = self.batch_student()
+        self.feedback(s, self.other_mentor, 2, given_days_ago=3)  # not this batch's mentor
+        self.feedback(s, self.admin, 1, given_days_ago=0)
+        other = APIClient()
+        other.force_authenticate(self.other_mentor)
+        self.assertEqual(other.get(URL).json()['count'], 0)
+        self.assertEqual(self.get()['count'], 1)  # assigned mentor
+
+    def test_secondary_mentor_not_included(self):
+        s = self.batch_student()
+        self.batch.secondary_mentors.add(self.other_mentor)
+        self.feedback(s, self.admin, 1)
+        other = APIClient()
+        other.force_authenticate(self.other_mentor)
+        self.assertEqual(other.get(URL).json()['count'], 0)

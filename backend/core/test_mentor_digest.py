@@ -135,3 +135,46 @@ class MentorDigestTests(TestCase):
         self.assertEqual(digest_body(3, 0, ['A', 'B', 'C']), 'You have 3 student follow-ups today: A, B, +1')
         self.assertEqual(digest_body(0, 1, ['A']), 'You have 1 overdue student follow-up: A')
         self.assertEqual(digest_body(0, 2, ['A', 'B']), 'You have 2 overdue student follow-ups: A, B')
+
+
+class AssignedMentorDigestTests(MentorDigestTests):
+    def setUp(self):
+        super().setUp()
+        from core.models import Batch, Course, SubProgram
+        sub = SubProgram.objects.create(program=self.program, name='Kathak')
+        course = Course.objects.create(sub_program=sub, name='Beginner')
+        self.batch = Batch.objects.create(name='B1', course=course, start_date='2026-01-01', primary_mentor=self.mentor)
+        self.admin = User.objects.create_user(username='adm', password='x', role='ADMIN')
+        self.admin_token = 'ExponentPushToken[adminadminadminadmin01]'
+        DeviceToken.objects.create(user=self.admin, token=self.admin_token)
+
+    def in_batch(self, student):
+        student.batch = self.batch
+        student.save()
+        return student
+
+    def test_admin_feedback_notifies_author_and_assigned_mentor(self):
+        s = self.in_batch(self.follow('Asha', -5))  # mentor's older follow-up
+        StudentFeedback.objects.create(student=s, mentor=self.admin, status='CALL_DONE', feedback_date=TODAY,
+                                       next_followup_date=TODAY)  # admin's, latest
+        msgs, _ = self.run_at(AT_0905_IST)
+        by_token = {m['to']: m for m in msgs}
+        self.assertEqual(set(by_token), {TOKEN, self.admin_token})
+        self.assertEqual(by_token[TOKEN]['body'], 'You have 1 student follow-up today: Asha')
+        self.assertEqual(by_token[self.admin_token]['body'], 'You have 1 student follow-up today: Asha')
+        self.assertEqual(MentorFollowupDigest.objects.count(), 2)
+
+    def test_author_who_is_assigned_mentor_counted_once(self):
+        self.in_batch(self.follow('Asha', 0))
+        self.in_batch(self.follow('Ravi', 0))
+        msgs, _ = self.run_at(AT_0905_IST)
+        self.assertEqual(len(msgs), 1)  # one push, not one per role
+        self.assertEqual(msgs[0]['data']['count'], 2)
+        self.assertEqual(msgs[0]['body'], 'You have 2 student follow-ups today: Asha, Ravi')
+
+    def test_second_run_sends_nothing_to_either(self):
+        s = self.in_batch(self.follow('Asha', 0))
+        StudentFeedback.objects.create(student=s, mentor=self.admin, status='CALL_DONE', feedback_date=TODAY,
+                                       next_followup_date=TODAY)
+        self.run_at(AT_0905_IST)
+        self.assertEqual(self.run_at(AT_0905_IST + timedelta(minutes=5))[0], [])

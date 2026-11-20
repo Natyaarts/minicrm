@@ -2437,8 +2437,9 @@ class StudentViewSet(viewsets.ModelViewSet):
     def my_followups(self, request):
         """
         GET /students/my_followups/?days=7 (max 30)
-        Students whose LATEST feedback was given by me and has a next follow-up date that is
-        overdue or due within `days` days (India date). Overdue first, then soonest.
+        Students whose LATEST feedback has a next follow-up date that is overdue or due within
+        `days` days (India date), where I gave that feedback or I am the batch's primary mentor.
+        Overdue first, then soonest.
         """
         from .followups import MENTOR_FOLLOWUP_NOTE_CHARS, clamp_days, followups_for_mentor, ist_today
 
@@ -2450,7 +2451,7 @@ class StudentViewSet(viewsets.ModelViewSet):
             return Response({'today': today, 'days': days, 'count': 0, 'results': []})
 
         students = list(followups_for_mentor(user, today=today, days=days))
-        feedbacks = StudentFeedback.objects.in_bulk([s.fu_id for s in students])  # one query
+        feedbacks = StudentFeedback.objects.select_related('mentor').in_bulk([s.fu_id for s in students])  # one query
         results = []
         for s in students:
             fb = feedbacks.get(s.fu_id)
@@ -2468,6 +2469,9 @@ class StudentViewSet(viewsets.ModelViewSet):
                 'last_feedback_notes': note,
                 'last_feedback_date': fb.feedback_date if fb else None,
                 'last_feedback_at': fb.created_at if fb else None,
+                # Added: who gave that feedback (the batch's mentor also sees follow-ups others logged)
+                'last_feedback_by': ((fb.mentor.get_full_name() or fb.mentor.username) if fb and fb.mentor else ''),
+                'last_feedback_by_me': s.fu_mentor_id == user.pk,
             })
         return Response({'today': today, 'days': days, 'count': len(results), 'results': results})
 

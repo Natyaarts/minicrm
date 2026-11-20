@@ -23,6 +23,9 @@ const SALES_HUB_ROLES = ['SALES', 'SALES_HEAD', 'SALES_MANAGER', 'MANAGER', 'SAL
 const showsMentorFollowups = (role?: string) =>
   MENTOR_ROLES.includes(String(role || '').toUpperCase().trim()) && !SALES_HUB_ROLES.includes(role || '');
 
+/** Admins also get the card (below the Sales CRM Hub), but only when they have follow-ups of their own. */
+const isAdminRole = (role?: string) => ['ADMIN', 'SUPER_ADMIN'].includes(String(role || '').toUpperCase().trim());
+
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /** 'YYYY-MM-DD' follow-up date -> "Today" / "Tomorrow" / "Overdue · 18 Nov" / "22 Nov" (today = server's India date). */
@@ -85,7 +88,7 @@ export default function AttendanceScreen() {
       const token = await AsyncStorage.getItem('userToken');
       if (!token) return;
       const cached = JSON.parse((await AsyncStorage.getItem('userInfo')) || 'null');
-      if (!showsMentorFollowups(cached?.role)) return;
+      if (!showsMentorFollowups(cached?.role) && !isAdminRole(cached?.role)) return;
       const res = await client.get('/students/my_followups/', { params: { days: 7 } });
       setMentorFollowups((res.data?.results || []).slice(0, 10));
       setMentorFollowupsToday(res.data?.today || '');
@@ -796,8 +799,9 @@ const welcomeName = user ? `${user.first_name || user.username}` : 'Member';
         </View>
       )}
 
-      {/* Mentor follow-ups (StudentFeedback next follow-up dates); not shown to Sales CRM Hub users */}
-      {showsMentorFollowups(user?.role) && (
+      {/* Mentor follow-ups (StudentFeedback next follow-up dates). Other Sales CRM Hub users don't get it;
+          admins see it below the hub only when they have at least one follow-up */}
+      {(showsMentorFollowups(user?.role) || (isAdminRole(user?.role) && mentorFollowups.length > 0)) && (
         <View style={[styles.section]}>
           <Text style={[styles.sectionTitle, { color: '#4B5563' }]}>MY UPCOMING FOLLOW-UPS</Text>
           <View style={[styles.tasksCard, { backgroundColor: '#FFFFFF', borderColor: '#E5E7EB' }]}>
