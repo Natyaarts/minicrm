@@ -239,6 +239,11 @@ export default function SalesScreen() {
   };
 
   const hasInitialFetchedRef = useRef(false);
+  // Lead opened from this screen; on return only that row is refreshed (see refreshOpenedLead)
+  const lastOpenedLeadIdRef = useRef<string | null>(null);
+  // Bumped by every fetch; a response whose id is no longer the latest is dropped
+  const leadsRequestIdRef = useRef(0);
+  const callsRequestIdRef = useRef(0);
 
   useEffect(() => {
     if (authLoading) return;
@@ -259,6 +264,9 @@ export default function SalesScreen() {
     return () => clearTimeout(t);
   }, [search, selectedFilter, selectedBde, sortOrder, startDate, endDate, viewMode, authLoading, user?.role]);
 
+  // Latest render's handlers/state, so the focus callback below never sees stale filters
+  const focusStateRef = useRef<any>({});
+
   useFocusEffect(
     useCallback(() => {
       if (authLoading) return;
@@ -266,15 +274,20 @@ export default function SalesScreen() {
         hasInitialFetchedRef.current = true;
         return;
       }
-      fetchStats();
-      if (viewMode === 'TASKS') {
-        fetchLeadTasks();
-      } else if (viewMode === 'CALLS') {
-        fetchRecentCalls(1, false);
-      } else {
-        fetchLeads(1, false);
+      const current = focusStateRef.current;
+      const openedLeadId = lastOpenedLeadIdRef.current;
+      lastOpenedLeadIdRef.current = null;
+      current.fetchStats();
+      if (current.viewMode === 'TASKS') {
+        current.fetchLeadTasks();
+      } else if (current.viewMode === 'CALLS') {
+        current.fetchRecentCalls(1, false);
+      } else if (openedLeadId) {
+        // Don't refetch page 1 (that replaced the list and lost later pages); refresh just the opened row
+        current.refreshOpenedLead(openedLeadId);
       }
-    }, [authLoading, viewMode, selectedBde, selectedFilter, search, sortOrder, startDate, endDate])
+      // Filter/search/tab changes are handled by the main effect above, not here
+    }, [authLoading])
   );
 
   const loadUser = async () => {
@@ -325,6 +338,8 @@ export default function SalesScreen() {
   };
 
   const fetchLeads = async (page = 1, reset = false) => {
+    // Any newer fetch (a reset, or the next page) makes this one stale
+    const requestId = ++leadsRequestIdRef.current;
     if (reset) setLoading(true);
     else setLoadingMore(true);
 
@@ -346,15 +361,11 @@ export default function SalesScreen() {
     params.hide_converted = 'true';
 
     const data = await getStudents(params);
+    if (requestId !== leadsRequestIdRef.current) return;
     let list = data.results || [];
-    
+
     // ── FRONTEND HARD-FILTER: Absolutely force hide converted leads for EVERYONE on this screen ──
-    list = list.filter((item: any) => {
-      const raw = item.lead_status || item.status || 'NEW';
-      const name = resolveStage(raw).toUpperCase();
-      const id = String(raw).toUpperCase();
-      return !name.includes('ENROL') && !name.includes('CONVERT') && id !== 'ENROLLED' && id !== 'CONVERTED';
-    });
+    list = list.filter((item: any) => !isConvertedLead(item));
 
     const count = data.count || list.length;
 
@@ -373,14 +384,88 @@ export default function SalesScreen() {
   };
 
   const handleLoadMore = () => {
+    // Never start a next-page fetch while a reset is loading: it would make the reset stale
     if (viewMode === 'CALLS') {
-      if (!loadingMoreCalls && hasMoreCalls) fetchRecentCalls(callsPage + 1);
+      if (!loadingCalls && !loadingMoreCalls && hasMoreCalls) fetchRecentCalls(callsPage + 1);
     } else {
-      if (!loadingMore && leads.length < totalLeads) fetchLeads(currentPage + 1);
+      if (!loading && !loadingMore && leads.length < totalLeads) fetchLeads(currentPage + 1);
     }
   };
 
+  // ── Single-row refresh after returning from /lead-details ────────────────
+  // Same rule as the converted-lead filter in fetchLeads
+  const isConvertedLead = (item: any): boolean => {
+    const raw = item.lead_status || item.status || 'NEW';
+    const name = resolveStage(raw).toUpperCase();
+    const id = String(raw).toUpperCase();
+    return name.includes('ENROL') || name.includes('CONVERT') || id === 'ENROLLED' || id === 'CONVERTED';
+  };
+
+  // Mirrors new_only / pipeline_only in backend core/views.py (StudentViewSet.get_queryset)
+  const isNewStageStatus = (raw: any): boolean => {
+    const s = String(raw ?? '').trim();
+    if (!s) return false; // null/blank lead_status is excluded by new_only, kept by pipeline_only
+    if (['NEW', 'New Lead', 'new'].includes(s)) return true;
+    const lower = s.toLowerCase();
+    if (lower === 'new' || lower === 'new lead') return true;
+    return pipelineStages.some((st: any) =>
+      String(st.id) === s &&
+      (String(st.name || '').toLowerCase().includes('new') || Number(st.order) === 1)
+    );
+  };
+
+  // Approximates the backend lead_status filter (resolve_stage_filter_values)
+  const matchesStageFilter = (lead: any, value: any): boolean => {
+    const v = String(value);
+    if (isNewStageStatus(v)) return isNewStageStatus(lead.lead_status);
+    const candidates = [lead.lead_status, lead.lead_stage_id].filter(x => x !== null && x !== undefined).map(String);
+    if (candidates.includes(v)) return true;
+    const stage = pipelineStages.find((st: any) => String(st.id) === v);
+    return Boolean(stage) && resolveStage(String(lead.lead_status || '')) === stage.name;
+  };
+
+  const leadBelongsInCurrentTab = (lead: any): boolean => {
+    if (!lead || lead.is_active === false) return false;
+    if (String(lead.lead_status || '').toUpperCase() === 'DUPLICATE') return false;
+    if (isConvertedLead(lead)) return false;
+    const isNew = isNewStageStatus(lead.lead_status);
+    if (viewMode === 'NEW' && !isNew) return false;
+    if (viewMode === 'PIPELINE' && isNew) return false;
+    if (selectedBde) {
+      const assignee = lead.assigned_to && typeof lead.assigned_to === 'object' ? lead.assigned_to.id : lead.assigned_to;
+      if (String(assignee ?? '') !== String(selectedBde)) return false;
+    }
+    if (selectedFilter.type === 'lead_status' && !matchesStageFilter(lead, selectedFilter.value)) return false;
+    return true;
+  };
+
+  const leadsRef = useRef<any[]>([]);
+  leadsRef.current = leads;
+
+  const refreshOpenedLead = async (leadId: string) => {
+    if (!leadsRef.current.some(l => String(l.id) === String(leadId))) return;
+    let fresh: any = null;
+    try {
+      const res = await client.get(`/students/${leadId}/`);
+      fresh = res.data;
+    } catch (e: any) {
+      const status = e?.response?.status;
+      // 404/403: no longer visible to this user (reassigned, deleted). Anything else: keep the row as is
+      if (status !== 404 && status !== 403) return;
+    }
+    const keep = fresh && leadBelongsInCurrentTab(fresh);
+    if (keep) {
+      setLeads(prev => prev.map(l => (String(l.id) === String(leadId) ? { ...l, ...fresh } : l)));
+      return;
+    }
+    // Check against the latest list, so a reset that already dropped the row doesn't decrement twice
+    if (!leadsRef.current.some(l => String(l.id) === String(leadId))) return;
+    setLeads(prev => prev.filter(l => String(l.id) !== String(leadId)));
+    setTotalLeads(c => Math.max(0, c - 1));
+  };
+
   const fetchRecentCalls = async (page = 1, reset = false) => {
+    const requestId = ++callsRequestIdRef.current;
     if (page === 1) {
       setLoadingCalls(true);
       if (reset) setRecentCalls([]);
@@ -395,6 +480,7 @@ export default function SalesScreen() {
       if (endDate) params.end_date = endDate.toISOString().split('T')[0];
       
       const res = await client.get('/crm/interactions/', { params });
+      if (requestId !== callsRequestIdRef.current) return;
       const raw = res.data;
       const data = raw?.results || (Array.isArray(raw) ? raw : []);
       const filtered = data.filter((item: any) => item.interaction_type === 'CALL');
@@ -409,10 +495,15 @@ export default function SalesScreen() {
     } catch (err) {
       console.log('Failed to fetch recent calls:', err);
     } finally {
-      setLoadingCalls(false);
-      setLoadingMoreCalls(false);
+      // A stale request leaves the spinners to the newer one
+      if (requestId === callsRequestIdRef.current) {
+        setLoadingCalls(false);
+        setLoadingMoreCalls(false);
+      }
     }
   };
+  focusStateRef.current = { viewMode, fetchStats, fetchLeadTasks, fetchRecentCalls, refreshOpenedLead };
+
   const playAudio = async (url: string, id: string) => {
     if (playingAudio === id) {
        if (sound) {
@@ -482,6 +573,7 @@ export default function SalesScreen() {
         style={[styles.historyCard, isDark && styles.darkCard]}
         onPress={() => {
           if (item.student) {
+            lastOpenedLeadIdRef.current = String(item.student);
             router.push({
               pathname: '/lead-details',
               params: {
@@ -584,7 +676,9 @@ export default function SalesScreen() {
     return (
       <TouchableOpacity
         style={[styles.leadRow, isDark && styles.leadRowDark]}
-        onPress={() => router.push({
+        onPress={() => {
+          lastOpenedLeadIdRef.current = String(item.id);
+          router.push({
           pathname: '/lead-details',
           params: {
             leadId: String(item.id),
@@ -598,7 +692,8 @@ export default function SalesScreen() {
             initialCrmId: item.crm_student_id || '',
             initialCampaignName: campaignLabel
           }
-        } as any)}
+        } as any);
+        }}
         activeOpacity={0.6}
       >
         {/* Left stage stripe */}
@@ -1066,6 +1161,7 @@ export default function SalesScreen() {
             onRefresh={handleRefresh}
             onEndReached={handleLoadMore}
             onEndReachedThreshold={0.4}
+            maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
             ListEmptyComponent={
               <View style={styles.center}>
                 <FontAwesome5 name="inbox" size={36} color="#CBD5E1" />

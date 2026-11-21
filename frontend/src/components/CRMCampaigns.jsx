@@ -2275,7 +2275,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                                     onClick={handleConnectGoogle}
                                                     className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-colors"
                                                 >
-                                                    🔑 Authenticate with Google
+                                                    Authenticate with Google
                                                 </button>
                                                 <span className="text-[11px] text-slate-500">Redirects to Google OAuth verification</span>
                                             </div>
@@ -2347,7 +2347,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
                                                         onClick={handleSyncGoogleSheet}
                                                         className="w-fit px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white rounded-lg text-xs font-semibold shadow-xs flex items-center gap-2 transition-colors"
                                                     >
-                                                        {isSyncingSheets ? 'Syncing...' : '🔄 Sync Leads Now'}
+                                                        {isSyncingSheets ? 'Syncing...' : 'Sync Leads Now'}
                                                     </button>
                                                 </div>
                                             )}
