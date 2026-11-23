@@ -470,6 +470,7 @@ class PipelineStageViewSet(viewsets.ModelViewSet):
     queryset = PipelineStage.objects.all()
     serializer_class = PipelineStageSerializer
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None
 
 class LeadInteractionViewSet(viewsets.ModelViewSet):
     serializer_class = LeadInteractionSerializer
