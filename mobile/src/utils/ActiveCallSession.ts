@@ -24,6 +24,11 @@ export interface ActiveCallSession {
   status: ActiveCallStatus;
   notes: string;
   savedAt: number;
+  /**
+   * The CallLog row this call was concluded with. The row is consumed when the call is concluded, so a
+   * later lookup can't find it again: a resumed Call Review (app killed in POST_CALL) reuses this entry.
+   */
+  callLog?: { rowId: number; durationSec: number; dateMs: number; type: number } | null;
 }
 
 /** Identity of the signed-in user from the cached userInfo: its id, else its username, else ''. */

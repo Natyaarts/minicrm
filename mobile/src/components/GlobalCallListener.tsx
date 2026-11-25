@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, TextInput, Platform, ScrollView, Alert, ActivityIndicator, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { listenToCallState, listenToMissedCalls, startNativeRecording, stopNativeRecording, cancelNativeRecording, findRecentRecordingInMappedFolder, markCallSessionEnded, getLastCallSessionEndTimeMs, getLatestCallLogDuration, extractDurationFromAudio } from '../utils/CallManager';
+import { listenToCallState, listenToMissedCalls, startNativeRecording, stopNativeRecording, cancelNativeRecording, findRecentRecordingInMappedFolder, markCallSessionEnded, getLastCallSessionEndTimeMs, waitForCallLogEntry, markCallLogRowConsumed, extractDurationFromAudio } from '../utils/CallManager';
 import { generateMobileCallId, queueOfflineCall, markRecordingConsumed, getConsumedRecordings, isRecordingConsumed, uploadCallRecordingAsync } from '../utils/SyncManager';
 import client from '../api/client';
 import * as DocumentPicker from 'expo-document-picker';
@@ -38,6 +38,8 @@ export default function GlobalCallListener() {
   const isOffhookRef = useRef(false);
   const incomingPhoneRef = useRef<string | null>(null);
   const callStartTimeRef = useRef<number | null>(null);
+  // When the phone started ringing: CallLog.DATE of an incoming call is the ring start, not the answer time
+  const ringStartTimeRef = useRef<number | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
@@ -107,6 +109,7 @@ export default function GlobalCallListener() {
         isOffhookRef.current = false;
         incomingPhoneRef.current = phoneNumber;
         callStartTimeRef.current = null;
+        ringStartTimeRef.current = Date.now();
         setDisplayPhone(phoneNumber);
         setRingingPhone(phoneNumber || 'Unknown Number');
         setRingingLeadInfo(null);
@@ -166,41 +169,47 @@ export default function GlobalCallListener() {
 
         if (isIncomingRef.current) {
           const endTime = Date.now();
+          // Previous session's end, captured BEFORE the CallLog lookup and stopNativeRecording() (which
+          // moves it): the floor for the CallLog row and for the recording search
+          const prevSessionEndMs = getLastCallSessionEndTimeMs();
           const rawStart = callStartTimeRef.current || (Date.now() - 5000);
-          const startTime = Math.max(rawStart, getLastCallSessionEndTimeMs());
+          const startTime = Math.max(rawStart, prevSessionEndMs);
+          // CallLog.DATE of an incoming call is when it started ringing
+          const ringStart = Math.max(ringStartTimeRef.current || rawStart, prevSessionEndMs);
           const wasOffhook = isOffhookRef.current;
           const phone = incomingPhoneRef.current || displayPhone;
 
           let authoritativeDuration = 0;
           let isConnected = false;
+          let callLogUnreadable = false;
+          let callLogRowId: number | null = null;
 
           if (wasOffhook && startTime) {
             if (Platform.OS === 'android' && phone) {
-              try {
-                const logDuration = await getLatestCallLogDuration(phone, startTime, 'INCOMING');
-                if (typeof logDuration === 'number' && logDuration > 0) {
-                  authoritativeDuration = logDuration;
-                  isConnected = true;
-                } else {
-                  authoritativeDuration = 0;
-                  isConnected = false;
-                }
-              } catch (err) {
-                console.warn('[GlobalCallListener] Failed to query CallLog duration:', err);
-                authoritativeDuration = 0;
-                isConnected = false;
+              // Pure reads, polled for up to ~10s while the phone writes the row
+              const lookup = await waitForCallLogEntry(phone, ringStart, prevSessionEndMs, 'INCOMING', { timeoutMs: 10_000 });
+              if (lookup.kind === 'found') {
+                authoritativeDuration = lookup.entry.durationSec;
+                isConnected = authoritativeDuration > 0;
+                callLogRowId = lookup.entry.rowId;
+              } else if (lookup.kind === 'unreadable') {
+                // READ_CALL_LOG off: status unknown, keep the recording instead of discarding it
+                callLogUnreadable = true;
+                console.warn(`[calllog] incoming: CallLog unreadable (${lookup.reason}), keeping the recording`);
               }
             }
           }
 
-          if (Platform.OS === 'android' && wasOffhook && isConnected && authoritativeDuration > 0) {
+          if (Platform.OS === 'android' && wasOffhook && (callLogUnreadable || (isConnected && authoritativeDuration > 0))) {
             const consumedSet = await getConsumedRecordings();
-            let path = await stopNativeRecording();
+            let path = await stopNativeRecording(prevSessionEndMs);
             if (path && isRecordingConsumed(path, consumedSet)) {
               path = null;
             }
             if (!path && phone) {
-              path = await findRecentRecordingInMappedFolder(phone, startTime, endTime, consumedSet);
+              path = await findRecentRecordingInMappedFolder(
+                phone, startTime, endTime, consumedSet, prevSessionEndMs, authoritativeDuration, { label: 'incoming' }
+              );
             }
             if (path && !isRecordingConsumed(path, consumedSet)) {
               setRecordedFilePath(path);
@@ -216,7 +225,13 @@ export default function GlobalCallListener() {
             setRecordedFilePath(null);
           }
 
+          // Outcome decided: consume the CallLog row exactly once (also for a missed row)
+          if (callLogRowId !== null) await markCallLogRowConsumed(callLogRowId, endTime);
+
           markCallSessionEnded(Date.now());
+
+          // CallLog unreadable: a found recording with a real duration is the evidence the call connected
+          if (callLogUnreadable && authoritativeDuration > 0) isConnected = true;
 
           // Unified rule: duration > 0 -> CONNECTED, duration == 0 -> MISSED
           const finalDuration = isConnected && authoritativeDuration > 0 ? authoritativeDuration : 0;
@@ -236,6 +251,7 @@ export default function GlobalCallListener() {
         isIncomingRef.current = false;
         isOffhookRef.current = false;
         callStartTimeRef.current = null;
+        ringStartTimeRef.current = null;
         incomingPhoneRef.current = null;
       }
     });

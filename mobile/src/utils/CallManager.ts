@@ -3,9 +3,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Directory, File as ExpoFile } from 'expo-file-system';
 import {
-    pickBestRecording, phoneNumbersInName, last10Digits, WINDOW_BEFORE_MS, WINDOW_AFTER_MS,
-    type RecordingCandidate, type MatchContext,
+    assignRecordings, evaluateCandidate, selectCandidateEntries, last10Digits,
+    maskName, maskPhone, WINDOW_BEFORE_MS, WINDOW_AFTER_MS,
+    type RecordingCandidate, type MatchContext, type AssignmentResult,
 } from './recordingMatch';
+
+export { extractTimestampFromFileName } from './recordingMatch';
 
 const { CallRecordingModule } = NativeModules;
 export const MAPPED_RECORDING_FOLDER_KEY = '@mapped_recording_folder_uri';
@@ -33,35 +36,6 @@ let folderScanCache: {
 
 export const invalidateRecordingFolderCache = () => {
     folderScanCache = null;
-};
-
-/**
- * Extracts a timestamp (ms) from common OEM call recording filenames if encoded in the name:
- * e.g. Call_9876543210_20261109_143022.m4a, Rec_2026-11-09_14-30-22.m4a, or 13-digit epoch ms.
- */
-export const extractTimestampFromFileName = (fileName: string): number | null => {
-    if (!fileName) return null;
-    // 1. Check 13-digit epoch ms (e.g., 1762678000000)
-    const epochMatch = fileName.match(/(?:^|[^\d])(1[6-9]\d{11})(?:[^\d]|$)/);
-    if (epochMatch) {
-        const ts = Number(epochMatch[1]);
-        if (!isNaN(ts) && ts > 1600000000000) return ts;
-    }
-    // 2. Check YYYY[-_.]?MM[-_.]?DD[-_.\s]+HH[-_.]?mm[-_.]?ss
-    const dateMatch = fileName.match(/(20\d{2})[-_.]?(0[1-9]|1[0-2])[-_.]?(0[1-9]|[12]\d|3[01])[-_.\sT]+([01]\d|2[0-3])[-_.]?([0-5]\d)[-_.]?([0-5]\d)/);
-    if (dateMatch) {
-        const [, year, month, day, hour, min, sec] = dateMatch;
-        const parsed = new Date(
-            Number(year),
-            Number(month) - 1,
-            Number(day),
-            Number(hour),
-            Number(min),
-            Number(sec)
-        ).getTime();
-        if (!isNaN(parsed) && parsed > 0) return parsed;
-    }
-    return null;
 };
 
 export interface MappedRecordingFolderInfo {
@@ -484,7 +458,7 @@ export const cancelNativeRecording = async () => {
             await CallRecordingModule.cancelRecording();
             return null;
         }
-        await CallRecordingModule.stopRecording();
+        await CallRecordingModule.stopRecording(0);
         return null;
     } catch (e) {
         console.warn('[CallManager] cancelNativeRecording error:', e);
@@ -492,13 +466,20 @@ export const cancelNativeRecording = async () => {
     }
 };
 
-export const stopNativeRecording = async () => {
+/**
+ * Stops the app recorder and returns the phone's own call recording found natively, the app's fallback
+ * file, or null. `prevSessionEndMs` is the end of the PREVIOUS call session, captured before the CallLog
+ * lookup (defaults to the current floor, which is that value until this call is concluded): files that
+ * end before it belong to an earlier call.
+ */
+export const stopNativeRecording = async (prevSessionEndMs?: number) => {
     if (!CallRecordingModule) {
         markCallSessionEnded(Date.now());
         return null;
     }
     try {
-        const filePath = await CallRecordingModule.stopRecording();
+        const floor = typeof prevSessionEndMs === 'number' ? prevSessionEndMs : lastCallSessionEndTimeMs;
+        const filePath = await CallRecordingModule.stopRecording(floor);
         markCallSessionEnded(Date.now());
         return filePath;
     } catch (e) {
@@ -519,31 +500,130 @@ export const makeDirectCall = async (phoneNumber: string): Promise<boolean> => {
     }
 };
 
+// ── CallLog (connection status + duration) ─────────────────────────────────
+// Lookups are pure reads. A row is consumed only once its call is concluded (markCallLogRowConsumed).
+
+export interface CallLogEntry {
+    rowId: number;
+    /** Connected seconds; 0 for missed / rejected rows */
+    durationSec: number;
+    /** CallLog.DATE: when the call started */
+    dateMs: number;
+    type: number;
+}
+
+/** found: the call's CallLog row; none: no row (yet); unreadable: READ_CALL_LOG off or lookup failed */
+export type CallLogLookup =
+    | { kind: 'found'; entry: CallLogEntry }
+    | { kind: 'none' }
+    | { kind: 'unreadable'; reason: string };
+
+const iso = (ms: number) => (ms > 0 ? new Date(ms).toISOString() : '0');
+
+/**
+ * The newest CallLog row for this call: matching direction and number, DATE >= callStartMs - 10s,
+ * DATE >= prevSessionEndMs (end of the PREVIOUS call session), not consumed. No side effects.
+ */
+export const lookupCallLogEntry = async (
+    phoneNumber: string,
+    callStartMs: number,
+    prevSessionEndMs: number,
+    direction: 'OUTGOING' | 'INCOMING'
+): Promise<CallLogLookup> => {
+    if (Platform.OS !== 'android' || !CallRecordingModule || typeof CallRecordingModule.findCallLogEntry !== 'function') {
+        return { kind: 'unreadable', reason: 'unsupported' };
+    }
+    try {
+        const r: any = await CallRecordingModule.findCallLogEntry(phoneNumber || '', callStartMs || 0, prevSessionEndMs || 0, direction);
+        const counts = `scanned ${r?.rowsScanned ?? '?'}, considered ${r?.rowsConsidered ?? '?'}, consumed-skipped ${r?.consumedSkipped ?? '?'}`;
+        const query = `${maskPhone(phoneNumber)} ${direction} start=${iso(callStartMs)} floor=${iso(prevSessionEndMs)}`;
+        if (r?.status === 'found') {
+            const entry: CallLogEntry = {
+                rowId: Number(r.rowId), durationSec: Number(r.durationSec) || 0, dateMs: Number(r.dateMs) || 0, type: Number(r.type) || 0,
+            };
+            console.log(`[calllog] lookup ${query} -> row ${entry.rowId}, ${entry.durationSec}s, date=${iso(entry.dateMs)} (${counts})`);
+            return { kind: 'found', entry };
+        }
+        if (r?.status === 'none') {
+            console.log(`[calllog] lookup ${query} -> no row (${counts})`);
+            return { kind: 'none' };
+        }
+        const reason = r?.status === 'no_permission' ? 'no_permission' : `error: ${r?.message || 'unknown'}`;
+        console.warn(`[calllog] lookup ${query} -> unreadable (${reason})`);
+        return { kind: 'unreadable', reason };
+    } catch (e: any) {
+        console.warn('[calllog] lookup failed:', e?.message || e);
+        return { kind: 'unreadable', reason: `error: ${e?.message || 'unknown'}` };
+    }
+};
+
+/**
+ * Polls lookupCallLogEntry until the row appears (the phone may write it a few seconds after hang-up),
+ * the CallLog is unreadable, `shouldAbort()` returns true, or `timeoutMs` passes. Safe because lookups
+ * are pure reads.
+ */
+export const waitForCallLogEntry = async (
+    phoneNumber: string,
+    callStartMs: number,
+    prevSessionEndMs: number,
+    direction: 'OUTGOING' | 'INCOMING',
+    opts: { timeoutMs?: number; intervalMs?: number; shouldAbort?: () => boolean } = {}
+): Promise<CallLogLookup> => {
+    const deadline = Date.now() + (opts.timeoutMs ?? 10_000);
+    const interval = opts.intervalMs ?? 750;
+    let last: CallLogLookup = { kind: 'none' };
+    for (let attempt = 0; ; attempt++) {
+        last = await lookupCallLogEntry(phoneNumber, callStartMs, prevSessionEndMs, direction);
+        if (last.kind !== 'none') return last;
+        if (opts.shouldAbort?.() || Date.now() + interval > deadline) {
+            console.log(`[calllog] no row for ${maskPhone(phoneNumber)} after ${attempt + 1} lookup(s)`);
+            return last;
+        }
+        await new Promise(r => setTimeout(r, interval));
+    }
+};
+
+/** Marks the CallLog row as used by its concluded call. Call exactly once per concluded call. */
+export const markCallLogRowConsumed = async (rowId: number, callEndMs: number) => {
+    if (!CallRecordingModule || typeof CallRecordingModule.markCallLogRowConsumed !== 'function') return;
+    if (!Number.isFinite(rowId) || rowId < 0) return;
+    try {
+        await CallRecordingModule.markCallLogRowConsumed(rowId, callEndMs);
+        console.log(`[calllog] consumed row ${rowId} (call end ${iso(callEndMs)})`);
+    } catch (e: any) {
+        console.warn('[calllog] markCallLogRowConsumed failed:', e?.message || e);
+    }
+};
+
+/**
+ * Legacy helper: connected seconds of the matching CallLog row, 0 when there is none, null when the
+ * CallLog can't be read. A pure read (wraps lookupCallLogEntry); the floor is the current session floor.
+ */
 export const getLatestCallLogDuration = async (
     phoneNumber?: string,
     startTimeMs?: number,
     direction?: string
 ): Promise<number | null> => {
-    if (Platform.OS !== 'android' || !CallRecordingModule || !CallRecordingModule.getLatestCallLogDuration) {
-        return null;
-    }
+    const r = await lookupCallLogEntry(
+        phoneNumber || '', startTimeMs || 0, lastCallSessionEndTimeMs,
+        (direction || 'INCOMING').toUpperCase() === 'OUTGOING' ? 'OUTGOING' : 'INCOMING'
+    );
+    if (r.kind === 'found') return r.entry.durationSec;
+    if (r.kind === 'none') return 0;
+    return null;
+};
+
+// ── Mapped-folder recording search ─────────────────────────────────────────
+
+/** Audio duration in whole seconds (native metadata, else expo-av), or null if unknown. */
+export const getAudioDurationSec = async (uri: string): Promise<number | null> => {
     try {
-        // Ensure startTimeMs is never earlier than the end of the previous call session
-        const rawStart = startTimeMs || 0;
-        const effectiveStartMs = rawStart > 0 ? Math.max(rawStart, lastCallSessionEndTimeMs) : lastCallSessionEndTimeMs;
-        const dur = await CallRecordingModule.getLatestCallLogDuration(
-            phoneNumber || "",
-            effectiveStartMs,
-            direction || "INCOMING"
-        );
-        if (typeof dur === 'number' && !isNaN(dur) && dur >= 0) {
-            return dur;
+        if (Platform.OS === 'android' && CallRecordingModule && typeof CallRecordingModule.getAudioDurationMs === 'function') {
+            const ms = await CallRecordingModule.getAudioDurationMs(uri);
+            if (typeof ms === 'number' && ms > 0) return Math.round(ms / 1000);
         }
-        return null;
-    } catch (e) {
-        console.warn('[CallManager] getLatestCallLogDuration error:', e);
-        return null;
-    }
+    } catch (_) {}
+    return extractDurationFromAudio(uri);
 };
 
 /** Modified time (ms) and size of a file:// or content:// URI; nulls when unknown. */
@@ -567,14 +647,159 @@ const statRecording = async (uri: string): Promise<{ timeMs: number | null; size
     return { timeMs, sizeBytes };
 };
 
-// Upper bound on files whose metadata is read per lookup (SAF stat is a native round trip)
+export interface FolderEntry {
+    uri: string;
+    /** Decoded file name (no folder) */
+    name: string;
+    modifiedMs: number | null;
+    sizeBytes: number | null;
+}
+
+const decodedBaseName = (uri: string): string => {
+    let decoded = uri;
+    try { decoded = decodeURIComponent(uri); } catch (_) {}
+    return decoded.split('/').pop()?.split(':').pop() || uri;
+};
+
+/**
+ * Audio files of the mapped folder (and its direct subfolders). Uses the native DocumentsContract listing,
+ * which returns last-modified and size in one query per folder; falls back to the SAF listing without
+ * metadata (`withMeta: false`) when the native method isn't available.
+ */
+export const listMappedFolderEntries = async (folderUri?: string | null): Promise<{ entries: FolderEntry[]; withMeta: boolean } | null> => {
+    const uri = folderUri || (await getMappedRecordingFolder());
+    if (!uri) return null;
+    if (uri.startsWith('content://') && CallRecordingModule && typeof CallRecordingModule.listRecordingFolder === 'function') {
+        try {
+            const raw: any[] = await CallRecordingModule.listRecordingFolder(uri);
+            const entries = (raw || []).map((e) => ({
+                uri: String(e.uri),
+                name: String(e.name || decodedBaseName(String(e.uri))),
+                modifiedMs: typeof e.lastModified === 'number' && e.lastModified > 0 ? e.lastModified : null,
+                sizeBytes: typeof e.size === 'number' && e.size >= 0 ? e.size : null,
+            }));
+            return { entries, withMeta: true };
+        } catch (e: any) {
+            console.warn('[recmatch] native folder listing failed, falling back to SAF listing:', e?.message || e);
+        }
+    }
+    const info = await scanRecordingFolder(uri, true);
+    if (!info || !info.accessible) return null;
+    return {
+        entries: info.recordingFiles.map((u) => ({ uri: u, name: decodedBaseName(u), modifiedMs: null, sizeBytes: null })),
+        withMeta: false,
+    };
+};
+
+// Upper bound on files whose metadata / duration is read per lookup (SAF stat is a native round trip)
 const MAX_STAT_CANDIDATES = 60;
+const MAX_DURATION_READS_PER_CALL = 5;
+
+const countBy = (items: string[]) => items.reduce<Record<string, number>>((acc, k) => { acc[k] = (acc[k] || 0) + 1; return acc; }, {});
+
+/**
+ * Turns folder entries into candidates for one or more calls. The cheap prefilter and the ordering before
+ * the cap live in recordingMatch.selectCandidateEntries (dialled-number files first, then files whose name
+ * timestamp is in a window, then newest first by last-modified). Time/size are read only for capped files
+ * that the listing didn't describe.
+ */
+export const buildRecordingCandidates = async (
+    entries: FolderEntry[],
+    calls: MatchContext[],
+    consumed?: Set<string>,
+    label = 'match',
+    maxCandidates = MAX_STAT_CANDIDATES
+): Promise<RecordingCandidate[]> => {
+    const { selected, stats } = selectCandidateEntries(entries, calls, consumed, maxCandidates);
+
+    const candidates: RecordingCandidate[] = [];
+    for (const { entry: e, nameTimeMs } of selected) {
+        let modifiedMs = e.modifiedMs;
+        let sizeBytes = e.sizeBytes;
+        if (modifiedMs === null || sizeBytes === null) {
+            const stat = await statRecording(e.uri);
+            modifiedMs = modifiedMs ?? stat.timeMs;
+            sizeBytes = sizeBytes ?? stat.sizeBytes;
+        }
+        candidates.push({ uri: e.uri, name: e.name, nameTimeMs, modifiedMs, sizeBytes, timeMs: nameTimeMs ?? modifiedMs });
+    }
+
+    const dropSummary = Object.entries(stats.drops).map(([k, v]) => `${k}: ${v}`).join(', ') || 'none';
+    console.log(
+        `[recmatch] ${label}: ${stats.total} files; priority (number) ${stats.byNumber}, named-in-window ${stats.namedInWindow}, ` +
+        `others ${stats.others}; checked ${selected.length}${stats.eligible > selected.length ? ` (capped from ${stats.eligible})` : ''}; ` +
+        `dropped: ${dropSummary}`
+    );
+    return candidates;
+};
+
+/**
+ * Reads the audio duration of the few best candidates per call (only for calls with a known connected
+ * duration), so evaluateCandidate can compare it. Never reads more than MAX_DURATION_READS_PER_CALL per call.
+ */
+export const readTopCandidateDurations = async (calls: MatchContext[], candidates: RecordingCandidate[]) => {
+    const toRead = new Set<RecordingCandidate>();
+    for (const ctx of calls) {
+        if (!ctx.connectedSeconds || ctx.connectedSeconds <= 0) continue;
+        const scored = candidates
+            .map((c) => ({ c, ev: evaluateCandidate(c, ctx) }))
+            .filter((x) => x.ev.ok)
+            .sort((a, b) => (a.ev as any).score - (b.ev as any).score)
+            .slice(0, MAX_DURATION_READS_PER_CALL);
+        scored.forEach(({ c }) => toRead.add(c));
+    }
+    for (const c of toRead) {
+        if (c.durationSec === undefined || c.durationSec === null) {
+            c.durationSec = await getAudioDurationSec(c.uri);
+        }
+    }
+};
+
+/** Logs an assignment result with [recmatch] (names masked). */
+export const logAssignment = (label: string, result: AssignmentResult, candidates: RecordingCandidate[]) => {
+    for (const [key, a] of result.byCall) {
+        const rej = result.rejections.filter((r) => r.callKey === key);
+        const reasons = Object.entries(countBy(rej.map((r) => r.reason))).map(([k, v]) => `${k}: ${v}`).join(', ') || 'none';
+        const examples = rej.slice(0, 5).map((r) => `${maskName(r.name)}=${r.reason}`).join('; ');
+        if (a.file) {
+            const d = a.file.durationSec ? `, ${a.file.durationSec}s audio` : '';
+            console.log(`[recmatch] ${label} ${key}: chose "${maskName(a.file.name)}"${d} (${a.passing} passing of ${candidates.length}); rejected: ${reasons}${examples ? ` [${examples}]` : ''}`);
+        } else {
+            console.log(`[recmatch] ${label} ${key}: no file (${a.reason}, ${a.passing} passing of ${candidates.length}); rejected: ${reasons}${examples ? ` [${examples}]` : ''}`);
+        }
+    }
+};
+
+/**
+ * Matches files of the mapped folder to one or more calls of this phone jointly (FIX 4 rules:
+ * one file per call, one call per file, ambiguous -> nothing). Each call's `reserved` must already
+ * exclude that call's own reservation. Returns the assignment, or null if the folder can't be read.
+ */
+export const matchMappedFolderRecordings = async (
+    calls: MatchContext[],
+    consumed?: Set<string>,
+    label = 'match'
+): Promise<AssignmentResult | null> => {
+    if (calls.length === 0) return { byCall: new Map(), rejections: [] };
+    const listing = await listMappedFolderEntries();
+    if (!listing) {
+        console.log(`[recmatch] ${label}: mapped folder not set or not readable`);
+        return null;
+    }
+    const cap = Math.min(MAX_STAT_CANDIDATES * Math.max(1, calls.length), 200);
+    const candidates = await buildRecordingCandidates(listing.entries, calls, consumed, label, cap);
+    await readTopCandidateDurations(calls, candidates);
+    const result = assignRecordings(calls, candidates);
+    logAssignment(label, result, candidates);
+    return result;
+};
 
 /**
  * Finds the phone's own call recording for a call in the mapped SAF folder.
- * Rules live in recordingMatch.pickBestRecording: [callStart - 10s, callEnd + 60s], not before the
- * previous session ended, not consumed, dialled number preferred (a different number rejected),
- * timestamp/contact-name files allowed, near-empty files rejected, closest in time wins.
+ * Rules live in recordingMatch (evaluateCandidate / assignRecordings): name time vs call start, modified
+ * time vs call end, not before the previous session ended, not past the next call, not consumed or reserved
+ * for another call, dialled number preferred (a different number rejected), contact-name files allowed,
+ * near-empty files and duration mismatches rejected, ambiguous -> null.
  */
 export const findRecentRecordingInMappedFolder = async (
     phoneNumber: string,
@@ -584,7 +809,8 @@ export const findRecentRecordingInMappedFolder = async (
     // Previous-session boundary to use instead of lastCallSessionEndTimeMs. Pass it when calling this after
     // stopNativeRecording(), which has already moved lastCallSessionEndTimeMs to the end of the current call.
     sessionFloorMs?: number,
-    connectedSeconds?: number
+    connectedSeconds?: number,
+    opts: { reserved?: Set<string>; nextCallStartMs?: number; label?: string } = {}
 ): Promise<string | null> => {
     try {
         const target = last10Digits(phoneNumber);
@@ -592,46 +818,20 @@ export const findRecentRecordingInMappedFolder = async (
 
         const callStart = callStartTimeMs > 0 ? callStartTimeMs : callEndTimeMs - 30000;
         const ctx: MatchContext = {
+            key: maskPhone(phoneNumber),
             phone: phoneNumber,
             callStartMs: callStart,
             callEndMs: callEndTimeMs,
             prevSessionEndMs: typeof sessionFloorMs === 'number' ? sessionFloorMs : lastCallSessionEndTimeMs,
             consumed: consumedSet,
+            reserved: opts.reserved,
             connectedSeconds,
+            nextCallStartMs: opts.nextCallStartMs,
+            windowBeforeMs: WINDOW_BEFORE_MS,
+            windowAfterMs: WINDOW_AFTER_MS,
         };
-        const windowStart = Math.max(callStart - WINDOW_BEFORE_MS, ctx.prevSessionEndMs || 0);
-        const windowEnd = callEndTimeMs + WINDOW_AFTER_MS;
-
-        const folderInfo = await scanRecordingFolder(undefined, true);
-        if (!folderInfo || !folderInfo.accessible || folderInfo.recordingFiles.length === 0) {
-            return null;
-        }
-
-        // Cheap in-memory pre-filter on names (no native calls)
-        const byNumber: { uri: string; name: string; nameTs: number | null }[] = [];
-        const others: { uri: string; name: string; nameTs: number | null }[] = [];
-        for (const fileUri of folderInfo.recordingFiles) {
-            let decoded = fileUri;
-            try { decoded = decodeURIComponent(fileUri); } catch (_) {}
-            const name = decoded.split('/').pop()?.split(':').pop() || fileUri;
-            if (consumedSet && (consumedSet.has(fileUri) || consumedSet.has(name))) continue;
-            const numbers = phoneNumbersInName(name);
-            if (numbers.length > 0 && !numbers.includes(target)) continue; // another call's recording
-            const nameTs = extractTimestampFromFileName(name);
-            if (nameTs && (nameTs < windowStart || nameTs > windowEnd)) continue;
-            (numbers.length > 0 ? byNumber : others).push({ uri: fileUri, name, nameTs });
-        }
-
-        // Read time/size: number matches first, then the rest, bounded for big folders
-        const candidates: RecordingCandidate[] = [];
-        for (const c of [...byNumber, ...others].slice(0, MAX_STAT_CANDIDATES)) {
-            const stat = await statRecording(c.uri);
-            // A timestamp in the file name is the recording's own time; the modified time is the fallback
-            candidates.push({ uri: c.uri, name: c.name, timeMs: c.nameTs ?? stat.timeMs, sizeBytes: stat.sizeBytes });
-        }
-
-        const best = pickBestRecording(candidates, ctx);
-        return best ? best.uri : null;
+        const result = await matchMappedFolderRecordings([ctx], consumedSet, opts.label || 'live');
+        return result?.byCall.get(ctx.key!)?.file?.uri ?? null;
     } catch (err) {
         console.warn('[CallManager] findRecentRecordingInMappedFolder error:', err);
         return null;

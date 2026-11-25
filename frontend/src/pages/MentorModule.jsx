@@ -4,6 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import { motion } from 'framer-motion';
 import { FileText, User, Calendar, BookOpen, Search, X, Key, Edit, Users, History, RefreshCw, UserMinus, Download, IndianRupee } from 'lucide-react';
+import MentorCallAnalytics, { canViewMentorCallAnalytics } from '../components/mentor';
+import { MentorWhatsAppLogModal, MwaIcon, toWaDigits, waLink, whatsAppEntryLabel, fmtWaDuration, NO_VALID_WA_NUMBER } from '../components/mentor/mwa';
 
 const MentorModule = () => {
     // Data State
@@ -1353,6 +1355,20 @@ const fetchCollectedFees = async () => {
     const [feedbackForm, setFeedbackForm] = useState({ status: 'CALL_DONE', feedback: '', next_followup_date: '' });
     const [feedbackSummary, setFeedbackSummary] = useState(null);
 
+    // WhatsApp contact logging (mentor side): { student, mode: 'log' | 'mark' }
+    const [waTarget, setWaTarget] = useState(null);
+    const openWhatsAppFor = (student) => {
+        const digits = toWaDigits(student?.mobile);
+        if (!digits) return alert(NO_VALID_WA_NUMBER);
+        window.open(waLink(digits), '_blank', 'noopener,noreferrer');
+        setWaTarget({ student, mode: 'log' });
+    };
+    const handleWhatsAppSaved = (row) => {
+        if (isFeedbackModalOpen && feedbackStudent?.id === row.student) setFeedbackHistory(prev => [row, ...prev]);
+        setAllStudents(prev => prev.map(s => s.id === row.student
+            ? { ...s, last_feedback_status: row.status, last_feedback_date: row.feedback_date } : s));
+    };
+
 
 
     const fetchFeedbackSummary = async () => {
@@ -1508,6 +1524,14 @@ const fetchCollectedFees = async () => {
                     >
                         Teacher View
                     </button>
+                    {canViewMentorCallAnalytics(authUser) ? (
+                        <button
+                            onClick={() => { setViewTab('call-analytics'); setSelectedBatch(null); }}
+                            className={`flex-1 lg:flex-none whitespace-nowrap px-4 sm:px-5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all ${viewTab === 'call-analytics' ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        >
+                            Call Analytics
+                        </button>
+                    ) : null}
                 </div>
 
                 {dashboardStats?.has_team && (
@@ -2202,6 +2226,23 @@ const fetchCollectedFees = async () => {
                                                     </button>
 
                                                     <button
+                                                        onClick={() => openWhatsAppFor(student)}
+                                                        disabled={!toWaDigits(student.mobile)}
+                                                        className="bg-emerald-50 text-emerald-700 border border-emerald-100 hover:bg-emerald-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                                                        title={toWaDigits(student.mobile) ? 'Open WhatsApp and log the contact' : NO_VALID_WA_NUMBER}
+                                                    >
+                                                        <MwaIcon size={12} /> WhatsApp
+                                                    </button>
+
+                                                    <button
+                                                        onClick={() => setWaTarget({ student, mode: 'mark' })}
+                                                        className="bg-emerald-50 text-emerald-700 border border-emerald-100 hover:bg-emerald-100"
+                                                        title="Mark as WhatsApp connected"
+                                                    >
+                                                        <MwaIcon size={12} /> Mark Connected
+                                                    </button>
+
+                                                    <button
                                                         onClick={() => handleOpenFeeModal(student)}
                                                         className="bg-emerald-50 text-emerald-700 border border-emerald-100 hover:bg-emerald-100"
                                                         title="Manage Fee"
@@ -2367,6 +2408,25 @@ const fetchCollectedFees = async () => {
                                         >
                                             <History size={13} />
                                             Call & Feedback
+                                        </button>
+
+                                        <button
+                                            onClick={() => openWhatsAppFor(student)}
+                                            disabled={!toWaDigits(student.mobile)}
+                                            title={toWaDigits(student.mobile) ? 'Open WhatsApp and log the contact' : NO_VALID_WA_NUMBER}
+                                            className="w-full py-2.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-xl text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                                        >
+                                            <MwaIcon size={13} />
+                                            WhatsApp
+                                        </button>
+
+                                        <button
+                                            onClick={() => setWaTarget({ student, mode: 'mark' })}
+                                            title="Mark as WhatsApp connected"
+                                            className="w-full py-2.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-xl text-xs font-bold flex items-center justify-center gap-2"
+                                        >
+                                            <MwaIcon size={13} />
+                                            Mark Connected
                                         </button>
 
                                         <button
@@ -2706,6 +2766,8 @@ const fetchCollectedFees = async () => {
                     )}
                 </motion.div>
             )}
+
+            {viewTab === 'call-analytics' && !selectedBatch && <MentorCallAnalytics />}
 
             {viewTab === 'batches' && (
                 !selectedBatch ? (
@@ -5011,6 +5073,16 @@ const fetchCollectedFees = async () => {
             )}
 
         
+            {waTarget && (
+                <MentorWhatsAppLogModal
+                    key={`${waTarget.student.id}-${waTarget.mode}`}
+                    student={waTarget.student}
+                    mode={waTarget.mode}
+                    onClose={() => setWaTarget(null)}
+                    onSaved={handleWhatsAppSaved}
+                />
+            )}
+
             {isFeedbackModalOpen && feedbackStudent && (
                 <div className="fixed inset-0 z-[110] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
                     <div className="bg-white w-full max-w-4xl max-h-[90vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col">
@@ -5054,6 +5126,7 @@ const fetchCollectedFees = async () => {
                                     {feedbackHistory.map((item, index) => {
                                         const recording =
                                             item.recording_url || item.audio_recording;
+                                        const wa = whatsAppEntryLabel(item);   // null for non-WhatsApp rows
 
                                         return (
                                             <div
@@ -5064,7 +5137,11 @@ const fetchCollectedFees = async () => {
                                                 <div className="flex flex-wrap justify-between gap-3">
                                                     <div>
                                                         <h3 className="font-bold text-slate-800">
-                                                            {item.type_display || item.feedback_type || 'Student Feedback'}
+                                                            {wa ? (
+                                                                <span className="inline-flex items-center gap-1.5 text-emerald-700">
+                                                                    <MwaIcon size={15} /> {wa.isCall ? 'WhatsApp call' : 'WhatsApp'}
+                                                                </span>
+                                                            ) : (item.type_display || item.feedback_type || 'Student Feedback')}
                                                         </h3>
 
                                                         <p className="text-xs text-slate-400 mt-1">
@@ -5076,7 +5153,9 @@ const fetchCollectedFees = async () => {
                                                     </div>
 
                                                     <span className="px-3 py-1 rounded-lg bg-blue-50 text-blue-700 border border-blue-100 text-xs font-bold h-fit">
-                                                        {item.status_display || item.status || 'N/A'}
+                                                        {wa
+                                                            ? `${wa.label}${wa.isCall && fmtWaDuration(item.call_duration) ? ` • ${fmtWaDuration(item.call_duration)}` : ''}`
+                                                            : (item.status_display || item.status || 'N/A')}
                                                     </span>
                                                 </div>
 

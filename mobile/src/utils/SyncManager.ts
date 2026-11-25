@@ -1,13 +1,102 @@
 import * as FileSystem from 'expo-file-system/legacy';
-import { File as ExpoFile } from 'expo-file-system';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import client from '../api/client';
+import { getCurrentUserKey } from './ActiveCallSession';
+import {
+  recordingKeys, linkNeighbouringCalls, assignRecordings, maskName, maskPhone,
+  type MatchContext, type RecordingCandidate,
+} from './recordingMatch';
 
 const PENDING_CALLS_STORAGE_KEY = '@pending_call_queue';
 const PENDING_RECORDINGS_STORAGE_KEY = '@pending_recordings_queue';
 const UNLINKED_RECORDINGS_STORAGE_KEY = '@unlinked_recordings_archive';
 const CONSUMED_RECORDINGS_STORAGE_KEY = '@consumed_recordings_set';
+const RESERVED_RECORDINGS_STORAGE_KEY = '@reserved_recordings';
+const RESERVATION_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+// ── Reservations ─────────────────────────────────────────────────────────────
+// A recording is reserved for a call as soon as it is attached on the Call Review screen or assigned to a
+// pending item, so no other matcher can give it to another call. It becomes "consumed" only after a
+// confirmed upload. Reservations are released when the user removes/replaces the file or discards the
+// call, and expire after 24h.
+
+export interface RecordingReservation {
+  /** File path / URI as attached */
+  key: string;
+  mobileCallId: string;
+  at: number;
+}
+
+let reservationQueue: Promise<unknown> = Promise.resolve();
+const serializeReservations = <T>(op: () => Promise<T>): Promise<T> => {
+  const run = reservationQueue.then(op, op);
+  reservationQueue = run.catch(() => {});
+  return run;
+};
+
+const readReservations = async (): Promise<RecordingReservation[]> => {
+  try {
+    const raw = await AsyncStorage.getItem(RESERVED_RECORDINGS_STORAGE_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    const now = Date.now();
+    return (Array.isArray(list) ? list : []).filter(
+      (r: any) => r && typeof r.key === 'string' && r.key && now - Number(r.at || 0) <= RESERVATION_MAX_AGE_MS
+    );
+  } catch (_) {
+    return [];
+  }
+};
+
+export const getReservations = (): Promise<RecordingReservation[]> => serializeReservations(readReservations);
+
+/** Reserves a file for a call. A call holds at most one reservation; a file belongs to at most one call. */
+export const reserveRecording = (uriOrPath: string | null | undefined, mobileCallId: string) =>
+  serializeReservations(async () => {
+    if (!uriOrPath || !mobileCallId) return;
+    const keys = new Set(recordingKeys(uriOrPath));
+    const list = (await readReservations()).filter(
+      (r) => r.mobileCallId !== mobileCallId && !recordingKeys(r.key).some((k) => keys.has(k))
+    );
+    list.push({ key: uriOrPath, mobileCallId, at: Date.now() });
+    try { await AsyncStorage.setItem(RESERVED_RECORDINGS_STORAGE_KEY, JSON.stringify(list.slice(-300))); } catch (_) {}
+  });
+
+/** Releases the reservation of a call and/or of a file. */
+export const releaseRecordingReservation = (by: { mobileCallId?: string | null; uri?: string | null }) =>
+  serializeReservations(async () => {
+    if (!by.mobileCallId && !by.uri) return;
+    const keys = new Set(by.uri ? recordingKeys(by.uri) : []);
+    const before = await readReservations();
+    const list = before.filter(
+      (r) => !(by.mobileCallId && r.mobileCallId === by.mobileCallId) && !recordingKeys(r.key).some((k) => keys.has(k))
+    );
+    try { await AsyncStorage.setItem(RESERVED_RECORDINGS_STORAGE_KEY, JSON.stringify(list)); } catch (_) {}
+  });
+
+/** Every identifier of the files reserved for calls OTHER than `excludeMobileCallId`. */
+export const reservedKeysExcept = (reservations: RecordingReservation[], excludeMobileCallId?: string | null): Set<string> => {
+  const set = new Set<string>();
+  for (const r of reservations) {
+    if (excludeMobileCallId && r.mobileCallId === excludeMobileCallId) continue;
+    recordingKeys(r.key).forEach((k) => set.add(k));
+  }
+  return set;
+};
+
+export const getReservedRecordings = async (excludeMobileCallId?: string | null): Promise<Set<string>> =>
+  reservedKeysExcept(await getReservations(), excludeMobileCallId);
+
+export const AUDIO_MIME_BY_EXT: Record<string, string> = {
+  m4a: 'audio/mp4', mp4: 'audio/mp4', mp3: 'audio/mpeg', wav: 'audio/wav', amr: 'audio/amr',
+  aac: 'audio/aac', ogg: 'audio/ogg', opus: 'audio/ogg', '3gp': 'audio/3gpp',
+};
+
+const extOf = (uri: string): string => {
+  let decoded = uri;
+  try { decoded = decodeURIComponent(uri); } catch (_) {}
+  return (decoded.match(/\.([a-zA-Z0-9]+)$/)?.[1] || 'm4a').toLowerCase();
+};
 
 export interface PendingRecordingItem {
   interactionId: number | string;
@@ -89,13 +178,13 @@ export const archiveUnlinkedRecording = async (item: UnlinkedRecordingItem) => {
 
 /**
  * Queues a recording file for background upload linked to an interaction ID.
- * Immediately marks the recording file as consumed so concurrent calls or background
- * syncs cannot attach the same audio file to another call.
+ * Immediately reserves the recording file so concurrent calls or background syncs cannot attach the
+ * same audio file to another call; it is marked consumed only after a confirmed upload.
  */
 export const queuePendingRecording = async (item: PendingRecordingItem) => {
   try {
     if (item?.fileUri) {
-      await markRecordingConsumed([item.fileUri, item.fileName || '']);
+      await reserveRecording(item.fileUri, item.mobileCallId || `interaction_${item.interactionId}`);
     }
     const current = await getPendingRecordings();
     const exists = current.some(
@@ -178,8 +267,10 @@ export const uploadSingleRecording = async (item: PendingRecordingItem): Promise
     });
     console.log(`[SyncManager] Successfully uploaded recording for interaction ${item.interactionId}`);
 
-    // Mark consumed in persistent storage and remove from pending queue
+    // Mark consumed in persistent storage (only now, after the confirmed upload), release the
+    // reservation, and remove from pending queue
     await markRecordingConsumed(item.fileUri);
+    await releaseRecordingReservation({ uri: item.fileUri, mobileCallId: item.mobileCallId });
     await removePendingRecording(item.interactionId);
     return { success: true };
   } catch (err: any) {
@@ -234,31 +325,44 @@ export const syncPendingRecordings = async () => {
     console.error('[SyncManager] Error syncing pending recordings:', err);
   } finally {
     isSyncingPendingRecordingsInProgress = false;
-    // Mentor calls whose phone recording hadn't been written yet when feedback was saved
-    syncPendingMentorRecordings().catch(() => {});
+    // Mentor / Sales calls whose phone recording hadn't been written yet when the call was saved
+    syncPendingCallRecordings().catch(() => {});
   }
 };
 
-// ── Late-arriving mentor call recordings ─────────────────────────────────────
-// The phone's dialer can finish writing its recording after the mentor saved feedback. Those calls are
-// queued and matched against the mapped folder later (app foreground, Mentors tab focus) for up to 24h.
+// ── Late-arriving call recordings (Mentor feedback and Sales interactions) ───────
+// The phone's dialer can finish writing its recording after the call was saved. Those calls are queued
+// and matched against the mapped folder later (app foreground, Mentors tab focus, sync) for up to 24h.
+// Mentor and Sales items are matched together, oldest first, with the shared rules (recordingMatch):
+// one file per call, one call per file, ambiguous -> nothing.
 const PENDING_MENTOR_RECORDINGS_KEY = '@pending_mentor_recordings';
-const PENDING_MENTOR_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const PENDING_SALES_RECORDINGS_KEY = '@pending_sales_recordings';
+const PENDING_LATE_RECORDING_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
-export interface PendingMentorRecording {
-  mobileCallId: string;
-  studentId: string | number;
+/** Call window of a connected call whose recording should be attached when it appears */
+export interface LateRecordingWindow {
   phone: string;
   callStartMs: number;
   callEndMs: number;
   prevSessionEndMs?: number;
   connectedSeconds?: number;
+}
+
+export interface PendingMentorRecording extends LateRecordingWindow {
+  mobileCallId: string;
+  studentId: string | number;
   queuedAt: number;
 }
 
-export const getPendingMentorRecordings = async (): Promise<PendingMentorRecording[]> => {
+export interface PendingSalesRecording extends LateRecordingWindow {
+  mobileCallId: string;
+  interactionId: string | number;
+  queuedAt: number;
+}
+
+const readList = async <T>(key: string): Promise<T[]> => {
   try {
-    const raw = await AsyncStorage.getItem(PENDING_MENTOR_RECORDINGS_KEY);
+    const raw = await AsyncStorage.getItem(key);
     const list = raw ? JSON.parse(raw) : [];
     return Array.isArray(list) ? list : [];
   } catch (_) {
@@ -266,84 +370,177 @@ export const getPendingMentorRecordings = async (): Promise<PendingMentorRecordi
   }
 };
 
-const savePendingMentorRecordings = async (list: PendingMentorRecording[]) => {
+const writeList = async (key: string, list: unknown[]) => {
   try {
-    await AsyncStorage.setItem(PENDING_MENTOR_RECORDINGS_KEY, JSON.stringify(list));
+    await AsyncStorage.setItem(key, JSON.stringify(list));
   } catch (_) {}
 };
+
+export const getPendingMentorRecordings = () => readList<PendingMentorRecording>(PENDING_MENTOR_RECORDINGS_KEY);
+export const getPendingSalesRecordings = () => readList<PendingSalesRecording>(PENDING_SALES_RECORDINGS_KEY);
 
 export const queuePendingMentorRecording = async (item: Omit<PendingMentorRecording, 'queuedAt'>) => {
   const list = (await getPendingMentorRecordings()).filter(i => i.mobileCallId !== item.mobileCallId);
   list.push({ ...item, queuedAt: Date.now() });
-  await savePendingMentorRecordings(list);
+  await writeList(PENDING_MENTOR_RECORDINGS_KEY, list);
+  console.log(`[recmatch] queued late mentor recording ${item.mobileCallId} (${maskPhone(item.phone)})`);
 };
 
-const AUDIO_MIME_BY_EXT: Record<string, string> = {
-  m4a: 'audio/mp4', mp4: 'audio/mp4', mp3: 'audio/mpeg', wav: 'audio/wav', amr: 'audio/amr',
-  aac: 'audio/aac', ogg: 'audio/ogg', opus: 'audio/ogg', '3gp': 'audio/3gpp',
+export const queuePendingSalesRecording = async (item: Omit<PendingSalesRecording, 'queuedAt'>) => {
+  const list = (await getPendingSalesRecordings()).filter(
+    i => i.mobileCallId !== item.mobileCallId && String(i.interactionId) !== String(item.interactionId)
+  );
+  list.push({ ...item, queuedAt: Date.now() });
+  await writeList(PENDING_SALES_RECORDINGS_KEY, list);
+  console.log(`[recmatch] queued late sales recording ${item.mobileCallId} -> interaction ${item.interactionId} (${maskPhone(item.phone)})`);
 };
 
-let isSyncingMentorRecordings = false;
+type PendingEntry =
+  | { kind: 'mentor'; item: PendingMentorRecording }
+  | { kind: 'sales'; item: PendingSalesRecording };
 
-export const syncPendingMentorRecordings = async () => {
-  if (isSyncingMentorRecordings) return;
-  isSyncingMentorRecordings = true;
-  try {
-    const list = await getPendingMentorRecordings();
-    if (list.length === 0) return;
+type UploadOutcome = 'done' | 'drop' | 'retry';
 
-    const { findRecentRecordingInMappedFolder } = await import('./CallManager');
+/** Uploads a matched file for a pending item. Consumed only after a confirmed upload. */
+const uploadPendingMatch = async (entry: PendingEntry, uri: string): Promise<UploadOutcome> => {
+  const { mobileCallId } = entry.item;
+  const ext = extOf(uri);
+  const type = AUDIO_MIME_BY_EXT[ext] || 'audio/mp4';
+  const name = `recording_${Date.now()}.${ext}`;
+
+  if (entry.kind === 'mentor') {
     const { uploadFeedbackRecording } = await import('../api/mentors');
-    const remaining: PendingMentorRecording[] = [];
+    try {
+      await uploadFeedbackRecording(entry.item.studentId, { mobileCallId, uri, name, type });
+      await markRecordingConsumed(uri);
+      await releaseRecordingReservation({ mobileCallId, uri });
+      console.log(`[recmatch] uploaded late mentor recording for ${mobileCallId}`);
+      return 'done';
+    } catch (err: any) {
+      const status = err?.response?.status;
+      if (status === 400 || status === 404) {
+        // Permanent: unconnected/silent call or feedback missing. Don't retry; on 400 don't reuse the file.
+        console.warn(`[recmatch] mentor recording for ${mobileCallId} rejected (${status}), dropping`, err?.response?.data);
+        if (status === 400) await markRecordingConsumed(uri);
+        await releaseRecordingReservation({ mobileCallId });
+        return 'drop';
+      }
+      return 'retry'; // network / server error
+    }
+  }
 
-    for (const item of list) {
-      if (Date.now() - item.queuedAt > PENDING_MENTOR_MAX_AGE_MS) {
-        console.log(`[SyncManager] Dropping mentor recording for ${item.mobileCallId}: not found within 24h`);
-        continue;
-      }
+  // Sales: skip if the interaction is gone or already got a recording (e.g. from syncMissingRecordings)
+  const interactionId = entry.item.interactionId;
+  try {
+    const res = await client.get(`/crm/interactions/${interactionId}/`);
+    const hasAudio = Boolean(res.data?.audio_recording || res.data?.recording_url);
+    if (hasAudio) {
+      console.log(`[recmatch] interaction ${interactionId} already has a recording, dropping pending ${mobileCallId}`);
+      await releaseRecordingReservation({ mobileCallId });
+      return 'drop';
+    }
+  } catch (err: any) {
+    const status = err?.response?.status;
+    if (status === 404 || status === 410) {
+      console.warn(`[recmatch] interaction ${interactionId} not found (${status}), dropping pending ${mobileCallId}`);
+      await releaseRecordingReservation({ mobileCallId });
+      return 'drop';
+    }
+    return 'retry';
+  }
+
+  const result = await uploadSingleRecording({ interactionId, mobileCallId, fileUri: uri, mimeType: type, fileName: name });
+  if (result.success) {
+    console.log(`[recmatch] uploaded late sales recording for ${mobileCallId} -> interaction ${interactionId}`);
+    return 'done';
+  }
+  if (result.permanentError || result.statusCode === 400) {
+    console.warn(`[recmatch] sales recording for ${mobileCallId} rejected (${result.statusCode ?? result.error}), dropping`);
+    if (result.statusCode === 400) await markRecordingConsumed(uri);
+    await releaseRecordingReservation({ mobileCallId });
+    return 'drop';
+  }
+  return 'retry';
+};
+
+let isSyncingLateRecordings = false;
+
+/**
+ * Matches and uploads late-arriving recordings for pending Mentor and Sales calls together.
+ * Items older than 24h are dropped.
+ */
+export const syncPendingCallRecordings = async () => {
+  if (isSyncingLateRecordings) return;
+  isSyncingLateRecordings = true;
+  try {
+    const now = Date.now();
+    const mentor = await getPendingMentorRecordings();
+    const sales = await getPendingSalesRecordings();
+    const entries: PendingEntry[] = [];
+    for (const item of mentor) {
+      if (now - item.queuedAt > PENDING_LATE_RECORDING_MAX_AGE_MS) {
+        console.log(`[recmatch] dropping pending mentor recording ${item.mobileCallId}: not found within 24h`);
+        await releaseRecordingReservation({ mobileCallId: item.mobileCallId });
+      } else entries.push({ kind: 'mentor', item });
+    }
+    for (const item of sales) {
+      if (now - item.queuedAt > PENDING_LATE_RECORDING_MAX_AGE_MS) {
+        console.log(`[recmatch] dropping pending sales recording ${item.mobileCallId}: not found within 24h`);
+        await releaseRecordingReservation({ mobileCallId: item.mobileCallId });
+      } else entries.push({ kind: 'sales', item });
+    }
+
+    const keep = new Set<string>(entries.map(e => e.item.mobileCallId));
+    if (entries.length > 0) {
+      const { matchMappedFolderRecordings } = await import('./CallManager');
       const consumed = await getConsumedRecordings();
-      const uri = await findRecentRecordingInMappedFolder(
-        item.phone, item.callStartMs, item.callEndMs, consumed,
-        item.prevSessionEndMs ?? 0, item.connectedSeconds
-      );
-      if (!uri) {
-        remaining.push(item);
-        continue;
-      }
-      let decoded = uri;
-      try { decoded = decodeURIComponent(uri); } catch (_) {}
-      const ext = (decoded.match(/\.([a-zA-Z0-9]+)$/)?.[1] || 'm4a').toLowerCase();
-      try {
-        await uploadFeedbackRecording(item.studentId, {
-          mobileCallId: item.mobileCallId,
-          uri,
-          name: `recording_${Date.now()}.${ext}`,
-          type: AUDIO_MIME_BY_EXT[ext] || 'audio/mp4',
-        });
-        await markRecordingConsumed(uri);
-        console.log(`[SyncManager] Uploaded late mentor recording for ${item.mobileCallId}`);
-      } catch (err: any) {
-        const status = err?.response?.status;
-        if (status === 400 || status === 404) {
-          // Permanent: unconnected/silent call or feedback missing. Don't retry, and don't reuse the file.
-          console.warn(`[SyncManager] Mentor recording for ${item.mobileCallId} rejected (${status})`, err?.response?.data);
-          if (status === 400) await markRecordingConsumed(uri);
-        } else {
-          remaining.push(item); // network / server error: retry later
+      const reservations = await getReservations();
+      const calls = linkNeighbouringCalls(entries.map((e): MatchContext => ({
+        key: e.item.mobileCallId,
+        phone: e.item.phone,
+        callStartMs: e.item.callStartMs,
+        callEndMs: e.item.callEndMs,
+        prevSessionEndMs: e.item.prevSessionEndMs ?? 0,
+        connectedSeconds: e.item.connectedSeconds,
+        consumed,
+        reserved: reservedKeysExcept(reservations, e.item.mobileCallId),
+      })));
+      const result = await matchMappedFolderRecordings(calls, consumed, 'pending');
+
+      if (result) {
+        // Oldest first
+        for (const ctx of calls) {
+          const file = result.byCall.get(ctx.key!)?.file;
+          if (!file) continue;
+          const entry = entries.find(e => e.item.mobileCallId === ctx.key)!;
+          await reserveRecording(file.uri, entry.item.mobileCallId);
+          const outcome = await uploadPendingMatch(entry, file.uri);
+          if (outcome !== 'retry') keep.delete(entry.item.mobileCallId);
         }
       }
     }
 
-    // Keep entries queued by a concurrent save while this pass was running
-    const latest = await getPendingMentorRecordings();
-    const handledIds = new Set(list.map(i => i.mobileCallId));
-    await savePendingMentorRecordings([...remaining, ...latest.filter(i => !handledIds.has(i.mobileCallId))]);
+    // Save what is left, keeping entries queued by a concurrent save while this pass was running
+    const handled = new Set([...mentor, ...sales].map(i => i.mobileCallId));
+    const latestMentor = await getPendingMentorRecordings();
+    const latestSales = await getPendingSalesRecordings();
+    await writeList(PENDING_MENTOR_RECORDINGS_KEY, [
+      ...mentor.filter(i => keep.has(i.mobileCallId)),
+      ...latestMentor.filter(i => !handled.has(i.mobileCallId)),
+    ]);
+    await writeList(PENDING_SALES_RECORDINGS_KEY, [
+      ...sales.filter(i => keep.has(i.mobileCallId)),
+      ...latestSales.filter(i => !handled.has(i.mobileCallId)),
+    ]);
   } catch (err) {
-    console.warn('[SyncManager] syncPendingMentorRecordings error:', err);
+    console.warn('[recmatch] syncPendingCallRecordings error:', err);
   } finally {
-    isSyncingMentorRecordings = false;
+    isSyncingLateRecordings = false;
   }
 };
+
+/** Kept for existing callers (Mentors tab): processes pending Mentor and Sales recordings. */
+export const syncPendingMentorRecordings = syncPendingCallRecordings;
 
 /**
  * Asynchronously queues and uploads a call recording without blocking UI.
@@ -441,6 +638,9 @@ export const generateMobileCallId = (phone?: string, direction?: string): string
 
 /**
  * Queues a call event locally in AsyncStorage if the BDE is offline or upload fails.
+ * Optional fields: start_time / end_time (ISO), and late_recording (LateRecordingWindow without phone)
+ * for a connected call with no file yet, so the phone's recording can be attached once the call has a
+ * server id.
  */
 export const queueOfflineCall = async (callData: any) => {
   try {
@@ -456,7 +656,8 @@ export const queueOfflineCall = async (callData: any) => {
     const exists = queue.some((item: any) => item.mobile_call_id === callData.mobile_call_id);
     if (!exists) {
       if (callData.recordedFilePath && Number(callData.call_duration || 0) > 0 && (callData.call_status || '').toUpperCase() === 'CONNECTED') {
-        await markRecordingConsumed(callData.recordedFilePath);
+        // Reserved now, consumed once the call (with its recording) is synced
+        await reserveRecording(callData.recordedFilePath, callData.mobile_call_id);
       }
       queue.push({
         ...callData,
@@ -504,6 +705,8 @@ export const syncPendingCalls = async () => {
         formData.append('notes', item.notes || `Call Logged via Mobile Sync (${item.call_direction || 'OUTGOING'})`);
         if (item.pipeline_status) formData.append('pipeline_status', String(item.pipeline_status));
         if (item.next_followup_date) formData.append('next_followup_date', item.next_followup_date);
+        if (item.start_time) formData.append('start_time', item.start_time);
+        if (item.end_time) formData.append('end_time', item.end_time);
 
         // Only attach recording for genuine connected calls with duration > 0
         if (isConnected && item.recordedFilePath) {
@@ -511,11 +714,8 @@ export const syncPendingCalls = async () => {
           if (!finalUri.startsWith('file://') && !finalUri.startsWith('content://')) {
             finalUri = `file://${finalUri}`;
           }
-          const extMatch = finalUri.match(/\.([a-zA-Z0-9]+)$/);
-          const ext = extMatch ? extMatch[1].toLowerCase() : 'm4a';
-          let mimeType = 'audio/m4a';
-          if (ext === 'mp3') mimeType = 'audio/mpeg';
-          else if (ext === 'wav') mimeType = 'audio/wav';
+          const ext = extOf(finalUri);
+          const mimeType = AUDIO_MIME_BY_EXT[ext] || 'audio/mp4';
 
           const cleanPhone = (item.customer_number || item.caller_number || item.receiver_number || '').replace(/\D/g, '').slice(-10);
           const recName = `offline_rec_${cleanPhone ? cleanPhone + '_' : ''}${item.mobile_call_id}.${ext}`;
@@ -526,14 +726,23 @@ export const syncPendingCalls = async () => {
           } as any);
         }
 
-        await client.post('/crm/interactions/', formData, {
+        const res = await client.post('/crm/interactions/', formData, {
           headers: { 'Content-Type': 'multipart/form-data' }
         });
         console.log(`[SyncManager] Successfully synced offline call: ${item.mobile_call_id}`);
 
-        // Mark recording consumed so it cannot be matched to another call; file remains on phone
         if (isConnected && item.recordedFilePath) {
+          // Mark recording consumed so it cannot be matched to another call; file remains on phone
           await markRecordingConsumed(item.recordedFilePath);
+          await releaseRecordingReservation({ mobileCallId: item.mobile_call_id, uri: item.recordedFilePath });
+        } else if (isConnected && item.late_recording && res?.data?.id) {
+          // Connected call saved without a file: attach the phone's recording when it appears
+          await queuePendingSalesRecording({
+            interactionId: res.data.id,
+            mobileCallId: item.mobile_call_id,
+            phone: item.customer_number || item.receiver_number || item.caller_number || '',
+            ...item.late_recording,
+          });
         }
       } catch (postErr: any) {
         console.warn(`[SyncManager] Sync failed for call ${item.mobile_call_id}, keeping in queue:`, postErr?.message);
@@ -549,35 +758,19 @@ export const syncPendingCalls = async () => {
 
 let isSyncingRecordingsInProgress = false;
 
-const extractFileNameTimestamp = (fileName: string): number => {
-  if (!fileName) return 0;
-  const epochMatch = fileName.match(/(?:^|[^\d])(1[6-9]\d{11})(?:[^\d]|$)/);
-  if (epochMatch) {
-    const ts = Number(epochMatch[1]);
-    if (!isNaN(ts) && ts > 1600000000000) return ts;
-  }
-  const dateMatch = fileName.match(/(20\d{2})[-_.]?(0[1-9]|1[0-2])[-_.]?(0[1-9]|[12]\d|3[01])[-_.\sT]+([01]\d|2[0-3])[-_.]?([0-5]\d)[-_.]?([0-5]\d)/);
-  if (dateMatch) {
-    const [, year, month, day, hour, min, sec] = dateMatch;
-    const parsed = new Date(
-      Number(year),
-      Number(month) - 1,
-      Number(day),
-      Number(hour),
-      Number(min),
-      Number(sec)
-    ).getTime();
-    if (!isNaN(parsed) && parsed > 0) return parsed;
-  }
-  return 0;
-};
+const AUDIO_NAME_RE = /\.(m4a|mp4|3gp|wav|mp3|amr|aac|ogg|opus)$/i;
 
 /**
- * Scans local storage cache for audio recordings and links them to interactions missing recordings.
- * Strictly verifies identity: call ID or normalized phone number + tight asymmetric timestamp window.
- * Pre-filters filenames in JS memory and caches file metadata so large folders (500–1000+ files)
- * scan in milliseconds without O(M * N) native bridge file I/O.
- * Marks uploaded recordings as consumed in persistent storage without deleting from device.
+ * Links local recordings to this user's CONNECTED call interactions that have no recording yet.
+ * Sources: the app's cache directory and the mapped SAF recording folder.
+ * Matching (shared rules in recordingMatch, FIX 4):
+ *  - a file whose name has the interaction's mobile_call_id is taken directly;
+ *  - otherwise calls are matched jointly, oldest first: name time vs call start, modified time vs call
+ *    end, audio duration vs connected duration, window capped at the next known call, one file per call
+ *    and one call per file; ambiguous calls get nothing;
+ *  - a file without a phone number in its name is only considered for calls whose real start time is
+ *    known (start_time); a file with a DIFFERENT number is always rejected.
+ * Marks uploaded recordings as consumed in persistent storage without deleting them from the device.
  */
 export const syncMissingRecordings = async () => {
   if (isSyncingRecordingsInProgress) {
@@ -599,285 +792,143 @@ export const syncMissingRecordings = async () => {
     const res = await client.get('/crm/interactions/', {
       params: { interaction_type: 'CALL', call_status: 'CONNECTED' }
     });
-    const interactions = res.data?.results || res.data || [];
+    const interactions: any[] = res.data?.results || res.data || [];
 
-    // Exclude any interaction that already has a pending recording upload queued
+    // Only this user's calls can have their recording on this phone (managers also see team calls)
+    const userKey = await getCurrentUserKey();
+    const ownCalls = interactions.filter((item: any) => {
+      if (item.interaction_type !== 'CALL') return false;
+      if (!/^\d+$/.test(userKey) || item.author === null || item.author === undefined) return true;
+      return String(item.author) === userKey;
+    });
+
+    // Exclude any interaction that already has a pending recording upload or a pending late-recording match
     const pendingList = await getPendingRecordings();
-    const pendingInteractionIds = new Set(pendingList.map((p) => String(p.interactionId)));
+    const pendingSales = await getPendingSalesRecordings();
+    const excludedIds = new Set<string>([
+      ...pendingList.map((p) => String(p.interactionId)),
+      ...pendingSales.map((p) => String(p.interactionId)),
+    ]);
 
-    // Filter for CONNECTED CALL interactions with duration > 0 that are missing audio (Missed calls must not receive recordings)
-    const missingAudioCalls = interactions
-      .filter((item: any) => {
-        const isConnected = (item.call_status || '').toUpperCase() === 'CONNECTED' && Number(item.call_duration || 0) > 0;
-        const hasAudio = Boolean((item.audio_recording && item.audio_recording !== '') || (item.recording_url && item.recording_url !== ''));
-        return isConnected && item.interaction_type === 'CALL' && !hasAudio && !pendingInteractionIds.has(String(item.id));
-      })
-      // Sort chronologically (oldest -> newest) so consecutive calls to the same lead claim their own recording in order
-      .sort((a: any, b: any) => {
-        const timeA = a.start_time ? new Date(a.start_time).getTime() : new Date(a.date).getTime();
-        const timeB = b.start_time ? new Date(b.start_time).getTime() : new Date(b.date).getTime();
-        return (timeA || 0) - (timeB || 0);
-      });
+    // CONNECTED calls with duration > 0 that are missing audio (Missed calls must not receive recordings)
+    const missingAudioCalls = ownCalls.filter((item: any) => {
+      const isConnected = (item.call_status || '').toUpperCase() === 'CONNECTED' && Number(item.call_duration || 0) > 0;
+      const hasAudio = Boolean((item.audio_recording && item.audio_recording !== '') || (item.recording_url && item.recording_url !== ''));
+      return isConnected && !hasAudio && !excludedIds.has(String(item.id));
+    });
 
     if (missingAudioCalls.length === 0) {
       console.log('[SyncManager] No missing audio recordings found.');
       return;
     }
-
     console.log(`[SyncManager] Found ${missingAudioCalls.length} calls missing audio recordings.`);
 
-    // 4. Scan the app's cache directory and any mapped SAF recording folder
-    const candidateFiles: { fileName: string; fileUri: string; cleanDigits: string; foundOtherPhone: string | null }[] = [];
-    const addCandidateIfValid = (rawName: string, rawUri: string) => {
-      const lowerName = rawName.toLowerCase();
-      const isAudioExt =
-        lowerName.endsWith('.m4a') ||
-        lowerName.endsWith('.mp4') ||
-        lowerName.endsWith('.3gp') ||
-        lowerName.endsWith('.wav') ||
-        lowerName.endsWith('.mp3') ||
-        lowerName.endsWith('.amr') ||
-        lowerName.endsWith('.aac') ||
-        lowerName.endsWith('.ogg') ||
-        lowerName.endsWith('.opus');
-      const isRecFile =
-        rawName.startsWith('fallback_recording') ||
-        rawName.startsWith('saf_recorded') ||
-        rawName.startsWith('incoming_record') ||
-        rawName.startsWith('recorded_call') ||
-        rawName.startsWith('offline_rec') ||
-        rawName.startsWith('sync_record') ||
-        rawName.startsWith('record_') ||
-        rawName.startsWith('Call_') ||
-        rawName.startsWith('REC_') ||
-        rawName.startsWith('rec_') ||
-        (rawUri.startsWith('content://') && isAudioExt) ||
-        isAudioExt;
-      if (!isRecFile) return;
-      // The app's own MIC fallback recording is digital silence on Android 10+ (MIC is muted for
-      // third-party apps during calls), so never backfill it onto a call
-      if (rawName.startsWith('fallback_recording') && Platform.OS === 'android' && Number(Platform.Version) >= 29) return;
-
-      const cleanDigits = rawName.replace(/\D/g, '');
-      const otherNumberMatch = rawName.match(/(?:\+?91|0)?([6-9]\d{9})/);
-      const foundOtherPhone = otherNumberMatch ? otherNumberMatch[1] : null;
-      candidateFiles.push({
-        fileName: rawName,
-        fileUri: rawUri,
-        cleanDigits,
-        foundOtherPhone,
-      });
-    };
-
+    // 4. Candidate files: the app's cache directory and the mapped SAF recording folder
+    const { listMappedFolderEntries, buildRecordingCandidates, readTopCandidateDurations, logAssignment } = await import('./CallManager');
+    const entries: { uri: string; name: string; modifiedMs: number | null; sizeBytes: number | null }[] = [];
     if (FileSystem.cacheDirectory) {
-      const cacheFiles = await FileSystem.readDirectoryAsync(FileSystem.cacheDirectory).catch(() => []);
+      const cacheFiles = await FileSystem.readDirectoryAsync(FileSystem.cacheDirectory).catch(() => [] as string[]);
       for (const f of cacheFiles) {
-        addCandidateIfValid(f, `${FileSystem.cacheDirectory}${f}`);
+        if (!AUDIO_NAME_RE.test(f)) continue;
+        // The app's own MIC fallback recording is digital silence on Android 10+ (MIC is muted for
+        // third-party apps during calls), so never backfill it onto a call
+        if (f.startsWith('fallback_recording') && Platform.OS === 'android' && Number(Platform.Version) >= 29) continue;
+        entries.push({ uri: `${FileSystem.cacheDirectory}${f}`, name: f, modifiedMs: null, sizeBytes: null });
       }
     }
-    const mappedFolderUri = await AsyncStorage.getItem('@mapped_recording_folder_uri').catch(() => null);
-    if (mappedFolderUri && FileSystem.StorageAccessFramework) {
-      const safFiles = await FileSystem.StorageAccessFramework.readDirectoryAsync(mappedFolderUri).catch(() => []);
-      for (const safUri of safFiles) {
-        const decodedUri = decodeURIComponent(safUri);
-        const decodedName = decodedUri.split('/').pop()?.split(':').pop() || safUri;
-        const lowerDecoded = decodedName.toLowerCase();
-        const isAudio =
-          lowerDecoded.endsWith('.m4a') ||
-          lowerDecoded.endsWith('.mp4') ||
-          lowerDecoded.endsWith('.3gp') ||
-          lowerDecoded.endsWith('.wav') ||
-          lowerDecoded.endsWith('.mp3') ||
-          lowerDecoded.endsWith('.amr') ||
-          lowerDecoded.endsWith('.aac') ||
-          lowerDecoded.endsWith('.ogg') ||
-          lowerDecoded.endsWith('.opus');
-        if (isAudio) {
-          addCandidateIfValid(decodedName, safUri);
-        } else {
-          // Only check 1 level deeper if the entry does NOT look like a regular file with extension
-          const hasExtension = /\.[a-z0-9]{2,5}$/i.test(decodedName);
-          if (!hasExtension) {
-            try {
-              const subFiles = await FileSystem.StorageAccessFramework.readDirectoryAsync(safUri);
-              for (const subUri of subFiles) {
-                const subDecoded = decodeURIComponent(subUri);
-                const subName = subDecoded.split('/').pop()?.split(':').pop() || subUri;
-                addCandidateIfValid(subName, subUri);
-              }
-            } catch (_) {}
-          }
-        }
+    const listing = await listMappedFolderEntries().catch(() => null);
+    if (listing) entries.push(...listing.entries);
+    if (entries.length === 0) return;
+
+    const consumed = await getConsumedRecordings();
+    const reservations = await getReservations();
+    const timeOf = (v: any) => (v ? new Date(v).getTime() : NaN);
+
+    // Real call start times on this phone cap the windows of neighbouring calls
+    const knownStarts = ownCalls.map((it: any) => timeOf(it.start_time)).filter(Number.isFinite).sort((a, b) => a - b);
+
+    type BackfillCall = MatchContext & { interaction: any };
+    const calls: BackfillCall[] = missingAudioCalls.map((item: any): BackfillCall => {
+      const targetPhone = (item.student_phone || item.customer_number || item.caller_number || item.receiver_number || '').replace(/\D/g, '').slice(-10);
+      const realStart = timeOf(item.start_time);
+      const hasRealStart = Number.isFinite(realStart);
+      const callStartMs = hasRealStart ? realStart : timeOf(item.date);
+      const durSec = Math.max(0, Number(item.call_duration || 0));
+      const realEnd = timeOf(item.end_time);
+      const callEndMs = hasRealStart && Number.isFinite(realEnd) && realEnd >= callStartMs ? realEnd : callStartMs + durSec * 1000;
+      return {
+        key: String(item.id),
+        interaction: item,
+        phone: targetPhone,
+        callStartMs,
+        callEndMs,
+        connectedSeconds: durSec,
+        consumed,
+        reserved: reservedKeysExcept(reservations, item.mobile_call_id),
+        windowBeforeMs: 15_000,
+        windowAfterMs: 180_000,
+        nextCallStartMs: hasRealStart ? knownStarts.find((s) => s > callStartMs + 1000) : undefined,
+        otherCallStartsMs: hasRealStart ? knownStarts.filter((s) => Math.abs(s - callStartMs) > 1000) : [],
+        // Without the real start time, only the number in the name can identify the call
+        requireNumberMatch: !hasRealStart,
+      };
+    })
+      .filter((c) => Number.isFinite(c.callStartMs))
+      .sort((a, b) => a.callStartMs - b.callStartMs);
+
+    // 5a. A file named with the interaction's mobile_call_id is that call's recording
+    const assigned = new Map<string, string>();
+    const usedUris = new Set<string>();
+    for (const c of calls) {
+      const id = c.interaction.mobile_call_id;
+      if (!id) continue;
+      const e = entries.find((x) => x.name.includes(id) && !usedUris.has(x.uri) &&
+        !isRecordingConsumed(x.uri, consumed) && !isRecordingConsumed(x.name, consumed) &&
+        !recordingKeysIn(x.uri, c.reserved));
+      if (e) {
+        assigned.set(c.key!, e.uri);
+        usedUris.add(e.uri);
+        console.log(`[recmatch] backfill ${c.key}: chose "${maskName(e.name)}" (mobile_call_id in name)`);
       }
     }
-    if (candidateFiles.length === 0) return;
 
-    // Load persistent consumed recordings set
-    const persistentConsumed = await getConsumedRecordings();
-    const inMemoryConsumed = new Set<string>(persistentConsumed);
+    // 5b. Joint matching for the rest
+    const rest = calls.filter((c) => !assigned.has(c.key!));
+    if (rest.length > 0) {
+      const pool = entries.filter((e) => !usedUris.has(e.uri));
+      const candidates: RecordingCandidate[] = await buildRecordingCandidates(pool, rest, consumed, 'backfill', 200);
+      await readTopCandidateDurations(rest, candidates);
+      const result = assignRecordings(rest, candidates);
+      logAssignment('backfill', result, candidates);
+      for (const [key, a] of result.byCall) {
+        if (a.file) assigned.set(key, a.file.uri);
+      }
+    }
 
-    // Cache file metadata per fileUri so getInfoAsync is called at most once per matching candidate
-    const fileMetadataCache = new Map<string, { exists: boolean; fileTime: number }>();
-
-    const getCachedFileMetadata = async (fileUri: string, fileName: string): Promise<{ exists: boolean; fileTime: number }> => {
-      const cached = fileMetadataCache.get(fileUri);
-      if (cached) return cached;
-
-      let exists = false;
-      let fileTime = 0;
-
+    // 6. Upload
+    for (const c of calls) {
+      const uri = assigned.get(c.key!);
+      if (!uri) continue;
+      const call = c.interaction;
       try {
-        const fileInfo = await FileSystem.getInfoAsync(fileUri);
-        if (fileInfo && fileInfo.exists) {
-          exists = true;
-          if (fileInfo.modificationTime) {
-            fileTime = fileInfo.modificationTime > 1e12
-              ? fileInfo.modificationTime
-              : fileInfo.modificationTime * 1000;
-          }
-        }
-      } catch (_) {}
+        const ext = extOf(uri);
+        const formData = new FormData();
+        formData.append('audio_recording', {
+          uri,
+          type: AUDIO_MIME_BY_EXT[ext] || 'audio/mp4',
+          name: `sync_record_${c.phone ? c.phone + '_' : ''}${call.id}_${Date.now()}.${ext}`
+        } as any);
 
-      if (!fileTime && fileUri.startsWith('content://') && typeof ExpoFile !== 'undefined') {
-        try {
-          const safFileObj = new ExpoFile(fileUri);
-          if (safFileObj.modificationTime) {
-            exists = true;
-            fileTime = safFileObj.modificationTime > 1e12
-              ? safFileObj.modificationTime
-              : safFileObj.modificationTime * 1000;
-          }
-        } catch (_) {}
-      }
+        await client.patch(`/crm/interactions/${call.id}/`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        console.log(`[SyncManager] Successfully uploaded missing recording for call ID ${call.id}`);
 
-      if (!fileTime) {
-        const parsedFromName = extractFileNameTimestamp(fileName);
-        if (parsedFromName > 0) {
-          fileTime = parsedFromName;
-        }
-      }
-
-      const meta = { exists, fileTime };
-      fileMetadataCache.set(fileUri, meta);
-      return meta;
-    };
-
-    for (let idx = 0; idx < missingAudioCalls.length; idx++) {
-      const call = missingAudioCalls[idx];
-      const targetPhone = (call.student_phone || call.customer_number || call.caller_number || call.receiver_number || '').replace(/\D/g, '').slice(-10);
-      const callStartTime = call.start_time ? new Date(call.start_time).getTime() : new Date(call.date).getTime();
-      const callDurationMs = Math.max(0, Number(call.call_duration || 0)) * 1000;
-      const callEndTime = callStartTime + callDurationMs;
-
-      // Determine upper time bound if another call to the same phone number occurred shortly after
-      let nextCallStartTime = Infinity;
-      for (let nextIdx = idx + 1; nextIdx < missingAudioCalls.length; nextIdx++) {
-        const nextCall = missingAudioCalls[nextIdx];
-        const nextPhone = (nextCall.student_phone || nextCall.customer_number || nextCall.caller_number || nextCall.receiver_number || '').replace(/\D/g, '').slice(-10);
-        if (nextPhone && nextPhone === targetPhone) {
-          const nextStart = nextCall.start_time ? new Date(nextCall.start_time).getTime() : new Date(nextCall.date).getTime();
-          if (nextStart > callStartTime) {
-            nextCallStartTime = nextStart;
-            break;
-          }
-        }
-      }
-
-      let bestMatchingFile: string | null = null;
-      let minDiff = 180000; // 3 minutes max tolerance
-
-      for (const { fileName, fileUri, cleanDigits, foundOtherPhone } of candidateFiles) {
-        if (isRecordingConsumed(fileName, inMemoryConsumed) || isRecordingConsumed(fileUri, inMemoryConsumed)) continue;
-
-        // Pure JS pre-filtering BEFORE any native file I/O (eliminates O(M * N) bridge bottleneck)
-        const hasCallIdMatch = Boolean(call.mobile_call_id && fileName.includes(call.mobile_call_id));
-
-        if (targetPhone && targetPhone.length >= 6 && foundOtherPhone && foundOtherPhone !== targetPhone) {
-          continue;
-        }
-
-        let isPhoneMatch = false;
-        if (targetPhone && targetPhone.length >= 6) {
-          isPhoneMatch = cleanDigits.includes(targetPhone) || fileName.includes(targetPhone);
-        }
-
-        // Strictly require explicit call ID or verified phone number match
-        if (!hasCallIdMatch && !isPhoneMatch) continue;
-
-        const { exists, fileTime } = await getCachedFileMetadata(fileUri, fileName);
-        if (!exists) continue;
-
-        let timeDiff: number;
-        if (hasCallIdMatch) {
-          timeDiff = 0;
-        } else {
-          // Without explicit mobile_call_id in the filename, a valid timestamp within the call's causal window is mandatory.
-          // Never default unknown timestamps to 120000ms (which previously caused old recordings to attach to new calls).
-          if (!fileTime || !callStartTime) continue;
-
-          // Causal window: a recording cannot be finalized more than 15s BEFORE the call started,
-          // nor more than 3 minutes after the call ended, nor after the next call to the same number started.
-          const minAllowedTime = callStartTime - 15000;
-          const maxAllowedTime = Math.min(callEndTime + 180000, nextCallStartTime + 2000);
-          if (fileTime < minAllowedTime || fileTime > maxAllowedTime) {
-            continue;
-          }
-
-          // Measure proximity to call window [callStartTime, callEndTime]
-          if (fileTime >= callStartTime && fileTime <= callEndTime) {
-            timeDiff = 0;
-          } else if (fileTime < callStartTime) {
-            timeDiff = callStartTime - fileTime;
-          } else {
-            timeDiff = fileTime - callEndTime;
-          }
-        }
-
-        if (timeDiff < minDiff) {
-          bestMatchingFile = fileUri;
-          minDiff = timeDiff;
-        }
-      }
-
-      if (bestMatchingFile) {
-        console.log(`[SyncManager] Found matching local recording for call ID ${call.id}: ${bestMatchingFile}`);
-
-        try {
-          const formData = new FormData();
-          const decodedBestUri = decodeURIComponent(bestMatchingFile);
-          const extMatch = decodedBestUri.match(/\.([a-zA-Z0-9]+)$/);
-          const ext = extMatch ? extMatch[1].toLowerCase() : 'm4a';
-          let mimeType = 'audio/m4a';
-          if (ext === 'mp3') mimeType = 'audio/mpeg';
-          else if (ext === 'wav') mimeType = 'audio/wav';
-          else if (ext === 'amr') mimeType = 'audio/amr';
-          else if (ext === 'aac') mimeType = 'audio/aac';
-          else if (ext === 'ogg' || ext === 'opus') mimeType = 'audio/ogg';
-
-          formData.append('audio_recording', {
-            uri: bestMatchingFile,
-            type: mimeType,
-            name: `sync_record_${targetPhone ? targetPhone + '_' : ''}${call.id}_${Date.now()}.${ext}`
-          } as any);
-
-          await client.patch(`/crm/interactions/${call.id}/`, formData, {
-            headers: { 'Content-Type': 'multipart/form-data' }
-          });
-
-          console.log(`[SyncManager] Successfully uploaded missing recording for call ID ${call.id}`);
-
-          // Mark consumed in persistent storage and in-memory set; original file remains on phone
-          const basename = bestMatchingFile.split('/').pop() || '';
-          const decodedBase = decodeURIComponent(bestMatchingFile).split('/').pop()?.split(':').pop() || '';
-          inMemoryConsumed.add(bestMatchingFile);
-          if (basename) inMemoryConsumed.add(basename);
-          if (decodedBase) inMemoryConsumed.add(decodedBase);
-          await markRecordingConsumed([bestMatchingFile, basename, decodedBase]);
-        } catch (uploadErr) {
-          console.warn(`[SyncManager] Upload failed for call ID ${call.id}, keeping eligible for retry:`, uploadErr);
-        }
-      } else {
-        console.log(`[SyncManager] No matching local recording found for call ID ${call.id} (left unassigned safely)`);
+        // Mark consumed in persistent storage; original file remains on phone
+        await markRecordingConsumed(uri);
+        if (call.mobile_call_id) await releaseRecordingReservation({ mobileCallId: call.mobile_call_id });
+      } catch (uploadErr) {
+        console.warn(`[SyncManager] Upload failed for call ID ${call.id}, keeping eligible for retry:`, uploadErr);
       }
     }
   } catch (err) {
@@ -886,3 +937,6 @@ export const syncMissingRecordings = async () => {
     isSyncingRecordingsInProgress = false;
   }
 };
+
+const recordingKeysIn = (uri: string, set?: Set<string>): boolean =>
+  !!set && recordingKeys(uri).some((k) => set.has(k));

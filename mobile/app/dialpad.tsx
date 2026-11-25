@@ -3,8 +3,8 @@ import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Dimensions, Pla
 import { Ionicons } from '@expo/vector-icons';
 import * as Notifications from 'expo-notifications';
 import { useLocalSearchParams, router } from 'expo-router';
-import { startNativeRecording, stopNativeRecording, cancelNativeRecording, findRecentRecordingInMappedFolder, markCallSessionEnded, getLastCallSessionEndTimeMs, listenToCallEvents, requestCallPermissions, listenToCallState, makeDirectCall, getLatestCallLogDuration, isAppFallbackRecording, isSilentAppRecording, deleteAppFallbackRecording, getMappedRecordingFolder, pickAndMapRecordingFolder } from '../src/utils/CallManager';
-import { generateMobileCallId, queueOfflineCall, markRecordingConsumed, getConsumedRecordings, isRecordingConsumed, uploadCallRecordingAsync, syncPendingRecordings, queuePendingMentorRecording } from '../src/utils/SyncManager';
+import { startNativeRecording, stopNativeRecording, cancelNativeRecording, findRecentRecordingInMappedFolder, markCallSessionEnded, getLastCallSessionEndTimeMs, listenToCallEvents, requestCallPermissions, listenToCallState, makeDirectCall, lookupCallLogEntry, waitForCallLogEntry, markCallLogRowConsumed, isAppFallbackRecording, isSilentAppRecording, deleteAppFallbackRecording, getMappedRecordingFolder, pickAndMapRecordingFolder, type CallLogLookup } from '../src/utils/CallManager';
+import { generateMobileCallId, queueOfflineCall, markRecordingConsumed, getConsumedRecordings, isRecordingConsumed, uploadCallRecordingAsync, syncPendingRecordings, queuePendingMentorRecording, queuePendingSalesRecording, reserveRecording, releaseRecordingReservation, getReservedRecordings } from '../src/utils/SyncManager';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
@@ -52,6 +52,8 @@ const Dialpad = () => {
   // Connected call but no usable call audio was found (fallback was silent / nothing in the mapped folder)
   const [noCallAudio, setNoCallAudio] = useState(false);
   const [recordingFolderMapped, setRecordingFolderMapped] = useState<boolean | null>(null);
+  // READ_CALL_LOG is off (or the lookup failed): the call status couldn't be checked, so the recording is kept
+  const [callLogUnknown, setCallLogUnknown] = useState(false);
 
   // Dynamic pipeline stages from web backend
   const [pipelineStages, setPipelineStages] = useState<any[]>([
@@ -309,26 +311,25 @@ const Dialpad = () => {
   }, [callStatus]);
 
 
-  const waitForCallLogDuration = async (phone: string, startTime: number) => {
-    for (let i = 0; i < 8; i++) {
-      try {
-        const d = await getLatestCallLogDuration(phone, startTime - 10000, 'OUTGOING');
-        console.log(`[dialpad] CallLog try ${i}:`, d);
-        if (typeof d === 'number' && d > 0) return d;
-      } catch (e) {
-        console.warn('[dialpad] CallLog error', e);
-      }
-      await new Promise(r => setTimeout(r, 750));
-    }
-    return 0;
-  };
+  // Polls the CallLog (pure reads) for up to ~10s: the phone can write the row a few seconds after hang-up.
+  // Stops early when a newer call session was started.
+  const waitForCallLog = (phone: string, startTime: number, prevSessionEndMs: number, sessionId: string) =>
+    waitForCallLogEntry(phone, startTime, prevSessionEndMs, 'OUTGOING', {
+      timeoutMs: 10_000,
+      shouldAbort: () => !!sessionId && activeSessionIdRef.current !== sessionId,
+    });
 
 
-  const finalizeCallSession = async () => {
+  /**
+   * Concludes the call and opens Call Review. `prefetched` is a CallLog lookup the caller already made
+   * ("Tap to end", the foreground check, resume): it is used as-is instead of querying again.
+   */
+  const finalizeCallSession = async (prefetched?: CallLogLookup) => {
     if (isFinalizingRef.current) return;
     isFinalizingRef.current = true;
     sawOffhookRef.current = false; // this call is being concluded; a later IDLE/foreground must not re-run it
     bufferedRecordingPathRef.current = null;
+    recordingWindowRef.current = null;
 
     const sessionId = activeSessionIdRef.current;
     if (sessionId) updateActiveCall({ status: 'POST_CALL' }, sessionId);
@@ -350,19 +351,27 @@ const Dialpad = () => {
     setManualRecordingFile(null);
     setRecordingSource(null);
     setNoCallAudio(false);
+    setCallLogUnknown(false);
     userOverrodeRecordingRef.current = false;
     getMappedRecordingFolder().then(uri => setRecordingFolderMapped(!!uri)).catch(() => setRecordingFolderMapped(null));
     setIsProcessingRecording(true);
 
     let authoritativeDuration = 0;
     let isConnected = false;
+    let lookup: CallLogLookup = { kind: 'none' };
+    const mobileCallId = currentMobileCallIdRef.current;
 
     // 1. Android CallLog is the single authority for call connection status and duration
     if (Platform.OS === 'android' && targetPhone) {
-      const logDuration = await waitForCallLogDuration(targetPhone, startTime);
-      authoritativeDuration = logDuration;
-      isConnected = logDuration > 0;
+      lookup = prefetched ?? await waitForCallLog(targetPhone, startTime, prevSessionEndMs, sessionId);
+      if (lookup.kind === 'found') {
+        authoritativeDuration = lookup.entry.durationSec;
+        isConnected = authoritativeDuration > 0;
+      }
     }
+    // READ_CALL_LOG off / lookup failed: status unknown. Keep the recording instead of discarding it.
+    const callLogUnreadable = lookup.kind === 'unreadable';
+    let foundRecording = false;
 
     // Abort if a newer call session was started while awaiting CallLog
     if (sessionId && activeSessionIdRef.current !== sessionId) {
@@ -373,18 +382,24 @@ const Dialpad = () => {
     // 2. Handle native call recording strictly based on connection state
     if (Platform.OS === 'android') {
       try {
-        if (!isConnected || authoritativeDuration <= 0) {
+        if (!callLogUnreadable && (!isConnected || authoritativeDuration <= 0)) {
           // Unanswered, rejected, or failed call: cancel immediately (< 5ms) without 30s polling
           // and guarantee zero recording inheritance from any previous call.
           await cancelNativeRecording();
           setRecordedFilePath(null);
         } else {
+          if (callLogUnreadable) {
+            console.warn(`[calllog] CallLog unreadable (${lookup.kind === 'unreadable' ? lookup.reason : ''}): call status unknown, keeping the recording`);
+          }
           const consumedSet = await getConsumedRecordings();
-          const usable = (p?: string | null) => !!p && !isRecordingConsumed(p, consumedSet);
+          // Files reserved for other calls (attached elsewhere or assigned to a pending item) are off limits
+          const reservedSet = await getReservedRecordings(mobileCallId);
+          const usable = (p?: string | null) => !!p && !isRecordingConsumed(p, consumedSet) && !isRecordingConsumed(p, reservedSet);
 
           // Stops the app recorder. Returns the phone's own call recording when native finds one
           // (copied to cache), otherwise the app's MIC fallback file (silent on Android 10+), or null.
-          const nativePath = await stopNativeRecording();
+          // The previous session's end (captured before the CallLog lookup) is the native search floor.
+          const nativePath = await stopNativeRecording(prevSessionEndMs);
 
           let filePath: string | null = null;
           let source: 'phone' | 'app' | null = null;
@@ -398,7 +413,8 @@ const Dialpad = () => {
             const deadline = Date.now() + 12000;
             for (let attempt = 0; !filePath; attempt++) {
               const found = await findRecentRecordingInMappedFolder(
-                targetPhone, startTime, callEndMs, consumedSet, prevSessionEndMs, authoritativeDuration
+                targetPhone, startTime, callEndMs, consumedSet, prevSessionEndMs, authoritativeDuration,
+                { reserved: reservedSet, label: `live#${attempt}` }
               );
               if (usable(found) && !isAppFallbackRecording(found)) {
                 filePath = found;
@@ -444,7 +460,11 @@ const Dialpad = () => {
             setRecordedFilePath(filePath);
             setRecordingSource(source);
             setNoCallAudio(false);
+            foundRecording = true;
+            // One file per call: no other matcher may give this file to another call
+            if (mobileCallId) reserveRecording(filePath, mobileCallId);
             // Recording duration may synchronize displayed duration ONLY after call is proven CONNECTED
+            // (or, with the CallLog unreadable, it is the only evidence that the call connected)
             const exactDuration = await extractDurationFromAudio(filePath);
             if (exactDuration && exactDuration > 0) {
               authoritativeDuration = exactDuration;
@@ -461,7 +481,18 @@ const Dialpad = () => {
       }
     }
 
+    // The outcome is decided: consume the CallLog row exactly once (also for a MISSED row), and remember
+    // it in the saved session so a resumed Call Review can reuse it.
+    if (lookup.kind === 'found') {
+      await markCallLogRowConsumed(lookup.entry.rowId, callEndMs);
+      if (sessionId) updateActiveCall({ callLog: lookup.entry }, sessionId);
+    }
+
     markCallSessionEnded(Date.now());
+
+    // With the CallLog unreadable, a found recording with a real duration is treated as a connected call
+    if (callLogUnreadable && foundRecording && authoritativeDuration > 0) isConnected = true;
+    setCallLogUnknown(callLogUnreadable);
 
     const finalDuration = (isConnected && authoritativeDuration > 0) ? authoritativeDuration : 0;
     const finalStatus = finalDuration > 0 ? 'CONNECTED' : 'MISSED';
@@ -500,12 +531,13 @@ const Dialpad = () => {
           if (timeInBackground > 2000) {
             // Only conclude if CallLog already has the finished call. If the user just switched back
             // mid-call there is no row yet: do nothing (the IDLE event or the end button finishes it).
+            // The lookup is a pure read, so an empty mid-call check can't hide the row later.
             const startMs = callStartTimeRef.current > 0 ? callStartTimeRef.current : Date.now();
-            const logDuration = await getLatestCallLogDuration(phoneRef.current, startMs - 10000, 'OUTGOING');
+            const lookup = await lookupCallLogEntry(phoneRef.current, startMs, getLastCallSessionEndTimeMs(), 'OUTGOING');
             const stillSameCall = (callStatusRef.current === 'CALLING' || callStatusRef.current === 'ACTIVE') && sawOffhookRef.current;
-            if (typeof logDuration === 'number' && logDuration > 0 && stillSameCall) {
+            if (lookup.kind === 'found' && lookup.entry.durationSec > 0 && stillSameCall) {
               lastBackgroundTimeRef.current = 0;
-              await finalizeCallSession();
+              await finalizeCallSession(lookup);
             }
           }
         }
@@ -575,9 +607,12 @@ const Dialpad = () => {
         if (isRecordingConsumed(path, consumed)) {
           return;
         }
+        const mobileCallId = currentMobileCallIdRef.current;
+        if (isRecordingConsumed(path, await getReservedRecordings(mobileCallId))) return; // another call's file
         if (await isSilentAppRecording(path)) return; // never attach a silent app (MIC) recording
         if (userOverrodeRecordingRef.current) return;  // re-check after the awaits
         setRecordedFilePath(path);
+        if (mobileCallId) reserveRecording(path, mobileCallId);
         setRecordingSource(isAppFallbackRecording(path) ? 'app' : 'phone');
         setNoCallAudio(false);
         try {
@@ -645,18 +680,19 @@ const Dialpad = () => {
       // The in-memory previous-call boundary was lost with the old process
       markCallSessionEnded(saved.prevSessionEndMs);
 
-      let logDuration = 0;
-      if (saved.status !== 'POST_CALL') {
-        const d = await getLatestCallLogDuration(saved.phone, saved.startTime - 10000, 'OUTGOING');
-        logDuration = typeof d === 'number' ? d : 0;
+      // A call already concluded before the restart was consumed then: reuse its saved CallLog entry,
+      // a new lookup can't return the consumed row
+      let lookup: CallLogLookup | undefined = saved.callLog ? { kind: 'found', entry: saved.callLog } : undefined;
+      if (!lookup && saved.status !== 'POST_CALL') {
+        lookup = await lookupCallLogEntry(saved.phone, saved.startTime, saved.prevSessionEndMs, 'OUTGOING');
       }
 
       // The user started or cancelled something while CallLog was being read
       if (activeSessionIdRef.current !== saved.sessionId || callStatusRef.current !== 'IDLE') return;
 
-      if (saved.status === 'POST_CALL' || logDuration > 0) {
-        // Call already ended: go straight to Call Review
-        await finalizeCallSession();
+      if (saved.status === 'POST_CALL' || lookup?.kind === 'found') {
+        // Call already ended: go straight to Call Review, reusing the entry found here (no second lookup)
+        await finalizeCallSession(lookup?.kind === 'found' ? lookup : undefined);
       } else {
         // No finished call in CallLog yet: treat it as still going. The IDLE event or
         // "Tap to end & log call" finishes it.
@@ -765,9 +801,11 @@ const Dialpad = () => {
       return;
     }
     const startMs = callStartTimeRef.current > 0 ? callStartTimeRef.current : Date.now();
-    const logDuration = await getLatestCallLogDuration(phoneRef.current, startMs - 10000, 'OUTGOING');
-    if (typeof logDuration === 'number' && logDuration > 0) {
-      await finalizeCallSession();
+    const lookup = await lookupCallLogEntry(phoneRef.current, startMs, getLastCallSessionEndTimeMs(), 'OUTGOING');
+    // A row (connected or missed) means the call is over; unreadable means we can never know.
+    // Either way conclude now, handing over the lookup so it isn't repeated.
+    if (lookup.kind !== 'none') {
+      await finalizeCallSession(lookup);
       return;
     }
     // No finished call in CallLog yet: the call may still be going (or it was never answered)
@@ -808,7 +846,8 @@ const Dialpad = () => {
 
   const pickRecordingFile = async () => {
     try {
-      if (callStatusStateRef.current !== 'CONNECTED' || callDurationRef.current <= 0) {
+      // With the CallLog unreadable the status is unknown, so the manual upload stays available
+      if (!callLogUnknown && (callStatusStateRef.current !== 'CONNECTED' || callDurationRef.current <= 0)) {
         Alert.alert('Unconnected Call', 'Recordings cannot be attached to missed or unanswered calls.');
         return;
       }
@@ -820,10 +859,18 @@ const Dialpad = () => {
         const asset = result.assets[0];
         userOverrodeRecordingRef.current = true; // later native events must not replace the user's choice
         setManualRecordingFile(asset);
+        // The auto recording (if any) is replaced: free it for other calls
+        if (currentMobileCallIdRef.current) releaseRecordingReservation({ mobileCallId: currentMobileCallIdRef.current });
         if (asset.uri) {
           const exactDuration = await extractDurationFromAudio(asset.uri);
           if (exactDuration && exactDuration > 0) {
             setCallDuration(exactDuration);
+            callDurationRef.current = exactDuration;
+            if (callLogUnknown) {
+              // Status was unknown: the recording the user attached shows the call connected
+              setCallStatusState('CONNECTED');
+              callStatusStateRef.current = 'CONNECTED';
+            }
             Alert.alert('Recording Selected', `File: ${asset.name}\nDuration: ${formatDuration(exactDuration)}`);
           } else {
             Alert.alert('Recording Selected', `File: ${asset.name}`);
@@ -872,6 +919,11 @@ const Dialpad = () => {
       parameters.pipeline_status = String(pipelineStatus);
     }
     if (nextFollowupDate && leadId && String(leadId) !== '0') parameters.next_followup_date = nextFollowupDate.toISOString();
+    // Real call times (the interaction's own date is the save time): lets the background matcher compare
+    // a recording's times with the call's
+    const { start: callStartMs, end: callEndMs } = callWindowRef.current;
+    if (callStartMs) parameters.start_time = new Date(callStartMs).toISOString();
+    if (callEndMs) parameters.end_time = new Date(callEndMs).toISOString();
 
     let fileUriToUpload = null;
     let mimeType = 'audio/m4a';
@@ -897,6 +949,14 @@ const Dialpad = () => {
       else if (ext === 'amr') mimeType = 'audio/amr';
       else if (ext === 'aac') mimeType = 'audio/aac';
     }
+
+    // Connected call, no file yet, and the user didn't remove it on purpose: the phone's recorder may still
+    // be writing it. Queue it so SyncManager attaches the phone recording when it appears (up to 24h).
+    const win = recordingWindowRef.current;
+    const lateRecording = (isConnected && !fileUriToUpload && !userOverrodeRecordingRef.current && Platform.OS === 'android' && win)
+      ? { callStartMs: win.start, callEndMs: win.end, prevSessionEndMs: win.prevEnd, connectedSeconds: win.seconds }
+      : null;
+    if (!fileUriToUpload) releaseRecordingReservation({ mobileCallId }); // nothing of this call to keep reserved
 
     try {
       // 1. Post lightweight metadata to create the interaction record promptly (< 200ms)
@@ -930,6 +990,11 @@ const Dialpad = () => {
         });
 
         Alert.alert('✅ Saved', 'Call log saved. Audio recording is uploading in the background.');
+      } else if (lateRecording && serverInteractionId) {
+        await queuePendingSalesRecording({
+          interactionId: serverInteractionId, mobileCallId, phone: cleanNumber, ...lateRecording,
+        });
+        Alert.alert('✅ Saved', "Call log saved. The phone's call recording will upload automatically when it's available.");
       } else {
         Alert.alert('✅ Saved', 'Call log saved to CRM successfully.');
       }
@@ -959,10 +1024,16 @@ const Dialpad = () => {
         notes: postCallNotes || (isConnected ? `Outbound call to ${cleanNumber}` : `Outbound call to ${cleanNumber} (Unanswered / Missed)`),
         pipeline_status: hasExplicitStageChange && pipelineStatus ? String(pipelineStatus) : undefined,
         next_followup_date: nextFollowupDate?.toISOString(),
-        recordedFilePath: isConnected ? (manualRecordingFile?.uri || recordedFilePath) : null
+        start_time: parameters.start_time,
+        end_time: parameters.end_time,
+        recordedFilePath: isConnected ? (manualRecordingFile?.uri || recordedFilePath) : null,
+        // Once the call syncs and gets a server id, the phone's recording is matched and attached
+        late_recording: lateRecording || undefined,
       });
       clearActiveCall();
-      Alert.alert('Saved Offline', 'Call logged locally and will sync automatically.');
+      Alert.alert('Saved Offline', lateRecording
+        ? "Call logged locally and will sync automatically. The phone's call recording will upload when it's available."
+        : 'Call logged locally and will sync automatically.');
       setCallStatus('IDLE');
       callStatusRef.current = 'IDLE';
       setCallDuration(0);
@@ -1090,6 +1161,8 @@ const Dialpad = () => {
   // Full reset of the post-call session (used by mentor save and by "Discard & Close")
   const resetPostCallState = () => {
     clearActiveCall();
+    // Saved (file consumed) or discarded: either way this call no longer holds a reservation
+    if (currentMobileCallIdRef.current) releaseRecordingReservation({ mobileCallId: currentMobileCallIdRef.current });
     currentMobileCallIdRef.current = '';
     activeSessionIdRef.current = '';
     bufferedRecordingPathRef.current = null;
@@ -1102,6 +1175,7 @@ const Dialpad = () => {
     setManualRecordingFile(null);
     setRecordingSource(null);
     setNoCallAudio(false);
+    setCallLogUnknown(false);
     userOverrodeRecordingRef.current = false;
     setNextFollowupDate(null);
   };
@@ -1293,11 +1367,24 @@ const Dialpad = () => {
             </View>
           )}
 
+          {callLogUnknown && (
+            <View style={{ backgroundColor: '#FFFBEB', borderWidth: 1, borderColor: '#FCD34D', borderRadius: 8, padding: 10, marginBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Ionicons name="warning-outline" size={16} color="#B45309" />
+              <Text style={{ color: '#92400E', fontSize: 12, flex: 1 }}>
+                Call log permission is off, so the call status couldn't be checked.
+              </Text>
+            </View>
+          )}
+
           {noCallAudio && !recordedFilePath && !manualRecordingFile && recordingFolderMapped !== false && (
             <View style={{ backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FCA5A5', borderRadius: 8, padding: 10, marginBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <Ionicons name="mic-off-outline" size={16} color="#B91C1C" />
               <Text style={{ color: '#991B1B', fontSize: 12, flex: 1 }}>
-                ⚠️ No call audio found yet. Will upload automatically when the phone saves it.
+                {/* Promise an automatic upload only when Save will really queue a retry (Mentor and Sales) */}
+                {Platform.OS === 'android' && callStatusState === 'CONNECTED' && callDuration > 0 &&
+                  !!recordingWindowRef.current && !userOverrodeRecordingRef.current
+                  ? '⚠️ No call audio found yet. Will upload automatically when the phone saves it.'
+                  : 'No call audio found. Use Upload Call Recording to attach it.'}
               </Text>
             </View>
           )}
@@ -1314,6 +1401,8 @@ const Dialpad = () => {
               </Text>
               <TouchableOpacity onPress={() => {
                 userOverrodeRecordingRef.current = true; // later native events must not bring it back
+                // Free the file for other calls
+                if (currentMobileCallIdRef.current) releaseRecordingReservation({ mobileCallId: currentMobileCallIdRef.current });
                 setRecordedFilePath(null);
                 setManualRecordingFile(null);
                 setRecordingSource(null);

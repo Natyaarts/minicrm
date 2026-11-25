@@ -9,6 +9,7 @@ from .views import (
     StudentSubmissionViewSet, CalendarEventsView, StudentTeacherHandoverViewSet
 )
 from .bulk_views import BulkUploadView
+from .views_call_analytics import MentorCallAnalyticsView, MentorCallListView, MentorPendingStudentsView
 
 router = DefaultRouter()
 router.register(r'programs', ProgramViewSet, basename='core-program')
@@ -35,4 +36,8 @@ urlpatterns = [
     path('analytics-details/', AnalyticsDetailView.as_view(), name='analytics-details'),
     path('calendar-events/', CalendarEventsView.as_view(), name='calendar-events'),
     path('bulk/upload-students/', BulkUploadView.as_view(), name='bulk-upload-students'),
+    path('mentor-call-analytics/', MentorCallAnalyticsView.as_view(), name='mentor-call-analytics'),
+    path('mentor-call-analytics/calls/', MentorCallListView.as_view(), name='mentor-call-analytics-calls'),
+    path('mentor-call-analytics/pending-students/', MentorPendingStudentsView.as_view(),
+         name='mentor-call-analytics-pending'),
 ]

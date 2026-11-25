@@ -11,10 +11,13 @@ import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Build
 import android.provider.CallLog
+import android.provider.DocumentsContract
 import android.provider.MediaStore
+import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.documentfile.provider.DocumentFile
 import com.facebook.react.bridge.ActivityEventListener
+import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
@@ -27,10 +30,55 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
 
     companion object {
         var reactContextRef: ReactApplicationContext? = null
-        private val consumedCallLogIds: MutableSet<Long> = Collections.synchronizedSet(mutableSetOf<Long>())
+        private const val TAG = "calllog"
+        private const val PREFS_NAME = "CallRecordings"
+        private const val CONSUMED_CALLLOG_KEY = "consumed_calllog_ids"
+        private const val MAX_CONSUMED_CALLLOG_IDS = 200
+
+        // CallLog rows already used by a concluded call. Insertion-ordered so the oldest can be trimmed,
+        // persisted in SharedPreferences so a process restart can't reuse a previous call's row.
+        // Every access goes through callLogLock.
+        private val callLogLock = Any()
+        private val consumedCallLogIds: LinkedHashSet<Long> = LinkedHashSet()
+        private var consumedCallLogLoaded = false
+
         private val consumedRecordingPaths: MutableSet<String> = Collections.synchronizedSet(mutableSetOf<String>())
+
+        // End of the last concluded call. Only moved when a call is concluded (markCallLogRowConsumed,
+        // stopRecording, cancelRecording), never by a lookup. Used only as a fallback floor when JS
+        // doesn't pass the previous session's end.
         @Volatile
         var lastProcessedCallEndTimeMs: Long = 0L
+    }
+
+    private data class CallLogMatch(val rowId: Long, val durationSec: Long, val dateMs: Long, val type: Int)
+
+    private class CallLogQueryResult(
+        val match: CallLogMatch?,
+        val rowsScanned: Int,
+        val rowsConsidered: Int,
+        val consumedSkipped: Int
+    )
+
+    private fun ensureConsumedCallLogLoaded() {
+        synchronized(callLogLock) {
+            if (consumedCallLogLoaded) return
+            try {
+                val prefs = reactApplicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                prefs.getString(CONSUMED_CALLLOG_KEY, null)
+                    ?.split(",")
+                    ?.mapNotNull { it.trim().toLongOrNull() }
+                    ?.forEach { consumedCallLogIds.add(it) }
+            } catch (e: Exception) {
+                Log.w(TAG, "could not load consumed CallLog rows", e)
+            }
+            consumedCallLogLoaded = true
+        }
+    }
+
+    private fun isCallLogRowConsumed(rowId: Long): Boolean {
+        ensureConsumedCallLogLoaded()
+        synchronized(callLogLock) { return consumedCallLogIds.contains(rowId) }
     }
 
     private var recorder: MediaRecorder? = null
@@ -333,12 +381,18 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
         }
     }
 
+    /**
+     * Stops the fallback recorder and looks for the phone's own call recording.
+     * [prevSessionEndMs] is the end of the PREVIOUS call session, captured by JS before the CallLog
+     * lookup; files from before it belong to an earlier call. <= 0 falls back to lastProcessedCallEndTimeMs.
+     */
     @ReactMethod
-    fun stopRecording(promise: Promise) {
+    fun stopRecording(prevSessionEndMs: Double, promise: Promise) {
         // Stop fallback MediaRecorder immediately when call ends so it doesn't keep recording
         val fallbackPath = stopRecordingInternal(false)
         val activeStartTime = callStartTime
         val activeTargetPhone = targetPhoneNumber
+        val floorMs = if (prevSessionEndMs > 0) prevSessionEndMs.toLong() else lastProcessedCallEndTimeMs
 
         // Run on a background thread with fast bounded polling (0ms, 300ms, 600ms, 900ms — max 0.9s instead of 30s)
         Thread {
@@ -352,7 +406,7 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
                     }
                     // Only run heavy SAF tree scan on first and last check if physical path resolution is unavailable
                     val scanSaf = (i == 0 || i == delaysMs.lastIndex)
-                    systemRecordingPath = findRecentSystemRecording(activeTargetPhone, activeStartTime, scanSaf)
+                    systemRecordingPath = findRecentSystemRecording(activeTargetPhone, activeStartTime, scanSaf, floorMs)
                     if (systemRecordingPath != null) {
                         break
                     }
@@ -448,35 +502,43 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
         return null
     }
 
+    // A 10-digit Indian mobile number (optional +91 / 91 / 0 prefix) that is not part of a longer digit run,
+    // so the digits of a timestamp like 20261124120301 are never read as a phone number.
+    private val phoneInNameRegex = Regex("""(?<!\d)(?:\+?91|0)?([6-9]\d{9})(?!\d)""")
+
+    /**
+     * [floorMs]: end of the previous call session; files finalized before it belong to an earlier call.
+     * [inMappedFolder]: the file is in the folder the user mapped, so the "call"/"record" keyword check
+     * is skipped (contact-named files like "Rahul Sharma_....m4a" have no keyword). Elsewhere the check
+     * runs on the file name plus its full path.
+     */
     private fun isVerifiedCallRecording(
         fileName: String,
         filePath: String,
         targetPhone: String,
         startTimeMs: Long,
-        fileLastModified: Long
+        fileLastModified: Long,
+        floorMs: Long,
+        inMappedFolder: Boolean
     ): Boolean {
         if (!isAudioRecordingFile(fileName)) return false
-        if (!isCallRecordingKeyword(fileName, filePath)) return false
+        if (!inMappedFolder && !isCallRecordingKeyword(fileName, filePath)) return false
         if (consumedRecordingPaths.contains(filePath) || consumedRecordingPaths.contains(fileName)) return false
 
         val cleanTarget = targetPhone.replace(Regex("[^0-9]"), "").takeLast(10)
         val cleanDigitsInFile = fileName.replace(Regex("[^0-9]"), "")
 
-        // 1. Check if filename contains a DIFFERENT 10-digit phone number
-        val otherPhoneRegex = Regex("""(?:\+?91|0)?([6-9]\d{9})""")
-        val foundMatch = otherPhoneRegex.find(fileName)
-        if (foundMatch != null) {
-            val foundOtherPhone = foundMatch.groupValues.getOrNull(1) ?: foundMatch.value.replace(Regex("[^0-9]"), "").takeLast(10)
-            if (cleanTarget.length >= 6 && foundOtherPhone.isNotEmpty() && foundOtherPhone != cleanTarget) {
-                return false
-            }
+        // 1. Reject a filename that contains phone numbers, none of which is the dialled one
+        val numbersInName = phoneInNameRegex.findAll(fileName).mapNotNull { it.groupValues.getOrNull(1) }.toList()
+        if (cleanTarget.length >= 6 && numbersInName.isNotEmpty() && !numbersInName.contains(cleanTarget)) {
+            return false
         }
 
         // Strict session lower bound: file must not have been finalized before the current call started
         // or before the previous call session ended.
         val minSessionStart = maxOf(
             if (startTimeMs > 0) (startTimeMs - 2_000L) else (System.currentTimeMillis() - 15_000L),
-            lastProcessedCallEndTimeMs
+            floorMs
         )
         val windowEnd = System.currentTimeMillis() + 15_000L
 
@@ -494,12 +556,12 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
         return false
     }
 
-    private fun findRecentSystemRecording(phoneNumber: String, startTimeMs: Long, scanSaf: Boolean): String? {
+    private fun findRecentSystemRecording(phoneNumber: String, startTimeMs: Long, scanSaf: Boolean, floorMs: Long): String? {
         val contentResolver = reactApplicationContext.contentResolver
         val cleanPhone = phoneNumber.replace(Regex("[^0-9]"), "").takeLast(10)
         val minSessionStart = maxOf(
             if (startTimeMs > 0) (startTimeMs - 2_000L) else (System.currentTimeMillis() - 15_000L),
-            lastProcessedCallEndTimeMs
+            floorMs
         )
 
         // 1. Check custom SAF folder first (user-selected via folder picker)
@@ -520,7 +582,7 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
                         for (file in (dir.listFiles() ?: emptyArray())) {
                             if (file.isFile && file.lastModified() >= maxLastModified) {
                                 val name = file.name ?: ""
-                                if (isVerifiedCallRecording(name, file.absolutePath, phoneNumber, startTimeMs, file.lastModified())) {
+                                if (isVerifiedCallRecording(name, file.absolutePath, phoneNumber, startTimeMs, file.lastModified(), floorMs, true)) {
                                     if (file.lastModified() > (mostRecentFile?.lastModified() ?: 0)) {
                                         mostRecentFile = file
                                         maxLastModified = file.lastModified()
@@ -547,7 +609,7 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
                             if (consumedRecordingPaths.contains(name) || consumedRecordingPaths.contains(file.uri.toString())) continue
                             val lastMod = file.lastModified()
                             if (file.isFile && lastMod >= maxLastModified) {
-                                if (isVerifiedCallRecording(name, name, phoneNumber, startTimeMs, lastMod)) {
+                                if (isVerifiedCallRecording(name, file.uri.toString(), phoneNumber, startTimeMs, lastMod, floorMs, true)) {
                                     if (lastMod > (mostRecentFile?.lastModified() ?: 0)) {
                                         mostRecentFile = file
                                         maxLastModified = lastMod
@@ -613,7 +675,7 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
                 if (file.lastModified() < minSessionStart) continue
 
                 val name = file.name ?: ""
-                if (isVerifiedCallRecording(name, file.absolutePath, phoneNumber, startTimeMs, file.lastModified())) {
+                if (isVerifiedCallRecording(name, file.absolutePath, phoneNumber, startTimeMs, file.lastModified(), floorMs, false)) {
                     if (file.lastModified() >= bestModified) {
                         bestFile = file
                         bestModified = file.lastModified()
@@ -658,7 +720,7 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
                     val dateModSec = if (dateModCol != -1) cursor.getLong(dateModCol) else 0L
                     val fileLastModified = maxOf(dateAddedSec, dateModSec) * 1000L
 
-                    if (isVerifiedCallRecording(displayName, filePath, phoneNumber, startTimeMs, fileLastModified)) {
+                    if (isVerifiedCallRecording(displayName, filePath, phoneNumber, startTimeMs, fileLastModified, floorMs, false)) {
                         val copied = copyUriToCache(id, displayName, cleanPhone)
                         if (copied != null) {
                             consumedRecordingPaths.add(filePath)
@@ -746,6 +808,178 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
         return null
     }
 
+    /**
+     * Pure read of the CallLog (no side effects): the newest row that
+     *  - has the asked direction (OUTGOING / INCOMING) and the dialled number (last-10-digits rule),
+     *  - has DATE >= callStartMs - 10s and DATE >= prevSessionEndMs (end of the PREVIOUS call session,
+     *    passed in from JS), and DATE <= now + 10s,
+     *  - is not already consumed by a concluded call.
+     * CallLog.DATE is the call START time.
+     */
+    private fun queryCallLog(
+        phoneNumber: String?,
+        callStartTimeMs: Long,
+        prevSessionEndMs: Long,
+        callDirection: String?
+    ): CallLogQueryResult {
+        val cleanTarget = (phoneNumber ?: "").replace(Regex("[^0-9]"), "").takeLast(10)
+        val now = System.currentTimeMillis()
+        val minValidDate = maxOf(
+            if (callStartTimeMs > 0) (callStartTimeMs - 10_000L) else (now - 10_000L),
+            if (prevSessionEndMs > 0) prevSessionEndMs else 0L
+        )
+        val maxValidDate = now + 10_000L
+
+        val projection = arrayOf(
+            CallLog.Calls._ID,
+            CallLog.Calls.NUMBER,
+            CallLog.Calls.DATE,
+            CallLog.Calls.DURATION,
+            CallLog.Calls.TYPE
+        )
+        val selection = "${CallLog.Calls.DATE} >= ? AND ${CallLog.Calls.DATE} <= ?"
+        val selectionArgs = arrayOf(minValidDate.toString(), maxValidDate.toString())
+        val sortOrder = "${CallLog.Calls.DATE} DESC"
+
+        var rowsScanned = 0
+        var rowsConsidered = 0
+        var consumedSkipped = 0
+        var match: CallLogMatch? = null
+
+        reactApplicationContext.contentResolver.query(
+            CallLog.Calls.CONTENT_URI, projection, selection, selectionArgs, sortOrder
+        )?.use { c ->
+            val idIdx = c.getColumnIndex(CallLog.Calls._ID)
+            val numIdx = c.getColumnIndex(CallLog.Calls.NUMBER)
+            val dateIdx = c.getColumnIndex(CallLog.Calls.DATE)
+            val durIdx = c.getColumnIndex(CallLog.Calls.DURATION)
+            val typeIdx = c.getColumnIndex(CallLog.Calls.TYPE)
+
+            while (c.moveToNext()) {
+                rowsScanned++
+                val rowId = if (idIdx != -1) c.getLong(idIdx) else -1L
+                val num = if (numIdx != -1) c.getString(numIdx) ?: "" else ""
+                val callDate = if (dateIdx != -1) c.getLong(dateIdx) else 0L
+                val dur = if (durIdx != -1) c.getLong(durIdx) else 0L
+                val type = if (typeIdx != -1) c.getInt(typeIdx) else 0
+
+                if (callDate < minValidDate || callDate > maxValidDate) continue
+
+                val directionMatches = when (callDirection?.uppercase()) {
+                    "INCOMING" -> type == CallLog.Calls.INCOMING_TYPE ||
+                                  type == CallLog.Calls.MISSED_TYPE ||
+                                  (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && type == CallLog.Calls.REJECTED_TYPE) ||
+                                  (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && type == CallLog.Calls.BLOCKED_TYPE)
+                    "OUTGOING" -> type == CallLog.Calls.OUTGOING_TYPE ||
+                                  type == CallLog.Calls.MISSED_TYPE ||
+                                  (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && type == CallLog.Calls.REJECTED_TYPE)
+                    else -> true
+                }
+                val rowClean = num.replace(Regex("[^0-9]"), "").takeLast(10)
+                val numberMatches = cleanTarget.isEmpty() || rowClean.isEmpty() ||
+                        rowClean == cleanTarget ||
+                        rowClean.endsWith(cleanTarget) ||
+                        cleanTarget.endsWith(rowClean)
+                if (!directionMatches || !numberMatches) continue
+                rowsConsidered++
+
+                if (rowId != -1L && isCallLogRowConsumed(rowId)) {
+                    // Never reuse a CallLog row that already belonged to a previous call
+                    consumedSkipped++
+                    continue
+                }
+
+                val isUnconnectedType = type == CallLog.Calls.MISSED_TYPE ||
+                    (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && (type == CallLog.Calls.REJECTED_TYPE || type == CallLog.Calls.BLOCKED_TYPE))
+                // Sorted newest first: the first matching row wins
+                match = CallLogMatch(rowId, if (isUnconnectedType || dur <= 0L) 0L else dur, callDate, type)
+                break
+            }
+        }
+        return CallLogQueryResult(match, rowsScanned, rowsConsidered, consumedSkipped)
+    }
+
+    /**
+     * Pure CallLog lookup. Resolves a map:
+     *   { status: "found", rowId, durationSec, dateMs, type, rowsScanned, rowsConsidered, consumedSkipped }
+     *   { status: "none", rowsScanned, rowsConsidered, consumedSkipped }
+     *   { status: "no_permission" }  (READ_CALL_LOG not granted)
+     *   { status: "error", message }
+     * Never changes consumed rows or lastProcessedCallEndTimeMs; call markCallLogRowConsumed for that.
+     */
+    @ReactMethod
+    fun findCallLogEntry(phoneNumber: String?, callStartTimeMs: Double, prevSessionEndMs: Double, callDirection: String?, promise: Promise) {
+        Thread {
+            val out = Arguments.createMap()
+            try {
+                if (ContextCompat.checkSelfPermission(reactApplicationContext, Manifest.permission.READ_CALL_LOG) != PackageManager.PERMISSION_GRANTED) {
+                    out.putString("status", "no_permission")
+                    promise.resolve(out)
+                    return@Thread
+                }
+                val result = queryCallLog(phoneNumber, callStartTimeMs.toLong(), prevSessionEndMs.toLong(), callDirection)
+                out.putInt("rowsScanned", result.rowsScanned)
+                out.putInt("rowsConsidered", result.rowsConsidered)
+                out.putInt("consumedSkipped", result.consumedSkipped)
+                val m = result.match
+                if (m != null) {
+                    out.putString("status", "found")
+                    out.putDouble("rowId", m.rowId.toDouble())
+                    out.putDouble("durationSec", m.durationSec.toDouble())
+                    out.putDouble("dateMs", m.dateMs.toDouble())
+                    out.putInt("type", m.type)
+                } else {
+                    out.putString("status", "none")
+                }
+                promise.resolve(out)
+            } catch (e: Exception) {
+                Log.w(TAG, "findCallLogEntry failed", e)
+                out.putString("status", "error")
+                out.putString("message", e.message ?: "unknown")
+                promise.resolve(out)
+            }
+        }.start()
+    }
+
+    /**
+     * Marks a CallLog row as used by a concluded call so no later call can claim it, and moves
+     * lastProcessedCallEndTimeMs to the call's end. Call exactly once per concluded call.
+     * Persisted (last MAX_CONSUMED_CALLLOG_IDS rows) so a process restart can't reuse the row.
+     */
+    @ReactMethod
+    fun markCallLogRowConsumed(rowId: Double, callEndMs: Double, promise: Promise) {
+        try {
+            val id = rowId.toLong()
+            if (id < 0L) {
+                promise.resolve(false)
+                return
+            }
+            ensureConsumedCallLogLoaded()
+            val serialized = synchronized(callLogLock) {
+                consumedCallLogIds.remove(id) // re-insert at the end (newest)
+                consumedCallLogIds.add(id)
+                while (consumedCallLogIds.size > MAX_CONSUMED_CALLLOG_IDS) {
+                    val oldest = consumedCallLogIds.iterator()
+                    oldest.next()
+                    oldest.remove()
+                }
+                consumedCallLogIds.joinToString(",")
+            }
+            reactApplicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit().putString(CONSUMED_CALLLOG_KEY, serialized).apply()
+            val end = callEndMs.toLong()
+            if (end > lastProcessedCallEndTimeMs) lastProcessedCallEndTimeMs = end
+            promise.resolve(true)
+        } catch (e: Exception) {
+            Log.w(TAG, "markCallLogRowConsumed failed", e)
+            promise.resolve(false)
+        }
+    }
+
+    /**
+     * Legacy API kept for existing callers: duration (s) of the matching CallLog row, 0 when there is none,
+     * null when READ_CALL_LOG is not granted. Now a pure read (no consumed rows / floor side effects).
+     */
     @ReactMethod
     fun getLatestCallLogDuration(phoneNumber: String?, callStartTimeMs: Double, callDirection: String?, promise: Promise) {
         Thread {
@@ -754,116 +988,94 @@ class CallRecordingModule(reactContext: ReactApplicationContext) : ReactContextB
                     promise.resolve(null)
                     return@Thread
                 }
-
-                val cleanTarget = (phoneNumber ?: "").replace(Regex("[^0-9]"), "").takeLast(10)
-                val startTime = callStartTimeMs.toLong()
-
-                // Strictly require CallLog entry to belong to the CURRENT call session and never precede the previous session's end time.
-                val minValidDate = maxOf(
-                    if (startTime > 0) (startTime - 2_000L) else (System.currentTimeMillis() - 10_000L),
-                    lastProcessedCallEndTimeMs
-                )
-                val maxValidDate = System.currentTimeMillis() + 10_000L
-
-                val projection = arrayOf(
-                    CallLog.Calls._ID,
-                    CallLog.Calls.NUMBER,
-                    CallLog.Calls.DATE,
-                    CallLog.Calls.DURATION,
-                    CallLog.Calls.TYPE
-                )
-
-                val selection = "${CallLog.Calls.DATE} >= ? AND ${CallLog.Calls.DATE} <= ?"
-                val selectionArgs = arrayOf(minValidDate.toString(), maxValidDate.toString())
-                val sortOrder = "${CallLog.Calls.DATE} DESC"
-
-                var matchedDuration: Long? = null
-                var matchedRowId: Long? = null
-
-                // Fast bounded polling (0ms, 200ms, 400ms, 600ms, 800ms) for OS CallLog commit
-                for (attempt in 0..4) {
-                    if (attempt > 0) {
-                        Thread.sleep(200)
-                    }
-
-                    val cursor = reactApplicationContext.contentResolver.query(
-                        CallLog.Calls.CONTENT_URI,
-                        projection,
-                        selection,
-                        selectionArgs,
-                        sortOrder
-                    )
-
-                    cursor?.use { c ->
-                        val idIdx = c.getColumnIndex(CallLog.Calls._ID)
-                        val numIdx = c.getColumnIndex(CallLog.Calls.NUMBER)
-                        val dateIdx = c.getColumnIndex(CallLog.Calls.DATE)
-                        val durIdx = c.getColumnIndex(CallLog.Calls.DURATION)
-                        val typeIdx = c.getColumnIndex(CallLog.Calls.TYPE)
-
-                        while (c.moveToNext()) {
-                            val rowId = if (idIdx != -1) c.getLong(idIdx) else -1L
-                            if (rowId != -1L && consumedCallLogIds.contains(rowId)) {
-                                // Never reuse a CallLog row that already belonged to a previous call!
-                                continue
-                            }
-
-                            val num = if (numIdx != -1) c.getString(numIdx) ?: "" else ""
-                            val callDate = if (dateIdx != -1) c.getLong(dateIdx) else 0L
-                            val dur = if (durIdx != -1) c.getLong(durIdx) else 0L
-                            val type = if (typeIdx != -1) c.getInt(typeIdx) else 0
-
-                            if (callDate < minValidDate || callDate > maxValidDate) {
-                                continue
-                            }
-
-                            val rowClean = num.replace(Regex("[^0-9]"), "").takeLast(10)
-
-                            val directionMatches = when (callDirection?.uppercase()) {
-                                "INCOMING" -> type == CallLog.Calls.INCOMING_TYPE ||
-                                              type == CallLog.Calls.MISSED_TYPE ||
-                                              (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && type == CallLog.Calls.REJECTED_TYPE) ||
-                                              (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && type == CallLog.Calls.BLOCKED_TYPE)
-                                "OUTGOING" -> type == CallLog.Calls.OUTGOING_TYPE ||
-                                              type == CallLog.Calls.MISSED_TYPE ||
-                                              (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && type == CallLog.Calls.REJECTED_TYPE)
-                                else -> true
-                            }
-
-                            val numberMatches = cleanTarget.isEmpty() || rowClean.isEmpty() ||
-                                    rowClean == cleanTarget ||
-                                    rowClean.endsWith(cleanTarget) ||
-                                    cleanTarget.endsWith(rowClean)
-
-                            if (directionMatches && numberMatches) {
-                                val isUnconnectedType = type == CallLog.Calls.MISSED_TYPE ||
-                                    (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && (type == CallLog.Calls.REJECTED_TYPE || type == CallLog.Calls.BLOCKED_TYPE))
-                                matchedDuration = if (isUnconnectedType || dur <= 0L) 0L else dur
-                                matchedRowId = rowId
-                                break
-                            }
-                        }
-                    }
-
-                    if (matchedDuration != null) {
-                        break
-                    }
-                }
-
-                lastProcessedCallEndTimeMs = System.currentTimeMillis()
-                if (matchedRowId != null && matchedRowId != -1L) {
-                    consumedCallLogIds.add(matchedRowId!!)
-                }
-
-                if (matchedDuration != null) {
-                    promise.resolve(matchedDuration!!.toDouble())
-                } else {
-                    // If no CallLog entry belonging to this CURRENT session is found, return 0.0
-                    promise.resolve(0.0)
-                }
+                val result = queryCallLog(phoneNumber, callStartTimeMs.toLong(), 0L, callDirection)
+                promise.resolve((result.match?.durationSec ?: 0L).toDouble())
             } catch (e: Exception) {
                 e.printStackTrace()
                 promise.resolve(0.0)
+            }
+        }.start()
+    }
+
+    /**
+     * Lists the audio files of a SAF tree (the mapped recording folder) and of its direct subfolders,
+     * with last-modified time and size, in one DocumentsContract query per folder (no per-file round trip).
+     * Resolves [{ uri, name, lastModified, size }]; lastModified / size are -1 when the provider doesn't say.
+     */
+    @ReactMethod
+    fun listRecordingFolder(treeUriString: String, promise: Promise) {
+        Thread {
+            try {
+                val treeUri = Uri.parse(treeUriString)
+                val rootDocId = if (DocumentsContract.isDocumentUri(reactApplicationContext, treeUri)) {
+                    DocumentsContract.getDocumentId(treeUri)
+                } else {
+                    DocumentsContract.getTreeDocumentId(treeUri)
+                }
+                val out = Arguments.createArray()
+                val projection = arrayOf(
+                    DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                    DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                    DocumentsContract.Document.COLUMN_MIME_TYPE,
+                    DocumentsContract.Document.COLUMN_LAST_MODIFIED,
+                    DocumentsContract.Document.COLUMN_SIZE
+                )
+                val subDirs = mutableListOf<String>()
+
+                fun listChildren(parentDocId: String, collectDirs: Boolean) {
+                    val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentDocId)
+                    reactApplicationContext.contentResolver.query(childrenUri, projection, null, null, null)?.use { c ->
+                        while (c.moveToNext()) {
+                            val docId = c.getString(0) ?: continue
+                            val name = c.getString(1) ?: ""
+                            val mime = c.getString(2) ?: ""
+                            if (mime == DocumentsContract.Document.MIME_TYPE_DIR) {
+                                if (collectDirs) subDirs.add(docId)
+                                continue
+                            }
+                            if (!isAudioRecordingFile(name)) continue
+                            val item = Arguments.createMap()
+                            item.putString("uri", DocumentsContract.buildDocumentUriUsingTree(treeUri, docId).toString())
+                            item.putString("name", name)
+                            item.putDouble("lastModified", if (c.isNull(3)) -1.0 else c.getLong(3).toDouble())
+                            item.putDouble("size", if (c.isNull(4)) -1.0 else c.getLong(4).toDouble())
+                            out.pushMap(item)
+                        }
+                    }
+                }
+
+                listChildren(rootDocId, true)
+                for (dirId in subDirs) {
+                    try { listChildren(dirId, false) } catch (e: Exception) { Log.w(TAG, "subfolder listing failed", e) }
+                }
+                promise.resolve(out)
+            } catch (e: Exception) {
+                promise.reject("LIST_FOLDER_FAILED", e.message, e)
+            }
+        }.start()
+    }
+
+    /** Audio duration in ms of a file path / file:// / content:// URI from its metadata, or null if unknown. */
+    @ReactMethod
+    fun getAudioDurationMs(uriOrPath: String?, promise: Promise) {
+        if (uriOrPath.isNullOrEmpty()) {
+            promise.resolve(null)
+            return
+        }
+        Thread {
+            val retriever = android.media.MediaMetadataRetriever()
+            try {
+                if (uriOrPath.startsWith("content://")) {
+                    retriever.setDataSource(reactApplicationContext, Uri.parse(uriOrPath))
+                } else {
+                    retriever.setDataSource(uriOrPath.removePrefix("file://"))
+                }
+                val ms = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
+                if (ms != null && ms > 0L) promise.resolve(ms.toDouble()) else promise.resolve(null)
+            } catch (e: Exception) {
+                promise.resolve(null)
+            } finally {
+                try { retriever.release() } catch (ignored: Exception) {}
             }
         }.start()
     }

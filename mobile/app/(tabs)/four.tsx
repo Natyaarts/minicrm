@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import {
   StyleSheet, FlatList, TextInput, ActivityIndicator, TouchableOpacity, Alert,
   Text, View, useColorScheme, StatusBar, Modal, ScrollView,
-  KeyboardAvoidingView, Platform,
+  KeyboardAvoidingView, Platform, AppState, Linking, ToastAndroid,
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
@@ -20,6 +20,11 @@ import {
   getMentorRecentCalls,
   getMentorBreakMetrics,
 } from '../../src/api/mentors';
+import MentorWhatsAppForm, { WhatsAppFormValues } from '../../src/components/MentorWhatsAppForm';
+import {
+  buildWhatsAppPayload, toWaDigits, waLink, whatsAppEntryLabel, isLatestWhatsAppConnected,
+  NO_VALID_WA_NUMBER, DEFAULT_MARK_CONNECTED_NOTE, WA_GREEN, WA_GREEN_DARK,
+} from '../../src/utils/whatsappMentor';
 
 // ── Constants ───────────────────────────────────────────────────────────────
 const FEEDBACK_STATUSES = [
@@ -135,7 +140,7 @@ export default function MentorsScreen() {
   // Student sheet (history + feedback form share one Modal to avoid nested modals)
   const [selectedStudent, setSelectedStudent] = useState<any>(null);
   const [sheetVisible, setSheetVisible] = useState(false);
-  const [sheetMode, setSheetMode] = useState<'history' | 'form'>('history');
+  const [sheetMode, setSheetMode] = useState<'history' | 'form' | 'whatsapp'>('history');
   const [feedbacks, setFeedbacks] = useState<any[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [status, setStatus] = useState('CALL_DONE');
@@ -143,6 +148,10 @@ export default function MentorsScreen() {
   const [followupDate, setFollowupDate] = useState<Date | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  // WhatsApp (click-to-chat + log): the student we opened WhatsApp for, so we can prompt on return
+  const justWhatsAppedRef = useRef<any>(null);
+  const [waSaving, setWaSaving] = useState(false);
 
   // Recent calls
   const [recentCalls, setRecentCalls] = useState<any[]>([]);
@@ -465,6 +474,79 @@ export default function MentorsScreen() {
     router.push({ pathname: '/dialpad', params: { leadId: student.id, phone, mode: 'mentor' } } as any);
   };
 
+  // ── WhatsApp (click-to-chat + log; saved as feedback_type='WHATSAPP') ─────
+  const showToast = (msg: string) => {
+    if (Platform.OS === 'android') ToastAndroid.show(msg, ToastAndroid.SHORT);
+    else Alert.alert('Saved', msg);
+  };
+
+  const apiError = (err: any, fallback: string) =>
+    err?.response?.data?.error || err?.response?.data?.detail || err?.message || fallback;
+
+  const openWhatsApp = async (student: any) => {
+    const digits = toWaDigits(student?.mobile || student?.phone);
+    if (!digits) {
+      Alert.alert('WhatsApp', NO_VALID_WA_NUMBER);
+      return;
+    }
+    justWhatsAppedRef.current = student;
+    try {
+      await Linking.openURL(waLink(digits));
+    } catch (_) {
+      justWhatsAppedRef.current = null;
+      Alert.alert('WhatsApp', 'Could not open WhatsApp on this phone.');
+    }
+  };
+
+  // Back from WhatsApp: open the log form once. The ref is cleared first, so dismissing never re-prompts.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', next => {
+      if (next !== 'active' || !justWhatsAppedRef.current) return;
+      const student = justWhatsAppedRef.current;
+      justWhatsAppedRef.current = null;
+      setSelectedStudent(student);
+      if (!sheetVisible || selectedStudent?.id !== student.id) loadHistory(student.id);
+      setSheetMode('whatsapp');
+      setSheetVisible(true);
+    });
+    return () => sub.remove();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sheetVisible, selectedStudent]);
+
+  const saveWhatsApp = async (values: WhatsAppFormValues) => {
+    if (!selectedStudent || waSaving) return;
+    try {
+      setWaSaving(true);
+      await addStudentFeedback(selectedStudent.id, buildWhatsAppPayload(values.outcome, values));
+      setSheetMode('history');
+      loadHistory(selectedStudent.id);
+      loadStudents({ silent: true });
+      showToast('WhatsApp log saved');
+    } catch (err: any) {
+      Alert.alert('Could not save', apiError(err, 'Unable to save the WhatsApp log.'));
+    } finally {
+      setWaSaving(false);
+    }
+  };
+
+  const markWhatsAppConnected = async () => {
+    if (!selectedStudent || waSaving) return;
+    try {
+      setWaSaving(true);
+      await addStudentFeedback(
+        selectedStudent.id,
+        buildWhatsAppPayload('CONNECTED', { notes: DEFAULT_MARK_CONNECTED_NOTE })
+      );
+      loadHistory(selectedStudent.id);
+      loadStudents({ silent: true });
+      showToast(`${getStudentName(selectedStudent)} marked as WhatsApp connected`);
+    } catch (err: any) {
+      Alert.alert('Could not save', apiError(err, 'Unable to mark as WhatsApp connected.'));
+    } finally {
+      setWaSaving(false);
+    }
+  };
+
   // When the dialpad closes and we are focused again, prompt for call feedback
   useFocusEffect(
     useCallback(() => {
@@ -631,13 +713,28 @@ export default function MentorsScreen() {
     const fs = feedbackStyle(item.status);
     const recording = item.recording_url || item.audio_recording;
     const duration = formatDuration(item.call_duration);
-    const hasCall = item.call_status || item.call_direction || item.customer_number || duration || recording;
+    const wa = whatsAppEntryLabel(item);   // null for non-WhatsApp rows (they keep their current labels)
+    const hasCall = !wa && (item.call_status || item.call_direction || item.customer_number || duration || recording);
     return (
       <View key={item.id} style={styles.feedbackCard}>
         <View style={styles.feedbackHeader}>
+          {wa ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 }}>
+              <FontAwesome5 name="whatsapp" size={14} color={WA_GREEN} />
+              <View style={[styles.stagePill, { backgroundColor: fs.bg }]}>
+                <Text style={[styles.stageTxt, { color: fs.text }]}>{wa.label}</Text>
+              </View>
+              {wa.isCall && duration ? (
+                <View style={styles.durationBadge}>
+                  <Text style={styles.durationText}>{duration}</Text>
+                </View>
+              ) : null}
+            </View>
+          ) : (
           <View style={[styles.stagePill, { backgroundColor: fs.bg }]}>
             <Text style={[styles.stageTxt, { color: fs.text }]}>{item.status_display || item.status || 'Feedback'}</Text>
           </View>
+          )}
           <Text style={styles.historyTime}>{formatDate(item.feedback_date)}</Text>
         </View>
         {item.feedback ? <Text style={styles.feedbackText}>{item.feedback}</Text> : null}
@@ -894,7 +991,7 @@ export default function MentorsScreen() {
         transparent
         animationType="slide"
         onRequestClose={() => {
-          if (sheetMode === 'form') setSheetMode('history');
+          if (sheetMode !== 'history') setSheetMode('history');
           else setSheetVisible(false);
         }}
       >
@@ -905,7 +1002,7 @@ export default function MentorsScreen() {
           <View style={styles.modalSheet}>
             {/* Header */}
             <View style={styles.modalHeader}>
-              {sheetMode === 'form' && (
+              {sheetMode !== 'history' && (
                 <TouchableOpacity
                   onPress={() => setSheetMode('history')}
                   style={{ marginRight: 12 }}
@@ -916,10 +1013,12 @@ export default function MentorsScreen() {
               )}
               <View style={{ flex: 1 }}>
                 <Text style={styles.modalTitle} numberOfLines={1}>
-                  {sheetMode === 'form' ? 'Add Feedback' : getStudentName(selectedStudent)}
+                  {sheetMode === 'form' ? 'Add Feedback'
+                    : sheetMode === 'whatsapp' ? 'Log WhatsApp'
+                    : getStudentName(selectedStudent)}
                 </Text>
                 <Text style={styles.modalSub} numberOfLines={1}>
-                  {sheetMode === 'form'
+                  {sheetMode !== 'history'
                     ? getStudentName(selectedStudent)
                     : [selectedStudent?.crm_student_id, selectedStudent?.mobile || selectedStudent?.phone]
                         .filter(Boolean)
@@ -933,7 +1032,15 @@ export default function MentorsScreen() {
 
             {sheetMode === 'history' ? (
               <>
-                <Text style={styles.sectionLbl}>Feedback & calls ({feedbacks.length})</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <Text style={styles.sectionLbl}>Feedback & calls ({feedbacks.length})</Text>
+                  {!historyLoading && isLatestWhatsAppConnected(feedbacks) ? (
+                    <View style={[styles.stagePill, { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: isDark ? '#064E3B' : '#DCFCE7' }]}>
+                      <FontAwesome5 name="whatsapp" size={10} color={WA_GREEN_DARK} />
+                      <Text style={[styles.stageTxt, { color: isDark ? '#6EE7B7' : '#065F46' }]}>WhatsApp connected</Text>
+                    </View>
+                  ) : null}
+                </View>
                 {historyLoading ? (
                   <ActivityIndicator size="large" color="#F59E0B" style={{ marginVertical: 30 }} />
                 ) : (
@@ -965,7 +1072,42 @@ export default function MentorsScreen() {
                     <Text style={styles.actionTxt}>Add Feedback</Text>
                   </TouchableOpacity>
                 </View>
+                <View style={[styles.sheetActions, { marginTop: 10 }]}>
+                  <TouchableOpacity
+                    style={[styles.actionBtn, { backgroundColor: WA_GREEN_DARK }, !toWaDigits(selectedStudent?.mobile || selectedStudent?.phone) && { opacity: 0.5 }]}
+                    onPress={() => openWhatsApp(selectedStudent)}
+                    accessibilityLabel={toWaDigits(selectedStudent?.mobile || selectedStudent?.phone) ? 'Open WhatsApp' : NO_VALID_WA_NUMBER}
+                  >
+                    <FontAwesome5 name="whatsapp" size={15} color="#fff" />
+                    <Text style={styles.actionTxt}>WhatsApp</Text>
+                  </TouchableOpacity>
+                  {(() => {
+                    const waConnected = !historyLoading && isLatestWhatsAppConnected(feedbacks);
+                    const markDisabled = waSaving || waConnected || historyLoading;
+                    const markColor = isDark ? '#6EE7B7' : '#065F46';
+                    return (
+                      <TouchableOpacity
+                        style={[styles.actionBtn, { backgroundColor: isDark ? '#064E3B' : '#DCFCE7', flex: 1.4 }, markDisabled && { opacity: 0.6 }]}
+                        onPress={markWhatsAppConnected}
+                        disabled={markDisabled}
+                      >
+                        {waSaving ? (
+                          <ActivityIndicator size="small" color={markColor} />
+                        ) : (
+                          <>
+                            <FontAwesome5 name="check-circle" solid={waConnected} size={13} color={markColor} />
+                            <Text style={[styles.actionTxt, { color: markColor, fontSize: 13 }]}>
+                              {waConnected ? 'WhatsApp Connected ✓' : 'Mark WhatsApp Connected'}
+                            </Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })()}
+                </View>
               </>
+            ) : sheetMode === 'whatsapp' ? (
+              <MentorWhatsAppForm isDark={isDark} saving={waSaving} onSubmit={saveWhatsApp} />
             ) : (
               <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
                 <Text style={styles.sectionLbl}>Outcome *</Text>
