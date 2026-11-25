@@ -13,6 +13,7 @@ import client from '../src/api/client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { addStudentFeedback, uploadFeedbackRecording } from '../src/api/mentors';
 import { saveActiveCall, getActiveCall, updateActiveCall, clearActiveCall, getCurrentUserKey, isSessionForUser } from '../src/utils/ActiveCallSession';
+import { isIncomingCallInProgress } from '../src/utils/mentorIncomingCall';
 
 
 const FEEDBACK_STATUSES = [
@@ -32,6 +33,9 @@ const { width } = Dimensions.get('window');
 const Dialpad = () => {
   const { leadId, phone, leadStatus, mode } = useLocalSearchParams();
   const isMentorMode = mode === 'mentor';
+  // Read by the native event listener (registered once), so it always sees the current mode
+  const isMentorModeRef = useRef(isMentorMode);
+  isMentorModeRef.current = isMentorMode;
   const [phoneNumber, setPhoneNumber] = useState((phone as string) || '');
   const [callStatus, setCallStatus] = useState<'IDLE' | 'CALLING' | 'ACTIVE' | 'POST_CALL'>('IDLE');
   const [activeCallTimer, setActiveCallTimer] = useState(0);
@@ -594,6 +598,12 @@ const Dialpad = () => {
     // 1. Listen for events from our Kotlin MediaStore sync (which runs after stopRecording)
     const unsubscribeEvents = listenToCallEvents(async (path) => {
       console.log("Recording saved at:", path);
+      // Mentor mode only: an incoming call (GlobalCallListener) shares the native recorder, so its
+      // "recording stopped" event must not attach to this outgoing call. Sales mode is unchanged.
+      if (isMentorModeRef.current && isIncomingCallInProgress()) {
+        console.log('[dialpad] mentor mode: ignoring recording event during an incoming call');
+        return;
+      }
       // finalizeCallSession() is still deciding CONNECTED/MISSED: buffer the path, it is applied there
       if (path && isFinalizingRef.current) {
         bufferedRecordingPathRef.current = path;

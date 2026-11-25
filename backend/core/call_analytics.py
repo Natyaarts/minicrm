@@ -40,6 +40,13 @@ DEFAULT_RANGE_DAYS = 30
 # A real call = logged by the phone (mobile_call_id) or carrying a call outcome. Same rule as
 # add_feedback's `has_call`. Manual feedback is ALSO stored as feedback_type='CALL', so that field is unusable.
 CALL_Q = Q(mobile_call_id__isnull=False) | Q(call_status__isnull=False)
+# Direction. Rows saved before incoming calls were logged have no call_direction: they are outgoing.
+# Calls, connected, missed, connect rate, talk time, trend and hourly count OUTGOING calls only (unchanged
+# meaning). A connected INCOMING call still counts as "student connected" (connected totals, pending).
+INCOMING_Q = Q(call_direction='INCOMING')
+OUTGOING_Q = Q(call_direction__isnull=True) | ~Q(call_direction='INCOMING')
+OUTGOING_CALL_Q = CALL_Q & OUTGOING_Q
+INCOMING_CALL_Q = CALL_Q & INCOMING_Q
 # Mentor WhatsApp logs: feedback_type='WHATSAPP' and never a phone-call marker (mobile_call_id / call_status).
 #   chat: call_direction IS NULL   (MESSAGE_SENT=sent, CALL_DONE=connected, NO_ANSWER=no reply, NOT_REACHABLE=not on WA)
 #   call: call_direction IS NOT NULL (CALL_DONE=connected with call_duration, NO_ANSWER=not connected)
@@ -97,18 +104,34 @@ WA_METRICS = dict(
 CHANNELS = ('all', 'phone', 'whatsapp')
 
 
-def connected_metrics(phone_q, include_phone=True, include_whatsapp=True):
+def incoming_metrics(incoming_q):
+    """Incoming phone calls (student called the mentor). Safe on a mixed queryset: every filter is incoming_q."""
+    conn = incoming_q & CONNECTED_Q
+    return dict(
+        incoming_calls=Count('id', filter=incoming_q),
+        incoming_connected=Count('id', filter=conn),
+        incoming_missed=Count('id', filter=incoming_q & MISSED_Q),
+        incoming_talk_time_sec=Coalesce(Sum('call_duration', filter=conn), 0),
+        incoming_students_connected=Count('student', distinct=True, filter=conn),
+    )
+
+
+def connected_metrics(phone_q, include_phone=True, include_whatsapp=True, incoming_q=None):
     """
     Distinct-student "connected" counts. students_connected_total is ONE distinct count over the union of
     connected phone calls and connected WhatsApp entries, so a student reached on both counts once.
+    incoming_q: connected incoming calls also count as a connected student (phone_connected stays the
+    outgoing call count, same as kpis.connected).
     """
     phone_conn = phone_q & CONNECTED_Q
+    student_phone_conn = phone_conn if incoming_q is None else (phone_conn | (incoming_q & CONNECTED_Q))
     wa_conn = WHATSAPP_Q & WA_CONNECTED_Q
-    either = (phone_conn | wa_conn) if include_phone and include_whatsapp else (phone_conn if include_phone else wa_conn)
+    either = ((student_phone_conn | wa_conn) if include_phone and include_whatsapp
+              else (student_phone_conn if include_phone else wa_conn))
     out = {'students_connected_total': Count('student', distinct=True, filter=either)}
     if include_phone:
         out['phone_connected'] = Count('id', filter=phone_conn)
-        out['phone_students_connected'] = Count('student', distinct=True, filter=phone_conn)
+        out['phone_students_connected'] = Count('student', distinct=True, filter=student_phone_conn)
     return out
 
 
@@ -238,13 +261,15 @@ def parse_channel(params):
 class Scope:
     """Everything a request resolves to: the caller's allowed ids, the filtered querysets and the date range."""
 
-    def __init__(self, allowed, mentor_id, calls, manual_base, start, end, phone_q=CALL_Q, channel='all'):
+    def __init__(self, allowed, mentor_id, calls, manual_base, start, end, phone_q=OUTGOING_CALL_Q, channel='all',
+                 incoming_q=INCOMING_CALL_Q):
         self.allowed = allowed            # None = everyone, else set of user ids
         self.mentor_id = mentor_id
-        self.calls = calls                # real phone calls, all filters applied
+        self.calls = calls                # real OUTGOING phone calls, all filters applied
         self.manual_base = manual_base    # all rows, same filters minus call_status (manual + WhatsApp source)
         self.start, self.end = start, end
-        self.phone_q = phone_q            # CALL_Q & the call_status filter: "a phone call in this view"
+        self.phone_q = phone_q            # OUTGOING_CALL_Q & the call_status filter: "an outgoing call in this view"
+        self.incoming_q = incoming_q      # INCOMING_CALL_Q & the call_status filter
         self.channel = channel            # 'all' | 'phone' | 'whatsapp'
 
     @property
@@ -262,12 +287,12 @@ class Scope:
 
     @property
     def channel_q(self):
-        """Rows of the selected channel(s), for one grouped query over both."""
+        """Rows of the selected channel(s), for one grouped query over both. Phone = outgoing + incoming calls."""
         if self.channel == 'phone':
-            return self.phone_q
+            return self.phone_q | self.incoming_q
         if self.channel == 'whatsapp':
             return WHATSAPP_Q
-        return self.phone_q | WHATSAPP_Q
+        return self.phone_q | self.incoming_q | WHATSAPP_Q
 
     @property
     def combined(self):
@@ -276,7 +301,7 @@ class Scope:
     def connected_q(self, channel=None):
         """Connected contacts of a channel: phone CONNECTED call, or WhatsApp entry marked CALL_DONE (chat or call)."""
         channel = channel or self.channel
-        phone = self.phone_q & CONNECTED_Q
+        phone = (self.phone_q | self.incoming_q) & CONNECTED_Q
         wa = WHATSAPP_Q & WA_CONNECTED_Q
         if channel == 'phone':
             return phone
@@ -293,9 +318,30 @@ def build_scope(request):
     channel = parse_channel(params)
     base = scoped_feedback(request.user, mentor_id, allowed=allowed)
     manual_base, start, end = apply_filters(base, params, include_status=False)
-    phone_q = CALL_Q & status_q(params)
+    phone_q = OUTGOING_CALL_Q & status_q(params)
+    incoming_q = INCOMING_CALL_Q & status_q(params)
     return Scope(allowed, mentor_id, manual_base.filter(phone_q), manual_base, start, end,
-                 phone_q=phone_q, channel=channel)
+                 phone_q=phone_q, channel=channel, incoming_q=incoming_q)
+
+
+DIRECTIONS = ('outgoing', 'incoming')
+
+
+def parse_direction(params):
+    """Optional ?direction= for the call list (phone calls only; WhatsApp rows are not affected). None = both."""
+    direction = str(params.get('direction') or '').lower().strip()
+    if direction and direction not in DIRECTIONS:
+        raise ValidationError({'direction': f'Invalid direction: {direction} (use outgoing or incoming)'})
+    return direction or None
+
+
+def direction_q(direction):
+    """Rows kept by ?direction=: phone calls of that direction (no direction = OUTGOING) plus any WhatsApp rows."""
+    if direction == 'outgoing':
+        return WHATSAPP_Q | OUTGOING_CALL_Q
+    if direction == 'incoming':
+        return WHATSAPP_Q | INCOMING_CALL_Q
+    return Q()
 
 
 OUTCOMES = ('connected',)
@@ -312,8 +358,9 @@ def parse_outcome(params):
 # ── Pending students ───────────────────────────────────────────────────────────────────────────────
 # A connected contact by either channel (whoever logged it).
 CONNECTED_ANY_Q = (CALL_Q & CONNECTED_Q) | (WHATSAPP_Q & WA_CONNECTED_Q)
-# A real contact attempt (phone call or WhatsApp entry) that did not connect.
-ATTEMPT_NOT_CONNECTED_Q = (CALL_Q | WHATSAPP_Q) & ~CONNECTED_ANY_Q
+# A real contact attempt by the mentor (outgoing call or WhatsApp entry) that did not connect. A missed
+# INCOMING call is the student's attempt, not the mentor's, so it isn't counted here.
+ATTEMPT_NOT_CONNECTED_Q = (OUTGOING_CALL_Q | WHATSAPP_Q) & ~CONNECTED_ANY_Q
 
 # Students counted for "pending": enrolled in a batch and academically active.
 # Excluded: is_active=False, academic_status ON_BREAK / DISCONTINUED, DUPLICATE leads, students without a batch.

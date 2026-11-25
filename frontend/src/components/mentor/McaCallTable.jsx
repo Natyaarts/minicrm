@@ -100,7 +100,13 @@ const McaCallTable = ({ filters }) => {
                                                 <span className="w-2 h-2 rounded-full" style={{ background: MCA_STATUS_COLORS[statusKey(r.call_status)] || '#78716c' }} />
                                                 {statusLabel(r.call_status)}
                                             </span>
-                                            <div className="text-[11px] text-slate-500">{r.status_display}</div>
+                                            <div className="text-[11px] text-slate-500">
+                                                {r.status_display}
+                                                {' · '}
+                                                <span className={r.direction === 'INCOMING' ? 'text-sky-700 font-medium' : ''}>
+                                                    {r.direction === 'INCOMING' ? 'Incoming' : 'Outgoing'}
+                                                </span>
+                                            </div>
                                         </>
                                     )}
                                 </td>

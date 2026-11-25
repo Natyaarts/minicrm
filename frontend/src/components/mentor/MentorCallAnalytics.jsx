@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-    PhoneCall, PhoneOutgoing, Percent, Clock, Timer, Users, AlertCircle, Lock, RefreshCw,
+    PhoneCall, PhoneOutgoing, PhoneIncoming, Percent, Clock, Timer, Users, AlertCircle, Lock, RefreshCw,
     MessageCircle, UserCheck, Phone, Info, Hourglass,
 } from 'lucide-react';
 import McaConnectedModal from './McaConnectedModal';
@@ -73,7 +73,7 @@ const MentorCallAnalytics = () => {
     // Last finished request: { key, data, error }. Loading = the current request key hasn't finished yet.
     const [result, setResult] = useState({ key: null, data: null, error: null });
     const [reloadTick, setReloadTick] = useState(0);
-    // Drill-down modal: null | { type: 'connected', tab: 'phone' | 'whatsapp' } | { type: 'pending' }
+    // Drill-down modal: null | { type: 'connected', tab: 'phone' | 'whatsapp', direction?: 'outgoing' | 'incoming' } | { type: 'pending' }
     const [modal, setModal] = useState(null);
     const closeModal = useCallback(() => setModal(null), []);
 
@@ -151,7 +151,9 @@ const MentorCallAnalytics = () => {
     const wa = k?.whatsapp || null;                       // null when the WhatsApp channel isn't included
     const hasPhone = k ? k.total_calls !== null : false;  // null when the phone channel isn't included
     const waActivity = wa ? wa.wa_messages + wa.wa_connected + wa.wa_no_reply + wa.wa_not_on_whatsapp + wa.wa_calls : 0;
-    const isEmpty = k ? (hasPhone ? k.total_calls : 0) + waActivity === 0 : false;
+    // Incoming calls (student called the mentor): separate keys, not part of total calls / connect rate
+    const incomingCalls = hasPhone ? (k.incoming_calls ?? 0) : 0;
+    const isEmpty = k ? (hasPhone ? k.total_calls : 0) + incomingCalls + waActivity === 0 : false;
     const isTeam = data?.scope?.type === 'team';
     const showMentorSelect = (data?.mentor_options?.length || 0) > 1;
     const pendingCard = k ? (
@@ -167,7 +169,7 @@ const MentorCallAnalytics = () => {
             <div>
                 <h2 className="text-lg font-bold text-slate-900">Call Analytics</h2>
                 <p className="text-sm text-slate-500">
-                    Outgoing calls and WhatsApp contacts logged with feedback{isTeam ? ' · you and your team' : ' · all mentors'}. Dates use the feedback date (IST).
+                    Outgoing calls, incoming calls from students and WhatsApp contacts logged with feedback{isTeam ? ' · you and your team' : ' · all mentors'}. Dates use the feedback date (IST).
                 </p>
             </div>
 
@@ -280,10 +282,10 @@ const MentorCallAnalytics = () => {
                     {hasPhone ? (
                         <>
                             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                                <McaKpiCard icon={PhoneOutgoing} label="Total calls" value={fmtNum(k.total_calls)} />
+                                <McaKpiCard icon={PhoneOutgoing} label="Total calls" value={fmtNum(k.total_calls)} hint="Outgoing calls" />
                                 <McaKpiCard icon={PhoneCall} label="Connected" value={fmtNum(k.connected)}
                                             hint={`${fmtNum(k.missed)} missed / unanswered · click for list`}
-                                            onClick={() => setModal({ type: 'connected', tab: 'phone' })}
+                                            onClick={() => setModal({ type: 'connected', tab: 'phone', direction: 'outgoing' })}
                                             actionLabel={`Connected calls: ${fmtNum(k.connected)}. Show the list`} />
                                 <McaKpiCard icon={Percent} label="Connect rate" value={fmtPct(k.connect_rate)}
                                             hint={k.unknown_outcome > 0 ? `Excludes ${k.unknown_outcome} with unknown outcome` : 'Connected ÷ calls'} />
@@ -295,6 +297,29 @@ const MentorCallAnalytics = () => {
                                             hint={k.phone_students_connected !== null ? `${fmtNum(k.phone_students_connected)} connected` : undefined} />
                                 {pendingCard}
                             </div>
+                            {incomingCalls > 0 ? (
+                                <div role="button" tabIndex={0}
+                                     aria-label={`Incoming calls: ${fmtNum(k.incoming_connected)} answered. Show the list`}
+                                     onClick={() => setModal({ type: 'connected', tab: 'phone', direction: 'incoming' })}
+                                     onKeyDown={(e) => {
+                                         if (e.key === 'Enter' || e.key === ' ') {
+                                             e.preventDefault();
+                                             setModal({ type: 'connected', tab: 'phone', direction: 'incoming' });
+                                         }
+                                     }}
+                                     className="bg-sky-50/60 border border-sky-100 rounded-xl px-4 py-3 flex flex-wrap items-center gap-x-6 gap-y-1 cursor-pointer transition-all hover:border-sky-300 hover:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-sky-800 flex items-center gap-1.5">
+                                        <PhoneIncoming size={13} aria-hidden="true" /> Incoming calls
+                                    </p>
+                                    <p className="text-sm text-slate-700"><b className="tabular-nums">{fmtNum(k.incoming_calls)}</b> received</p>
+                                    <p className="text-sm text-slate-700"><b className="tabular-nums">{fmtNum(k.incoming_connected)}</b> answered</p>
+                                    <p className="text-sm text-slate-700"><b className="tabular-nums">{fmtNum(k.incoming_missed)}</b> missed</p>
+                                    <p className="text-sm text-slate-700"><b className="tabular-nums">{fmtDuration(k.incoming_talk_time_sec)}</b> talk time</p>
+                                    <p className="text-[11px] text-sky-900/70 w-full">
+                                        Not included in total calls, connect rate or talk time above. An answered incoming call counts the student as connected. Click for the answered calls.
+                                    </p>
+                                </div>
+                            ) : null}
                         </>
                     ) : (
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">{pendingCard}</div>
@@ -308,8 +333,8 @@ const MentorCallAnalytics = () => {
                             </p>
                             {/* WhatsApp calls / WhatsApp talk time were removed from the UI (API keys kept). */}
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                <McaKpiCard icon={MessageCircle} label="Messages sent" value={fmtNum(wa.wa_messages)}
-                                            hint={`${fmtNum(wa.wa_no_reply)} no reply · ${fmtNum(wa.wa_not_on_whatsapp)} not on WhatsApp`} />
+                                {/* <McaKpiCard icon={MessageCircle} label="Messages sent" value={fmtNum(wa.wa_messages)}
+                                            hint={`${fmtNum(wa.wa_no_reply)} no reply · ${fmtNum(wa.wa_not_on_whatsapp)} not on WhatsApp`} /> */}
                                 <McaKpiCard icon={MwaIcon} label="WhatsApp connected" value={fmtNum(wa.wa_connected)}
                                             hint={`${wa.wa_calls_connected ? `Includes ${fmtNum(wa.wa_calls_connected)} connected call${wa.wa_calls_connected === 1 ? '' : 's'}` : 'Chats and calls marked connected'} · click for list`}
                                             onClick={() => setModal({ type: 'connected', tab: 'whatsapp' })}
@@ -380,7 +405,8 @@ const MentorCallAnalytics = () => {
                     </Panel>
 
                     {modal?.type === 'connected' ? (
-                        <McaConnectedModal filters={filters} initialTab={modal.tab} onClose={closeModal} />
+                        <McaConnectedModal filters={filters} initialTab={modal.tab} initialDirection={modal.direction || 'outgoing'}
+                                           onClose={closeModal} />
                     ) : null}
                     {modal?.type === 'pending' ? <McaPendingModal filters={filters} onClose={closeModal} /> : null}
                 </div>

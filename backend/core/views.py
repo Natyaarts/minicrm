@@ -2177,6 +2177,14 @@ class StudentViewSet(viewsets.ModelViewSet):
         if mcid:
             existing = StudentFeedback.objects.filter(mobile_call_id=mcid).first()
             if existing:
+                # An INCOMING call is saved twice by design: the app auto-saves the missed row, then the
+                # mentor's review may complete it (MISSED -> CONNECTED, notes, follow-up). Outgoing rows keep
+                # the plain idempotent behaviour below.
+                if (existing.call_direction == 'INCOMING'
+                        and (d.get('call_direction') or '').upper() == 'INCOMING'
+                        and existing.mentor_id == request.user.id
+                        and existing.student_id == student.id):
+                    return self._update_incoming_feedback(existing, d, parsed, status_val, ctx)
                 return Response(StudentFeedbackSerializer(existing, context=ctx).data, status=200)
 
         call_status = (d.get('call_status') or '').upper() or None
@@ -2222,6 +2230,38 @@ class StudentViewSet(viewsets.ModelViewSet):
                 return Response(StudentFeedbackSerializer(existing, context=ctx).data, status=200)
             raise
         return Response(StudentFeedbackSerializer(fb, context=ctx).data, status=201)
+
+    @staticmethod
+    def _update_incoming_feedback(fb, d, parsed, status_val, ctx):
+        """Second save of the same INCOMING call (same mentor, student and mobile_call_id)."""
+        call_status = (d.get('call_status') or '').upper() or None
+        if call_status and call_status not in dict(StudentFeedback.CALL_STATUS_CHOICES):
+            call_status = None
+        try:
+            duration = max(0, int(d.get('call_duration') or 0))
+        except (TypeError, ValueError):
+            duration = 0
+        if call_status in UNCONNECTED and status_val == 'CALL_DONE':
+            return Response(
+                {'error': 'The phone logged this call as not connected. Choose No Answer or Call Back.'},
+                status=400)
+        # Never downgrade a connected call (save() would drop its duration and recording)
+        if (fb.call_status or '').upper() == 'CONNECTED' and (call_status in UNCONNECTED):
+            return Response(StudentFeedbackSerializer(fb, context=ctx).data, status=200)
+
+        fb.status = status_val
+        if 'feedback' in d:
+            fb.feedback = (d.get('feedback') or '').strip()
+        if call_status:
+            fb.call_status = call_status
+            fb.call_duration = duration
+        if d.get('customer_number'):
+            fb.customer_number = d.get('customer_number')
+        for key in ('start_time', 'end_time', 'next_followup_date'):
+            if parsed[key] is not None:
+                setattr(fb, key, parsed[key])
+        fb.save()
+        return Response(StudentFeedbackSerializer(fb, context=ctx).data, status=200)
 
     @action(detail=True, methods=['post'], url_path='feedback-recording',
             parser_classes=[MultiPartParser, FormParser, JSONParser])

@@ -21,13 +21,16 @@ from rest_framework.views import APIView
 
 from .call_analytics import (
     CALL_Q, IST, MANUAL_Q, METRICS, MENTOR_OPTION_ROLES, WA_METRICS, WHATSAPP_Q, build_scope, connect_rate,
-    connected_metrics, is_truthy, parse_outcome, pending_students, phone_metrics, user_display_name,
+    connected_metrics, direction_q, incoming_metrics, is_truthy, parse_direction, parse_outcome, pending_students,
+    phone_metrics, user_display_name,
 )
 from .models import StudentFeedback
 from .pagination import StandardResultsSetPagination
 from .serializers import recording_absolute_url
 
 DELETED_USER = 'Deleted user'
+INCOMING_KEYS = ('incoming_calls', 'incoming_connected', 'incoming_missed', 'incoming_talk_time_sec',
+                 'incoming_students_connected')
 
 
 class MentorCallAnalyticsView(APIView):
@@ -71,11 +74,16 @@ class MentorCallAnalyticsView(APIView):
 
         # 2. WhatsApp totals + distinct students connected, in one query over the selected channel(s).
         #    students_connected_total is a single distinct count over both channels (never phone + WhatsApp).
-        agg = dict(connected_metrics(scope.phone_q, with_phone, with_wa))
+        agg = dict(connected_metrics(scope.phone_q, with_phone, with_wa, incoming_q=scope.incoming_q))
         if with_wa:
             agg.update(WA_METRICS)
+        if with_phone:
+            agg.update(incoming_metrics(scope.incoming_q))
         c = scope.combined.aggregate(**agg)
         kpis['whatsapp'] = {key: c[key] for key in WA_METRICS} if with_wa else None
+        # Incoming calls (student called the mentor): new keys, not part of total_calls / connect rate
+        for key in INCOMING_KEYS:
+            kpis[key] = c[key] if with_phone else None
         kpis['phone_students_connected'] = c['phone_students_connected'] if with_phone else None
         kpis['students_connected_total'] = c['students_connected_total']
 
@@ -86,9 +94,10 @@ class MentorCallAnalyticsView(APIView):
         ] if with_phone else []
 
         # 4. Leaderboard: ONE grouped query over the selected channel(s), filtered aggregates, one row per caller
-        lb_metrics = dict(connected_metrics(scope.phone_q, with_phone, with_wa))
+        lb_metrics = dict(connected_metrics(scope.phone_q, with_phone, with_wa, incoming_q=scope.incoming_q))
         if with_phone:
             lb_metrics.update(phone_metrics(scope.phone_q))
+            lb_metrics.update(incoming_metrics(scope.incoming_q))
         if with_wa:
             lb_metrics.update(WA_METRICS)
         rows = (scope.combined
@@ -117,12 +126,15 @@ class MentorCallAnalyticsView(APIView):
                     'unique_students': r['unique_students'],
                     'phone_connected': r['phone_connected'],
                     'phone_students_connected': r['phone_students_connected'],
+                    'incoming_calls': r['incoming_calls'],
+                    'incoming_connected': r['incoming_connected'],
+                    'incoming_talk_time_sec': r['incoming_talk_time_sec'],
                 })
             else:
                 entry.update({key: None for key in (
                     'calls', 'connected', 'missed', 'unknown_outcome', 'connect_rate', 'talk_time_sec',
                     'avg_duration_sec', 'longest_call_sec', 'unique_students', 'phone_connected',
-                    'phone_students_connected')})
+                    'phone_students_connected', 'incoming_calls', 'incoming_connected', 'incoming_talk_time_sec')})
             for key in ('wa_connected', 'wa_students_connected', 'wa_calls', 'wa_talk_time_sec'):
                 entry[key] = r[key] if with_wa else None
             leaderboard.append(entry)
@@ -255,6 +267,8 @@ def _call_row(request, f):
         'batch_name': student.batch.name if student and student.batch_id and student.batch else '',
         'call_status': f.call_status or None,
         'call_direction': f.call_direction or None,
+        # Normalised direction: phone rows without one predate incoming logging and are outgoing
+        'direction': (f.call_direction or 'OUTGOING') if not is_wa else (f.call_direction or None),
         'call_duration': f.call_duration,
         'status': f.status,
         'status_display': f.get_status_display(),
@@ -279,9 +293,13 @@ class MentorCallListView(APIView):
         start, end = scope.start, scope.end
         # channel=all (default) lists phone calls and WhatsApp logs; phone / whatsapp narrow it.
         # outcome=connected keeps connected contacts only (the "Connected" / "WhatsApp connected" cards).
+        # direction=outgoing|incoming narrows the phone calls (optional; absent = both, as before).
         qs = scope.combined
         if parse_outcome(request.query_params) == 'connected':
             qs = qs.filter(scope.connected_q())
+        direction = parse_direction(request.query_params)
+        if direction:
+            qs = qs.filter(direction_q(direction))
         qs = (qs.select_related('student', 'student__batch', 'mentor')
               .order_by('-feedback_date', '-start_time', '-id'))
 
@@ -306,7 +324,7 @@ class MentorCallListView(APIView):
                     r['feedback_date'], r['start_time'][:19].replace('T', ' ') if r['start_time'] else '',
                     'WhatsApp' if is_wa else 'Phone',
                     r['mentor_name'], r['mentor_role'], r['student_name'], r['student_phone'], r['batch_name'],
-                    '' if is_wa else (r['call_status'] or 'UNKNOWN'), r['call_direction'], r['call_duration'],
+                    '' if is_wa else (r['call_status'] or 'UNKNOWN'), r['direction'], r['call_duration'],
                     r['whatsapp_label'] if is_wa else r['status_display'],
                     r['feedback'], r['next_followup_date'], r['recording_url'],
                 )])

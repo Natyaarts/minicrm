@@ -13,6 +13,12 @@ const TABS = [
     { id: 'whatsapp', label: 'WhatsApp' },
     { id: 'all', label: 'All' },
 ];
+// Phone tab only. Outgoing = the "Connected" card (calls without a direction count as outgoing);
+// Incoming = the incoming calls row (students who called the mentor).
+const DIRECTIONS = [
+    { id: 'outgoing', label: 'Outgoing' },
+    { id: 'incoming', label: 'Incoming' },
+];
 
 const ChannelBadge = ({ channel }) => (channel === 'WHATSAPP' ? (
     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">
@@ -25,16 +31,21 @@ const ChannelBadge = ({ channel }) => (channel === 'WHATSAPP' ? (
 ));
 
 /** Paginated list of connected contacts (phone CONNECTED / WhatsApp marked connected) for the page filters. */
-const McaConnectedModal = ({ filters, initialTab = 'phone', onClose }) => {
+const McaConnectedModal = ({ filters, initialTab = 'phone', initialDirection = 'outgoing', onClose }) => {
     const [tab, setTab] = useState(initialTab);
-    // Page remembered per tab, so switching tabs starts at page 1
-    const [pageState, setPageState] = useState({ tab: initialTab, page: 1 });
-    const page = pageState.tab === tab ? pageState.page : 1;
+    const [direction, setDirection] = useState(initialDirection);
+    // Page remembered per tab (and phone direction), so switching starts at page 1
+    const viewKey = tab === 'phone' ? `phone:${direction}` : tab;
+    const [pageState, setPageState] = useState({ view: viewKey, page: 1 });
+    const page = pageState.view === viewKey ? pageState.page : 1;
     const [expanded, setExpanded] = useState(null);
     const [exporting, setExporting] = useState(false);
 
     // Page filters (date range, mentor, batch/course/program); the call-outcome filter doesn't apply here
-    const params = useMemo(() => ({ ...filters, call_status: '', channel: tab, outcome: 'connected' }), [filters, tab]);
+    const params = useMemo(() => ({
+        ...filters, call_status: '', channel: tab, outcome: 'connected',
+        ...(tab === 'phone' ? { direction } : {}),
+    }), [filters, tab, direction]);
     const { count, results, error, loading } = useMcaPaged(getMentorCalls, params, page, PAGE_SIZE, 'Could not load connected contacts.');
 
     const handleExport = async () => {
@@ -52,7 +63,7 @@ const McaConnectedModal = ({ filters, initialTab = 'phone', onClose }) => {
     return (
         <McaModal
             title="Connected contacts"
-            subtitle={`${filters.start_date || ''} to ${filters.end_date || ''} · phone calls that connected and WhatsApp contacts marked connected`}
+            subtitle={`${filters.start_date || ''} to ${filters.end_date || ''} · phone calls that connected (outgoing and incoming) and WhatsApp contacts marked connected`}
             onClose={onClose}
             headerExtra={(
                 <button type="button" onClick={handleExport} disabled={exporting || !count}
@@ -70,6 +81,17 @@ const McaConnectedModal = ({ filters, initialTab = 'phone', onClose }) => {
                     </button>
                 ))}
             </div>
+            {tab === 'phone' ? (
+                <div className="flex bg-slate-100 rounded-lg p-0.5 gap-0.5 w-fit -mt-2 mb-4" role="tablist" aria-label="Call direction">
+                    {DIRECTIONS.map((d) => (
+                        <button key={d.id} type="button" role="tab" aria-selected={direction === d.id}
+                                onClick={() => { setDirection(d.id); setExpanded(null); }}
+                                className={`px-3 py-1 text-xs rounded-md font-medium transition-colors ${direction === d.id ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>
+                            {d.label}
+                        </button>
+                    ))}
+                </div>
+            ) : null}
 
             {error ? (
                 <p className="flex items-center gap-2 text-sm text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2 mb-3">
@@ -114,7 +136,12 @@ const McaConnectedModal = ({ filters, initialTab = 'phone', onClose }) => {
                                     <td className="py-2 px-3 text-slate-700">
                                         <span className={r.mentor_id ? '' : 'italic text-slate-400'}>{r.mentor_name}</span>
                                     </td>
-                                    <td className="py-2 px-3 whitespace-nowrap"><ChannelBadge channel={r.channel} /></td>
+                                    <td className="py-2 px-3 whitespace-nowrap">
+                                        <ChannelBadge channel={r.channel} />
+                                        {!isWa ? (
+                                            <div className="text-[11px] text-slate-500 mt-0.5">{r.direction === 'INCOMING' ? 'Incoming' : 'Outgoing'}</div>
+                                        ) : null}
+                                    </td>
                                     <td className="py-2 px-3 text-right tabular-nums text-slate-800 whitespace-nowrap">
                                         {isWa ? '–' : fmtDuration(r.call_duration)}
                                     </td>
@@ -136,7 +163,7 @@ const McaConnectedModal = ({ filters, initialTab = 'phone', onClose }) => {
             </div>
 
             <McaPagination page={page} pageSize={PAGE_SIZE} count={count} disabled={loading}
-                           onPage={(p) => { setPageState({ tab, page: p }); setExpanded(null); }} />
+                           onPage={(p) => { setPageState({ view: viewKey, page: p }); setExpanded(null); }} />
         </McaModal>
     );
 };

@@ -940,3 +940,109 @@ export const syncMissingRecordings = async () => {
 
 const recordingKeysIn = (uri: string, set?: Set<string>): boolean =>
   !!set && recordingKeys(uri).some((k) => set.has(k));
+
+// ── Mentor incoming calls (offline queue) ──────────────────────────────────────────────────────────
+// A mentor's incoming call whose add_feedback POST failed (network / server) is kept here and retried.
+// Separate key from the sales queues (queueOfflineCall / pending recordings are not involved). An item is
+// only ever saved as the user who received the call: a different signed-in user drops it.
+const PENDING_MENTOR_INCOMING_KEY = '@pending_mentor_incoming_feedback';
+const PENDING_MENTOR_INCOMING_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+export interface PendingMentorIncomingFeedback {
+  mobileCallId: string;
+  studentId: string | number;
+  /** getCurrentUserKey() of the mentor who received the call */
+  userKey: string;
+  /** add_feedback payload (call_direction INCOMING) */
+  payload: Record<string, any>;
+  /** Recording to upload once the feedback exists */
+  recording?: { uri: string; name: string; type: string } | null;
+  /** Connected call without a file yet: queued for the late-recording matcher after saving */
+  lateRecording?: LateRecordingWindow | null;
+  /** add_feedback already succeeded; only the recording upload is left */
+  feedbackSaved?: boolean;
+  queuedAt: number;
+}
+
+export const getPendingMentorIncomingFeedback = () => readList<PendingMentorIncomingFeedback>(PENDING_MENTOR_INCOMING_KEY);
+
+export const queueMentorIncomingFeedback = async (item: Omit<PendingMentorIncomingFeedback, 'queuedAt'>) => {
+  const list = (await getPendingMentorIncomingFeedback()).filter(i => i.mobileCallId !== item.mobileCallId);
+  list.push({ ...item, queuedAt: Date.now() });
+  await writeList(PENDING_MENTOR_INCOMING_KEY, list);
+  if (item.recording?.uri) await reserveRecording(item.recording.uri, item.mobileCallId);
+  console.log(`[mentor-incoming] queued ${item.mobileCallId}`);
+};
+
+let isSyncingMentorIncoming = false;
+
+const isPermanentHttpError = (err: any) => {
+  const status = err?.response?.status;
+  return status === 400 || status === 403 || status === 404;
+};
+
+/** Retries queued mentor incoming-call feedback. No-op when the queue is empty. */
+export const syncMentorIncomingFeedback = async () => {
+  if (isSyncingMentorIncoming) return;
+  isSyncingMentorIncoming = true;
+  try {
+    const items = await getPendingMentorIncomingFeedback();
+    if (items.length === 0) return;
+    const userKey = await getCurrentUserKey();
+    const { addStudentFeedback, uploadFeedbackRecording } = await import('../api/mentors');
+    const keep: PendingMentorIncomingFeedback[] = [];
+    const handled = new Set<string>();
+
+    for (const item of items) {
+      handled.add(item.mobileCallId);
+      const release = () => releaseRecordingReservation({ mobileCallId: item.mobileCallId });
+      if (!item.userKey || item.userKey !== userKey) {
+        // Never save a call as someone else
+        console.warn(`[mentor-incoming] dropping ${item.mobileCallId}: queued by another user`);
+        await release();
+        continue;
+      }
+      if (Date.now() - item.queuedAt > PENDING_MENTOR_INCOMING_MAX_AGE_MS) {
+        console.warn(`[mentor-incoming] dropping ${item.mobileCallId}: older than 7 days`);
+        await release();
+        continue;
+      }
+      let next: PendingMentorIncomingFeedback | null = item;
+      try {
+        if (!item.feedbackSaved) {
+          await addStudentFeedback(item.studentId, item.payload);   // idempotent on mobile_call_id
+          next = { ...item, feedbackSaved: true };
+        }
+        if (next.recording?.uri) {
+          await uploadFeedbackRecording(item.studentId, {
+            mobileCallId: item.mobileCallId, uri: next.recording.uri, name: next.recording.name, type: next.recording.type,
+          });
+          await markRecordingConsumed(next.recording.uri);
+          await release();
+        } else if (next.lateRecording) {
+          await queuePendingMentorRecording({
+            mobileCallId: item.mobileCallId, studentId: item.studentId, ...next.lateRecording,
+          });
+        }
+        next = null;   // done
+        console.log(`[mentor-incoming] synced ${item.mobileCallId}`);
+      } catch (err: any) {
+        if (isPermanentHttpError(err)) {
+          console.warn(`[mentor-incoming] ${item.mobileCallId} rejected (${err?.response?.status}), dropping`, err?.response?.data);
+          await release();
+          next = null;
+        }
+        // otherwise keep `next` (network / server error) for the next run
+      }
+      if (next) keep.push(next);
+    }
+
+    // Keep items queued by a concurrent save while this pass was running
+    const latest = await getPendingMentorIncomingFeedback();
+    await writeList(PENDING_MENTOR_INCOMING_KEY, [...keep, ...latest.filter(i => !handled.has(i.mobileCallId))]);
+  } catch (err) {
+    console.warn('[mentor-incoming] sync error:', err);
+  } finally {
+    isSyncingMentorIncoming = false;
+  }
+};
