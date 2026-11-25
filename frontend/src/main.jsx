@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
 import { AuthProvider } from './context/AuthContext'
+import PWAUpdatePrompt from './components/PWAUpdatePrompt.jsx'
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -47,6 +48,7 @@ createRoot(rootElement).render(
     <ErrorBoundary>
       <AuthProvider>
         <App />
+        <PWAUpdatePrompt />
       </AuthProvider>
     </ErrorBoundary>
   </StrictMode>,
