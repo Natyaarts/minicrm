@@ -41,24 +41,40 @@ def normalize_lead_phone(raw_phone: Optional[str]) -> str:
     """
     Standardize and clean phone numbers for lead ingestion and duplicate detection.
     Reuses existing core.models.normalize_phone_number() while filtering out
-    invalid placeholders, prefixes (p:, p;), and blank strings.
+    invalid placeholders, prefixes (p:, p;), float suffixes (.0), scientific notation,
+    multi-number strings, and blank strings.
     """
-    if not raw_phone:
+    if raw_phone is None:
         return ''
     
-    val = str(raw_phone).strip()
+    val = str(raw_phone).strip().strip("'\"")
     if not val:
         return ''
-    
-    # Strip common prefixes from CSVs/Forms
-    val_lower = val.lower()
-    if val_lower.startswith('p:'):
-        val = val[2:].strip()
-    elif val_lower.startswith('p;'):
-        val = val[2:].strip()
+
+    # If multiple phone numbers are provided in a single cell (e.g. "9876543210 / 9123456789"),
+    # extract the first valid phone number.
+    if any(sep in val for sep in ('/', ',', ';', '\n')):
+        for part in re.split(r'[/,;\n]+', val):
+            part_norm = normalize_lead_phone(part)
+            if part_norm:
+                return part_norm
+        return ''
+
+    # Strip common prefixes from CSVs/Forms/Sheets
+    val = re.sub(r'^(?:p[:;]|tel:|phone:|ph:|mob:|mobile:|whatsapp:)\s*', '', val, flags=re.IGNORECASE).strip()
+
+    # Handle spreadsheet float formatting (e.g. "9876543210.0") and scientific notation (e.g. "9.87654321E+09")
+    if re.match(r'^[+-]?\d+\.0+$', val):
+        val = val.split('.', 1)[0]
+    elif re.match(r'^[+-]?\d+(?:\.\d+)?[eE][+-]?\d+$', val):
+        try:
+            from decimal import Decimal
+            val = str(int(Decimal(val)))
+        except Exception:
+            pass
     
     # Strip spaces and hyphens
-    val_clean = val.replace(' ', '').replace('-', '').replace('(', '').replace(')', '')
+    val_clean = val.replace(' ', '').replace('-', '').replace('(', '').replace(')', '').replace('.', '')
     
     # Extract raw digits first
     raw_digits = ''.join(c for c in val_clean if c.isdigit())
@@ -88,9 +104,9 @@ def normalize_lead_phone(raw_phone: Optional[str]) -> str:
     # Run through the standard CRM normalize_phone_number logic
     normalized = normalize_phone_number(val_clean)
     
-    # Validate result digits
+    # Validate result digits and Student.mobile max_length=15 constraint
     digits = ''.join(c for c in normalized if c.isdigit())
-    if not digits or len(digits) < 7:
+    if not digits or len(digits) < 7 or len(normalized) > 15:
         return ''
         
     return normalized
@@ -374,6 +390,7 @@ def create_duplicate_lead(
     meta_lead_id: Optional[str] = None,
     extra_fields: Optional[dict] = None,
     log_reengagement: bool = False,
+    username_suffix: Optional[str] = None,
 ) -> Student:
     """
     Creates a new Student/CRM lead record for an incoming duplicate lead.
@@ -409,14 +426,16 @@ def create_duplicate_lead(
             duplicate_reason=duplicate_reason,
         )
 
-    fname = (first_name or (target_original.first_name if target_original else '') or 'Lead').strip()
-    lname = (last_name or (target_original.last_name if target_original else '') or '').strip()
+    fname = (first_name or (target_original.first_name if target_original else '') or 'Lead').strip()[:50]
+    lname = (last_name or (target_original.last_name if target_original else '') or '').strip()[:50]
 
     # 2. Generate unique username for the duplicate Student's User
     base_ident = clean_mobile or clean_email or fname
     clean_ident = re.sub(r'[^\w@+\.-]', '_', str(base_ident))
     unique_suffix = uuid.uuid4().hex[:8]
-    username = f"dup_{clean_ident}_{unique_suffix}"[:150]
+    suffix_part = str(username_suffix or '')
+    max_ident_len = max(10, 150 - len("dup__") - len(unique_suffix) - len(suffix_part))
+    username = f"dup_{clean_ident[:max_ident_len]}_{unique_suffix}{suffix_part}"[:150]
 
     # 3. Resolve Program
     from core.models import Program
@@ -447,7 +466,7 @@ def create_duplicate_lead(
 
         user = User.objects.create_user(
             username=username,
-            email=clean_email or (email if email else '') or '',
+            email=clean_email or '',
             first_name=fname,
             last_name=lname,
             role='STUDENT',
@@ -461,8 +480,8 @@ def create_duplicate_lead(
             'crm_student_id': crm_id,
             'first_name': fname,
             'last_name': lname,
-            'email': clean_email or (email if email else None),
-            'mobile': clean_mobile or (mobile if mobile else None),
+            'email': clean_email or None,
+            'mobile': clean_mobile or None,
             'program_type': resolved_program,
             'campaign': campaign,
             'duplicate_of': root_student,

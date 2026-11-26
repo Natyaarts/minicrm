@@ -1140,3 +1140,288 @@ class BulkUploadPreferredContactTimeTests(TestCase):
         response = self.client.post(url, {'file': csv_file}, format='multipart')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(Student.objects.get(mobile='+919876543210').preferred_contact_time, '')
+
+
+class GoogleSheetsAutoImportWorkflowTests(TestCase):
+    """
+    End-to-end verification of Google Sheets automatic lead import:
+    - Single & multiple lead import with round-robin BDE assignment
+    - Header variations ('Full Name', 'WhatsApp Number', 'Email_Address', title banner offset)
+    - Sheet tab names with spaces ('Form Responses 1') and fallback to first tab on HTTP 400
+    - Duplicate phone & email detection (including '.0' float formatting, scientific notation, multi-number cells)
+    - Invalid/missing fields handling (one bad row does not abort subsequent valid rows; invalid email placeholder 'N/A' not stored)
+    - API authentication failure & 401 refresh recovery
+    - Temporary Google Sheets API failure (503 / network error) retry
+    - Retrying failed/incomplete rows without duplicating subsequent rows that already succeeded
+    - Re-running sync and Force Full Sync without creating duplicate records
+    """
+
+    def setUp(self):
+        LeadDeduplicationTestSuite.setUp(self)
+        self.sales_rep_2 = User.objects.create_user(
+            username='rep_dedup_test_2',
+            password='Password@123',
+            email='rep2_dedup@example.com',
+            role='SALES',
+            sales_section='CAREER_ACADEMY',
+            first_name='Vishnu',
+            last_name='Das',
+            is_active=True,
+        )
+        self.sales_rep.sales_section = 'CAREER_ACADEMY'
+        self.sales_rep.save(update_fields=['sales_section'])
+        self.campaign.auto_assign_to.add(self.sales_rep_2)
+        self.campaign.status = 'ACTIVE'
+        self.campaign.google_spreadsheet_id = 'https://docs.google.com/spreadsheets/d/sheet_auto_123/edit#gid=0'
+        self.campaign.google_sheet_name = 'Form Responses 1'
+        self.campaign.google_auto_sync = True
+        self.campaign.google_last_synced_row = 1
+        self.campaign.save()
+
+    def _mock_res(self, rows, status_code=200):
+        from unittest.mock import MagicMock
+        mock_res = MagicMock()
+        mock_res.status_code = status_code
+        mock_res.text = 'mock response'
+        mock_res.json.return_value = {'values': rows} if status_code == 200 else {'error': 'API Error'}
+        return mock_res
+
+    def test_01_import_new_and_multiple_leads_with_header_variants_and_url_encoding(self):
+        """
+        Verifies importing new and multiple leads when headers use 'Full Name',
+        'WhatsApp Number', 'Email_Address', and sheet tab has spaces ('Form Responses 1').
+        """
+        from unittest.mock import patch
+        rows = [
+            ['Full Name *', 'Phone Number', 'WhatsApp Number', 'Email_Address', 'City', 'Course'],
+            ['Aswathy Pillai', '', '9895277332.0', 'aswathy@yahoo.com', 'Kochi', 'Bharatanatyam'],
+            ['Kiran Kumar', '9447112233 / 9447000000', '', 'N/A', 'Calicut', 'Mohiniyattam'],
+        ]
+        with patch('crm.views_google.get_refreshed_access_token', return_value='mock_token'), \
+             patch('crm.views_google.requests.get', return_value=self._mock_res(rows)) as mock_get:
+            res = self.client.post('/api/crm/google/sync/', {'campaign_id': self.campaign.id}, format='json')
+
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['imported'], 2)
+        self.assertEqual(res.data['added'], 2)
+        self.assertEqual(res.data['skipped'], 0)
+
+        # Verify URL path used %20 (not '+') and extracted clean spreadsheet ID
+        called_url = mock_get.call_args[0][0]
+        self.assertIn('/spreadsheets/sheet_auto_123/values/', called_url)
+        self.assertIn('%27Form%20Responses%201%27!A:Z', called_url)
+        self.assertNotIn('+', called_url)
+
+        lead1 = Student.objects.get(mobile='+919895277332')
+        self.assertEqual(lead1.first_name, 'Aswathy')
+        self.assertEqual(lead1.last_name, 'Pillai')
+        self.assertEqual(lead1.email, 'aswathy@yahoo.com')
+        self.assertEqual(lead1.perm_city, 'Kochi')
+        self.assertEqual(lead1.lms_course_names, 'Bharatanatyam')
+
+        lead2 = Student.objects.get(mobile='+919447112233')
+        self.assertEqual(lead2.first_name, 'Kiran')
+        self.assertEqual(lead2.last_name, 'Kumar')
+        # Invalid email placeholder 'N/A' must not be saved as Student.email
+        self.assertIsNone(lead2.email)
+        self.assertNotEqual(lead1.assigned_to, lead2.assigned_to)
+
+    def test_02_duplicate_phone_and_email_handling(self):
+        """
+        Verifies duplicate detection by phone (including .0 float suffix) and by email
+        creates DUPLICATE records without altering original lead ownership or stage.
+        """
+        from unittest.mock import patch
+        rows = [
+            ['Full Name', 'Mobile', 'Email'],
+            # Duplicate phone of seeded_student (+917356679007) formatted with .0 float suffix
+            ['Akshaya PhoneDup', '7356679007.0', 'different_email@gmail.com'],
+            # Duplicate email of seeded_student (akshaya.akku@gmail.com) with different phone
+            ['Akshaya EmailDup', '9847998877', 'AKSHAYA.AKKU@GMAIL.COM'],
+        ]
+        with patch('crm.views_google.get_refreshed_access_token', return_value='mock_token'), \
+             patch('crm.views_google.requests.get', return_value=self._mock_res(rows)):
+            res = self.client.post('/api/crm/google/sync/', {'campaign_id': self.campaign.id}, format='json')
+
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['imported'], 2)
+        self.assertEqual(res.data['duplicates'], 2)
+        self.assertEqual(res.data['added'], 0)
+
+        dups = Student.objects.filter(lead_status='DUPLICATE', duplicate_of=self.seeded_student)
+        self.assertEqual(dups.count(), 2)
+        for d in dups:
+            self.assertIsNone(d.assigned_to)
+
+    def test_03_invalid_row_does_not_stop_subsequent_rows_and_can_be_retried(self):
+        """
+        Verifies:
+        1. An invalid/incomplete row in the middle of the sheet does not stop later valid rows.
+        2. google_last_synced_row is held at the incomplete row index.
+        3. When the incomplete row is later filled in on Google Sheets and sync runs again,
+           the fixed row is imported while subsequent rows that already succeeded are NOT duplicated.
+        """
+        from unittest.mock import patch
+        from django.core.management import call_command
+
+        # Run 1: Row 1 valid, Row 2 missing phone/email (incomplete), Row 3 valid, Row 4 trailing blank
+        rows_run1 = [
+            ['Full Name', 'Mobile', 'Email'],
+            ['Lead One', '9847000001', 'lead1@gmail.com'],
+            ['Lead Two Incomplete', '', 'N/A'],
+            ['Lead Three', '9847000003', 'lead3@gmail.com'],
+            ['', '', ''],
+        ]
+        with patch('crm.management.commands.run_google_sync.get_refreshed_access_token', return_value='mock_token'), \
+             patch('crm.management.commands.run_google_sync.requests.get', return_value=self._mock_res(rows_run1)):
+            call_command('run_google_sync', stdout=io.StringIO())
+
+        self.assertTrue(Student.objects.filter(mobile='+919847000001').exists())
+        self.assertTrue(Student.objects.filter(mobile='+919847000003').exists())
+        self.campaign.refresh_from_db()
+        # Held at index 2 (Row 2 Incomplete) so Row 2 will be retried
+        self.assertEqual(self.campaign.google_last_synced_row, 2)
+
+        # Run 2: Row 2 now has its phone number filled in, and Row 4 (previously blank) now has Lead Four
+        rows_run2 = [
+            ['Full Name', 'Mobile', 'Email'],
+            ['Lead One', '9847000001', 'lead1@gmail.com'],
+            ['Lead Two Fixed', '9847000002', 'lead2@gmail.com'],
+            ['Lead Three', '9847000003', 'lead3@gmail.com'],
+            ['Lead Four', '9847000004', 'lead4@gmail.com'],
+        ]
+        with patch('crm.management.commands.run_google_sync.get_refreshed_access_token', return_value='mock_token'), \
+             patch('crm.management.commands.run_google_sync.requests.get', return_value=self._mock_res(rows_run2)):
+            call_command('run_google_sync', stdout=io.StringIO())
+
+        # Lead Two and Lead Four are now imported
+        self.assertTrue(Student.objects.filter(mobile='+919847000002').exists())
+        self.assertTrue(Student.objects.filter(mobile='+919847000004').exists())
+        # Lead Three was NOT duplicated when re-scanned during retry!
+        self.assertEqual(Student.objects.filter(mobile='+919847000003').count(), 1)
+        self.assertEqual(Student.objects.filter(lead_status='DUPLICATE').count(), 0)
+        self.campaign.refresh_from_db()
+        self.assertEqual(self.campaign.google_last_synced_row, 5)
+
+    def test_04_db_exception_on_one_row_retries_safely_without_duplicating_other_rows(self):
+        """
+        Simulates a transient database exception on Row 2 during Run 1 while Row 1 and Row 3 succeed.
+        Verifies Run 2 retries and imports Row 2 without duplicating Row 1 or Row 3.
+        """
+        from unittest.mock import patch
+        rows = [
+            ['Full Name', 'Mobile', 'Email'],
+            ['DB Lead 1', '9847100001', 'dblead1@gmail.com'],
+            ['DB Lead 2', '9847100002', 'dblead2@gmail.com'],
+            ['DB Lead 3', '9847100003', 'dblead3@gmail.com'],
+        ]
+        orig_create = Student.objects.create
+        call_counter = {'n': 0}
+
+        def flaky_create(*args, **kwargs):
+            call_counter['n'] += 1
+            if kwargs.get('mobile') == '+919847100002' and call_counter['n'] == 2:
+                raise RuntimeError("Simulated transient DB write error on row 2")
+            return orig_create(*args, **kwargs)
+
+        with patch('crm.views_google.get_refreshed_access_token', return_value='mock_token'), \
+             patch('crm.views_google.requests.get', return_value=self._mock_res(rows)), \
+             patch.object(Student.objects, 'create', side_effect=flaky_create):
+            res1 = self.client.post('/api/crm/google/sync/', {'campaign_id': self.campaign.id}, format='json')
+
+        self.assertEqual(res1.status_code, status.HTTP_200_OK)
+        self.assertEqual(res1.data['imported'], 2)
+        self.assertEqual(res1.data['failed'], 1)
+        self.assertTrue(Student.objects.filter(mobile='+919847100001').exists())
+        self.assertFalse(Student.objects.filter(mobile='+919847100002').exists())
+        self.assertTrue(Student.objects.filter(mobile='+919847100003').exists())
+        self.campaign.refresh_from_db()
+        self.assertEqual(self.campaign.google_last_synced_row, 2)
+
+        # Retry run: Row 2 now succeeds, Row 3 is skipped idempotently
+        with patch('crm.views_google.get_refreshed_access_token', return_value='mock_token'), \
+             patch('crm.views_google.requests.get', return_value=self._mock_res(rows)):
+            res2 = self.client.post('/api/crm/google/sync/', {'campaign_id': self.campaign.id}, format='json')
+
+        self.assertEqual(res2.status_code, status.HTTP_200_OK)
+        self.assertEqual(res2.data['imported'], 1)
+        self.assertEqual(res2.data['failed'], 0)
+        self.assertEqual(res2.data['already_synced'], 1)
+        self.assertEqual(Student.objects.filter(mobile='+919847100002').count(), 1)
+        self.assertEqual(Student.objects.filter(mobile='+919847100003').count(), 1)
+        self.assertEqual(Student.objects.filter(lead_status='DUPLICATE').count(), 0)
+        self.campaign.refresh_from_db()
+        self.assertEqual(self.campaign.google_last_synced_row, 4)
+
+    def test_05_rerun_and_force_full_sync_do_not_create_duplicates(self):
+        """
+        Verifies re-running sync (both normal incremental and force_full_sync=True)
+        does not duplicate leads that were already imported from the sheet.
+        """
+        from unittest.mock import patch
+        rows = [
+            ['Full Name', 'Mobile', 'Email'],
+            ['Idempotent Lead 1', '9847200001', 'idem1@gmail.com'],
+            ['Idempotent Lead 2', '9847200002', 'idem2@gmail.com'],
+        ]
+        with patch('crm.views_google.get_refreshed_access_token', return_value='mock_token'), \
+             patch('crm.views_google.requests.get', return_value=self._mock_res(rows)):
+            res1 = self.client.post('/api/crm/google/sync/', {'campaign_id': self.campaign.id}, format='json')
+            self.assertEqual(res1.data['imported'], 2)
+
+            # Normal re-run with no new rows
+            res2 = self.client.post('/api/crm/google/sync/', {'campaign_id': self.campaign.id}, format='json')
+            self.assertEqual(res2.data['imported'], 0)
+
+            # Force full sync re-run on same rows
+            res3 = self.client.post(
+                '/api/crm/google/sync/',
+                {'campaign_id': self.campaign.id, 'force_full_sync': True},
+                format='json',
+            )
+            self.assertEqual(res3.data['imported'], 0)
+            self.assertEqual(res3.data['already_synced'], 2)
+
+        self.assertEqual(Student.objects.filter(mobile='+919847200001').count(), 1)
+        self.assertEqual(Student.objects.filter(mobile='+919847200002').count(), 1)
+        self.assertEqual(Student.objects.filter(lead_status='DUPLICATE').count(), 0)
+
+    def test_06_temporary_google_api_failure_and_tab_fallback_and_auth_recovery(self):
+        """
+        Verifies:
+        - Transient HTTP 503 followed by HTTP 200 succeeds via automatic retry.
+        - HTTP 400 (e.g. default 'Sheet1' tab missing) falls back to first sheet tab ('A:Z').
+        - Token refresh network error in run_google_sync logs error and continues to next campaign without crashing.
+        """
+        from unittest.mock import patch
+        from django.core.management import call_command
+        import requests as req_lib
+
+        rows = [
+            ['Full Name', 'Mobile', 'Email'],
+            ['Resilient Lead', '9847300001', 'resilient@gmail.com'],
+        ]
+        res_503 = self._mock_res([], status_code=503)
+        res_400 = self._mock_res([], status_code=400)
+        res_200 = self._mock_res(rows, status_code=200)
+
+        # 503 transient failure -> 400 range parse error on tab -> 200 on fallback 'A:Z'
+        with patch('crm.views_google.get_refreshed_access_token', return_value='mock_token'), \
+             patch('crm.views_google.time.sleep'), \
+             patch('crm.views_google.requests.get', side_effect=[res_503, res_400, res_200]) as mock_get:
+            res = self.client.post('/api/crm/google/sync/', {'campaign_id': self.campaign.id}, format='json')
+
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['imported'], 1)
+        self.assertEqual(mock_get.call_count, 3)
+        self.assertTrue(mock_get.call_args_list[-1][0][0].endswith('/values/A:Z'))
+        self.assertTrue(Student.objects.filter(mobile='+919847300001').exists())
+
+        # Token refresh network exception in get_refreshed_access_token must return None cleanly
+        self.campaign.google_refresh_token = 'refresh_tok'
+        self.campaign.google_token_expiry = None
+        self.campaign.save()
+        with patch('crm.views_google.requests.post', side_effect=req_lib.RequestException("OAuth timeout")):
+            out = io.StringIO()
+            call_command('run_google_sync', stdout=out)
+            self.assertIn(f'Failed to get access token for Campaign {self.campaign.id}', out.getvalue())
