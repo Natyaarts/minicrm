@@ -25,21 +25,149 @@ PREFERRED_CONTACT_TIME_HEADERS = [
 ]
 
 # Normalised name / last name / mobile / email header aliases used by the
-# bulk upload paths. These columns are never treated as the availability column.
-LEAD_IDENTITY_HEADERS = {
-    'full name', 'fullname', 'student name', 'name', 'first name', 'firstname',
-    'last name', 'lastname', 'surname',
-    'email', 'email address', 'mail',
-    'contact', 'mobile', 'phone', 'phone number', 'mobile number',
-    'contact number', 'whatsapp',
-}
+# bulk upload and Google Sheets sync paths. These columns are never treated as the availability column.
+FIRST_NAME_HEADER_ALIASES = [
+    'first name', 'firstname', 'full name', 'fullname', 'name',
+    'student name', 'candidate name', 'lead name', 'applicant name',
+    'customer name', 'your name', 'person name',
+]
+
+LAST_NAME_HEADER_ALIASES = [
+    'last name', 'lastname', 'surname', 'family name', 'second name',
+]
+
+MOBILE_HEADER_ALIASES = [
+    'mobile', 'phone', 'contact', 'mobile number', 'phone number',
+    'contact number', 'whatsapp', 'whatsapp number', 'mobile no',
+    'phone no', 'contact no', 'telephone', 'cell', 'cell phone',
+    'primary phone', 'alternate phone',
+]
+
+EMAIL_HEADER_ALIASES = [
+    'email', 'email address', 'mail', 'e mail', 'email id',
+    'student email', 'candidate email', 'work email',
+]
+
+PLACE_HEADER_ALIASES = [
+    'place', 'city', 'location', 'town', 'district',
+]
+
+TAG_HEADER_ALIASES = [
+    'tag', 'course', 'course name', 'interested course', 'program', 'program name',
+]
+
+LEAD_IDENTITY_HEADERS = set(
+    FIRST_NAME_HEADER_ALIASES
+    + LAST_NAME_HEADER_ALIASES
+    + MOBILE_HEADER_ALIASES
+    + EMAIL_HEADER_ALIASES
+)
 
 
 def normalize_sheet_header(header) -> str:
-    """Lowercase, '_' -> space, drop '?', ':' and '!', collapse spaces, strip."""
-    text = str(header if header is not None else '').lower().replace('_', ' ')
-    text = re.sub(r'[?:!]', '', text)
+    """Lowercase, '_' and '-' -> space, drop '?', ':', '!', '*' and '#', collapse spaces, strip."""
+    text = str(header if header is not None else '').lower().replace('_', ' ').replace('-', ' ')
+    text = re.sub(r'[?:!*#]', '', text)
     return re.sub(r'\s+', ' ', text).strip()
+
+
+def resolve_sheet_column_indices(rows, max_header_scan_rows: int = 10):
+    """
+    Scan the first `max_header_scan_rows` rows of a Google Sheet to locate the header row
+    and map column indices for first/full name, last name, mobile(s), email, place, tag,
+    and preferred contact time.
+
+    Returns a dict with column indices or None if no valid header row is found.
+    """
+    if not rows:
+        return None
+
+    scan_limit = min(len(rows), max(1, max_header_scan_rows))
+    for row_idx in range(scan_limit):
+        raw_row = rows[row_idx]
+        if not raw_row or not isinstance(raw_row, (list, tuple)):
+            continue
+
+        norm_headers = [normalize_sheet_header(h) for h in raw_row]
+        if not any(norm_headers):
+            continue
+
+        def _find_first(aliases, exclude=()):
+            excluded_set = set(exclude)
+            for alias in aliases:
+                for idx, h in enumerate(norm_headers):
+                    if idx not in excluded_set and h == alias:
+                        return idx
+            return -1
+
+        def _find_all(aliases, exclude=()):
+            excluded_set = set(exclude)
+            found = []
+            for alias in aliases:
+                for idx, h in enumerate(norm_headers):
+                    if idx not in excluded_set and h == alias and idx not in found:
+                        found.append(idx)
+            return found
+
+        first_name_idx = _find_first(FIRST_NAME_HEADER_ALIASES)
+        if first_name_idx == -1:
+            for idx, h in enumerate(norm_headers):
+                if any(k in h for k in ('full name', 'first name', 'student name', 'candidate name', 'lead name')):
+                    first_name_idx = idx
+                    break
+
+        last_name_idx = _find_first(LAST_NAME_HEADER_ALIASES, exclude=(first_name_idx,))
+
+        mobile_indices = _find_all(MOBILE_HEADER_ALIASES, exclude=(first_name_idx, last_name_idx))
+        for idx, h in enumerate(norm_headers):
+            if idx in (first_name_idx, last_name_idx) or idx in mobile_indices:
+                continue
+            if any(k in h for k in ('mobile', 'phone', 'whatsapp', 'contact no', 'contact number')):
+                mobile_indices.append(idx)
+
+        mobile_idx = mobile_indices[0] if mobile_indices else -1
+
+        email_idx = _find_first(
+            EMAIL_HEADER_ALIASES,
+            exclude=(first_name_idx, last_name_idx, *mobile_indices),
+        )
+        if email_idx == -1:
+            for idx, h in enumerate(norm_headers):
+                if idx in (first_name_idx, last_name_idx, *mobile_indices):
+                    continue
+                if 'email' in h or 'e mail' in h:
+                    email_idx = idx
+                    break
+
+        if mobile_idx == -1 and first_name_idx == -1 and email_idx == -1:
+            continue
+
+        place_idx = _find_first(
+            PLACE_HEADER_ALIASES,
+            exclude=(first_name_idx, last_name_idx, *mobile_indices, email_idx),
+        )
+        tag_idx = _find_first(
+            TAG_HEADER_ALIASES,
+            exclude=(first_name_idx, last_name_idx, *mobile_indices, email_idx, place_idx),
+        )
+        contact_time_idx = find_preferred_contact_time_index(
+            raw_row,
+            exclude_indices=(first_name_idx, last_name_idx, *mobile_indices, email_idx, place_idx, tag_idx),
+        )
+
+        return {
+            'header_row_idx': row_idx,
+            'first_name_idx': first_name_idx,
+            'last_name_idx': last_name_idx,
+            'mobile_idx': mobile_idx,
+            'mobile_indices': mobile_indices,
+            'email_idx': email_idx,
+            'place_idx': place_idx,
+            'tag_idx': tag_idx,
+            'contact_time_idx': contact_time_idx,
+        }
+
+    return None
 
 
 def find_preferred_contact_time_index(raw_headers, exclude_indices=()) -> int:

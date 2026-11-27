@@ -1,11 +1,13 @@
 [Unit]
 Description=minicrm Google Sheets auto-sync
 After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=oneshot
-User=<same as reminders service>
-WorkingDirectory=<same as reminders service>
-EnvironmentFile=<same as reminders service>
-ExecStart=/usr/bin/flock -n /tmp/minicrm-google-sync.lock <venv>/bin/python manage.py run_google_sync
+User=ubuntu
+WorkingDirectory=/home/ubuntu/minicrm-release/backend
+EnvironmentFile=-/home/ubuntu/minicrm-release/backend/.env
+ExecStart=/usr/bin/flock -n /tmp/minicrm-google-sync.lock /home/ubuntu/minicrm-release/backend/venv/bin/python manage.py run_google_sync
 TimeoutStartSec=240
+Nice=5

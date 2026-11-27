@@ -115,8 +115,30 @@ class CampaignSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         from .services.assignment import filter_eligible_bdes_for_section, is_bde_eligible_for_section
+        from .views_google import extract_spreadsheet_id
         section_changed = 'section' in validated_data and validated_data['section'] != instance.section
         auto_assign_provided = 'auto_assign_to' in validated_data
+
+        # Normalize spreadsheet ID if a full URL was pasted, and reset google_last_synced_row
+        # when switching to a different spreadsheet or tab so the new sheet syncs from row 1.
+        if 'google_spreadsheet_id' in validated_data and validated_data['google_spreadsheet_id']:
+            validated_data['google_spreadsheet_id'] = extract_spreadsheet_id(validated_data['google_spreadsheet_id'])
+
+        new_sheet_id = validated_data.get('google_spreadsheet_id', instance.google_spreadsheet_id)
+        new_sheet_name = (validated_data.get('google_sheet_name', instance.google_sheet_name) or 'Sheet1').strip()
+        old_sheet_name = (instance.google_sheet_name or 'Sheet1').strip()
+        sheet_target_changed = (
+            new_sheet_id != instance.google_spreadsheet_id
+            or new_sheet_name != old_sheet_name
+        )
+        if sheet_target_changed and 'google_last_synced_row' not in validated_data:
+            validated_data['google_last_synced_row'] = 1
+
+        # Never allow blank fields in a campaign edit form to wipe existing Google OAuth tokens
+        for token_field in ('google_access_token', 'google_refresh_token', 'google_token_expiry'):
+            if token_field in validated_data and not validated_data[token_field]:
+                validated_data.pop(token_field, None)
+
         campaign = super().update(instance, validated_data)
         if section_changed and not auto_assign_provided:
             eligible_reps = filter_eligible_bdes_for_section(

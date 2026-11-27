@@ -203,7 +203,11 @@ const CRMCampaigns = ({ onLeadClick }) => {
     };
 
     useEffect(() => {
-        const isGoogleSheetsCampaign = editingCampaign?.id && (formData.platform === 'OTHER' || Boolean(formData.google_spreadsheet_id));
+        const isGoogleSheetsCampaign = editingCampaign?.id && (
+            formData.platform === 'OTHER' ||
+            formData.platform === 'GOOGLE' ||
+            Boolean(formData.google_spreadsheet_id)
+        );
         if (isGoogleSheetsCampaign && activeTab === 'campaigns') {
             fetchGoogleSheetsList();
         }
@@ -2254,7 +2258,7 @@ const CRMCampaigns = ({ onLeadClick }) => {
                             )}
 
                             {/* Google Sheets API Direct Sync */}
-                            {formData.platform === 'OTHER' && (
+                            {(formData.platform === 'OTHER' || formData.platform === 'GOOGLE' || Boolean(formData.google_spreadsheet_id)) && (
                                 <div className="border border-emerald-100 rounded-xl p-4 bg-emerald-50/20 space-y-4">
                                     <div className="flex items-center gap-2">
                                         <div className="w-7 h-7 bg-emerald-600 rounded-lg flex items-center justify-center">

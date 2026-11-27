@@ -1,196 +1,73 @@
-import json
+import logging
 import requests
-import urllib.parse
 from django.core.management.base import BaseCommand
-from django.utils import timezone
-from crm.models import Campaign, PipelineStage
-from crm.views_google import get_refreshed_access_token
-from crm.services import get_next_assigned_rep
-from crm.services.sheet_columns import find_preferred_contact_time_index, get_preferred_contact_time
-from core.models import Student, normalize_phone_number
-from django.contrib.auth import get_user_model
-from django.db import transaction as django_db_transaction
+from crm.models import Campaign
+from crm.views_google import (
+    get_refreshed_access_token,
+    fetch_google_sheet_values,
+    sync_campaign_sheet_rows,
+)
 
-User = get_user_model()
+logger = logging.getLogger(__name__)
+
 
 class Command(BaseCommand):
     help = 'Runs the Google Sheets auto-sync for active campaigns'
 
     def handle(self, *args, **options):
         self.stdout.write(self.style.SUCCESS('Starting Google Sheets Auto-Sync Scheduler...'))
-        
+
         # Get active campaigns with spreadsheet settings and auto-sync enabled
         campaigns = Campaign.objects.filter(
             status='ACTIVE',
             google_auto_sync=True
         ).exclude(google_spreadsheet_id__isnull=True).exclude(google_spreadsheet_id='')
-        
+
         if not campaigns.exists():
             self.stdout.write('No campaigns configured for auto-sync.')
             return
 
         for campaign in campaigns:
             self.stdout.write(f'Syncing campaign: {campaign.name} (ID: {campaign.id})...')
-            access_token = get_refreshed_access_token(campaign)
-            if not access_token:
-                self.stdout.write(self.style.ERROR(f'Failed to get access token for Campaign {campaign.id}'))
-                continue
-                
-            quoted_sheet_name = f"'{campaign.google_sheet_name or 'Sheet1'}'"
-            encoded_range = urllib.parse.quote_plus(quoted_sheet_name)
-            sheets_url = f"https://sheets.googleapis.com/v4/spreadsheets/{campaign.google_spreadsheet_id}/values/{encoded_range}!A:Z"
-            headers = {'Authorization': f'Bearer {access_token}'}
-            
             try:
-                res = requests.get(sheets_url, headers=headers)
-                if res.status_code != 200:
-                    self.stdout.write(self.style.ERROR(f'Google sheets API returned status code {res.status_code}: {res.text[:200]}'))
+                fetch_res = fetch_google_sheet_values(
+                    campaign,
+                    get_token_fn=get_refreshed_access_token,
+                    requests_get_fn=requests.get,
+                )
+                if not fetch_res.get('ok'):
+                    if fetch_res.get('auth_error'):
+                        self.stdout.write(self.style.ERROR(f'Failed to get access token for Campaign {campaign.id}'))
+                    else:
+                        status_code = fetch_res.get('status_code', 'ERROR')
+                        details = str(fetch_res.get('details', ''))[:200]
+                        self.stdout.write(
+                            self.style.ERROR(f'Google sheets API returned status code {status_code}: {details}')
+                        )
                     continue
-                    
-                sheet_data = res.json()
-                rows = sheet_data.get('values', [])
+
+                rows = fetch_res.get('rows', [])
                 if not rows:
                     self.stdout.write(f'Sheet for Campaign {campaign.id} is empty.')
                     continue
-                    
-                headers_row = [str(h).lower().strip() for h in rows[0]]
-                
-                def get_index(names):
-                    for name in names:
-                        if name in headers_row:
-                            return headers_row.index(name)
-                    return -1
-                    
-                first_name_idx = get_index(['first name', 'firstname', 'name', 'student name', 'student_name', 'full_name', 'fullname'])
-                last_name_idx = get_index(['last name', 'lastname', 'surname'])
-                mobile_idx = get_index(['mobile', 'phone', 'contact', 'mobile number', 'phone number', 'phone_number'])
-                email_idx = get_index(['email', 'email address', 'mail'])
-                
-                if mobile_idx == -1 and first_name_idx == -1:
-                    self.stdout.write(self.style.ERROR(f'Could not identify Name or Mobile columns in campaign {campaign.id} headers.'))
+
+                sync_res = sync_campaign_sheet_rows(campaign=campaign, rows=rows)
+                if not sync_res.get('ok'):
+                    self.stdout.write(
+                        self.style.ERROR(f"Could not identify Name or Mobile columns in campaign {campaign.id} headers.")
+                    )
                     continue
 
-                contact_time_idx = find_preferred_contact_time_index(
-                    rows[0], exclude_indices=(first_name_idx, last_name_idx, mobile_idx, email_idx)
-                )
-                    
-                from crm.utils import get_canonical_new_lead_stage_id
-                new_stage_id = get_canonical_new_lead_stage_id()
-                
-                start_row_index = max(1, campaign.google_last_synced_row)
-                imported_count = 0
-                
-                for idx, row in enumerate(rows[start_row_index:], start=start_row_index):
-                    if not row:
-                        continue
-                        
-                    def get_cell(col_idx):
-                        if col_idx != -1 and col_idx < len(row):
-                            return str(row[col_idx]).strip()
-                        return ''
-                        
-                    full_name = get_cell(first_name_idx)
-                    last_name = get_cell(last_name_idx) if last_name_idx != -1 else ''
-                    mobile = get_cell(mobile_idx)
-                    email = get_cell(email_idx)
-                    preferred_contact_time = get_preferred_contact_time(row, contact_time_idx)
-                    
-                    if not mobile and not full_name:
-                        continue
-                        
-                    if full_name and not last_name:
-                        parts = full_name.split(' ', 1)
-                        first_name = parts[0]
-                        last_name = parts[1] if len(parts) > 1 else ''
-                    else:
-                        first_name = full_name
-                        
-                    if not first_name:
-                        first_name = "Sheet Lead"
-                        
-                    from crm.services.deduplication import (
-                        acquire_lead_creation_lock,
-                        lookup_existing_student,
-                        normalize_lead_phone,
-                        normalize_lead_email,
-                        create_duplicate_lead,
+                for err in sync_res.get('row_errors', []):
+                    self.stdout.write(self.style.ERROR(f"Row {err['row']} sync error: {err['error']}"))
+
+                self.stdout.write(
+                    self.style.SUCCESS(
+                        f"Imported {sync_res['imported']} new leads for Campaign {campaign.name} "
+                        f"(Added: {sync_res['added']}, Duplicates: {sync_res['duplicates']}, "
+                        f"Skipped: {sync_res['skipped']}, Failed: {sync_res['failed']})."
                     )
-                    cleaned_phone = normalize_lead_phone(mobile)
-                    clean_em = normalize_lead_email(email)
-                        
-                    if not cleaned_phone and not clean_em:
-                        continue
-                        
-                    try:
-                        with django_db_transaction.atomic():
-                            acquire_lead_creation_lock()
-
-                            dup_student, dup_reason = lookup_existing_student(mobile=cleaned_phone, email=clean_em)
-                            if dup_student:
-                                create_duplicate_lead(
-                                    existing_student=dup_student,
-                                    first_name=first_name,
-                                    last_name=last_name,
-                                    mobile=cleaned_phone,
-                                    email=clean_em or email,
-                                    campaign=campaign,
-                                    duplicate_reason=dup_reason,
-                                    log_reengagement=False,
-                                    extra_fields={'preferred_contact_time': preferred_contact_time},
-                                )
-                                imported_count += 1
-                                continue
-
-                            import uuid
-                            temp_username = f"st_{cleaned_phone or clean_em}"
-                            if User.objects.filter(username=temp_username).exists() and Student.objects.filter(user__username=temp_username).exists():
-                                temp_username = f"{temp_username}_{uuid.uuid4().hex[:6]}"
-                            crm_id = Student.generate_next_crm_id()
-
-                            user, created = User.objects.get_or_create(
-                                username=temp_username,
-                                defaults={
-                                    'first_name': first_name,
-                                    'last_name': last_name,
-                                    'email': clean_em or email or f"{temp_username}@gmail.com",
-                                    'role': 'STUDENT'
-                                }
-                            )
-                            
-                            from core.models import Program
-                            program = None
-                            if campaign.section == 'CAREER_ACADEMY':
-                                program = Program.objects.filter(name='Natya Career Academy').first()
-                            elif campaign.section == 'REGULAR':
-                                program = Program.objects.filter(name='Natya').first()
-                            if not program:
-                                program = Program.objects.exclude(name="Wise Import").first() or Program.objects.first()
-                            
-                            # Handle Auto Assignment via centralized service
-                            assigned_to_user = get_next_assigned_rep(campaign)
-
-                            student = Student.objects.create(
-                                user=user,
-                                crm_student_id=crm_id,
-                                program_type=program,
-                                first_name=first_name,
-                                last_name=last_name,
-                                email=clean_em or email,
-                                mobile=cleaned_phone,
-                                campaign=campaign,
-                                lead_status=new_stage_id,
-                                sales_section=campaign.section,
-                                assigned_to=assigned_to_user,
-                                preferred_contact_time=preferred_contact_time,
-                            )
-                                
-                        imported_count += 1
-                    except Exception as row_ex:
-                        self.stdout.write(self.style.ERROR(f'Row {idx} sync error: {str(row_ex)}'))
-                        
-                campaign.google_last_synced_row = len(rows)
-                campaign.save(update_fields=['google_last_synced_row'])
-                self.stdout.write(self.style.SUCCESS(f'Imported {imported_count} new leads for Campaign {campaign.name}.'))
-                
+                )
             except Exception as ex:
+                logger.error("Campaign %s general sync error: %s", campaign.id, ex, exc_info=True)
                 self.stdout.write(self.style.ERROR(f'Campaign {campaign.id} general sync error: {str(ex)}'))
